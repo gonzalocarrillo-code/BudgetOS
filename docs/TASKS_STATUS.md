@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-23: T-001 through T-005, T-007, T-026a, and T-026b are done. Later tasks are `pending`.
+Repo on 2026-09-23: T-001 through T-005, T-007, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
@@ -18,7 +18,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-007 | 4 | T-002, T-003, T-004 | done | planner suite including property tests, on SQL fixtures | — |
 | T-026a | 5 | T-001 | done | bench numbers in ADR-002 | DB golden at 100k leaves is T-034 |
 | T-026b | 5 | T-001 | done | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
-| T-026c | 6 | T-026a | pending | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
+| T-026c | 6 | T-026a | done | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
 | T-009 | 7 | T-002, T-003, T-004 | pending | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
 | T-010 | 8 | T-004, T-009 | pending | 409 with `currentVersionId` | — |
 | T-011 | 8 | T-010 | pending | epic 1.3 acceptance; cap trigger | — |
@@ -117,6 +117,19 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - SVAR `open: true` on a leaf throws because the store walks `task.data` with `forEach`. The bench passes `open` only for tasks that have children. The budget target lane is shown by including that row; the CPA target stays collapsed by omitting it. `toSvarTasks` still records `open: true` on the budget target for the product rule.
 - `pnpm bench` divides render p95 by `cpuScaleMs` and fails above 110% of `packages/timeline/bench/baseline.json`. Pan fps fails when it drops more than 10%, and is not calibrated.
 - Rendering engine is `@svar-ui/react-gantt`. vis-timeline mounted 5,000 rows in 13625.700 ms p95. The canvas viewport was faster and does not provide a task grid or zoom.
+
+## T-026c assumptions
+
+- `export type QueryRow` was added next to the zod schema so `@budget/grid` can import the row type from spec §18.2. The schema value is unchanged.
+- `RowSource.getRows` returns `dataVersion` as a string, which is what §18.2 writes. `QueryResponse.dataVersion` stays a number.
+- `hasChildren`, `expanded`, `level`, and `name` are optional fields a source may attach to a row. The domain row does not have them. A row without `hasChildren: true` does not toggle.
+- `GridEvents.onSort` is optional. The §18.2 rules name `events.onSort` for a header click, and the sketched interface omitted it.
+- A dimension column is a text cell. `editable: true` uses the dimension picker. Date, tag, and text editors are overlay editors on those cell kinds. Nothing in this package calls HTTP. Search is `searchDimensionValues` / `searchTags`.
+- Money is parsed and formatted with `decimal.js`. The totals row uses `font-variant-numeric: tabular-nums`. Canvas cells are right-aligned.
+- The page cache keeps 32 pages of 200 rows and prefetches 2. It requests the first page when it is created so Glide learns `total` before it asks for a cell.
+- `budgetGridScrollFpsP50` is 59.9. The bench fails under 55 and under 90% of that baseline. `budgetGridFirstPaintMs` is 35 and fails above 300 ms or 10% after the spike `cpuScaleMs`. `budgetGridGetCellP95Ms` is 0.005. It fails above 0.2 ms. The 10% band is too tight for that timer (0.0042 ms, then 0.005 ms), so that ratio fails above 2×, the same band T-026a used for its noisy cell sample. The spike baseline numbers were not retuned.
+- Storybook 8.6.14 is a devDependency. Glide, React, and React DOM are runtime dependencies. Glide's React peer range still stops at 18. Column titles are the column keys. `@budget/ui/i18n` does not exist yet.
+- 59.9 fps does not meet plan epic 0.7's 60 fps. The 100,000-leaf database golden is T-034.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

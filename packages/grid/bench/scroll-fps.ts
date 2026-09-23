@@ -178,7 +178,12 @@ async function evaluate(cdp: Cdp, expression: string, awaitPromise: boolean): Pr
   return raw.result?.value;
 }
 
-export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
+export async function measurePage(
+  entry: string,
+  readyExpression: string,
+  measureExpression: string,
+  glideStyles = true,
+): Promise<unknown> {
   const dir = await mkdtemp(join(tmpdir(), "grid-spike-"));
   const profile = join(dir, "chrome-profile");
   let chrome: ChildProcess | undefined;
@@ -186,7 +191,7 @@ export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
   try {
     await build({
       absWorkingDir: benchDir,
-      entryPoints: [join(benchDir, engine === "glide" ? "scroll-glide.tsx" : "scroll-tanstack.tsx")],
+      entryPoints: [join(benchDir, entry)],
       bundle: true,
       format: "iife",
       platform: "browser",
@@ -196,7 +201,7 @@ export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
       define: { "process.env.NODE_ENV": '"production"' },
       loader: { ".css": "text" },
     });
-    const served = await serve(dir, engine === "glide");
+    const served = await serve(dir, glideStyles);
     server = served.server;
     const debugPort = await freePort();
     chrome = spawn("google-chrome", [
@@ -241,7 +246,7 @@ export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
     await cdp.send("Page.navigate", { url: `http://127.0.0.1:${served.port}/` });
     let ready = false;
     for (let attempt = 0; attempt < 80; attempt += 1) {
-      const kind = await evaluate(cdp, "typeof window.__gridSpikeMeasure", false);
+      const kind = await evaluate(cdp, readyExpression, false);
       if (kind === "function") {
         ready = true;
         break;
@@ -249,14 +254,11 @@ export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     if (!ready) {
-      throw new Error(`${engine} scroll page did not install the sampler`);
+      throw new Error(`${entry} did not install the sampler`);
     }
-    const fps = await evaluate(cdp, "window.__gridSpikeMeasure()", true);
-    if (typeof fps !== "number" || !Number.isFinite(fps)) {
-      throw new Error(`${engine} scroll fps was ${String(fps)}`);
-    }
+    const value = await evaluate(cdp, measureExpression, true);
     ws.close();
-    return Number(fps.toFixed(1));
+    return value;
   } finally {
     await stopChrome(chrome);
     if (server !== undefined) {
@@ -264,6 +266,15 @@ export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
     }
     await removeDir(dir);
   }
+}
+
+export async function measureScrollFps(engine: ScrollEngine): Promise<number> {
+  const entry = engine === "glide" ? "scroll-glide.tsx" : "scroll-tanstack.tsx";
+  const fps = await measurePage(entry, "typeof window.__gridSpikeMeasure", "window.__gridSpikeMeasure()", engine === "glide");
+  if (typeof fps !== "number" || !Number.isFinite(fps)) {
+    throw new Error(`${engine} scroll fps was ${String(fps)}`);
+  }
+  return Number(fps.toFixed(1));
 }
 
 async function stopChrome(child: ChildProcess | undefined): Promise<void> {

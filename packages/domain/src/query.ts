@@ -57,6 +57,7 @@ export const QueryRow = z.object({
   openAlerts: z.number().int().default(0),
   openThreads: z.number().int().default(0),
 });
+export type QueryRow = z.infer<typeof QueryRow>;
 export const QueryResponse = z.object({
   rows: z.array(QueryRow),
   nextCursor: z.string().nullable(),

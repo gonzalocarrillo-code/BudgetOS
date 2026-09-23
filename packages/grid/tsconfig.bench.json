@@ -3,8 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
-    "rootDir": "bench",
+    "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["bench"]
+  "include": ["bench", "src"]
 }

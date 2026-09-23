@@ -9,5 +9,8 @@
   "glideModelBuildMs": 5.732,
   "tanstackModelBuildMs": 621.418,
   "glideScrollFpsP50": 59.9,
-  "tanstackScrollFpsP50": 59.9
+  "tanstackScrollFpsP50": 59.9,
+  "budgetGridScrollFpsP50": 59.9,
+  "budgetGridGetCellP95Ms": 0.005,
+  "budgetGridFirstPaintMs": 35
 }

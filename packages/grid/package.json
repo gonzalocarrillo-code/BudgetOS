@@ -11,10 +11,23 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.bench.json",
     "test": "vitest run --root . --config ../../vitest.config.mjs",
-    "bench": "vitest run --root . --config vitest.bench.config.mjs"
+    "bench": "vitest run --root . --config vitest.bench.config.mjs",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build --output-dir /tmp/budget-grid-storybook"
+  },
+  "dependencies": {
+    "@budget/domain": "workspace:^",
+    "@glideapps/glide-data-grid": "6.0.3",
+    "decimal.js": "10.6.0",
+    "lodash": "4.17.21",
+    "marked": "4.3.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-responsive-carousel": "3.2.23"
   },
   "devDependencies": {
-    "@glideapps/glide-data-grid": "6.0.3",
+    "@storybook/react": "8.6.14",
+    "@storybook/react-vite": "8.6.14",
     "@tanstack/react-table": "8.21.3",
     "@tanstack/react-virtual": "3.14.13",
     "@tanstack/table-core": "8.21.3",
@@ -24,11 +37,7 @@
     "@types/react-dom": "19.2.7",
     "esbuild": "0.21.5",
     "eslint": "catalog:",
-    "lodash": "4.17.21",
-    "marked": "4.3.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-responsive-carousel": "3.2.23",
+    "storybook": "8.6.14",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
