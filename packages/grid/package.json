@@ -9,11 +9,26 @@
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root . --config ../../vitest.config.mjs"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.bench.json",
+    "test": "vitest run --root . --config ../../vitest.config.mjs",
+    "bench": "vitest run --root . --config vitest.bench.config.mjs"
   },
   "devDependencies": {
+    "@glideapps/glide-data-grid": "6.0.3",
+    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.14.13",
+    "@tanstack/table-core": "8.21.3",
+    "@tanstack/virtual-core": "3.17.11",
+    "@types/node": "catalog:",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "esbuild": "0.21.5",
     "eslint": "catalog:",
+    "lodash": "4.17.21",
+    "marked": "4.3.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-responsive-carousel": "3.2.23",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

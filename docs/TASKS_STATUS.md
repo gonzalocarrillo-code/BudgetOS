@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-23: T-001 through T-005 and T-007 are done. Later tasks are `pending`.
+Repo on 2026-09-23: T-001 through T-005, T-007, and T-026a are done. Later tasks are `pending`.
 
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
@@ -16,7 +16,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-004 | 2 | T-002, T-003 | done | concurrent `SET LOCAL` isolation test | — |
 | T-005 | 3 | T-002, T-004 | done | registry acceptance, excluding search and MCP clauses | search qualifier (T-020); MCP parameter (T-025) |
 | T-007 | 4 | T-002, T-003, T-004 | done | planner suite including property tests, on SQL fixtures | — |
-| T-026a | 5 | T-001 | pending | bench numbers in ADR-002 | DB golden at 100k leaves does not exist yet |
+| T-026a | 5 | T-001 | done | bench numbers in ADR-002 | DB golden at 100k leaves is T-034 |
 | T-026b | 5 | T-001 | pending | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
 | T-026c | 6 | T-026a | pending | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
 | T-009 | 7 | T-002, T-003, T-004 | pending | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
@@ -100,6 +100,14 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - `mentions_user` for `@me` follows the spec expression. The JSON is bound before the `"__ME__"` replace, so the replace does not rewrite the parameter. The suite asserts a concrete user id.
 - The cursor is the spec's base64url offset. The stability test covers an uncommitted insert and a committed insert that sorts after the page window.
 - `pnpm bench` times `compileQuery` against `packages/query-planner/bench/baseline.json` and fails when the p50 is more than 10% above that baseline.
+
+## T-026a assumptions
+
+- The spike uses 100,000 in-memory rows, not the database golden. The database-scale proof is T-034. ADR-002 records that.
+- The TanStack-only build is `@tanstack/react-table` 8.21.3 plus `@tanstack/react-virtual` 3.14.13. An unvirtualized 100,000-row DOM table was not mounted.
+- Glide is `@glideapps/glide-data-grid` 6.0.3. Its React peer range stops at 18. The scroll bench rendered `DataEditor` on React 19.2.4. pnpm reports an unmet peer. These packages stay devDependencies until T-026c ships `BudgetGrid`.
+- Visible-window and model-build samples are divided by a same-process CPU calibration. The bench fails when that ratio is more than 10% above `packages/grid/bench/baseline.json`. The cell-batch median fails above 2× that ratio. Scroll fps fails when it drops more than 10%, and is not calibrated.
+- `docs/adr/0000-template.md` is the empty ADR shape this phase asked the first spike to add.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

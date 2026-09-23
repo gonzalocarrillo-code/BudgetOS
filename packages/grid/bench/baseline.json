@@ -1,0 +1,13 @@
+{
+  "rows": 100000,
+  "columns": 12,
+  "cpuScaleMs": 13.848,
+  "glideVisibleWindowP50Ms": 5.217,
+  "tanstackVisibleWindowP50Ms": 61.591,
+  "glideGetCellMedianMs": 12.548,
+  "tanstackGetCellMedianMs": 22.893,
+  "glideModelBuildMs": 5.732,
+  "tanstackModelBuildMs": 621.418,
+  "glideScrollFpsP50": 59.9,
+  "tanstackScrollFpsP50": 59.9
+}
