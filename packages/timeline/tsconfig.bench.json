@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
+    "rootDir": ".",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "vis-data": ["bench/shims/vis-data.d.ts"],
+      "moment": ["bench/shims/moment.d.ts"],
+      "xss": ["bench/shims/xss.d.ts"]
+    }
+  },
+  "include": ["bench", "src/spike-layout.ts"]
+}

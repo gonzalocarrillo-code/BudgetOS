@@ -1,0 +1,12 @@
+{
+  "bars": 5000,
+  "targetLaneProven": true,
+  "markerOverlayProven": true,
+  "cpuScaleMs": 13.991,
+  "svarRenderP95Ms": 372.9,
+  "visRenderP95Ms": 13625.7,
+  "canvasRenderP95Ms": 16.9,
+  "svarPanFpsP50": 59.9,
+  "visPanFpsP50": 59.9,
+  "canvasPanFpsP50": 59.9
+}
