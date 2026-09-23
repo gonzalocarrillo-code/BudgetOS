@@ -1,0 +1,604 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Tenancy & identity ----------
+model Organization {
+  id         String      @id @db.Uuid
+  name       String
+  workspaces Workspace[]
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("organization")
+}
+
+model Workspace {
+  id                   String       @id @db.Uuid
+  orgId                String       @map("org_id") @db.Uuid
+  org                  Organization @relation(fields: [orgId], references: [id])
+  slug                 String
+  name                 String
+  reportingCurrency    String       @map("reporting_currency") @db.Char(3)
+  fiscalYearStartMonth Int          @default(1) @map("fiscal_year_start_month")
+  settings             Json         @default("{}")
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([orgId, slug])
+  @@map("workspace")
+}
+
+model User {
+  id        String   @id @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  email     String   @unique
+  name      String
+  googleSub String?  @unique @map("google_sub")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("app_user")
+}
+
+model Group {
+  id          String        @id @db.Uuid
+  orgId       String        @map("org_id") @db.Uuid
+  googleGroup String        @map("google_group") // e.g. latam-media-leads@dept.com
+  name        String
+  members     GroupMember[]
+
+  @@unique([orgId, googleGroup])
+  @@map("app_group")
+}
+
+model GroupMember {
+  groupId  String   @map("group_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  group    Group    @relation(fields: [groupId], references: [id])
+  syncedAt DateTime @default(now()) @map("synced_at") @db.Timestamptz
+
+  @@id([groupId, userId])
+  @@map("app_group_member")
+}
+
+enum Role {
+  VIEWER
+  PLANNER
+  BUDGET_OWNER
+  APPROVER
+  FINANCE
+  DATA_ADMIN
+  WORKSPACE_ADMIN
+  ORG_ADMIN
+}
+
+model RoleAssignment {
+  id            String   @id @db.Uuid
+  workspaceId   String?  @map("workspace_id") @db.Uuid // null => org-wide (ORG_ADMIN only)
+  principalType String   @map("principal_type") // 'user' | 'group'
+  principalId   String   @map("principal_id") @db.Uuid
+  role          Role
+  scope         Json     @default("{}") // FilterGroup or {} = whole workspace
+  createdBy     String   @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([workspaceId, principalId])
+  @@map("role_assignment")
+}
+
+// ---------- Registry (§4.2) ----------
+enum DimensionDataType {
+  ENUM
+  TEXT
+  REFERENCE
+  DATE_BUCKET
+}
+
+model Dimension {
+  id                String            @id @db.Uuid
+  orgId             String            @map("org_id") @db.Uuid
+  workspaceId       String?           @map("workspace_id") @db.Uuid // null = org-wide default
+  key               String
+  label             String
+  description       String?
+  dataType          DimensionDataType @map("data_type")
+  icon              String            @default("lucide:tag") // 'lucide:<name>' | 'asset:<gcs-object>'
+  color             String?
+  allowedParents    String[]          @map("allowed_parents") // dimension keys
+  isRequiredForLeaf Boolean           @default(false) @map("is_required_for_leaf")
+  sortOrder         Int               @default(0) @map("sort_order")
+  isActive          Boolean           @default(true) @map("is_active")
+  version           Int               @default(1)
+  createdBy         String            @map("created_by") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  values            DimensionValue[]
+
+  @@unique([orgId, workspaceId, key])
+  @@map("dimension")
+}
+
+model DimensionValue {
+  id            String               @id @db.Uuid
+  dimensionId   String               @map("dimension_id") @db.Uuid
+  dimension     Dimension            @relation(fields: [dimensionId], references: [id])
+  code          String
+  label         String
+  parentValueId String?              @map("parent_value_id") @db.Uuid
+  path          Unsupported("ltree") // set by trigger from parent chain; e.g. 'emea.de'
+  aliases       String[]             @default([])
+  externalIds   Json                 @default("{}") @map("external_ids")
+  isActive      Boolean              @default(true) @map("is_active")
+  retiredAt     DateTime?            @map("retired_at") @db.Timestamptz
+  mergedIntoId  String?              @map("merged_into_id") @db.Uuid
+
+  @@unique([dimensionId, code])
+  @@index([dimensionId, parentValueId])
+  @@map("dimension_value")
+}
+
+model HierarchyTemplate {
+  id          String   @id @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  path        String[] // ['client','region','country','platform','objective']
+  isDefault   Boolean  @default(false) @map("is_default")
+  version     Int      @default(1)
+  createdBy   String   @map("created_by") @db.Uuid
+
+  @@unique([workspaceId, name])
+  @@map("hierarchy_template")
+}
+
+model ValueConstraint {
+  id                String   @id @db.Uuid
+  dimensionId       String   @map("dimension_id") @db.Uuid
+  whenDimensionKey  String   @map("when_dimension_key")
+  whenValueCode     String   @map("when_value_code")
+  allowedValueCodes String[] @map("allowed_value_codes")
+
+  @@map("value_constraint")
+}
+
+model FiscalPeriod {
+  id          String   @id @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  key         String // '2026-Q4', '2026-11', 'FY26'
+  kind        String // month | quarter | year | custom
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+
+  @@unique([workspaceId, key])
+  @@map("fiscal_period")
+}
+
+// ---------- Envelopes (§4.3) ----------
+enum EnvelopeStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  LOCKED
+  ARCHIVED
+}
+
+enum VersionStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+  WITHDRAWN
+}
+
+enum AmountType {
+  BUDGET
+  COMMITTED
+  FORECAST
+  SCENARIO
+}
+
+model Envelope {
+  id                  String              @id @db.Uuid
+  workspaceId         String              @map("workspace_id") @db.Uuid
+  parentId            String?             @map("parent_id") @db.Uuid
+  parent              Envelope?           @relation("EnvelopeTree", fields: [parentId], references: [id])
+  children            Envelope[]          @relation("EnvelopeTree")
+  name                String
+  dimensionValues     Json                @map("dimension_values") // {"country":"BR","platform":"meta"} — denormalised copy
+  periodId            String?             @map("period_id") @db.Uuid
+  startDate           DateTime            @map("start_date") @db.Date
+  endDate             DateTime            @map("end_date") @db.Date
+  currency            String              @db.Char(3)
+  status              EnvelopeStatus      @default(DRAFT)
+  ownerId             String?             @map("owner_id") @db.Uuid
+  allowOverAllocation Boolean             @default(false) @map("allow_over_allocation")
+  currentVersionId    String?             @map("current_version_id") @db.Uuid // latest APPROVED
+  draftVersionId      String?             @map("draft_version_id") @db.Uuid // open draft, if any
+  rowVersion          Int                 @default(1) @map("row_version") // optimistic concurrency for metadata edits
+  createdBy           String              @map("created_by") @db.Uuid
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  versions            EnvelopeVersion[]
+  dims                EnvelopeDimension[]
+
+  @@index([workspaceId, parentId])
+  @@index([workspaceId, startDate, endDate])
+  @@map("envelope")
+}
+
+model EnvelopeDimension {
+  envelopeId  String   @map("envelope_id") @db.Uuid
+  dimensionId String   @map("dimension_id") @db.Uuid
+  valueId     String   @map("value_id") @db.Uuid
+  envelope    Envelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+
+  @@id([envelopeId, dimensionId])
+  @@index([dimensionId, valueId, envelopeId])
+  @@map("envelope_dimension")
+}
+
+model EnvelopeVersion {
+  id               String            @id @db.Uuid
+  envelopeId       String            @map("envelope_id") @db.Uuid
+  envelope         Envelope          @relation(fields: [envelopeId], references: [id])
+  versionNo        Int               @map("version_no")
+  amountType       AmountType        @default(BUDGET) @map("amount_type")
+  amount           Decimal           @db.Decimal(18, 2) // envelope currency
+  amountReporting  Decimal           @map("amount_reporting") @db.Decimal(18, 2)
+  fxRateId         String?           @map("fx_rate_id") @db.Uuid
+  status           VersionStatus     @default(DRAFT)
+  basedOnVersionId String?           @map("based_on_version_id") @db.Uuid
+  rationale        String?
+  attachments      Json              @default("[]")
+  formula          Json? // Phase 2
+  createdBy        String            @map("created_by") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  approvedAt       DateTime?         @map("approved_at") @db.Timestamptz
+  supersededAt     DateTime?         @map("superseded_at") @db.Timestamptz
+  phasing          EnvelopePhasing[]
+
+  @@unique([envelopeId, versionNo])
+  @@index([envelopeId, status, approvedAt])
+  @@map("envelope_version")
+}
+
+model EnvelopePhasing {
+  versionId String          @map("version_id") @db.Uuid
+  version   EnvelopeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  month     DateTime        @db.Date // first day of month
+  amount    Decimal         @db.Decimal(18, 2)
+
+  @@id([versionId, month])
+  @@map("envelope_phasing")
+}
+
+model EnvelopeLineage {
+  id             String   @id @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  fromEnvelopeId String   @map("from_envelope_id") @db.Uuid
+  toEnvelopeId   String   @map("to_envelope_id") @db.Uuid
+  kind           String // move | split | merge
+  versionId      String?  @map("version_id") @db.Uuid
+  actorId        String   @map("actor_id") @db.Uuid
+  at             DateTime @default(now()) @db.Timestamptz
+
+  @@index([fromEnvelopeId])
+  @@index([toEnvelopeId])
+  @@map("envelope_lineage")
+}
+
+model FxRate {
+  id       String   @id @db.Uuid
+  base     String   @db.Char(3)
+  quote    String   @db.Char(3)
+  rate     Decimal  @db.Decimal(18, 8)
+  asOfDate DateTime @map("as_of_date") @db.Date
+  source   String
+
+  @@unique([base, quote, asOfDate])
+  @@map("fx_rate")
+}
+
+// ---------- Targets (§4.8) ----------
+model MetricDefinition {
+  id          String  @id @db.Uuid
+  orgId       String  @map("org_id") @db.Uuid
+  key         String // budget | cpa | cpl | roas | cpm | cpc | ctr | conversions | revenue | ...
+  label       String
+  numerator   String // 'spend' | 'kpi:<metric>' | 'budget'
+  denominator String? // null => plain sum
+  direction   String // lower_is_better | higher_is_better
+  format      String // currency | number | percent | ratio
+  unit        String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  @@unique([orgId, key])
+  @@map("metric_definition")
+}
+
+model Target {
+  id               String          @id @db.Uuid
+  workspaceId      String          @map("workspace_id") @db.Uuid
+  scopeType        String          @map("scope_type") // envelope | filter
+  envelopeId       String?         @map("envelope_id") @db.Uuid
+  scopeFilter      Json?           @map("scope_filter") // FilterGroup
+  metricKey        String          @map("metric_key")
+  startDate        DateTime        @map("start_date") @db.Date
+  endDate          DateTime        @map("end_date") @db.Date
+  ownerId          String?         @map("owner_id") @db.Uuid
+  status           String          @default("active")
+  currentVersionId String?         @map("current_version_id") @db.Uuid
+  draftVersionId   String?         @map("draft_version_id") @db.Uuid
+  versions         TargetVersion[]
+
+  @@index([workspaceId, envelopeId, metricKey])
+  @@map("target")
+}
+
+model TargetVersion {
+  id                String        @id @db.Uuid
+  targetId          String        @map("target_id") @db.Uuid
+  target            Target        @relation(fields: [targetId], references: [id])
+  versionNo         Int           @map("version_no")
+  value             Decimal       @db.Decimal(18, 4)
+  comparator        String // lte | gte | eq | between
+  valueUpper        Decimal?      @map("value_upper") @db.Decimal(18, 4)
+  currency          String?       @db.Char(3)
+  rationale         String?
+  source            String        @default("manual") // manual | sheet | snowflake | derived
+  status            VersionStatus @default(DRAFT)
+  approvalRequestId String?       @map("approval_request_id") @db.Uuid
+  createdBy         String        @map("created_by") @db.Uuid
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  approvedAt        DateTime?     @map("approved_at") @db.Timestamptz
+
+  @@unique([targetId, versionNo])
+  @@map("target_version")
+}
+
+// ---------- Approvals (§8.1–8.2) ----------
+model ApprovalPolicy {
+  id                    String  @id @db.Uuid
+  workspaceId           String  @map("workspace_id") @db.Uuid
+  name                  String
+  priority              Int
+  conditions            Json // see §9.1 of this spec
+  chain                 Json // [{ role, groupId?, minApprovals, timeoutHours, escalateTo? }]
+  allowExternalEvidence Boolean @default(false) @map("allow_external_evidence")
+  blockSelfApproval     Boolean @default(true) @map("block_self_approval")
+  version               Int     @default(1)
+  isActive              Boolean @default(true) @map("is_active")
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, priority])
+  @@map("approval_policy")
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  WITHDRAWN
+  ESCALATED
+}
+
+model ApprovalRequest {
+  id             String             @id @db.Uuid
+  workspaceId    String             @map("workspace_id") @db.Uuid
+  entityType     String             @map("entity_type") // envelope_version | target_version | bulk_change
+  entityId       String             @map("entity_id") @db.Uuid
+  policyId       String             @map("policy_id") @db.Uuid
+  policyVersion  Int                @map("policy_version")
+  policySnapshot Json               @map("policy_snapshot") // frozen copy of chain+conditions
+  currentStep    Int                @default(0) @map("current_step")
+  status         RequestStatus      @default(PENDING)
+  summary        String
+  requestedBy    String             @map("requested_by") @db.Uuid
+  requestedAt    DateTime           @default(now()) @map("requested_at") @db.Timestamptz
+  dueAt          DateTime?          @map("due_at") @db.Timestamptz
+  resolvedAt     DateTime?          @map("resolved_at") @db.Timestamptz
+  decisions      ApprovalDecision[]
+
+  @@index([workspaceId, status, dueAt])
+  @@index([entityType, entityId])
+  @@map("approval_request")
+}
+
+model ApprovalDecision {
+  id        String          @id @db.Uuid
+  requestId String          @map("request_id") @db.Uuid
+  request   ApprovalRequest @relation(fields: [requestId], references: [id])
+  stepIndex Int             @map("step_index")
+  decidedBy String          @map("decided_by") @db.Uuid
+  decision  String // approve | reject | request_changes | external_evidence
+  comment   String?
+  evidence  Json? // { gcsUri, sha256, approverName, approvedOn }
+  channel   String          @default("app") // app | slack | email | external_upload
+  decidedAt DateTime        @default(now()) @map("decided_at") @db.Timestamptz
+
+  @@index([requestId, stepIndex])
+  @@map("approval_decision")
+}
+
+// ---------- Pacing (§8.4) ----------
+model PacingRule {
+  id              String  @id @db.Uuid
+  workspaceId     String  @map("workspace_id") @db.Uuid
+  name            String
+  scope           Json    @default("{}") // FilterGroup
+  metric          String // pace_index | projected_close_pct | kpi_vs_target_pct | ...
+  metricArgs      Json    @default("{}") @map("metric_args") // e.g. { "metricKey": "cpa" }
+  comparator      String // gt | gte | lt | lte
+  threshold       Decimal @db.Decimal(18, 4)
+  consecutiveDays Int     @default(1) @map("consecutive_days")
+  severity        String // info | warning | critical | data
+  delivery        Json    @default("{\"inApp\":true}") // { inApp, slackChannel?, emails? }
+  isActive        Boolean @default(true) @map("is_active")
+
+  @@map("pacing_rule")
+}
+
+model RuleState {
+  ruleId          String   @map("rule_id") @db.Uuid
+  envelopeId      String   @map("envelope_id") @db.Uuid
+  consecutiveDays Int      @default(0) @map("consecutive_days")
+  lastEvalDate    DateTime @map("last_eval_date") @db.Date
+  lastValue       Decimal? @map("last_value") @db.Decimal(18, 4)
+
+  @@id([ruleId, envelopeId])
+  @@map("rule_state")
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  SNOOZED
+  RESOLVED
+}
+
+model Alert {
+  id           String      @id @db.Uuid
+  workspaceId  String      @map("workspace_id") @db.Uuid
+  ruleId       String      @map("rule_id") @db.Uuid
+  envelopeId   String      @map("envelope_id") @db.Uuid
+  severity     String
+  status       AlertStatus @default(OPEN)
+  metricValue  Decimal     @map("metric_value") @db.Decimal(18, 4)
+  threshold    Decimal     @db.Decimal(18, 4)
+  context      Json // { budget, actual, projected, target?, dataAsOf }
+  ownerId      String?     @map("owner_id") @db.Uuid
+  openedAt     DateTime    @default(now()) @map("opened_at") @db.Timestamptz
+  snoozedUntil DateTime?   @map("snoozed_until") @db.Timestamptz
+  resolvedAt   DateTime?   @map("resolved_at") @db.Timestamptz
+
+  @@unique([ruleId, envelopeId, openedAt])
+  @@index([workspaceId, status, severity])
+  @@map("alert")
+}
+
+// ---------- Collaboration (§8.6) ----------
+model Thread {
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  anchorType  String    @map("anchor_type") // envelope | envelope_version | target | approval_request | alert | closure | dimension_value | cell | diff_field
+  anchorId    String    @map("anchor_id") @db.Uuid
+  anchorMeta  Json      @default("{}") @map("anchor_meta") // cell: { month }, diff_field: { field }
+  title       String?
+  status      String    @default("open") // open | resolved
+  isBlocking  Boolean   @default(false) @map("is_blocking")
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  resolvedBy  String?   @map("resolved_by") @db.Uuid
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+  comments    Comment[]
+
+  @@index([workspaceId, anchorType, anchorId])
+  @@map("thread")
+}
+
+model Comment {
+  id              String    @id @db.Uuid
+  threadId        String    @map("thread_id") @db.Uuid
+  thread          Thread    @relation(fields: [threadId], references: [id])
+  parentCommentId String?   @map("parent_comment_id") @db.Uuid
+  authorId        String    @map("author_id") @db.Uuid
+  bodyMd          String    @map("body_md")
+  mentions        Json      @default("[]") // [{ type:'user'|'group', id }]
+  references      Json      @default("[]") // [{ type:'envelope'|'target'|'alert'|'request', id }]
+  attachments     Json      @default("[]")
+  editHistory     Json      @default("[]") @map("edit_history")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  editedAt        DateTime? @map("edited_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@index([threadId, createdAt])
+  @@map("comment")
+}
+
+model Tag {
+  id          String  @id @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  name        String
+  color       String?
+  kind        String  @default("label") // label | status | team | custom
+  createdBy   String  @map("created_by") @db.Uuid
+
+  @@unique([workspaceId, name])
+  @@map("tag")
+}
+
+model Taggable {
+  workspaceId String   @map("workspace_id") @db.Uuid
+  tagId       String   @map("tag_id") @db.Uuid
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  taggedBy    String   @map("tagged_by") @db.Uuid
+  taggedAt    DateTime @default(now()) @map("tagged_at") @db.Timestamptz
+
+  @@id([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("taggable")
+}
+
+model SavedView {
+  id          String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name        String
+  screen      String // explorer | alerts | approvals | targets | report
+  definition  Json // { filter, groupBy, measures, period, grain, columns, sort }
+  visibility  String @default("private") // private | shared | workspace_default
+  sharedWith  Json   @default("[]") @map("shared_with")
+  createdBy   String @map("created_by") @db.Uuid
+
+  @@map("saved_view")
+}
+
+// ---------- Closures & ingestion (§4.5, §6.1) ----------
+model PeriodClosure {
+  id              String   @id @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  periodId        String   @map("period_id") @db.Uuid
+  status          String   @default("closed") // closed | restated
+  closedBy        String   @map("closed_by") @db.Uuid
+  closedAt        DateTime @default(now()) @map("closed_at") @db.Timestamptz
+  registryVersion Json     @map("registry_version") // { dimensions: {key: version}, templates: {...} }
+  bqTable         String   @map("bq_table")
+  varianceSummary Json     @map("variance_summary")
+
+  @@unique([workspaceId, periodId, closedAt])
+  @@map("period_closure")
+}
+
+model DataSource {
+  id          String  @id @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  kind        String // snowflake | sheets | bigquery | csv
+  name        String
+  config      Json // non-secret config; secretRef points to Secret Manager
+  mapping     Json // column → dimension/measure mapping
+  schedule    String? // cron
+  isActive    Boolean @default(true) @map("is_active")
+
+  @@map("data_source")
+}
+
+model IngestRun {
+  id             String    @id @db.Uuid
+  sourceId       String    @map("source_id") @db.Uuid
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz
+  status         String    @default("running") // running | ok | failed
+  rowsRead       Int       @default(0) @map("rows_read")
+  rowsAccepted   Int       @default(0) @map("rows_accepted")
+  rowsRejected   Int       @default(0) @map("rows_rejected")
+  errorReportUri String?   @map("error_report_uri")
+  formulaVersion String?   @map("formula_version")
+
+  @@index([sourceId, startedAt])
+  @@map("ingest_run")
+}

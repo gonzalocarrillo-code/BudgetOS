@@ -1,0 +1,32 @@
+{
+  "name": "budget-os",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:acceptance": "turbo run test:acceptance",
+    "db:migrate": "pnpm --filter @budget/db prisma migrate deploy",
+    "db:seed": "pnpm --filter @budget/db tsx seed/golden.ts",
+    "db:reset": "./scripts/dev-reset.sh",
+    "license-check": "license-checker-rseidelsohn --production --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;Unlicense\" --excludePrivatePackages",
+    "bench": "turbo run bench"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "license-checker-rseidelsohn": "4.4.2",
+    "turbo": "2.11.3",
+    "typescript": "catalog:",
+    "typescript-eslint": "8.70.1",
+    "vitest": "catalog:"
+  }
+}

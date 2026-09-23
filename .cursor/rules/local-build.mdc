@@ -1,0 +1,24 @@
+---
+description: Local build order and validation gates for Budget OS. One spec task at a time.
+alwaysApply: true
+---
+
+# Local build
+
+Plan v0.5 and spec v0.5 are the product contract. `docs/LOCAL_BUILD_PHASES.md` is the execution contract. `docs/TASKS_STATUS.md` is the progress contract. Finished work is committed and pushed to `https://github.com/gonzalocarrillo-code/BudgetOS`.
+
+Before editing code:
+
+1. Read `AGENTS.md`, then the phase and status files.
+2. Work the earliest `pending` task in the earliest unfinished phase.
+3. One task per session. Stop when its gate is green. Do not start the next task.
+4. Write the §22 "Done when" test first and watch it fail.
+5. Copy spec code (names, signatures, paths). Spec code beats spec prose, which beats the plan.
+6. If the phase doc marks part of the task GCP-blocked, implement the local clause and leave that task's blocked clause `blocked` in `docs/TASKS_STATUS.md`. Do not mark the task `done`.
+7. Do not add Phase 2 or Phase 3 features. The spec says those tasks do not exist yet.
+8. Do not invent a dev auth bypass, a second alert-worker, a stored CPA/ROAS column, or a Meilisearch dependency. Phase 1 search is Postgres FTS.
+9. Local runtime the spec names: Postgres 16 and Redis 7 (`docker-compose.yml` in spec §2). The only emulator the spec names is the GCS emulator on T-017. Do not add other services without an ADR.
+10. End by updating `docs/TASKS_STATUS.md`. Required checks for a code task: `pnpm typecheck && pnpm lint && pnpm test && pnpm license-check`. Grid, timeline, or planner also run `pnpm bench`.
+11. Commit on `main` and push to `origin`. `origin` is `https://github.com/gonzalocarrillo-code/BudgetOS.git`. Do not add another remote, create another repository, or leave finished work only on the laptop. Do not commit `.env` files or `node_modules/`.
+
+Plan and spec files are at the repo root in this checkout. Spec §1's `docs/` paths are the layout target, not the current paths.

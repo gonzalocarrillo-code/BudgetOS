@@ -1,0 +1,27 @@
+{
+  "name": "@budget/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "prisma": "prisma",
+    "typecheck": "DATABASE_URL=postgresql://budget:budget@localhost:5432/budget prisma generate && tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root . --config ../../vitest.config.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "eslint": "catalog:",
+    "pg": "8.23.0",
+    "prisma": "6.19.3",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
