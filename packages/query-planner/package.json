@@ -10,11 +10,18 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root . --config ../../vitest.config.mjs"
+    "test": "vitest run --root . --config ../../vitest.config.mjs",
+    "bench": "vitest run --root . --config vitest.bench.config.mjs"
   },
   "devDependencies": {
+    "@types/pg": "8.23.1",
     "eslint": "catalog:",
+    "fast-check": "3.23.2",
+    "pg": "8.23.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@budget/domain": "workspace:^"
   }
 }

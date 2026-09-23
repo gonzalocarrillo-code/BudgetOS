@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-23: T-001 through T-005 are done. Later tasks are `pending`.
+Repo on 2026-09-23: T-001 through T-005 and T-007 are done. Later tasks are `pending`.
 
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
@@ -15,7 +15,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-003 | 2 | T-001 | done | zod round-trip; `parseSearch` 20 cases | — |
 | T-004 | 2 | T-002, T-003 | done | concurrent `SET LOCAL` isolation test | — |
 | T-005 | 3 | T-002, T-004 | done | registry acceptance, excluding search and MCP clauses | search qualifier (T-020); MCP parameter (T-025) |
-| T-007 | 4 | T-002, T-003, T-004 | pending | planner suite including property tests, on SQL fixtures | golden totals after T-006 |
+| T-007 | 4 | T-002, T-003, T-004 | done | planner suite including property tests, on SQL fixtures | — |
 | T-026a | 5 | T-001 | pending | bench numbers in ADR-002 | DB golden at 100k leaves does not exist yet |
 | T-026b | 5 | T-001 | pending | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
 | T-026c | 6 | T-026a | pending | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
@@ -90,6 +90,16 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - `dimension_value.path` is an `ltree` column Prisma cannot write, so those inserts are SQL in `@budget/db`.
 - Registry HTTP routes are mounted and reject callers until T-009 provides an actor. There is no auth bypass. `GET/POST /metrics` stays with T-015.
 - The React `DimensionIcon` contract waits until the web package has a React runtime.
+
+## T-007 assumptions
+
+- Relative imports use a `.js` suffix because the package module setting is NodeNext, same as T-003.
+- The planner suite inserts envelope, version, and fact rows in `packages/query-planner/src/planner.test.ts`. Envelope commands are T-010. Phase 4 names that test file as the only place that inserts them directly. Golden totals are added by T-006.
+- BigQuery routing and the Redis query cache stay out of this Postgres-path task.
+- The target-value subquery binds its metric parameter only on the `exists`, `value`, and `vs_target_pct` branches. The spec builds that subquery before the switch, which leaves an unused parameter on `actual`. Postgres rejects a statement that binds a parameter it does not reference.
+- `mentions_user` for `@me` follows the spec expression. The JSON is bound before the `"__ME__"` replace, so the replace does not rewrite the parameter. The suite asserts a concrete user id.
+- The cursor is the spec's base64url offset. The stability test covers an uncommitted insert and a committed insert that sorts after the page window.
+- `pnpm bench` times `compileQuery` against `packages/query-planner/bench/baseline.json` and fails when the p50 is more than 10% above that baseline.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 
