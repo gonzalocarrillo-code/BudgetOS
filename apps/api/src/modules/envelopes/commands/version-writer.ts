@@ -1,4 +1,4 @@
-import { DomainError, newId } from "@budget/domain";
+import { DomainError, newId, type Action } from "@budget/domain";
 import { audit, bumpDataVersion, lockEnvelope, outbox, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Prisma } from "@prisma/client";
@@ -7,7 +7,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 
 /** Shared steps of every envelope write (spec §7): lock, writable, scope, concurrency, version row, audit + outbox. */
 
-export async function lockForWrite(tx: Tx, auth: AuthContext, envelopeId: string, action: "envelope.edit_draft"): Promise<LockedEnvelopeRow> {
+export async function lockForWrite(tx: Tx, auth: AuthContext, envelopeId: string, action: Action): Promise<LockedEnvelopeRow> {
   const env = await lockEnvelope(tx, envelopeId);
   if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
   if (env.status === "LOCKED") throw new DomainError("LOCKED", "Period is closed; restate via closure");

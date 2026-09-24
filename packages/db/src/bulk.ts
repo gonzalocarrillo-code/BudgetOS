@@ -198,3 +198,36 @@ export async function insertBulkVersions(tx: Tx, rows: BulkVersionRow[], created
     INSERT INTO envelope_phasing (version_id, month, amount)
     SELECT vid, month, CASE WHEN rn = 1 THEN amt - (sum(scaled) OVER (PARTITION BY vid) - scaled) ELSE scaled END FROM r`;
 }
+
+export interface BulkChangeRow {
+  id: string;
+  kind: "edit" | "split" | "merge";
+  versionIds: string[];
+  archiveIds: string[];
+  createdIds: string[];
+  createdBy: string;
+}
+
+export async function loadBulkChange(tx: Tx, id: string): Promise<BulkChangeRow | null> {
+  const [row] = await tx.$queryRaw<BulkChangeRow[]>`
+    SELECT id::text AS id, kind, version_ids::text[] AS "versionIds", archive_ids::text[] AS "archiveIds",
+           created_ids::text[] AS "createdIds", created_by::text AS "createdBy"
+    FROM bulk_change WHERE id = ${id}::uuid`;
+  return row ?? null;
+}
+
+export async function insertBulkChange(
+  tx: Tx,
+  row: { id: string; workspaceId: string; kind: "edit" | "split" | "merge"; versionIds: string[]; archiveIds?: string[]; createdIds?: string[]; createdBy: string },
+): Promise<void> {
+  await tx.$executeRaw`
+    INSERT INTO bulk_change (id, workspace_id, kind, version_ids, archive_ids, created_ids, created_by)
+    VALUES (${row.id}::uuid, ${row.workspaceId}::uuid, ${row.kind}, ${row.versionIds}::uuid[], ${row.archiveIds ?? []}::text[]::uuid[],
+            ${row.createdIds ?? []}::text[]::uuid[], ${row.createdBy}::uuid)`;
+}
+
+/** Archives envelopes (split / merge sources after approval, never-approved parts after a rejection). */
+export async function archiveEnvelopes(tx: Tx, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await tx.$executeRaw`UPDATE envelope SET status = 'ARCHIVED', draft_version_id = NULL, row_version = row_version + 1, updated_at = now() WHERE id = ANY(${ids}::uuid[])`;
+}

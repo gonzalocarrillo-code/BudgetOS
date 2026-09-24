@@ -8,6 +8,7 @@ import type { AuthContext } from "../../common/tenant.js";
 import { createDraftVersion } from "./commands/create-draft-version.js";
 import { createEnvelope } from "./commands/create-envelope.js";
 import { restoreVersion } from "./commands/restore-version.js";
+import { mergeEnvelopes, moveEnvelope, splitEnvelope } from "./commands/structure.js";
 import { submitVersion } from "./commands/submit-version.js";
 import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
 import { updateEnvelope } from "./commands/update-envelope.js";
@@ -22,6 +23,15 @@ export class EnvelopesService {
     @Inject(PREVIEW_STORE) private readonly previews: PreviewStore,
   ) {}
 
+  move(auth: AuthContext, id: string, body: unknown) {
+    return moveEnvelope(this.prisma, auth, id, body);
+  }
+  split(auth: AuthContext, id: string, body: unknown) {
+    return splitEnvelope(this.prisma, auth, id, body);
+  }
+  merge(auth: AuthContext, body: unknown) {
+    return mergeEnvelopes(this.prisma, auth, body);
+  }
   bulkPreview(auth: AuthContext, body: unknown) {
     return buildPreview(this.prisma, auth, body, this.previews);
   }

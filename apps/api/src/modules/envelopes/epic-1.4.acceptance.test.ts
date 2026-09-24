@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GOLDEN_ASSERTIONS, GOLDEN_ROUNDS, goldenPlan } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_ROUNDS, GOLDEN_SPLIT, goldenPlan } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -87,20 +87,29 @@ describe("a reconstruction test replays 12 months of synthetic history and match
   it("folding each leaf's timeline (audit rows only) reproduces golden.assertions.ts at every instant", async () => {
     const instants = { "2026-02-01": "2026-02-01T00:00:00.000Z", "2026-05-01": "2026-05-01T00:00:00.000Z", "2026-08-01": "2026-08-01T00:00:00.000Z", current: "9999-12-31T00:00:00.000Z" } as const;
     const sums = Object.fromEntries(Object.keys(instants).map((k) => [k, { total: new Decimal(0), byRegion: new Map<string, Decimal>() }]));
-    for (const leaf of leaves) {
+    // Every leaf envelope in the workspace: the planned leaves plus the split's parts (T-014).
+    const splitParts = A.split.parts.map((p) => ({ key: `${GOLDEN_SPLIT.sourceKey}#${p.retailer}`, region: "LATAM" }));
+    const all = [...leaves.map((l) => ({ key: l.key, region: l.dimensionValues["region"] as string })), ...splitParts];
+    for (const leaf of all) {
       const approvals = (await timeline(id(leaf.key)))
         .filter((r) => r.kind === "envelope.version.approved")
         .map((r) => ({ at: String(r.detail.after?.["approvedAt"]), amount: new Decimal(String(r.detail.after?.["amountReporting"])) }))
         .sort((a, b) => a.at.localeCompare(b.at));
-      expect(approvals).toHaveLength(3);
-      expect(approvals.map((a) => a.at)).toEqual(GOLDEN_ROUNDS.map((r) => r.approvedAt));
+      if (leaf.key === GOLDEN_SPLIT.sourceKey) {
+        // Three planned rounds, then the zero version the split approved.
+        expect(approvals.map((a) => a.at)).toEqual([...GOLDEN_ROUNDS.map((r) => r.approvedAt), GOLDEN_SPLIT.at]);
+        expect(approvals.at(-1)?.amount.toFixed(2)).toBe("0.00");
+      } else if (leaf.key.includes("#")) {
+        expect(approvals.map((a) => a.at)).toEqual([GOLDEN_SPLIT.at]);
+      } else {
+        expect(approvals.map((a) => a.at)).toEqual(GOLDEN_ROUNDS.map((r) => r.approvedAt));
+      }
       for (const [label, instant] of Object.entries(instants)) {
         const last = approvals.filter((a) => a.at <= instant).at(-1);
         const s = sums[label]!;
-        const region = leaf.dimensionValues["region"] as string;
         const amount = last?.amount ?? new Decimal(0);
         s.total = s.total.plus(amount);
-        s.byRegion.set(region, (s.byRegion.get(region) ?? new Decimal(0)).plus(amount));
+        s.byRegion.set(leaf.region, (s.byRegion.get(leaf.region) ?? new Decimal(0)).plus(amount));
       }
     }
     for (const label of Object.keys(instants) as Array<keyof typeof instants>) {
@@ -165,11 +174,13 @@ describe("Any envelope or roll-up shows a full timeline from audit data alone", 
     const own = await timeline(id(region.key));
     expect(own.every((r) => r.refs.entityType !== "envelope" || r.refs.entityId === id(region.key))).toBe(true);
     const subtree = plan.filter((e) => e.key === region.key || e.key.startsWith(`${region.key}/`));
+    // The split (T-014) is in LATAM: +1 zero version on the source, +1 approved version per part.
+    const split = GOLDEN_SPLIT.sourceKey.startsWith(`${region.key}/`) ? A.split.parts.length : 0;
     const all = await timeline(id(region.key), "&descendants=true");
     expect(new Set(all.map((r) => r.id)).size).toBe(all.length);
     const approvals = all.filter((r) => r.kind === "envelope.version.approved").length;
-    expect(approvals).toBe(subtree.reduce((n, e) => n + e.versions.length, 0));
-    expect(all.filter((r) => r.kind === "envelope.created")).toHaveLength(subtree.length);
+    expect(approvals).toBe(subtree.reduce((n, e) => n + e.versions.length, 0) + (split ? 1 + split : 0));
+    expect(all.filter((r) => r.kind === "envelope.created")).toHaveLength(subtree.length + split);
   }, 60_000);
 
   it("comments, alerts, ingest runs and closures appear alongside audit rows", async () => {

@@ -1,3 +1,4 @@
+import { rephase } from "@budget/domain";
 import { Decimal } from "decimal.js";
 
 /**
@@ -46,6 +47,33 @@ export const GOLDEN_TEMPLATES = [
  * approval. Pending drafts never count as budget, so every approved total above is unchanged.
  */
 export const GOLDEN_PENDING_BULK = { region: "EMEA", platform: "amazon", pct: 5, rationale: "Q4 retail push (bulk, pending approval)" } as const;
+
+/**
+ * T-014's rows: on 2026-09-01 (after every as-of date) one leaf is split 60/40 by retailer. The
+ * source gets a zero version and is archived; the parts sum to its approved amount, so every
+ * budget total is unchanged. Adds 2 envelopes and 3 approved versions.
+ */
+export const GOLDEN_SPLIT = {
+  sourceKey: "LATAM/AR/amazon/conversion/retargeting",
+  at: "2026-09-01T12:00:00.000Z",
+  parts: [
+    { name: "AR amazon conversion retargeting · Walmart", retailer: "walmart", share: 0.6 },
+    { name: "AR amazon conversion retargeting · Mercado Libre", retailer: "mercado_libre", share: null },
+  ],
+  rationale: "Split by retailer (T-014 seed)",
+} as const;
+
+/** Part amounts: the first shares are rounded to the cent, the last takes the rest. */
+export function splitAmounts(plan: PlannedEnvelope[]): Array<{ name: string; retailer: string; amount: string }> {
+  const src = plan.find((e) => e.key === GOLDEN_SPLIT.sourceKey);
+  const total = new Decimal(src?.versions.at(-1)?.amount ?? 0);
+  let used = new Decimal(0);
+  return GOLDEN_SPLIT.parts.map((p) => {
+    const amount = p.share === null ? total.minus(used) : total.mul(p.share).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    used = used.plus(amount);
+    return { name: p.name, retailer: p.retailer, amount: amount.toFixed(2) };
+  });
+}
 
 export interface PlannedVersion {
   round: 1 | 2 | 3;
@@ -177,6 +205,8 @@ export interface GoldenTotals {
   leafPhasingByQuarter: Record<"Q1" | "Q2" | "Q3" | "Q4", string>;
   /** The pending bulk change (GOLDEN_PENDING_BULK): rows and before/after totals (USD). */
   pendingBulk: { rows: number; totalsBefore: string; totalsAfter: string };
+  /** The split (GOLDEN_SPLIT): source, parts and their approved amounts. */
+  split: { sourceKey: string; parts: Array<{ name: string; retailer: string; amount: string }> };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -200,10 +230,16 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
   ) as GoldenTotals["leafBudget"];
   const current = (dim: string) => sumBy(leaves.map((e) => ({ k: e.dimensionValues[dim] as string, v: at(e, 3) })));
   const quarter = (month: string) => `Q${Math.floor((Number(month.slice(5, 7)) - 1) / 3) + 1}` as "Q1";
-  const phasing = sumBy(leaves.flatMap((e) => (e.versions.find((v) => v.round === 3)?.phasing ?? []).map((p) => ({ k: quarter(p.month), v: new Decimal(p.amount) }))));
+  // The split source's current version is its zero (no phasing); its parts re-phase its round-3 shape.
+  const splitSource = leaves.find((e) => e.key === GOLDEN_SPLIT.sourceKey);
+  const sourceShape = (splitSource?.versions.find((v) => v.round === 3)?.phasing ?? []).map((p) => ({ month: p.month, amount: new Decimal(p.amount) }));
+  const partPhasing = splitAmounts(plan).flatMap((p) => rephase(sourceShape, new Decimal(p.amount)).map((x) => ({ month: x.month, amount: x.amount.toFixed(2) })));
+  const currentPhasing = [...leaves.filter((e) => e.key !== GOLDEN_SPLIT.sourceKey).flatMap((e) => e.versions.find((v) => v.round === 3)?.phasing ?? []), ...partPhasing];
+  const phasing = sumBy(currentPhasing.map((p) => ({ k: quarter(p.month), v: new Decimal(p.amount) })));
   return {
-    envelopes: { total: plan.length, leaves: leaves.length, parents: parents.length },
-    approvedVersions: plan.reduce((n, e) => n + e.versions.length, 0),
+    // The split adds its parts (envelopes) and a zero version for the source plus one per part.
+    envelopes: { total: plan.length + GOLDEN_SPLIT.parts.length, leaves: leaves.length, parents: parents.length },
+    approvedVersions: plan.reduce((n, e) => n + e.versions.length, 0) + 1 + GOLDEN_SPLIT.parts.length,
     leafBudget,
     leafBudgetCurrent: { byCountry: current("country"), byPlatform: current("platform"), byObjective: current("objective") },
     parentBudget: { byRegion: sumBy(parents.filter((p) => p.level === 0).map((p) => ({ k: p.dimensionValues["region"] as string, v: at(p, 1) }))) },
@@ -216,5 +252,6 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       const after = rows.reduce((s, e) => s.plus(at(e, 3).mul(100 + b.pct).div(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)), new Decimal(0));
       return { rows: rows.length, totalsBefore: before.toFixed(2), totalsAfter: after.toFixed(2) };
     })(),
+    split: { sourceKey: GOLDEN_SPLIT.sourceKey, parts: splitAmounts(plan) },
   };
 }

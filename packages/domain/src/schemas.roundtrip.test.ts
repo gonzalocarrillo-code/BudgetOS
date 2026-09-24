@@ -218,6 +218,11 @@ const samples: Record<string, readonly unknown[]> = {
   CsvExportInput: [{ selection: { envelopeIds: [workspaceId] } }, { selection: { filter: { logic: "and", children: [] } } }],
   CsvImportInput: [{ csv: "envelope_id,amount\n", rationale: "edited in Sheets" }],
   CsvImportReport: [{ rowsRead: 2, errors: [{ line: 3, message: "bad amount" }], preview: null }],
+  MoveEnvelopeInput: [{ parentId: null, rowVersion: 1 }, { parentId: workspaceId, rowVersion: 4, rationale: "re-org" }],
+  SplitEnvelopeInput: [
+    { basedOnVersionId: workspaceId, rationale: "by retailer", parts: [{ name: "A", amount: "1.00" }, { name: "B", amount: "2.00", dimensionValues: { retailer: "walmart" } }] },
+  ],
+  MergeEnvelopesInput: [{ sourceIds: [workspaceId, workspaceId], name: "Merged", dimensionValues: { country: "BR" }, rationale: "consolidate" }],
   AddValuesInput: [
     {
       values: [

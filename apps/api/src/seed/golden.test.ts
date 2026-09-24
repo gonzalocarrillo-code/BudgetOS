@@ -98,9 +98,10 @@ describe("pnpm db:seed (T-006 done-when)", () => {
     expect(await owner.envelope.count({ where: { workspaceId: ws, parentId: null } })).toBe(2);
     const approved = await owner.envelopeVersion.count({ where: { envelope: { workspaceId: ws }, approvedAt: { not: null } } });
     expect(approved).toBe(A.approvedVersions);
-    // Everything is approved except the envelopes of the pending bulk change (T-013).
-    expect(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "APPROVED" } } })).toBe(A.pendingBulk.rows);
+    // Everything is approved except the pending bulk change (T-013) and the archived split source (T-014).
+    expect(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "APPROVED" } } })).toBe(A.pendingBulk.rows + 1);
     expect(await owner.envelope.count({ where: { workspaceId: ws, status: "PENDING" } })).toBe(A.pendingBulk.rows);
+    expect(await owner.envelope.count({ where: { workspaceId: ws, status: "ARCHIVED" } })).toBe(1);
     const audits = await owner.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(
       `SELECT action, count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid GROUP BY action`,
       ws,
@@ -153,6 +154,27 @@ describe("pending bulk change (T-013 seed rows)", () => {
     );
     expect(new Decimal(sums?.before ?? 0).toFixed(2)).toBe(A.pendingBulk.totalsBefore);
     expect(new Decimal(sums?.after ?? 0).toFixed(2)).toBe(A.pendingBulk.totalsAfter);
+  });
+});
+
+describe("split (T-014 seed rows)", () => {
+  it("parts hold the source's approved amount under the same parent; the source is archived at zero with lineage", async () => {
+    const sourceId = golden.envelopeIds.get(A.split.sourceKey) as string;
+    const source = await owner.envelope.findUniqueOrThrow({ where: { id: sourceId }, include: { versions: { orderBy: { versionNo: "asc" } } } });
+    expect(source.status).toBe("ARCHIVED");
+    expect(source.versions.at(-1)?.amount.toFixed(2)).toBe("0.00");
+    expect(source.versions.at(-1)?.status).toBe("APPROVED");
+    const lineage = await owner.envelopeLineage.findMany({ where: { fromEnvelopeId: sourceId, kind: "split" } });
+    expect(lineage).toHaveLength(A.split.parts.length);
+    for (const part of A.split.parts) {
+      const pid = golden.envelopeIds.get(`${A.split.sourceKey}#${part.retailer}`) as string;
+      const env = await owner.envelope.findUniqueOrThrow({ where: { id: pid }, include: { versions: true } });
+      expect(env.parentId).toBe(source.parentId);
+      expect(env.status).toBe("APPROVED");
+      expect(env.versions.find((v) => v.id === env.currentVersionId)?.amount.toFixed(2)).toBe(part.amount);
+      expect((env.dimensionValues as Record<string, string>)["retailer"]).toBe(part.retailer);
+      expect(lineage.map((l) => l.toEnvelopeId)).toContain(pid);
+    }
   });
 });
 

@@ -1,6 +1,9 @@
 import {
   AddValuesInput,
   AssignRoleInput,
+  MergeEnvelopesInput,
+  MoveEnvelopeInput,
+  SplitEnvelopeInput,
   BulkRequest,
   CsvExportInput,
   CsvImportInput,
@@ -93,6 +96,15 @@ export function openApiDocument(): Record<string, unknown> {
           requestBody: json(RestoreVersionInput),
           responses: { "200": { description: "New draft version copied from the given version" } },
         },
+      },
+      "/api/v1/envelopes/{id}/move": {
+        post: { operationId: "moveEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(MoveEnvelopeInput), responses: { "200": { description: "Moved; lineage written; an open request re-routed if its policy changed" }, "409": { description: "Stale rowVersion" }, "422": { description: "CAP_EXCEEDED under the new parent, or a cycle" } } },
+      },
+      "/api/v1/envelopes/{id}/split": {
+        post: { operationId: "splitEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(SplitEnvelopeInput), responses: { "200": { description: "New siblings with drafts summing to the approved amount; one approval (or auto-approved); source archived once approved" } } },
+      },
+      "/api/v1/envelopes/merge": {
+        post: { operationId: "mergeEnvelopes", parameters: [workspaceHeader], requestBody: json(MergeEnvelopesInput), responses: { "200": { description: "New sibling holding the sources' approved total; one approval (or auto-approved); sources archived once approved" } } },
       },
       "/api/v1/envelopes/bulk": {
         post: { operationId: "previewBulkEdit", parameters: [workspaceHeader], requestBody: json(BulkRequest), responses: { "200": { description: "BulkPreview: before/after/delta per row, totals, cap violations, policy preview; kept 30 min" } } },

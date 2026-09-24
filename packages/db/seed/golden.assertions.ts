@@ -6,15 +6,15 @@ import type { GoldenTotals } from "./golden.plan.js";
  * Used by the golden planner tests now, and by MCP and closure tests later. Amounts are reporting
  * currency (USD) decimal strings; leaf totals filter `audience not_empty` (only leaves have one).
  *
- * Regenerate after an intentional plan change: see apps/api/src/seed/golden.test.ts.
+ * Regenerate after an intentional plan change: apps/api/node_modules/.bin/tsx scripts/golden-assertions.mts
  */
 export const GOLDEN_ASSERTIONS: GoldenTotals = {
   "envelopes": {
-    "total": 330,
+    "total": 332,
     "leaves": 192,
     "parents": 138
   },
-  "approvedVersions": 714,
+  "approvedVersions": 717,
   "leafBudget": {
     "2026-02-01": {
       "total": "1072300.00",
@@ -75,14 +75,29 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     }
   },
   "leafPhasingByQuarter": {
-    "Q1": "257624.82",
+    "Q1": "257624.84",
     "Q2": "257624.82",
-    "Q3": "257624.82",
+    "Q3": "257624.80",
     "Q4": "334924.73"
   },
   "pendingBulk": {
     "rows": 24,
     "totalsBefore": "137599.59",
     "totalsAfter": "144479.57"
+  },
+  "split": {
+    "sourceKey": "LATAM/AR/amazon/conversion/retargeting",
+    "parts": [
+      {
+        "name": "AR amazon conversion retargeting · Walmart",
+        "retailer": "walmart",
+        "amount": "6215.84"
+      },
+      {
+        "name": "AR amazon conversion retargeting · Mercado Libre",
+        "retailer": "mercado_libre",
+        "amount": "4143.90"
+      }
+    ]
   }
 };

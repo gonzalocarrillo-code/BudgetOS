@@ -171,6 +171,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@budget/domain':
+        specifier: workspace:^
+        version: link:../domain
       '@prisma/client':
         specifier: 6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -202,6 +205,9 @@ importers:
 
   packages/domain:
     dependencies:
+      decimal.js:
+        specifier: 10.6.0
+        version: 10.6.0
       uuidv7:
         specifier: 1.2.1
         version: 1.2.1

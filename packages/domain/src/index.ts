@@ -31,9 +31,12 @@ export {
   CsvImportInput,
   CsvImportReport,
   CreateEnvelopeInput,
+  MergeEnvelopesInput,
   MoneyString,
+  MoveEnvelopeInput,
   PhasingEntry,
   RestoreVersionInput,
+  SplitEnvelopeInput,
   UpdateEnvelopeInput,
   UpdatePhasingInput,
 } from "./envelopes.js";
@@ -50,6 +53,8 @@ export {
 } from "./approvals.js";
 
 export { newId } from "./ids.js";
+
+export { largestRemainder, rephase } from "./money.js";
 
 export {
   AddValuesInput,
