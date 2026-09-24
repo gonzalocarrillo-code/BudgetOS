@@ -67,6 +67,9 @@ const orgDims = new Map<string, string>([
   [orgB, randomUUID()],
 ]);
 const wsDims = new Map(workspaces.map((w) => [w.id, randomUUID()]));
+const consumer = `rls-org-admin-${randomUUID()}`;
+// outbox id (bigint, as text) → workspace; filled in beforeAll.
+const outboxWorkspace = new Map<string, string>();
 
 function env(ws: string): string {
   return envelopes.get(ws) ?? "";
@@ -89,6 +92,10 @@ interface Visible {
   versions: string[];
   audits: string[];
   dimensions: string[];
+  /** dimension_id of each visible dimension_value. */
+  dimensionValues: string[];
+  /** workspace of each visible processed_event, through its outbox id. */
+  processed: string[];
 }
 
 async function visible(tx: Tx): Promise<Visible> {
@@ -111,6 +118,17 @@ async function visible(tx: Tx): Promise<Visible> {
       await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id::text AS id FROM dimension WHERE org_id IN (${orgA}::uuid, ${orgB}::uuid)`,
     ),
+    dimensionValues: ids(
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT dimension_id::text AS id FROM dimension_value
+        WHERE dimension_id = ANY(${[...orgDims.values(), ...wsDims.values()]}::uuid[])`,
+    ),
+    processed: (
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT outbox_id::text AS id FROM processed_event WHERE consumer = ${consumer}`
+    )
+      .map((r) => outboxWorkspace.get(r.id) ?? r.id)
+      .sort(),
   };
 }
 
@@ -141,6 +159,20 @@ beforeAll(async () => {
       INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by)
       VALUES (${id}::uuid, ${org}::uuid, NULL, 'rls_org', 'rls', 'ENUM', ${actorId}::uuid)`;
   }
+  for (const dimensionId of [...orgDims.values(), ...wsDims.values()]) {
+    await owner.$executeRaw`
+      INSERT INTO dimension_value (id, dimension_id, code, label, path)
+      VALUES (${randomUUID()}::uuid, ${dimensionId}::uuid, 'v', 'V', 'v')`;
+  }
+  for (const w of workspaces) {
+    const [row] = await owner.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO outbox (workspace_id, topic, payload) VALUES (${w.id}::uuid, 'rls.test', '{}'::jsonb)
+      RETURNING id::text AS id`;
+    const outboxId = row?.id ?? "";
+    outboxWorkspace.set(outboxId, w.id);
+    await owner.$executeRaw`
+      INSERT INTO processed_event (consumer, outbox_id) VALUES (${consumer}, ${outboxId}::bigint)`;
+  }
 });
 
 afterAll(async () => {
@@ -148,6 +180,9 @@ afterAll(async () => {
   const orgs = [orgA, orgB];
   await owner.$executeRaw`DELETE FROM envelope_version WHERE envelope_id = ANY(${[...envelopes.values()]}::uuid[])`;
   await owner.$executeRaw`DELETE FROM envelope WHERE workspace_id = ANY(${ws}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM processed_event WHERE consumer = ${consumer}`;
+  await owner.$executeRaw`DELETE FROM outbox WHERE workspace_id = ANY(${ws}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM dimension_value WHERE dimension_id = ANY(${[...orgDims.values(), ...wsDims.values()]}::uuid[])`;
   await owner.$executeRaw`DELETE FROM dimension WHERE org_id = ANY(${orgs}::uuid[])`;
   await owner.$executeRaw`DELETE FROM workspace WHERE id = ANY(${ws}::uuid[])`;
   await owner.$executeRaw`DELETE FROM organization WHERE id = ANY(${orgs}::uuid[])`;
@@ -164,6 +199,8 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
     expect(seen.dimensions).toEqual(
       sorted([orgDims.get(orgA) ?? "", wsDims.get(wsA1) ?? "", wsDims.get(wsA2) ?? ""]),
     );
+    expect(seen.dimensionValues, "values follow their dimension").toEqual(seen.dimensions);
+    expect(seen.processed, "processed events follow their outbox row").toEqual(sorted([wsA1, wsA2]));
   });
 
   it("an org admin of org A cannot write into org B", async () => {
@@ -179,11 +216,30 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
         VALUES (${randomUUID()}::uuid, ${orgB}::uuid, NULL, 'rls_x', 'rls', 'ENUM', ${actorId}::uuid)`,
     );
     await expect(dim).rejects.toThrow(/row-level security/);
+    const value = withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
+      tx.$executeRaw`
+        INSERT INTO dimension_value (id, dimension_id, code, label, path)
+        VALUES (${randomUUID()}::uuid, ${orgDims.get(orgB) ?? ""}::uuid, 'x', 'X', 'x')`,
+    );
+    await expect(value).rejects.toThrow(/row-level security/);
+    const [outboxB] = [...outboxWorkspace].find(([, ws]) => ws === wsB1) ?? [];
+    const processed = withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
+      tx.$executeRaw`
+        INSERT INTO processed_event (consumer, outbox_id) VALUES (${`${consumer}-x`}, ${outboxB ?? ""}::bigint)`,
+    );
+    await expect(processed).rejects.toThrow(/row-level security/);
   });
 
   it("the bypass without an org reads nothing (fail closed)", async () => {
     const seen = await withTenant(app, ctx({ isOrgAdmin: true }), visible);
-    expect(seen).toEqual({ envelopes: [], versions: [], audits: [], dimensions: [] });
+    expect(seen).toEqual({
+      envelopes: [],
+      versions: [],
+      audits: [],
+      dimensions: [],
+      dimensionValues: [],
+      processed: [],
+    });
   });
 
   it("a workspace session reads its own workspace and its own org's org-wide rows only", async () => {
@@ -192,5 +248,31 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
     expect(seen.versions).toEqual([env(wsA1)]);
     expect(seen.audits).toEqual([wsA1]);
     expect(seen.dimensions).toEqual(sorted([orgDims.get(orgA) ?? "", wsDims.get(wsA1) ?? ""]));
+    expect(seen.dimensionValues).toEqual(seen.dimensions);
+    expect(seen.processed).toEqual([wsA1]);
   });
+});
+
+// Tables budget_app can reach without RLS. Organization-level and identity tables are read before a
+// tenant exists (ADR-005). Adding a table here needs a reason; the rest are open follow-ups.
+const withoutRls = new Map<string, string>([
+  ["_prisma_migrations", "migration bookkeeping"],
+  ["organization", "tenant root, read before a tenant exists"],
+  ["workspace", "tenant root; RLS helpers read it"],
+  ["app_user", "identity, read by the auth interceptor before a tenant exists"],
+  ["app_group", "identity, read before a tenant exists"],
+  ["app_group_member", "identity, read before a tenant exists"],
+  ["role_assignment", "read before a tenant exists; follow-up"],
+  ["fx_rate", "global reference data"],
+  ["metric_definition", "follow-up"],
+  ["value_constraint", "follow-up"],
+  ["ingest_run", "follow-up"],
+]);
+
+it("every other public table has RLS enabled and forced", async () => {
+  const rows = await owner.$queryRaw<Array<{ relname: string }>>`
+    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+      AND NOT (c.relrowsecurity AND c.relforcerowsecurity)`;
+  expect(rows.map((r) => r.relname).filter((t) => !withoutRls.has(t)).sort()).toEqual([]);
 });
