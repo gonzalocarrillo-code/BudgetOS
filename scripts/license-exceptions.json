@@ -40,5 +40,12 @@
     "license": "BlueOak-1.0.0",
     "via": "svgo (apps/api)",
     "reason": "Blue Oak Model License: permissive, OSI-approved, no copyleft."
+  },
+  {
+    "package": "url-template",
+    "version": "2.0.8",
+    "license": "BSD",
+    "via": "@googleapis/sheets > googleapis-common (apps/workers)",
+    "reason": "package.json says \"BSD\"; the LICENSE file is the BSD-3-Clause text (redistribution, binary, non-endorsement clauses)."
   }
 ]

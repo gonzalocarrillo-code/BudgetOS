@@ -34,7 +34,7 @@ it("pins the spec §2 scripts", () => {
   expect(isRecord(parsed) ? parsed["scripts"] : undefined).toEqual(expectedScripts);
 });
 
-it("copies the spec §2 compose file", () => {
+it("copies the spec §2 compose file, plus the GCS emulator from ADR-011", () => {
   const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
   expect(compose).toBe(`services:
   db:
@@ -45,6 +45,11 @@ it("copies the spec §2 compose file", () => {
   redis:
     image: redis:7
     ports: ["6379:6379"]
+  gcs:
+    # GCS emulator for ingest uploads and rejected-rows reports (ADR-011). GCS_EMULATOR_HOST=http://127.0.0.1:4443
+    image: fsouza/fake-gcs-server:1.52.2
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "127.0.0.1:4443", "-backend", "memory"]
+    ports: ["127.0.0.1:4443:4443"]
 `);
 });
 

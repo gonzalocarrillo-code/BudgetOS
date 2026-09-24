@@ -112,5 +112,23 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
       }
     },
     "filterRoasLeaves": 96
+  },
+  "facts": {
+    "rowsRead": 1539,
+    "rowsRejected": 3,
+    "spendRows": 1536,
+    "matchedSpendRows": 1528,
+    "spend": "648406.32",
+    "matchedSpend": "646406.32",
+    "matchCoverage": "0.996916",
+    "leafActualByRegion": {
+      "EMEA": "319728.64",
+      "LATAM": "326677.68"
+    },
+    "leafConversionsByRegion": {
+      "EMEA": "13851.00",
+      "LATAM": "14289.00"
+    },
+    "unmatchedTuples": 1
   }
 };

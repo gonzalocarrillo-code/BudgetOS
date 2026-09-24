@@ -21,9 +21,15 @@
   "dependencies": {
     "@budget/db": "workspace:^",
     "@budget/domain": "workspace:^",
+    "@google-cloud/bigquery": "9.1.0",
     "@google-cloud/pubsub": "6.1.0",
+    "@google-cloud/storage": "8.2.0",
+    "@googleapis/sheets": "18.0.1",
     "@prisma/client": "6.19.3",
+    "csv-parse": "7.0.2",
+    "decimal.js": "10.6.0",
     "pino": "10.3.1",
+    "snowflake-sdk": "3.3.0",
     "zod": "3.25.76"
   }
 }

@@ -28,6 +28,10 @@ import {
   CreateMetricInput,
   CreateTargetInput,
   CreateTargetDraftInput,
+  CreateSourceInput,
+  UpdateSourceInput,
+  MapUnmatchedInput,
+  CreateUploadInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -214,6 +218,35 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/envelopes/{id}/targets": {
         get: { operationId: "getEnvelopeTargets", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Effective target per metric (own, inherited or filter-scoped) with implied volume = budget / target" } } },
+      },
+      "/api/v1/workspaces/{ws}/sources": {
+        get: { operationId: "listSources", parameters: [workspaceParam], responses: { "200": { description: "Data sources (non-secret config and column mapping)" } } },
+        post: { operationId: "createSource", parameters: [workspaceParam], requestBody: json(CreateSourceInput), responses: { "201": { description: "Created source; a csv source must point at this workspace's uploads" } } },
+      },
+      "/api/v1/sources/{id}": {
+        patch: { operationId: "updateSource", parameters: [idParam, workspaceHeader], requestBody: json(UpdateSourceInput), responses: { "200": { description: "Updated source (the kind never changes)" } } },
+      },
+      "/api/v1/sources/{id}/suggest-mapping": {
+        post: { operationId: "suggestSourceMapping", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Suggested column mapping from @budget/ai (not applied); 503 without OPENAI_API_KEY" } } },
+      },
+      "/api/v1/sources/{id}/run": {
+        post: { operationId: "runSource", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running" } } },
+      },
+      "/api/v1/sources/{id}/runs": {
+        get: { operationId: "listSourceRuns", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Runs, newest first: counts, match coverage summary, rejected-rows report URI" } } },
+      },
+      "/api/v1/workspaces/{ws}/unmatched-spend": {
+        get: {
+          operationId: "listUnmatchedSpend",
+          parameters: [workspaceParam, { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 1000 } }],
+          responses: { "200": { description: "Unmatched spend grouped by dimension tuple, largest first" } },
+        },
+      },
+      "/api/v1/workspaces/{ws}/unmatched-spend/map": {
+        post: { operationId: "mapUnmatchedSpend", parameters: [workspaceParam], requestBody: json(MapUnmatchedInput), responses: { "201": { description: "Facts assigned to the envelope, per fact table" } } },
+      },
+      "/api/v1/uploads": {
+        post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },
       },
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },

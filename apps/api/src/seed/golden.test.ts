@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { QueryRequest, type FilterGroupT } from "@budget/domain";
-import { GOLDEN_ASSERTIONS, GOLDEN_FY, computeTotals, goldenPlan, withTenant, type TenantContext } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_FY, computeTotals, goldenFactsCsv, goldenPlan, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
 import { compileQuery, compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -8,6 +8,10 @@ import { appDb as appDbClient, ownerDb } from "../test-support/harness.js";
 import { seedGolden, type GoldenResult } from "./golden.js";
 import { cleanupGolden } from "../test-support/golden-cleanup.js";
 import { plannerOptions } from "../modules/targets/queries/planner-options.js";
+import { GcsObjectStore, parseGsUri, runIngest, uploadBucket } from "@budget/workers";
+import { Storage } from "@google-cloud/storage";
+import { queueRun } from "../modules/sources/commands/sources.js";
+import type { AuthContext } from "../common/tenant.js";
 
 /**
  * T-006 done-when: the golden seed runs through the real commands in under 60 s and
@@ -158,6 +162,71 @@ describe("split (T-014 seed rows)", () => {
       expect((env.dimensionValues as Record<string, string>)["retailer"]).toBe(part.retailer);
       expect(lineage.map((l) => l.toEnvelopeId)).toContain(pid);
     }
+  });
+});
+
+describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
+  const F = A.facts;
+  it("loads the golden CSV through the pipeline: counts, coverage and the rejected-rows report", async () => {
+    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: golden.ingest?.runId ?? "" } });
+    expect(run).toMatchObject({ status: "ok", rowsRead: F.rowsRead, rowsRejected: F.rowsRejected, rowsAccepted: F.rowsRead - F.rowsRejected });
+    const summary = run.summary as { matchCoverage: string; spendRows: number; matchedSpendRows: number; spend: string; matchedSpend: string };
+    expect(summary).toMatchObject({ matchCoverage: F.matchCoverage, spendRows: F.spendRows, matchedSpendRows: F.matchedSpendRows, spend: F.spend, matchedSpend: F.matchedSpend });
+    expect(new Decimal(summary.matchCoverage).gte("0.99")).toBe(true);
+    expect(summary.matchedSpendRows / summary.spendRows).toBeGreaterThanOrEqual(0.99);
+    const report = golden.ingest?.store.objects.get(run.errorReportUri ?? "")?.body ?? "";
+    expect(report.trim().split("\n")).toHaveLength(1 + F.rowsRejected);
+    expect(report).toContain('unknown platform ""myspace""');
+    expect(report).toContain('MONTH ""2026-13"" is not yyyy-MM');
+    expect(report).toContain('SPEND_USD ""n/a"" is not a number');
+  });
+
+  it("the planner reads the loaded actuals: leaf actual and CPA by region equal the plan's", async () => {
+    const q = request({ filter: leaves, groupBy: ["region"], measures: ["actual"], targets: ["cpa", "conversions"] });
+    const out = await withTenant(app, ctx(), async (tx) => {
+      const c = compileQuery(q, period, TODAY, await plannerOptions(tx, { orgId: golden.orgId, workspaceId: golden.workspaceId }, q.targets, period));
+      return tx.$queryRawUnsafe<Array<Record<string, unknown>>>(c.sql, ...c.values);
+    });
+    const byRegion = Object.fromEntries(out.map((r) => [String(r["dim_region"]), r]));
+    for (const [region, actual] of Object.entries(F.leafActualByRegion)) {
+      const r = byRegion[region];
+      expect(new Decimal(String(r?.["actual"])).toFixed(2)).toBe(actual);
+      expect(new Decimal(String(r?.["kpi_conversions"])).toFixed(2)).toBe(F.leafConversionsByRegion[region]);
+      expect(new Decimal(String(r?.["kpi_cpa"])).toDecimalPlaces(6).toString()).toBe(new Decimal(actual).div(F.leafConversionsByRegion[region] ?? 1).toDecimalPlaces(6).toString());
+    }
+  });
+
+  it("queues the unmatched tuple", async () => {
+    const groups = await withTenant(app, ctx(), (tx) => unmatchedSpend(tx, golden.workspaceId, 50));
+    expect(groups).toHaveLength(F.unmatchedTuples);
+    expect(groups[0]).toMatchObject({ dimensionValues: { region: "AMER", country: "US", platform: "meta", objective: "awareness", audience: "prospecting" }, rows: 8, amountReporting: "2000.00" });
+  });
+
+  // The same file from the GCS emulator (ADR-011): the report lands in the emulator and the reload changes no totals.
+  it.skipIf(!process.env["GCS_EMULATOR_HOST"])("re-runs from the GCS emulator: rejected-rows report in GCS, facts unchanged", async () => {
+    const storage = new Storage({ apiEndpoint: process.env["GCS_EMULATOR_HOST"] ?? "", projectId: "budget-os-test" });
+    const [exists] = await storage.bucket(uploadBucket()).exists();
+    if (!exists) await storage.createBucket(uploadBucket());
+    const gcs = new GcsObjectStore(storage);
+    const source = await owner.dataSource.findUniqueOrThrow({ where: { id: golden.ingest?.sourceId ?? "" } });
+    await gcs.write((source.config as { uri: string }).uri, goldenFactsCsv(goldenPlan()), "text/csv");
+    const facts = () => owner.$queryRawUnsafe<Array<{ n: bigint; s: string }>>(`SELECT count(*) AS n, sum(amount_reporting)::text AS s FROM spend_fact WHERE workspace_id = $1::uuid`, golden.workspaceId);
+    const before = await facts();
+    const admin: AuthContext = {
+      ctx: { ...ctx(), userId: golden.users.admin },
+      user: { id: golden.users.admin, orgId: golden.orgId, email: "admin@golden.test", name: "Golden admin" },
+      isOrgAdmin: false,
+      roles: ["WORKSPACE_ADMIN"],
+      assignments: [{ role: "WORKSPACE_ADMIN", scope: {} }],
+    };
+    const { runId } = await queueRun(app, admin, source.id);
+    const run = await runIngest({ prisma: app, store: gcs, reportBucket: uploadBucket() }, { workspaceId: golden.workspaceId, orgId: golden.orgId }, runId);
+    expect(run).toMatchObject({ rowsRead: F.rowsRead, rowsRejected: F.rowsRejected });
+    expect(run.coverage.matchCoverage).toBe(F.matchCoverage);
+    const { path } = parseGsUri(run.errorReportUri ?? "");
+    const [report] = await storage.bucket(uploadBucket()).file(path).download();
+    expect(report.toString().trim().split("\n")).toHaveLength(1 + F.rowsRejected);
+    expect(await facts()).toEqual(before);
   });
 });
 
