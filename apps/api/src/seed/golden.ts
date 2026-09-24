@@ -2,13 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, splitAmounts, GOLDEN_TEMPLATES, goldenPlan, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenPlan, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
 import { assignRole } from "../modules/admin/commands/assign-role.js";
 import { decide } from "../modules/approvals/commands/decide.js";
-import { seedDefaultPolicies } from "../modules/approvals/commands/policies.js";
+import { createPolicy, seedDefaultPolicies } from "../modules/approvals/commands/policies.js";
 import { PolicySnapshot } from "../modules/approvals/engine.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
@@ -23,6 +23,8 @@ import { createDimension } from "../modules/registry/commands/create-dimension.j
 import { saveHierarchyTemplate } from "../modules/registry/commands/save-hierarchy-template.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
+import { createTarget } from "../modules/targets/commands/create-target.js";
+import { submitTarget } from "../modules/targets/commands/submit-target.js";
 
 /**
  * Golden dataset generator (spec §21, T-006). Every envelope, version, approval and registry row
@@ -220,6 +222,31 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     });
     split.partIds.forEach((pid, i) => ids.set(`${GOLDEN_SPLIT.sourceKey}#${parts[i]?.retailer}`, pid));
     log(`golden: split ${GOLDEN_SPLIT.sourceKey} into ${split.partIds.length} (${split.autoApproved ? "auto-approved" : "pending"})`);
+
+    // T-015: CPA targets (countries + every other leaf) and one filter-scoped ROAS target, through
+    // the real commands; a workspace policy auto-approves target versions. Metrics came with the registry.
+    await createPolicy(app, auth("admin"), { name: GOLDEN_TARGET_POLICY.name, priority: GOLDEN_TARGET_POLICY.priority, conditions: { entityType: "target_version" }, chain: [] });
+    const submitNew = async (created: { id: string; draft: { id: string } }) => {
+      const s = await submitTarget(app, auth("planner"), created.id, { versionId: created.draft.id });
+      if (!s.autoApproved) throw new Error(`golden: target ${created.id} was not auto-approved`);
+    };
+    const targets = goldenTargets(plan);
+    await pool(targets, concurrency, async (t) => {
+      await submitNew(await createTarget(app, auth("planner"), { scope: { type: "envelope", envelopeId: ids.get(t.envelopeKey) }, metricKey: t.metricKey, value: t.value, comparator: "lte", rationale: "FY2026 CPA target" }));
+    });
+    const f = GOLDEN_FILTER_TARGET;
+    await submitNew(
+      await createTarget(app, auth("planner"), {
+        scope: { type: "filter", filter: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: f.region }] } },
+        metricKey: f.metricKey,
+        value: f.value,
+        comparator: f.comparator,
+        startDate: GOLDEN_FY.start,
+        endDate: GOLDEN_FY.end,
+        rationale: `${f.region} ROAS floor`,
+      }),
+    );
+    log(`golden: ${targets.length + 1} targets approved`);
   } finally {
     clock.now = () => new Date();
   }

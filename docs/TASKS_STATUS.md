@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
+Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -26,11 +26,11 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-009 | 7 | T-002, T-003, T-004 | done | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
 | T-010 | 8 | T-004, T-009 | done | 409 with `currentVersionId` | — |
 | T-011 | 8 | T-010 | done | epic 1.3 acceptance; cap trigger | — |
-| T-006 | 9 | T-005, T-010, T-011 | done | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, targets, closures added by later tasks |
+| T-006 | 9 | T-005, T-010, T-011 | done | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, closures added by later tasks (targets: T-015) |
 | T-012 | 10 | T-006, T-011 | done | replay over golden history matches assertions | — |
 | T-013 | 11 | T-010 | done | 10k rows < 10 s | — |
 | T-014 | 11 | T-010, T-011 | done | cap re-validation | — |
-| T-015 | 11 | T-007, T-010 | pending | CPA roll-up = spend / conversions at every level | — |
+| T-015 | 11 | T-007, T-010 | done | CPA roll-up = spend / conversions at every level | `POST /workspaces/:ws/targets/import` waits for the connectors (T-017); ADR-009 |
 | T-016 | 12 | T-004 | pending | duplicate delivery applies once | live Pub/Sub topic (GCP phase) |
 | T-017 | 12 | T-002, T-005, T-010 | pending | ≥ 99% match on golden CSV; rejected-rows report via the GCS emulator named in §22 | live Snowflake, Sheets, BigQuery (plan §16.4; no credentials in spec) |
 | T-018 | 12 | T-015, T-017 | pending | consecutive-days test; no duplicate open alerts | Cloud Scheduler 15 min trigger (GCP phase) |
@@ -92,7 +92,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - `value_constraint` applies only when the tuple's when-dimension equals `when_value_code`. The constrained code must then be in `allowed_value_codes`.
 - Org-wide dimensions require `isOrgAdmin` because the existing dimension RLS check does not allow `workspace_id` NULL otherwise.
 - `dimension_value.path` is an `ltree` column Prisma cannot write, so those inserts are SQL in `@budget/db`.
-- Registry HTTP routes are mounted and reject callers until T-009 provides an actor. There is no auth bypass. `GET/POST /metrics` stays with T-015.
+- Registry HTTP routes are mounted and reject callers until T-009 provides an actor. There is no auth bypass. `GET/POST /metrics` shipped with T-015 (registry module, org admin writes).
 - The React `DimensionIcon` contract waits until the web package has a React runtime.
 
 ## T-007 assumptions

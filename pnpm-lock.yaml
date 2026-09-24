@@ -303,6 +303,9 @@ importers:
       '@budget/domain':
         specifier: workspace:^
         version: link:../domain
+      decimal.js:
+        specifier: 10.6.0
+        version: 10.6.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -310,9 +313,6 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
-      decimal.js:
-        specifier: 10.6.0
-        version: 10.6.0
       eslint:
         specifier: 'catalog:'
         version: 10.11.0(jiti@2.7.0)

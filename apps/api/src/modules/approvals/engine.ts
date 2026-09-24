@@ -1,7 +1,10 @@
-import { ChainStep, DomainError, newId } from "@budget/domain";
+import { ChainStep, DomainError, newId, type ScopeTarget } from "@budget/domain";
 import { archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { z } from "zod";
 import { clock } from "../../common/clock.js";
+import { envelopeScopeTargets } from "../../common/scope.guard.js";
+import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
+import { targetScope } from "../targets/commands/target-writer.js";
 import { approveVersion } from "./commands/approve-version.js";
 
 /** The frozen policy copy on a request (spec §7.2). Escalation may insert synthetic steps. */
@@ -28,30 +31,40 @@ export function assertOpen(r: LockedRequestRow): void {
   if (!(OPEN_STATUSES as readonly string[]).includes(r.status)) throw new DomainError("CONFLICT", `Request is ${r.status}`, { status: r.status });
 }
 
+export const SUPPORTED_ENTITY_TYPES = ["envelope_version", "bulk_change", "target_version"] as const;
+
 export function assertEnvelopeRequest(r: LockedRequestRow): void {
-  if (r.entityType !== "envelope_version" && r.entityType !== "bulk_change") {
+  if (!(SUPPORTED_ENTITY_TYPES as readonly string[]).includes(r.entityType)) {
     throw new DomainError("VALIDATION", `Approvals for ${r.entityType} are not supported yet`, { entityType: r.entityType });
   }
 }
 
 export interface RequestTargets {
-  /** Versions the request would approve: one for an envelope version, all rows of a bulk change. */
+  /** Envelope versions the request would approve: one for an envelope version, all rows of a bulk change, none for a target. */
   versions: Array<{ id: string; envelopeId: string }>;
   /** Who authored the change (separation of duties). */
   authorId: string;
+  /** Dimension scopes an approver must cover: one per envelope, or the target's scope. */
+  scopes: ScopeTarget[];
 }
 
-/** The versions and author behind a request (envelope_version or bulk_change). */
+/** The versions, author and scopes behind a request (envelope_version, bulk_change or target_version). */
 export async function requestTargets(tx: Tx, r: { entityType: string; entityId: string }): Promise<RequestTargets> {
+  const scopesOf = async (versions: Array<{ envelopeId: string }>) => [...(await envelopeScopeTargets(tx, [...new Set(versions.map((v) => v.envelopeId))])).values()];
   if (r.entityType === "bulk_change") {
     const bulk = await loadBulkChange(tx, r.entityId);
     if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
     const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { id: true, envelopeId: true } });
-    return { versions, authorId: bulk.createdBy };
+    return { versions, authorId: bulk.createdBy, scopes: await scopesOf(versions) };
+  }
+  if (r.entityType === "target_version") {
+    const tv = await tx.targetVersion.findUnique({ where: { id: r.entityId }, include: { target: true } });
+    if (tv === null) throw new DomainError("NOT_FOUND", "Target version not found");
+    return { versions: [], authorId: tv.createdBy, scopes: [await targetScope(tx, tv.target)] };
   }
   const v = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { id: true, envelopeId: true, createdBy: true } });
   if (v === null) throw new DomainError("NOT_FOUND", "Version not found");
-  return { versions: [{ id: v.id, envelopeId: v.envelopeId }], authorId: v.createdBy };
+  return { versions: [{ id: v.id, envelopeId: v.envelopeId }], authorId: v.createdBy, scopes: await scopesOf([v]) };
 }
 
 /**
@@ -97,6 +110,8 @@ export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedReq
     const reason = `approved via policy ${snapshot.policyName ?? r.policyId} v${r.policyVersion}`;
     if (r.entityType === "bulk_change") {
       await finalizeBulk(tx, ctx, r.entityId, r.id, reason);
+    } else if (r.entityType === "target_version") {
+      await approveTargetVersion(tx, ctx, r.entityId, r.id, reason);
     } else {
       await approveVersion(tx, ctx, r.entityId, r.id, reason);
     }
@@ -123,6 +138,19 @@ export async function closeRequest(tx: Tx, r: LockedRequestRow, outcome: "REJECT
     await tx.approvalRequest.update({ where: { id: r.id }, data: outcome === "CHANGES_REQUESTED" ? { status: outcome } : { status: outcome, resolvedAt: new Date() } });
     return;
   }
+  if (r.entityType === "target_version") {
+    const tv = await tx.targetVersion.findUnique({ where: { id: r.entityId } });
+    if (tv === null) throw new DomainError("NOT_FOUND", "Target version not found");
+    if (outcome === "CHANGES_REQUESTED") {
+      await tx.targetVersion.update({ where: { id: tv.id }, data: { status: "DRAFT" } });
+      await tx.approvalRequest.update({ where: { id: r.id }, data: { status: outcome } });
+      return;
+    }
+    await tx.targetVersion.update({ where: { id: tv.id }, data: { status: outcome === "REJECTED" ? "REJECTED" : "WITHDRAWN" } });
+    await tx.target.update({ where: { id: tv.targetId }, data: { draftVersionId: null } });
+    await tx.approvalRequest.update({ where: { id: r.id }, data: { status: outcome, resolvedAt: new Date() } });
+    return;
+  }
   const version = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, include: { envelope: true } });
   if (version === null) throw new DomainError("NOT_FOUND", "Version not found");
   const env = version.envelope;
@@ -144,7 +172,9 @@ export async function openBlockingThread(tx: Tx, ctx: TenantContext, r: LockedRe
   const anchor =
     r.entityType === "bulk_change"
       ? { anchorType: "approval_request", anchorId: r.id }
-      : { anchorType: "envelope", anchorId: (await tx.envelopeVersion.findUniqueOrThrow({ where: { id: r.entityId }, select: { envelopeId: true } })).envelopeId };
+      : r.entityType === "target_version"
+        ? { anchorType: "target", anchorId: (await tx.targetVersion.findUniqueOrThrow({ where: { id: r.entityId }, select: { targetId: true } })).targetId }
+        : { anchorType: "envelope", anchorId: (await tx.envelopeVersion.findUniqueOrThrow({ where: { id: r.entityId }, select: { envelopeId: true } })).envelopeId };
   const threadId = newId();
   await tx.thread.create({
     data: {

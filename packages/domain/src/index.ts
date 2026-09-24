@@ -52,6 +52,16 @@ export {
   WithdrawInput,
 } from "./approvals.js";
 
+export {
+  CreateMetricInput,
+  CreateTargetDraftInput,
+  CreateTargetInput,
+  ListTargetsQuery,
+  TargetComparator,
+  TargetScope,
+  TargetValue,
+} from "./targets.js";
+
 export { newId } from "./ids.js";
 
 export { largestRemainder, rephase } from "./money.js";

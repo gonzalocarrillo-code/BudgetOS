@@ -2,7 +2,7 @@ import { DomainError, ExternalEvidenceInput, newId } from "@budget/domain";
 import { lockApprovalRequest, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
-import { assertInScope, envelopeScopeTargets } from "../../../common/scope.guard.js";
+import { assertInScope } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { advanceIfComplete, assertEnvelopeRequest, assertOpen, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
 
@@ -20,7 +20,7 @@ export async function recordExternalEvidence(prisma: PrismaClient, auth: AuthCon
     assertOpen(r);
     assertEnvelopeRequest(r);
     const targets = await requestTargets(tx, r);
-    for (const t of (await envelopeScopeTargets(tx, [...new Set(targets.versions.map((v) => v.envelopeId))])).values()) assertInScope(auth, "envelope.submit", t);
+    for (const t of targets.scopes) assertInScope(auth, r.entityType === "target_version" ? "target.submit" : "envelope.submit", t);
     const snapshot = snapshotOf(r);
     const evidence = { gcsUri: input.gcsUri, sha256: input.sha256, approverName: input.approverName, approvedOn: input.approvedOn };
     await tx.approvalDecision.create({

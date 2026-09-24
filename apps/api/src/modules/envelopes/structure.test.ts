@@ -4,6 +4,7 @@ import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { appDb as appDbClient, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
+import { cleanupGolden } from "../../test-support/golden-cleanup.js";
 
 /**
  * T-014 (spec §7.5): move / split / merge with lineage. Done-when: cap re-validation.
@@ -38,35 +39,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await h?.close();
-  if (golden?.created) {
-    const ws = golden.workspaceId;
-    const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-    for (const sql of [
-      `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
-      `DELETE FROM thread WHERE workspace_id = $1::uuid`,
-      `DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)`,
-      `DELETE FROM approval_request WHERE workspace_id = $1::uuid`,
-      `DELETE FROM bulk_change WHERE workspace_id = $1::uuid`,
-      `DELETE FROM approval_policy WHERE workspace_id = $1::uuid`,
-      `DELETE FROM envelope_lineage WHERE workspace_id = $1::uuid`,
-      `UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL, parent_id = NULL WHERE workspace_id = $1::uuid`,
-      `DELETE FROM envelope_phasing WHERE version_id IN (SELECT id FROM envelope_version WHERE envelope_id IN ${envs})`,
-      `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
-      `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
-      `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-      `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-      `DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`,
-      `DELETE FROM role_assignment WHERE workspace_id = $1::uuid`,
-    ]) {
-      await owner.$executeRawUnsafe(sql, ws);
-    }
-    await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM role_assignment WHERE principal_id IN (SELECT id FROM app_user WHERE org_id = $1::uuid)`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM app_user WHERE org_id = $1::uuid`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM workspace WHERE id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM organization WHERE id = $1::uuid`, golden.orgId);
-  }
+  if (golden?.created) await cleanupGolden(owner, golden);
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });
 

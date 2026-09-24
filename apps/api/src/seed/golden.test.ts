@@ -6,6 +6,8 @@ import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb as appDbClient, ownerDb } from "../test-support/harness.js";
 import { seedGolden, type GoldenResult } from "./golden.js";
+import { cleanupGolden } from "../test-support/golden-cleanup.js";
+import { plannerOptions } from "../modules/targets/queries/planner-options.js";
 
 /**
  * T-006 done-when: the golden seed runs through the real commands in under 60 s and
@@ -51,26 +53,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  if (golden?.created) {
-    const ws = golden.workspaceId;
-    const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-    await owner.$executeRawUnsafe(`DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM approval_request WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM approval_policy WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL, parent_id = NULL WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_phasing WHERE version_id IN (SELECT id FROM envelope_version WHERE envelope_id IN ${envs})`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN ${envs}`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM role_assignment WHERE workspace_id = $1::uuid OR principal_id = ANY($2::uuid[])`, ws, Object.values(golden.users));
-    await owner.$executeRawUnsafe(`DELETE FROM app_user WHERE org_id = $1::uuid`, golden.orgId);
-    await owner.$executeRawUnsafe(`DELETE FROM workspace WHERE id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM organization WHERE id = $1::uuid`, golden.orgId);
-  }
+  if (golden?.created) await cleanupGolden(owner, golden);
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });
 
@@ -175,6 +158,37 @@ describe("split (T-014 seed rows)", () => {
       expect((env.dimensionValues as Record<string, string>)["retailer"]).toBe(part.retailer);
       expect(lineage.map((l) => l.toEnvelopeId)).toContain(pid);
     }
+  });
+});
+
+describe("targets (T-015 seed rows)", () => {
+  it("seeds the metric library and every planned target, each with one approved version", async () => {
+    const T = A.targets;
+    expect(await owner.metricDefinition.count({ where: { orgId: golden.orgId } })).toBe(11);
+    expect(await owner.target.count({ where: { workspaceId: golden.workspaceId, scopeType: "envelope" } })).toBe(T.envelope);
+    expect(await owner.target.count({ where: { workspaceId: golden.workspaceId, scopeType: "filter" } })).toBe(T.filter);
+    expect(await owner.targetVersion.count({ where: { target: { workspaceId: golden.workspaceId }, status: "APPROVED" } })).toBe(T.envelope + T.filter);
+    expect(await owner.target.count({ where: { workspaceId: golden.workspaceId, currentVersionId: null } })).toBe(0);
+  });
+
+  it("the planner resolves effective CPA (own or the country's) and the EMEA ROAS filter target on every live leaf", async () => {
+    const live: FilterGroupT = { logic: "and", children: [...leaves.children, { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" }] };
+    const q = request({ filter: live, targets: ["cpa", "roas"] });
+    const out = await withTenant(app, ctx(), async (tx) => {
+      const c = compileQuery(q, period, TODAY, await plannerOptions(tx, { orgId: golden.orgId, workspaceId: golden.workspaceId }, q.targets, period));
+      return tx.$queryRawUnsafe<Array<Record<string, unknown>>>(c.sql, ...c.values);
+    });
+    const regionOf = (r: Record<string, unknown>) => (r["dimension_values"] as Record<string, string>)["region"] as string;
+    expect(out).toHaveLength(A.targets.effectiveCpa.leaves);
+    expect(out.every((r) => r["tgt_cpa"] !== null)).toBe(true);
+    const byRegion: Record<string, string> = {};
+    for (const region of Object.keys(A.targets.effectiveCpa.byRegion)) {
+      byRegion[region] = out.filter((r) => regionOf(r) === region).reduce((s, r) => s.plus(String(r["tgt_cpa"])), new Decimal(0)).toFixed(2);
+    }
+    expect(byRegion).toEqual(A.targets.effectiveCpa.byRegion);
+    const roas = out.filter((r) => r["tgt_roas"] !== null);
+    expect(roas).toHaveLength(A.targets.filterRoasLeaves);
+    expect(roas.every((r) => regionOf(r) === "EMEA" && new Decimal(String(r["tgt_roas"])).equals("3.5"))).toBe(true);
   });
 });
 

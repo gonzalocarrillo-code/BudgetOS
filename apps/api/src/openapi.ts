@@ -25,6 +25,9 @@ import {
   UpdateDimensionInput,
   UpdateValueInput,
   UploadAssetInput,
+  CreateMetricInput,
+  CreateTargetInput,
+  CreateTargetDraftInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -182,6 +185,35 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/workspaces/{ws}/hierarchy-templates": {
         get: { operationId: "listHierarchyTemplates", parameters: [workspaceParam], responses: { "200": { description: "Hierarchy templates" } } },
         post: { operationId: "saveHierarchyTemplate", parameters: [workspaceParam], requestBody: json(SaveHierarchyTemplateInput), responses: { "200": { description: "Saved hierarchy template" } } },
+      },
+      "/api/v1/workspaces/{ws}/metrics": {
+        get: { operationId: "listMetrics", parameters: [workspaceParam], responses: { "200": { description: "The org's metric library (numerator / denominator over facts, multiplier)" } } },
+        post: { operationId: "createMetric", parameters: [workspaceParam], requestBody: json(CreateMetricInput), responses: { "201": { description: "Created metric (org admin only)" } } },
+      },
+      "/api/v1/workspaces/{ws}/targets": {
+        get: {
+          operationId: "listTargets",
+          parameters: [
+            workspaceParam,
+            { name: "metric", in: "query", required: false, schema: { type: "string" } },
+            { name: "envelopeId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+            { name: "scopeType", in: "query", required: false, schema: { type: "string", enum: ["envelope", "filter"] } },
+          ],
+          responses: { "200": { description: "Active targets with their current and draft versions" } },
+        },
+        post: { operationId: "createTarget", parameters: [workspaceParam], requestBody: json(CreateTargetInput), responses: { "201": { description: "Created target with its v1 draft" } } },
+      },
+      "/api/v1/targets/{id}/draft": {
+        patch: { operationId: "createTargetDraft", parameters: [idParam, workspaceHeader], requestBody: json(CreateTargetDraftInput), responses: { "200": { description: "New draft version; 409 with currentVersionId when basedOnVersionId is stale" } } },
+      },
+      "/api/v1/targets/{id}/submit": {
+        post: { operationId: "submitTarget", parameters: [idParam, workspaceHeader], requestBody: json(SubmitVersionInput), responses: { "201": { description: "Approval request, or auto-approved by policy (entityType target_version)" } } },
+      },
+      "/api/v1/targets/{id}/versions": {
+        get: { operationId: "listTargetVersions", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Target with every version, newest first" } } },
+      },
+      "/api/v1/envelopes/{id}/targets": {
+        get: { operationId: "getEnvelopeTargets", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Effective target per metric (own, inherited or filter-scoped) with implied volume = budget / target" } } },
       },
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },

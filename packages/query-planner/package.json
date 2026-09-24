@@ -16,7 +16,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/pg": "8.23.1",
-    "decimal.js": "10.6.0",
     "eslint": "catalog:",
     "fast-check": "3.23.2",
     "pg": "8.23.0",
@@ -24,6 +23,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@budget/domain": "workspace:^"
+    "@budget/domain": "workspace:^",
+    "decimal.js": "10.6.0"
   }
 }

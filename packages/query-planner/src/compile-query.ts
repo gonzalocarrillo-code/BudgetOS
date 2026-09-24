@@ -1,7 +1,32 @@
 import { Buffer } from "node:buffer";
-import { DomainError, type QueryRequest } from "@budget/domain";
+import { Decimal } from "decimal.js";
+import { DomainError, type FilterGroupT, type QueryRequest, type ScopeFilter } from "@budget/domain";
 import { SqlBuilder } from "./sql-builder.js";
 import { compileFilter, filterMetrics, sanitize, type CompileCtx } from "./compile-filter.js";
+
+/**
+ * A metric from `metric_definition` (plan §4.8). numerator / denominator are `spend`, `budget` or
+ * `kpi:<fact metric>`; multiplier scales the ratio (CPM = spend / impressions × 1000).
+ */
+export interface MetricDef {
+  numerator: string;
+  denominator: string | null;
+  multiplier?: string | undefined;
+}
+
+/** A current filter-scoped target (spec §10). Applies where no envelope-scoped target exists; first match wins. */
+export interface FilterTarget {
+  metricKey: string;
+  value: string;
+  scope: ScopeFilter;
+}
+
+export interface CompileOptions {
+  /** The org's metric library; defaults to the process-wide `metricRegistry`. */
+  metrics?: ReadonlyMap<string, MetricDef> | undefined;
+  /** Filter-scoped targets for the requested metrics, most specific first. */
+  filterTargets?: readonly FilterTarget[] | undefined;
+}
 
 export interface OrderKey {
   col: string;
@@ -23,9 +48,12 @@ interface Base {
   where: string;
   measureAgg: string;
   measures: string[];
+  /** Per requested metric: its KPI over a group, Σnumerator / Σdenominator (never an average of ratios). */
+  kpiAgg: string;
+  targetSql: (metric: string) => string;
 }
 
-function compileBase(q: QueryRequest, period: { start: string; end: string }, today: string): Base {
+function compileBase(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions): Base {
   if (q.grain !== "total") throw new DomainError("VALIDATION", `grain ${q.grain} is not supported by the Postgres planner`);
   if (q.templateId !== undefined) throw new DomainError("VALIDATION", "templateId tree order is not supported by the Postgres planner");
   const b = new SqlBuilder();
@@ -36,20 +64,43 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     pEnd = `${b.p(period.end)}::date`;
   const elapsedFrac = `LEAST(1, GREATEST(0, (${b.p(today)}::date - ${pStart}::date + 1)::numeric / NULLIF((${pEnd}::date - ${pStart}::date + 1),0)))`;
 
-  // KPI columns requested via targets[] or read by the filter → kpi_<metric> per envelope
-  // (derived metrics computed from spend & kpi facts, never stored).
+  // KPI columns requested via targets[] or read by the filter. Each carries its numerator and
+  // denominator per envelope (num_<m>, den_<m>) so every roll-up level divides sums: CPA of a group
+  // is Σspend / Σconversions. KPIs are derived from facts at query time, never stored.
   const filter = q.filter ?? { logic: "and" as const, children: [] };
   const kpiMetrics = [...new Set([...q.targets, ...filterMetrics(filter)])];
-  const kpiCols = kpiMetrics.map((mk) => `, (${derivedMetricSql(mk, b, pStart, pEnd, ws)}) AS kpi_${sanitize(mk)}`).join("");
+  const defs = opts.metrics ?? metricRegistry;
+  const budgetSql = `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
+           AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${asOf}
+           ORDER BY v.approved_at DESC LIMIT 1)`;
+  const requested = new Set(q.targets);
+  let kpiCols = "";
+  let kpiDerived = "";
+  let kpiAgg = "";
+  for (const mk of kpiMetrics) {
+    const def = defs.get(mk);
+    if (!def) throw new DomainError("VALIDATION", `unknown metric ${mk}`);
+    const s = sanitize(mk);
+    const mult = def.multiplier === undefined || new Decimal(def.multiplier).equals(1) ? "" : ` * ${b.p(def.multiplier)}::numeric`;
+    const num = def.numerator === "budget" ? budgetSql : factSql(mk, def.numerator, b, pStart, pEnd, ws);
+    if (def.denominator) {
+      const den = def.denominator === "budget" ? budgetSql : factSql(mk, def.denominator, b, pStart, pEnd, ws);
+      kpiCols += `, ${num} AS num_${s}, ${den} AS den_${s}`;
+      kpiDerived += `, (num_${s}${mult} / NULLIF(den_${s},0)) AS kpi_${s}`;
+      if (requested.has(mk)) kpiAgg += `, (sum(m.num_${s})${mult} / NULLIF(sum(m.den_${s}),0)) AS kpi_${s}`;
+    } else {
+      kpiCols += `, ${num} AS num_${s}`;
+      kpiDerived += `, (num_${s}${mult}) AS kpi_${s}`;
+      if (requested.has(mk)) kpiAgg += `, (sum(m.num_${s})${mult}) AS kpi_${s}`;
+    }
+  }
 
   // Budget as of a timestamp is the latest version approved by then. Versions approved earlier are
   // SUPERSEDED now (spec §7.3), so status alone cannot select them.
   const measuresCte = `
     m AS (
       SELECT e.id AS envelope_id,
-        (SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
-           AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${asOf}
-           ORDER BY v.approved_at DESC LIMIT 1) AS budget,
+        ${budgetSql} AS budget,
         (SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${pStart} AND ${pEnd}) AS actual,
         (SELECT coalesce(sum(pf.value_reporting),0) FROM projection_fact pf WHERE pf.workspace_id = ${ws}::uuid AND pf.envelope_id = e.id AND pf.metric='spend'
            AND pf.period_date BETWEEN ${pStart} AND ${pEnd}
@@ -65,8 +116,20 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         CASE WHEN budget > 0 THEN actual / budget ELSE NULL END AS spend_to_date_pct,
         CASE WHEN budget > 0 AND ${elapsedFrac} > 0 THEN (actual / budget) / ${elapsedFrac} ELSE NULL END AS pace_index,
         CASE WHEN budget > 0 THEN projected / budget ELSE NULL END AS projected_close_pct
+        ${kpiDerived}
       FROM m
     )`;
+
+  // Target of one envelope row: envelope-scoped via effective_target() (walks up parents), else the
+  // first filter-scoped target whose scope matches the envelope's dimensions (spec §10).
+  const targetSql = (metric: string): string => {
+    const scoped = (opts.filterTargets ?? []).filter((t) => t.metricKey === metric);
+    const own = `(SELECT et.value FROM effective_target(e.id, ${b.p(metric)}::text) et)`;
+    if (scoped.length === 0) return own;
+    const arms = scoped.map((t) => `WHEN ${"children" in t.scope ? compileFilter(t.scope as FilterGroupT, b, ctx) : "TRUE"} THEN ${b.p(t.value)}::numeric`);
+    return `COALESCE(${own}, CASE ${arms.join(" ")} END)`;
+  };
+  ctx.targetSql = targetSql;
 
   const where = compileFilter(filter, b, ctx);
   const measures = [...new Set(q.measures)];
@@ -79,11 +142,11 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       return `sum(m.${mk}) AS ${mk}`;
     })
     .join(", ");
-  return { b, measuresCte, where, measureAgg, measures };
+  return { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql };
 }
 
-export function compileQuery(q: QueryRequest, period: { start: string; end: string }, today: string): CompiledQuery {
-  const { b, measuresCte, where, measureAgg, measures } = compileBase(q, period, today);
+export function compileQuery(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
+  const { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql } = compileBase(q, period, today, opts);
   const groupKeys = q.groupBy.map(sanitize);
   if (new Set(groupKeys).size !== groupKeys.length) throw new DomainError("VALIDATION", "groupBy keys must be unique");
 
@@ -99,9 +162,21 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const dimSelect = groupKeys.map((k, i) => `g${i}.code AS dim_${k}, g${i}.label AS lbl_${k}`).join(", ");
 
   const grouped = q.groupBy.length > 0;
-  const kpiSelect = q.targets.map((mk) => `, m.kpi_${sanitize(mk)}`).join("");
+  const targetMetrics = q.targets.length > 1 ? [...new Set(q.targets)] : q.targets;
+  const targetKeys = targetMetrics.map(sanitize);
+  // Flat rows: actual, target and actual / target per metric; one lateral per target so it is
+  // resolved once. Built only for flat rows: an unreferenced $n makes Postgres reject the statement.
+  let kpiSelect = "";
+  let targetJoins = "";
+  if (!grouped) {
+    targetMetrics.forEach((mk, i) => {
+      const s = targetKeys[i] as string;
+      kpiSelect += `, m.kpi_${s}, t${i}.v AS tgt_${s}, m.kpi_${s} / NULLIF(t${i}.v,0) AS vs_${s}`;
+      targetJoins += ` LEFT JOIN LATERAL (SELECT ${targetSql(mk)} AS v) t${i} ON TRUE`;
+    });
+  }
   const groupSql = grouped
-    ? `SELECT ${dimSelect}, ${measureAgg}, count(*) AS leaf_count,
+    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, count(*) AS leaf_count,
          sum(CASE WHEN e.status='PENDING' THEN 1 ELSE 0 END) AS pending_count
        FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
        WHERE ${where}
@@ -110,13 +185,13 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
          ${kpiSelect},
          (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
          (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads
-       FROM envelope e JOIN m2 m ON m.envelope_id = e.id
+       FROM envelope e JOIN m2 m ON m.envelope_id = e.id${targetJoins}
        WHERE ${where}`;
 
   const columns = new Set<string>(
     grouped
-      ? [...groupKeys.flatMap((k) => [`dim_${k}`, `lbl_${k}`]), ...measures, "leaf_count", "pending_count"]
-      : ["envelope_id", "name", "status", "parent_id", ...measures, ...q.targets.map((mk) => `kpi_${sanitize(mk)}`), "open_alerts", "open_threads"],
+      ? [...groupKeys.flatMap((k) => [`dim_${k}`, `lbl_${k}`]), ...measures, ...targetKeys.map((s) => `kpi_${s}`), "leaf_count", "pending_count"]
+      : ["envelope_id", "name", "status", "parent_id", ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
   );
   const orderKeys = resolveOrder(q, columns, grouped ? groupKeys.map((k) => `dim_${k}`) : ["envelope_id"], grouped ? [] : ["name"]);
   const after = q.cursor === undefined ? "TRUE" : keysetAfter(orderKeys, decodeCursor(q.cursor, orderKeys.length), b);
@@ -126,9 +201,9 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
 }
 
 /** One row of totals over every envelope the filter selects; same measure semantics as a group. */
-export function compileTotals(q: QueryRequest, period: { start: string; end: string }, today: string): CompiledQuery {
-  const { b, measuresCte, where, measureAgg } = compileBase(q, period, today);
-  const sql = `WITH ${measuresCte} SELECT ${measureAgg}, count(*) AS leaf_count FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where}`;
+export function compileTotals(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
+  const { b, measuresCte, where, measureAgg, kpiAgg } = compileBase(q, period, today, opts);
+  const sql = `WITH ${measuresCte} SELECT ${measureAgg}${kpiAgg}, count(*) AS leaf_count FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where}`;
   return { sql, values: b.values, orderKeys: [] };
 }
 
@@ -158,7 +233,7 @@ function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: string[],
 
 const UUID_COLS = new Set(["envelope_id", "parent_id"]);
 const NUMERIC_COLS = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
-const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || col.startsWith("kpi_") ? "numeric" : "text");
+const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */
 function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuilder): string {
@@ -223,18 +298,24 @@ function ratioExpr(mk: string, elapsedFrac: string): string {
   }
 }
 
-/** Derived metric over facts for one envelope alias e. `ws` is the workspace placeholder so the fact indexes apply. Reads metric_definition at planning time (cached). */
-export function derivedMetricSql(metricKey: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string): string {
-  const def = metricRegistry.get(metricKey); // loaded by the planner service from metric_definition
-  if (!def) throw new DomainError("VALIDATION", `unknown metric ${metricKey}`);
-  const src = (ref: string) => {
-    if (ref === "spend") {
-      return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd})`;
-    }
-    if (!ref.startsWith("kpi:")) throw new DomainError("VALIDATION", `metric ${metricKey} references unknown source ${ref}`);
-    return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd})`;
-  };
-  return def.denominator ? `${src(def.numerator)} / NULLIF(${src(def.denominator)},0)` : src(def.numerator);
+/** One source of a metric over facts for envelope alias e. `ws` is the workspace placeholder so the fact indexes apply. */
+function factSql(metricKey: string, ref: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string): string {
+  if (ref === "spend") {
+    return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd})`;
+  }
+  if (!ref.startsWith("kpi:")) throw new DomainError("VALIDATION", `metric ${metricKey} references unknown source ${ref}`);
+  return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd})`;
 }
 
-export const metricRegistry = new Map<string, { numerator: string; denominator: string | null }>();
+/** Derived metric for one envelope alias e (a single ratio; roll-ups use compileQuery's num/den columns). */
+export function derivedMetricSql(metricKey: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, metrics: ReadonlyMap<string, MetricDef> = metricRegistry): string {
+  const def = metrics.get(metricKey);
+  if (!def) throw new DomainError("VALIDATION", `unknown metric ${metricKey}`);
+  if (def.numerator === "budget" || def.denominator === "budget") throw new DomainError("VALIDATION", `metric ${metricKey} needs the planner's budget column; use compileQuery`);
+  const mult = def.multiplier === undefined || new Decimal(def.multiplier).equals(1) ? "" : ` * ${b.p(def.multiplier)}::numeric`;
+  const num = factSql(metricKey, def.numerator, b, pStart, pEnd, ws);
+  return def.denominator ? `${num}${mult} / NULLIF(${factSql(metricKey, def.denominator, b, pStart, pEnd, ws)},0)` : `${num}${mult}`;
+}
+
+/** Process-wide metric library for callers that do not pass `CompileOptions.metrics` (tests, benches). */
+export const metricRegistry = new Map<string, MetricDef>();

@@ -6,6 +6,8 @@ export interface CompileCtx {
   periodStart: string;
   periodEnd: string;
   today: string;
+  /** Target value of the current envelope row for a metric; defaults to effective_target(). */
+  targetSql?: ((metric: string) => string) | undefined;
 }
 
 const invalid = (message: string, p?: Predicate): DomainError =>
@@ -37,7 +39,7 @@ function compilePredicate(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string 
     case "measure":
       return compileScalar(`m.${p.field.key}`, p, b, "numeric");
     case "target":
-      return compileTarget(p, b);
+      return compileTarget(p, b, ctx);
     case "attr":
       return compileAttr(p, b, ctx);
   }
@@ -114,12 +116,12 @@ function compileScalar(col: string, p: Predicate, b: SqlBuilder, cast: Cast): st
   }
 }
 
-function compileTarget(p: Predicate, b: SqlBuilder): string {
+function compileTarget(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
   if (p.field.kind !== "target") throw new Error("unreachable");
   const metric = p.field.metric;
-  // Built only where used: an unreferenced $n makes Postgres reject the statement.
-  const t = () => `(SELECT tv.value FROM target t JOIN target_version tv ON tv.id = t.current_version_id
-              WHERE t.envelope_id = e.id AND t.metric_key = ${b.p(metric)}::text LIMIT 1)`;
+  // Built only where used: an unreferenced $n makes Postgres reject the statement. Inherited and
+  // filter-scoped targets resolve the same way as the row's tgt_<metric> column.
+  const t = () => (ctx.targetSql ? ctx.targetSql(metric) : `(SELECT et.value FROM effective_target(e.id, ${b.p(metric)}::text) et)`);
   switch (p.field.field) {
     case "exists":
       if (p.op === "is_empty") return `${t()} IS NULL`;

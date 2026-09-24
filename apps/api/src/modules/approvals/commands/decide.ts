@@ -2,7 +2,6 @@ import { DecideInput, DomainError, eligibleApprover, newId, type Role } from "@b
 import { eligibleApproverSql, lockApprovalRequest, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
-import { envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { advanceIfComplete, assertEnvelopeRequest, assertOpen, closeRequest, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
 
@@ -24,10 +23,9 @@ export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequest
     if (step === undefined) throw new DomainError("VALIDATION", "Request is past its last step");
 
     const targets = await requestTargets(tx, r);
-    const scopes = await envelopeScopeTargets(tx, [...new Set(targets.versions.map((v) => v.envelopeId))]);
     const sqlOk = await eligibleApproverSql(tx, r.id, auth.user.id);
-    // The step role's scope must cover every envelope the request would approve.
-    const appOk = [...scopes.values()].every((target) =>
+    // The step role's scope must cover every envelope (or the target) the request would approve.
+    const appOk = targets.scopes.every((target) =>
       eligibleApprover({
         assignments: auth.assignments,
         stepRole: step.role as Role,
