@@ -51,4 +51,11 @@ T-010's cross-workspace test found that an org admin who sent `X-Workspace-Id` f
 
 - **Decision:** `ctx.isOrgAdmin`, the RLS bypass, is true only for org-level calls, meaning no workspace resolved. `AuthContext.isOrgAdmin` carries the role for authorization (scope checks, groups sync).
 - **Registry exception:** the registry controller elevates explicitly with `orgAdminCtx(auth)`, because writing org-wide registry rows (`workspace_id IS NULL`) is what org admins use it for.
-- **Still open (T-002 migration follow-up):** `app_is_org_admin()` is not limited to the caller's org. Any org-level call made with the bypass could read other orgs' rows. No current route makes such a call with tenant-table reads.
+- **Closed (migration `20260924000000_rls_org_scoped_admin`):** the bypass was not limited to the caller's org. `withTenant()` now also sets `app.org_id` from `TenantContext.orgId`, which the interceptor fills from the authenticated user's org.
+  - Tenant tables and `audit_event` read `workspace_id = ANY ((SELECT app_visible_workspace_ids())::uuid[])`. That is the session's own workspace, plus every workspace of `app.org_id` when the bypass is on.
+  - `dimension` rows, including org-wide rows (`workspace_id IS NULL`), are visible only when `org_id = app_org_id()`. Before, every session could read other orgs' org-wide dimensions. Only an org admin can write org-wide rows, and only for its own org.
+  - The bypass with no org (`orgId: null`) reads no bypass rows and no org-wide rows (fail closed).
+  - Child tables keep their `EXISTS (parent)` policies and narrow with the parent.
+  - The array form uses an InitPlan and keeps `workspace_id` indexes usable. On 200k envelopes across 50 workspaces, `count(*)` takes 2.7 ms (non-admin) and 5.3 ms (admin). The old policy seq-scans at about 80 ms, and so does the OR form with `IN (SELECT …)`.
+  - The API-level rule above stays: `ctx.isOrgAdmin` is set only for org-level calls and for registry elevation.
+  - `packages/db/src/rls.org-admin.test.ts` asserts all of this.

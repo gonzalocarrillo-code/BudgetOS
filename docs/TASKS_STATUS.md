@@ -140,6 +140,12 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - Until this change, `pnpm license-check` checked no packages and exited 0. The "`pnpm license-check` green" results recorded for T-026a, T-026b and T-026c therefore did not check anything.
 - The gate now checks every workspace package's production tree, including transitive dependencies. Six transitive packages with permissive licences outside the allowlist (MIT-0, Python-2.0, CC-BY-4.0, BlueOak-1.0.0) pass as exact-version entries in `scripts/license-exceptions.json`. Any other disallowed licence, and any stale entry, fails the gate.
 
+## RLS org-scoped admin (no task id; ADR-005 addendum)
+
+- Migration `20260924000000_rls_org_scoped_admin` limits the org-admin RLS bypass to `app.org_id`'s workspaces. It also limits org-wide `dimension` rows to their org. `TenantContext.orgId` is now required (`string | null`), and `withTenant()` sets it.
+- The planner test helper `runAsApp` derives `app.org_id` from the fixture workspace.
+- Not changed: `dimension_value` and `processed_event` have no RLS. `rls.envelope.test.ts` lists `processed_event` as a tenant relation but only checks that it exists.
+
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 
 Phase 2 (plan epics 2.1–2.7) and Phase 3 (epics 3.1–3.2) have no §22 tasks. Do not add rows here until a spec PR adds them.

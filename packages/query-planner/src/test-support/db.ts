@@ -23,6 +23,11 @@ export async function runAsApp(
   try {
     await client.query("BEGIN");
     await client.query(`SELECT set_config('app.workspace_id', $1, true)`, [tenant.workspaceId]);
+    // The API sets app.org_id from the caller; fixtures only know the workspace, so derive it.
+    await client.query(
+      `SELECT set_config('app.org_id', coalesce((SELECT org_id::text FROM workspace WHERE id = $1::uuid), ''), true)`,
+      [tenant.workspaceId],
+    );
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [tenant.userId ?? ""]);
     await client.query(`SELECT set_config('app.is_org_admin', 'false', true)`);
     const result = await client.query<Row>(c.sql, c.values);

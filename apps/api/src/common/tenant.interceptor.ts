@@ -62,6 +62,7 @@ export class TenantInterceptor implements NestInterceptor {
     const tenant: AuthContext = {
       ctx: {
         workspaceId,
+        orgId: user.orgId,
         userId: user.id,
         isOrgAdmin: access.isOrgAdmin && workspaceId === null,
         actorType: "user",

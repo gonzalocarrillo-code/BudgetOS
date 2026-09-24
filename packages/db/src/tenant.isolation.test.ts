@@ -44,11 +44,14 @@ const prisma = new PrismaClient({ datasources: { db: { url: ownerUrl } } });
 
 const workspaceA = "01927a00-0000-7000-8000-0000000000a1";
 const workspaceB = "01927a00-0000-7000-8000-0000000000b2";
+const orgA = "01927a00-0000-7000-8000-0000000000d1";
+const orgB = "01927a00-0000-7000-8000-0000000000d2";
 const userA = "01927a00-0000-7000-8000-0000000000c1";
 const userB = "01927a00-0000-7000-8000-0000000000c2";
 
 const ctxA: TenantContext = {
   workspaceId: workspaceA,
+  orgId: orgA,
   userId: userA,
   isOrgAdmin: false,
   actorType: "user",
@@ -56,6 +59,7 @@ const ctxA: TenantContext = {
 };
 const ctxB: TenantContext = {
   workspaceId: workspaceB,
+  orgId: orgB,
   userId: userB,
   isOrgAdmin: true,
   actorType: "mcp",
@@ -64,6 +68,7 @@ const ctxB: TenantContext = {
 
 interface SessionSettings {
   workspace_id: string | null;
+  org_id: string | null;
   user_id: string | null;
   is_org_admin: string | null;
 }
@@ -71,6 +76,7 @@ interface SessionSettings {
 async function readSettings(tx: Tx): Promise<SessionSettings | undefined> {
   const rows = await tx.$queryRaw<SessionSettings[]>`
     SELECT current_setting('app.workspace_id', true) AS workspace_id,
+           current_setting('app.org_id', true) AS org_id,
            current_setting('app.user_id', true) AS user_id,
            current_setting('app.is_org_admin', true) AS is_org_admin`;
   return rows[0];
@@ -103,9 +109,11 @@ it("does not share SET LOCAL tenant settings across concurrent transactions", as
 
   const [a, b] = await Promise.all([seenA, seenB]);
   expect(a?.workspace_id).toBe(workspaceA);
+  expect(a?.org_id).toBe(orgA);
   expect(a?.user_id).toBe(userA);
   expect(a?.is_org_admin).toBe("false");
   expect(b?.workspace_id).toBe(workspaceB);
+  expect(b?.org_id).toBe(orgB);
   expect(b?.user_id).toBe(userB);
   expect(b?.is_org_admin).toBe("true");
 });
@@ -141,6 +149,7 @@ it("writes audit, outbox, and a bumped data version in one tenant transaction", 
   try {
     const ctx: TenantContext = {
       workspaceId,
+      orgId,
       userId: userA,
       isOrgAdmin: false,
       actorType: "user",

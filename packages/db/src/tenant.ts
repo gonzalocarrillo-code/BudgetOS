@@ -2,6 +2,11 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 export interface TenantContext {
   workspaceId: string | null;
+  /**
+   * The caller's organization (`app.org_id`). Scopes the org-admin bypass to this org's workspaces
+   * and org-wide registry rows to this org. Null reads no org-wide rows and no bypass rows.
+   */
+  orgId: string | null;
   userId: string | null;
   isOrgAdmin: boolean;
   actorType: "user" | "system" | "mcp";
@@ -24,6 +29,7 @@ export async function withTenant<T>(
         `SELECT set_config('app.workspace_id', $1, true)`,
         ctx.workspaceId ?? "",
       );
+      await tx.$executeRawUnsafe(`SELECT set_config('app.org_id', $1, true)`, ctx.orgId ?? "");
       await tx.$executeRawUnsafe(`SELECT set_config('app.user_id', $1, true)`, ctx.userId ?? "");
       await tx.$executeRawUnsafe(
         `SELECT set_config('app.is_org_admin', $1, true)`,
