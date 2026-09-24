@@ -1,0 +1,44 @@
+[
+  {
+    "package": "@csstools/color-helpers",
+    "version": "6.1.1",
+    "license": "MIT-0",
+    "via": "jsdom (apps/api)",
+    "reason": "MIT-0 is MIT without the attribution clause; no obligation beyond MIT."
+  },
+  {
+    "package": "@csstools/css-syntax-patches-for-csstree",
+    "version": "1.1.14",
+    "license": "MIT-0",
+    "via": "jsdom (apps/api)",
+    "reason": "MIT-0 is MIT without the attribution clause; no obligation beyond MIT."
+  },
+  {
+    "package": "argparse",
+    "version": "2.0.1",
+    "license": "Python-2.0",
+    "via": "@nestjs/swagger, nestjs-zod (apps/api)",
+    "reason": "PSF licence: permissive, OSI-approved, keep the notice."
+  },
+  {
+    "package": "caniuse-lite",
+    "version": "1.0.30001810",
+    "license": "CC-BY-4.0",
+    "via": "@glideapps/glide-data-grid (packages/grid)",
+    "reason": "Browser-support data, not code; CC-BY-4.0 requires attribution only."
+  },
+  {
+    "package": "lru-cache",
+    "version": "11.5.3",
+    "license": "BlueOak-1.0.0",
+    "via": "jsdom, @glideapps/glide-data-grid",
+    "reason": "Blue Oak Model License: permissive, OSI-approved, no copyleft."
+  },
+  {
+    "package": "sax",
+    "version": "1.6.1",
+    "license": "BlueOak-1.0.0",
+    "via": "svgo (apps/api)",
+    "reason": "Blue Oak Model License: permissive, OSI-approved, no copyleft."
+  }
+]
