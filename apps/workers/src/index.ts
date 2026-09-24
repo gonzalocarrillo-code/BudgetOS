@@ -7,3 +7,7 @@ export { breaches, evaluateWorkspace, metricValue, streak } from "./pacing/evalu
 export type { EvaluateResult } from "./pacing/evaluate.js";
 export { runPacing } from "./pacing/main.js";
 export { IN_APP_CONSUMER, handleThreadChanged } from "./notify/in-app.js";
+export { BUILDERS, periodKey } from "./search-indexer/documents.js";
+export type { IndexContext, IndexedType } from "./search-indexer/documents.js";
+export { SEARCH_CONSUMER, handleSearchEvent, indexEntities, reindexWorkspace, targetsFor } from "./search-indexer/indexer.js";
+export { servePush } from "./push-server.js";

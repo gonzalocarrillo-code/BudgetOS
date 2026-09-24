@@ -335,6 +335,25 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "applyTag", parameters: [workspaceHeader], requestBody: json(ApplyTagInput), responses: { "201": { description: "Tagged up to 10k entities (duplicates skipped)" } } },
         delete: { operationId: "removeTag", parameters: [workspaceHeader], requestBody: json(ApplyTagInput), responses: { "200": { description: "Untagged the entities" } } },
       },
+      "/api/v1/workspaces/{ws}/search": {
+        get: {
+          operationId: "search",
+          parameters: [
+            workspaceParam,
+            { name: "q", in: "query", required: false, schema: { type: "string" }, description: "Free text plus qualifiers: type:, status:, owner:@me, tag:, period:, budget:>N, cpa:>target, has:open-thread, mentions:@me, updated:<7d, <dimension key>:<code>" },
+            { name: "types", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated entity types" },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50 }, description: "Hits per type (default 5)" },
+          ],
+          responses: { "200": { description: "{ groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed }" } },
+        },
+      },
+      "/api/v1/workspaces/{ws}/search/suggest": {
+        get: {
+          operationId: "searchSuggest",
+          parameters: [workspaceParam, { name: "prefix", in: "query", required: false, schema: { type: "string" }, description: "A qualifier-key prefix, or key: plus a value prefix" }],
+          responses: { "200": { description: "{ keys: [{ key, label, kind }], values: [{ value, label }] }" } },
+        },
+      },
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },
       },
