@@ -17,6 +17,10 @@
     "test:acceptance": {},
     "bench": {
       "cache": false
+    },
+    "@budget/query-planner#bench": {
+      "cache": false,
+      "dependsOn": ["@budget/grid#bench", "@budget/timeline#bench"]
     }
   }
 }

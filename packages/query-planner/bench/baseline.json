@@ -1,3 +1,6 @@
 {
-  "compile5000P50Ms": 11.6
+  "compile5000P50Ms": 14.0,
+  "executePageP50Ms": 21.0,
+  "executeGroupP50Ms": 145.0,
+  "executeTotalsP50Ms": 110.0
 }
