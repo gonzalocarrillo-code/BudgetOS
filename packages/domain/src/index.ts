@@ -31,7 +31,16 @@ export {
   UpdatePhasingInput,
 } from "./envelopes.js";
 
-export { ChainStep, PolicyConditions } from "./approvals.js";
+export {
+  ChainStep,
+  CreatePolicyInput,
+  DecideInput,
+  ExternalEvidenceInput,
+  PolicyConditions,
+  SubmitVersionInput,
+  UpdatePolicyInput,
+  WithdrawInput,
+} from "./approvals.js";
 
 export { newId } from "./ids.js";
 

@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-24: T-001 through T-005, T-007, T-009, T-010, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
+Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -25,8 +25,8 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-026c | 6 | T-026a | done | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
 | T-009 | 7 | T-002, T-003, T-004 | done | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
 | T-010 | 8 | T-004, T-009 | done | 409 with `currentVersionId` | — |
-| T-011 | 8 | T-010 | pending | epic 1.3 acceptance; cap trigger | — |
-| T-006 | 9 | T-005, T-010, T-011 | pending | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, targets, closures added by later tasks |
+| T-011 | 8 | T-010 | done | epic 1.3 acceptance; cap trigger | — |
+| T-006 | 9 | T-005, T-010, T-011 | done | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, targets, closures added by later tasks |
 | T-012 | 10 | T-006, T-011 | pending | replay over golden history matches assertions | — |
 | T-013 | 11 | T-010 | pending | 10k rows < 10 s | — |
 | T-014 | 11 | T-010, T-011 | pending | cap re-validation | — |

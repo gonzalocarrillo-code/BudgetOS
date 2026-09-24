@@ -1,6 +1,12 @@
 import {
   AddValuesInput,
   AssignRoleInput,
+  CreatePolicyInput,
+  DecideInput,
+  ExternalEvidenceInput,
+  SubmitVersionInput,
+  UpdatePolicyInput,
+  WithdrawInput,
   CreateDraftVersionInput,
   CreateEnvelopeInput,
   RestoreVersionInput,
@@ -67,6 +73,44 @@ export function openApiDocument(): Record<string, unknown> {
           requestBody: json(RestoreVersionInput),
           responses: { "200": { description: "New draft version copied from the given version" } },
         },
+      },
+      "/api/v1/envelopes/{id}/submit": {
+        post: { operationId: "submitEnvelopeVersion", parameters: [idParam, workspaceHeader], requestBody: json(SubmitVersionInput), responses: { "200": { description: "Approval request created, or auto-approved by policy" }, "409": { description: "Not the open draft, request already open, or blocking threads" }, "500": { description: "POLICY_NOT_FOUND" } } },
+      },
+      "/api/v1/envelopes/{id}/withdraw": {
+        post: { operationId: "withdrawEnvelopeRequest", parameters: [idParam, workspaceHeader], requestBody: json(WithdrawInput), responses: { "200": { description: "Open request withdrawn" } } },
+      },
+      "/api/v1/approvals": {
+        get: {
+          operationId: "listApprovals",
+          parameters: [
+            workspaceHeader,
+            { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated RequestStatus; default PENDING,ESCALATED" },
+            { name: "assignee", in: "query", required: false, schema: { type: "string", enum: ["me"] } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 200 } },
+            { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Inbox page: { rows, nextCursor }" } },
+        },
+      },
+      "/api/v1/approvals/{id}": {
+        get: { operationId: "getApproval", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Request with frozen policy, diff and decisions" } } },
+      },
+      "/api/v1/approvals/{id}/decisions": {
+        post: { operationId: "decideApproval", parameters: [idParam, workspaceHeader], requestBody: json(DecideInput), responses: { "200": { description: "Request after the decision" }, "403": { description: "Not an eligible approver for the current step" }, "422": { description: "CAP_EXCEEDED on final approval" } } },
+      },
+      "/api/v1/approvals/{id}/external-evidence": {
+        post: { operationId: "recordExternalEvidence", parameters: [idParam, workspaceHeader], requestBody: json(ExternalEvidenceInput), responses: { "200": { description: "Evidence recorded; counts toward the step when the policy allows it" } } },
+      },
+      "/api/v1/approvals/{id}/withdraw": {
+        post: { operationId: "withdrawApproval", parameters: [idParam, workspaceHeader], requestBody: json(WithdrawInput), responses: { "200": { description: "Request withdrawn" } } },
+      },
+      "/api/v1/workspaces/{ws}/policies": {
+        get: { operationId: "listPolicies", parameters: [workspaceParam], responses: { "200": { description: "Approval policies by priority" } } },
+        post: { operationId: "createPolicy", parameters: [workspaceParam], requestBody: json(CreatePolicyInput), responses: { "200": { description: "Created policy" } } },
+      },
+      "/api/v1/policies/{id}": {
+        patch: { operationId: "updatePolicy", parameters: [idParam, workspaceHeader], requestBody: json(UpdatePolicyInput), responses: { "200": { description: "Updated policy (version + 1)" }, "409": { description: "Stale version" } } },
       },
       "/api/v1/workspaces/{ws}/groups/sync": {
         post: { operationId: "syncGroups", parameters: [workspaceParam], requestBody: json(GroupsSyncInput), responses: { "200": { description: "Group membership after sync" } } },

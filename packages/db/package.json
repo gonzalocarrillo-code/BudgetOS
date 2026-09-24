@@ -11,16 +11,19 @@
     "lint": "eslint .",
     "prisma": "prisma",
     "typecheck": "DATABASE_URL=postgresql://budget:budget@localhost:5432/budget prisma generate && tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root . --config ../../vitest.config.mjs"
+    "test": "vitest run --root . --config ../../vitest.config.mjs",
+    "tsx": "tsx"
   },
   "dependencies": {
-    "@prisma/client": "6.19.3"
+    "@prisma/client": "6.19.3",
+    "decimal.js": "10.6.0"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
     "eslint": "catalog:",
     "pg": "8.23.0",
     "prisma": "6.19.3",
+    "tsx": "4.20.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

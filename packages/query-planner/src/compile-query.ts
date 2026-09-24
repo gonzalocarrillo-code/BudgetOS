@@ -32,8 +32,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const ctx: CompileCtx = { workspaceId: q.workspaceId, periodStart: period.start, periodEnd: period.end, today };
   const asOf = q.asOf ? `${b.p(q.asOf)}::timestamptz` : "now()";
   const ws = b.p(q.workspaceId);
-  const pStart = b.p(period.start),
-    pEnd = b.p(period.end);
+  const pStart = `${b.p(period.start)}::date`,
+    pEnd = `${b.p(period.end)}::date`;
   const elapsedFrac = `LEAST(1, GREATEST(0, (${b.p(today)}::date - ${pStart}::date + 1)::numeric / NULLIF((${pEnd}::date - ${pStart}::date + 1),0)))`;
 
   // KPI columns requested via targets[] or read by the filter → kpi_<metric> per envelope
@@ -93,7 +93,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
       (k, i) => `
     LEFT JOIN LATERAL (
       SELECT dv.code, dv.label FROM envelope_dimension ed JOIN dimension_value dv ON dv.id = ed.value_id JOIN dimension d ON d.id = ed.dimension_id
-      WHERE ed.envelope_id = e.id AND d.key = ${b.p(k)} LIMIT 1) g${i} ON TRUE`,
+      WHERE ed.envelope_id = e.id AND d.key = ${b.p(k)}::text LIMIT 1) g${i} ON TRUE`,
     )
     .join("");
   const dimSelect = groupKeys.map((k, i) => `g${i}.code AS dim_${k}, g${i}.label AS lbl_${k}`).join(", ");
@@ -156,6 +156,10 @@ function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: string[],
   return keys;
 }
 
+const UUID_COLS = new Set(["envelope_id", "parent_id"]);
+const NUMERIC_COLS = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
+const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || col.startsWith("kpi_") ? "numeric" : "text");
+
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */
 function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuilder): string {
   const branches: string[] = [];
@@ -164,9 +168,9 @@ function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuil
     if (v === null || v === undefined) return; // NULLS LAST: nothing sorts after a null except equal nulls
     const equalPrefix = order.slice(0, i).map((p, j) => {
       const pv = values[j];
-      return pv === null || pv === undefined ? `q.${p.col} IS NULL` : `q.${p.col} = ${b.p(pv)}`;
+      return pv === null || pv === undefined ? `q.${p.col} IS NULL` : `q.${p.col} = ${b.p(pv)}::${castFor(p.col)}`;
     });
-    const after = `(q.${o.col} ${o.dir === "asc" ? ">" : "<"} ${b.p(v)} OR q.${o.col} IS NULL)`;
+    const after = `(q.${o.col} ${o.dir === "asc" ? ">" : "<"} ${b.p(v)}::${castFor(o.col)} OR q.${o.col} IS NULL)`;
     branches.push([...equalPrefix, after].join(" AND "));
   });
   return branches.length ? branches.map((x) => `(${x})`).join(" OR ") : "FALSE";
@@ -228,7 +232,7 @@ export function derivedMetricSql(metricKey: string, b: SqlBuilder, pStart: strin
       return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd})`;
     }
     if (!ref.startsWith("kpi:")) throw new DomainError("VALIDATION", `metric ${metricKey} references unknown source ${ref}`);
-    return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))} AND period_date BETWEEN ${pStart} AND ${pEnd})`;
+    return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd})`;
   };
   return def.denominator ? `${src(def.numerator)} / NULLIF(${src(def.denominator)},0)` : src(def.numerator);
 }
