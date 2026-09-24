@@ -229,6 +229,484 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/envelopes": {
+      "post": {
+        "operationId": "createEnvelope",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "parentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "default": null
+                  },
+                  "dimensionValues": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "default": null
+                  },
+                  "periodId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true,
+                    "default": null
+                  },
+                  "amount": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                  },
+                  "phasing": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "month": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "month",
+                        "amount"
+                      ]
+                    }
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "name",
+                  "dimensionValues",
+                  "startDate",
+                  "endDate",
+                  "currency"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created envelope (with v1 draft when an amount is given)"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}": {
+      "get": {
+        "operationId": "getEnvelope",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope with its approved version and open draft"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateEnvelope",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rowVersion": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "periodId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "rowVersion"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated envelope metadata"
+          },
+          "409": {
+            "description": "Stale rowVersion; details carry currentRowVersion and currentVersionId"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/versions": {
+      "get": {
+        "operationId": "listEnvelopeVersions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All versions, newest first"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/draft": {
+      "patch": {
+        "operationId": "createDraftVersion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "phasing": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "month": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "month",
+                        "amount"
+                      ]
+                    }
+                  },
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "gcsUri": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "gcsUri",
+                        "name",
+                        "sha256"
+                      ]
+                    },
+                    "default": []
+                  }
+                },
+                "required": [
+                  "amount",
+                  "basedOnVersionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New draft version"
+          },
+          "409": {
+            "description": "Stale basedOnVersionId; details.currentVersionId"
+          },
+          "423": {
+            "description": "Period closed"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/phasing": {
+      "patch": {
+        "operationId": "updateEnvelopePhasing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phasing": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "month": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "month",
+                        "amount"
+                      ]
+                    }
+                  },
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "phasing",
+                  "basedOnVersionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New draft version with the same amount and new phasing"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/restore/{versionId}": {
+      "post": {
+        "operationId": "restoreEnvelopeVersion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "basedOnVersionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New draft version copied from the given version"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{ws}/groups/sync": {
       "post": {
         "operationId": "syncGroups",

@@ -160,6 +160,28 @@ const samples: Record<string, readonly unknown[]> = {
     },
   ],
   GroupsSyncInput: [{ groups: [{ googleGroup: "latam-media-leads@example.com", name: "LATAM media leads", members: ["a@example.com"] }] }],
+  MoneyString: ["1200.50", "-3", "0.10"],
+  PhasingEntry: [{ month: "2026-10-01", amount: "400.00" }],
+  CreateEnvelopeInput: [
+    { name: "BR Meta Q4", dimensionValues: { country: "BR", platform: "meta" }, startDate: "2026-10-01", endDate: "2026-12-31", currency: "BRL" },
+    {
+      name: "BR Meta Q4",
+      parentId: workspaceId,
+      dimensionValues: { country: "BR" },
+      startDate: "2026-10-01",
+      endDate: "2026-12-31",
+      currency: "USD",
+      amount: "1200.00",
+      phasing: [{ month: "2026-10-01", amount: "1200.00" }],
+    },
+  ],
+  CreateDraftVersionInput: [
+    { amount: "1500.00", basedOnVersionId: null },
+    { amount: "900", basedOnVersionId: workspaceId, rationale: "cut", phasing: [{ month: "2026-11-01", amount: "900" }], attachments: [{ gcsUri: "gs://b/o", name: "o.pdf", sha256: "ab" }] },
+  ],
+  UpdatePhasingInput: [{ phasing: [{ month: "2026-10-01", amount: "10" }], basedOnVersionId: workspaceId }],
+  RestoreVersionInput: [{ basedOnVersionId: null }, { basedOnVersionId: workspaceId, rationale: "back to v1" }],
+  UpdateEnvelopeInput: [{ rowVersion: 1, name: "Renamed" }, { rowVersion: 3, ownerId: null, startDate: "2026-10-01" }],
   AddValuesInput: [
     {
       values: [

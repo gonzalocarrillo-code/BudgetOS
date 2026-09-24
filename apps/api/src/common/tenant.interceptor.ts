@@ -63,11 +63,12 @@ export class TenantInterceptor implements NestInterceptor {
       ctx: {
         workspaceId,
         userId: user.id,
-        isOrgAdmin: access.isOrgAdmin,
+        isOrgAdmin: access.isOrgAdmin && workspaceId === null,
         actorType: "user",
         requestId: header(request, "x-request-id") ?? randomUUID(),
       },
       user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
+      isOrgAdmin: access.isOrgAdmin,
       roles,
       assignments: access.assignments,
     };
