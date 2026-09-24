@@ -91,6 +91,21 @@ export {
   UpdateSourceInput,
 } from "./sources.js";
 
+export {
+  AnchorType,
+  ApplyTagInput,
+  CommentInput,
+  CreateTagInput,
+  CreateThreadInput,
+  ListThreadsQuery,
+  SubscriptionInput,
+  TaggableType,
+  UpdateCommentInput,
+  UpdateTagInput,
+  extractMentions,
+} from "./threads.js";
+export type { Mention, Reference } from "./threads.js";
+
 export { newId } from "./ids.js";
 
 export { largestRemainder, rephase } from "./money.js";

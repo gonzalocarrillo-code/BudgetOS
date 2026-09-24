@@ -35,6 +35,13 @@ import {
   CreateRuleInput,
   UpdateRuleInput,
   UpdateAlertInput,
+  CreateThreadInput,
+  CommentInput,
+  UpdateCommentInput,
+  SubscriptionInput,
+  CreateTagInput,
+  UpdateTagInput,
+  ApplyTagInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -288,6 +295,45 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/alerts/{id}": {
         patch: { operationId: "updateAlert", parameters: [idParam, workspaceHeader], requestBody: json(UpdateAlertInput), responses: { "200": { description: "Updated alert; 409 once resolved" } } },
+      },
+      "/api/v1/threads": {
+        get: {
+          operationId: "listThreads",
+          parameters: [
+            workspaceHeader,
+            { name: "anchorType", in: "query", required: true, schema: { type: "string" } },
+            { name: "anchorId", in: "query", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          responses: { "200": { description: "The anchor's threads with comments (deleted ones without body) and display names" } },
+        },
+        post: { operationId: "createThread", parameters: [workspaceHeader], requestBody: json(CreateThreadInput), responses: { "201": { description: "Created thread with its first comment; only envelope and target threads can block" } } },
+      },
+      "/api/v1/threads/{id}/comments": {
+        post: { operationId: "addComment", parameters: [idParam, workspaceHeader], requestBody: json(CommentInput), responses: { "201": { description: "Created comment; mentions notify through notify-worker" } } },
+      },
+      "/api/v1/comments/{id}": {
+        patch: { operationId: "editComment", parameters: [idParam, workspaceHeader], requestBody: json(UpdateCommentInput), responses: { "200": { description: "Edited comment (author only; history kept)" } } },
+        delete: { operationId: "deleteComment", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Soft-deleted comment (author or workspace admin)" } } },
+      },
+      "/api/v1/threads/{id}/resolve": {
+        post: { operationId: "resolveThread", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Resolved (thread author, anchor owner, eligible approver or admin)" } } },
+      },
+      "/api/v1/threads/{id}/reopen": {
+        post: { operationId: "reopenThread", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Reopened" } } },
+      },
+      "/api/v1/subscriptions": {
+        post: { operationId: "setSubscription", parameters: [workspaceHeader], requestBody: json(SubscriptionInput), responses: { "201": { description: "Follow or stop following an entity's threads" } } },
+      },
+      "/api/v1/workspaces/{ws}/tags": {
+        get: { operationId: "listTags", parameters: [workspaceParam], responses: { "200": { description: "Tags with usage counts" } } },
+        post: { operationId: "createTag", parameters: [workspaceParam], requestBody: json(CreateTagInput), responses: { "201": { description: "Created tag" } } },
+      },
+      "/api/v1/tags/{id}": {
+        patch: { operationId: "updateTag", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTagInput), responses: { "200": { description: "Renamed, recoloured, or merged into another tag" } } },
+      },
+      "/api/v1/tags/apply": {
+        post: { operationId: "applyTag", parameters: [workspaceHeader], requestBody: json(ApplyTagInput), responses: { "201": { description: "Tagged up to 10k entities (duplicates skipped)" } } },
+        delete: { operationId: "removeTag", parameters: [workspaceHeader], requestBody: json(ApplyTagInput), responses: { "200": { description: "Untagged the entities" } } },
       },
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },

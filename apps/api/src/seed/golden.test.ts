@@ -12,6 +12,9 @@ import { GcsObjectStore, parseGsUri, runIngest, uploadBucket } from "@budget/wor
 import { Storage } from "@google-cloud/storage";
 import { queueRun } from "../modules/sources/commands/sources.js";
 import type { AuthContext } from "../common/tenant.js";
+import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
+import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
+import { GOLDEN_COLLAB } from "@budget/db";
 
 /**
  * T-006 done-when: the golden seed runs through the real commands in under 60 s and
@@ -247,6 +250,41 @@ describe("pacing (T-018 seed rows)", () => {
     expect([...openedOn("CPA over target")]).toEqual([A.pacing.days[2]]);
     expect([...openedOn("Over-pace")]).toEqual([A.pacing.days[2]]);
     expect([...openedOn("CPA far over target")]).toEqual([A.pacing.days[0]]);
+  });
+});
+
+describe("threads and tags (T-019 seed rows)", () => {
+  const C = A.collab;
+  it("seeds the planned threads, comments and tags", async () => {
+    const threads = await owner.thread.findMany({ where: { workspaceId: golden.workspaceId }, include: { comments: true } });
+    expect({ open: threads.filter((t) => t.status === "open").length, resolved: threads.filter((t) => t.status === "resolved").length, blocking: threads.filter((t) => t.isBlocking && t.status === "open").length }).toEqual(C.threads);
+    expect(threads.reduce((n, t) => n + t.comments.length, 0)).toBe(C.comments);
+    const mentioned = threads.flatMap((t) => t.comments.flatMap((c) => c.mentions as Array<{ id: string }>)).map((m) => m.id);
+    expect(mentioned).toEqual([golden.users.budgetOwner]);
+    const tags = await owner.tag.findMany({ where: { workspaceId: golden.workspaceId } });
+    const counts = Object.fromEntries(await Promise.all(tags.map(async (t) => [t.name, await owner.taggable.count({ where: { tagId: t.id } })] as const)));
+    expect(counts).toEqual(C.tags);
+  });
+
+  it("the planner filters on them: tag and has_open_thread", async () => {
+    const names = async (filter: FilterGroupT) => (await rows({ filter })).length;
+    expect(await names({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: "q4-push" }] })).toBe(C.tags["q4-push"]);
+    expect(await names({ logic: "and", children: [{ field: { kind: "attr", key: "has_open_thread" }, op: "eq", value: true }] })).toBe(C.envelopesWithOpenThreads);
+  });
+
+  it("the golden blocking thread blocks a submit on its envelope", async () => {
+    const t = GOLDEN_COLLAB.threads.find((x) => x.isBlocking);
+    const envelopeId = golden.envelopeIds.get(t?.leafKey ?? "") as string;
+    const planner: AuthContext = {
+      ctx: { ...ctx(), userId: golden.users.planner },
+      user: { id: golden.users.planner, orgId: golden.orgId, email: "planner@golden.test", name: "Golden planner" },
+      isOrgAdmin: false,
+      roles: ["PLANNER"],
+      assignments: [{ role: "PLANNER", scope: {} }],
+    };
+    const head = await owner.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { currentVersionId: true } });
+    const draft = await createDraftVersion(app, planner, envelopeId, { amount: "1.00", basedOnVersionId: head.currentVersionId });
+    await expect(submitVersion(app, planner, envelopeId, { versionId: draft.id })).rejects.toMatchObject({ code: "CONFLICT", details: { blockingThreads: 1 } });
   });
 });
 
