@@ -1,6 +1,13 @@
 {
-  "compile5000P50Ms": 14.0,
-  "executePageP50Ms": 21.0,
-  "executeGroupP50Ms": 145.0,
-  "executeTotalsP50Ms": 110.0
+  "compileToCalibrationP50Ratio": 1.018,
+  "compile5000P50Ms": 11.08,
+  "calibration5000P50Ms": 10.89,
+  "recordedOn": {
+    "cpu": "Apple M2",
+    "node": "v22.23.3",
+    "date": "2026-09-24"
+  },
+  "executePageP50Ms": 21,
+  "executeGroupP50Ms": 145,
+  "executeTotalsP50Ms": 110
 }

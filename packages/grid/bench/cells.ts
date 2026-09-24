@@ -133,13 +133,16 @@ function roundMs(value: number): number {
   return Number(value.toFixed(3));
 }
 
+// Same 80-pass batch as the baseline; more batches only steady the median.
+const WINDOW_BATCHES = 31;
+
 function windowP50(read: (start: number) => number): number {
   let sink = 0;
   for (let n = 0; n < 40; n += 1) {
     sink += read(n * SPIKE_VISIBLE_ROWS);
   }
   const samples: number[] = [];
-  for (let batch = 0; batch < 15; batch += 1) {
+  for (let batch = 0; batch < WINDOW_BATCHES; batch += 1) {
     const start = performance.now();
     for (let n = 0; n < 80; n += 1) {
       const offset = ((batch * 80 + n) * SPIKE_VISIBLE_ROWS) % (SPIKE_ROW_COUNT - SPIKE_VISIBLE_ROWS);
@@ -174,15 +177,21 @@ function cellMedian(readRow: (index: number) => number): number {
   return median(samples);
 }
 
+const CPU_WARMUP_LOOPS = 2;
+const CPU_SAMPLE_LOOPS = 9;
+
 function cpuScale(): number {
   const samples: number[] = [];
   let sink = 0;
-  for (let sample = 0; sample < 5; sample += 1) {
+  // The first loops include JIT tier-up; discard them so the median is steady-state.
+  for (let sample = 0; sample < CPU_WARMUP_LOOPS + CPU_SAMPLE_LOOPS; sample += 1) {
     const start = performance.now();
     for (let n = 0; n < 4_000_000; n += 1) {
       sink = (sink + n) % 997;
     }
-    samples.push(performance.now() - start);
+    if (sample >= CPU_WARMUP_LOOPS) {
+      samples.push(performance.now() - start);
+    }
   }
   if (sink < 0) {
     throw new Error("cpu calibration did not run");

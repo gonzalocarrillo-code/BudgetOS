@@ -45,3 +45,12 @@ Both engines held 59.9 fps p50 while scrolling the visible viewport, which is on
 - `@glideapps/glide-data-grid` 6.0.3 declares a React peer of 16–18. This spike rendered it with React 19.2.4, which spec §2 requires. pnpm reports an unmet peer. The scroll bench still mounted `DataEditor`.
 - The 100,000-leaf database golden is T-034. This ADR does not claim that proof.
 - Plan epic 0.7 still says 60 fps at 100k envelopes on the golden dataset. T-026c's gate is 55 fps p50 on in-memory rows. This spike's 59.9 fps is the headless Chrome scroll of text cells, not that later gate.
+
+## Notes
+
+Added 2026-09-23 on `task/bench-macos`. The decision and the recorded numbers above are unchanged.
+
+- Chrome is resolved by `scripts/chrome-path.mjs`: `CHROME_PATH` first, then the macOS app bundle, then `google-chrome`, `google-chrome-stable`, `chromium` or `chromium-browser` on `PATH`. The timeline bench uses the same helper.
+- On an Apple Silicon Mac the grid-core bench failed its 10% check. The glide visible-window ratio was 0.4415 and the limit was 0.4144. The cause was contention, not the machine. turbo ran the grid, timeline and query-planner benches at the same time, and vitest ran `grid-core.bench.ts` beside `budget-grid.bench.ts`, so headless Chrome shared the CPU with the timed loops. The glide window sample was 3.0–4.6 ms when grid-core ran alone and 10.6 ms inside `pnpm bench`. `turbo.json` now runs grid, then timeline, then query-planner. The grid bench config sets `fileParallelism: false`.
+- `cpuScaleMs` now discards 2 warm-up loops and takes the median of the next 9. Before, it took the median of 5 with no warm-up. Across 5 runs on that Mac the old calibration moved between 16.4 and 24.3 ms. The new one moved between 16.7 and 17.0 ms. The visible-window statistic is still the p50 of 80-pass batches. It now takes 31 batches instead of 15. The 10% and 2× limits are unchanged.
+- The CPU-normalised ratios still depend on the machine. The calibration loop is integer arithmetic. The timed work allocates objects and reads strings. On the arm64 Mac, `cpuScaleMs` was higher than the Linux baseline, but the grid work ran faster. The glide window ratio came out near 0.28, against a limit of 0.414. A regression there would have to be close to 50% before the gate failed. The gate is only tight on hardware like the machine that recorded the baseline. To tighten it elsewhere, re-record `baseline.json` on the reference CI runner. Do not loosen the limits.
