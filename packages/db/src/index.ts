@@ -13,6 +13,19 @@ export type { Tx } from "./sql.js";
 export { eligibleApproverSql, lockApprovalRequest, lockParentCap } from "./approvals.js";
 export type { LockedRequestRow } from "./approvals.js";
 export { DEFAULT_POLICIES } from "../seed/defaults.policies.js";
+export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
+export {
+  GOLDEN_CUSTOM_DIMENSIONS,
+  GOLDEN_FY,
+  GOLDEN_ROUNDS,
+  GOLDEN_SEED,
+  GOLDEN_TEMPLATES,
+  GOLDEN_TREE,
+  computeTotals,
+  goldenPlan,
+  phase,
+} from "../seed/golden.plan.js";
+export type { GoldenTotals, PlannedEnvelope, PlannedVersion } from "../seed/golden.plan.js";
 export type { DefaultPolicySeed } from "../seed/defaults.policies.js";
 export { lockEnvelope } from "./envelopes.js";
 export type { LockedEnvelopeRow } from "./envelopes.js";

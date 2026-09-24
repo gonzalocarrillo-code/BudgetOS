@@ -35,7 +35,7 @@ function compilePredicate(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string 
     case "dimension":
       return compileDimension(p.field.key, p, b);
     case "measure":
-      return compileScalar(`m.${p.field.key}`, p, b);
+      return compileScalar(`m.${p.field.key}`, p, b, "numeric");
     case "target":
       return compileTarget(p, b);
     case "attr":
@@ -51,57 +51,64 @@ function list(p: Predicate): Array<string | number> {
 function compileDimension(key: string, p: Predicate, b: SqlBuilder): string {
   // Joined through envelope_dimension.dimension_id, so an org-wide dimension of another org with
   // the same key can never be picked (RLS lets every tenant read workspace_id IS NULL rows).
-  const base = `EXISTS (SELECT 1 FROM envelope_dimension ed JOIN dimension d ON d.id = ed.dimension_id JOIN dimension_value dv ON dv.id = ed.value_id WHERE ed.envelope_id = e.id AND d.key = ${b.p(key)}`;
+  const base = `EXISTS (SELECT 1 FROM envelope_dimension ed JOIN dimension d ON d.id = ed.dimension_id JOIN dimension_value dv ON dv.id = ed.value_id WHERE ed.envelope_id = e.id AND d.key = ${b.p(key)}::text`;
   switch (p.op) {
     case "eq":
-      return `${base} AND dv.code = ${b.p(p.value)})`;
+      return `${base} AND dv.code = ${b.p(String(p.value))}::text)`;
     case "neq":
-      return `NOT (${base} AND dv.code = ${b.p(p.value)}))`;
+      return `NOT (${base} AND dv.code = ${b.p(String(p.value))}::text))`;
     case "in":
       return `${base} AND dv.code = ANY(${b.p(list(p).map(String))}::text[]))`;
     case "nin":
       return `NOT (${base} AND dv.code = ANY(${b.p(list(p).map(String))}::text[])))`;
     case "contains":
-      return `${base} AND dv.label ILIKE ${b.p("%" + String(p.value) + "%")})`;
+      return `${base} AND dv.label ILIKE ${b.p("%" + String(p.value) + "%")}::text)`;
     case "starts_with":
-      return `${base} AND dv.label ILIKE ${b.p(String(p.value) + "%")})`;
+      return `${base} AND dv.label ILIKE ${b.p(String(p.value) + "%")}::text)`;
     case "is_empty":
       return `NOT (${base}))`;
     case "not_empty":
       return `${base})`;
     case "descends_from":
       // ancestor code → all values whose ltree path is under it
-      return `${base} AND dv.path <@ (SELECT x.path FROM dimension_value x WHERE x.dimension_id = dv.dimension_id AND x.code = ${b.p(p.value)}))`;
+      return `${base} AND dv.path <@ (SELECT x.path FROM dimension_value x WHERE x.dimension_id = dv.dimension_id AND x.code = ${b.p(String(p.value))}::text))`;
     default:
       throw invalid(`op ${p.op} not valid for dimension`, p);
   }
 }
 
-function compileScalar(col: string, p: Predicate, b: SqlBuilder): string {
+/**
+ * SQL type of a scalar's bound values. Explicit casts keep the SQL valid for drivers that bind
+ * strings as text (Prisma), not only for ones that leave parameters untyped (pg).
+ */
+type Cast = "numeric" | "text" | "date" | "timestamptz";
+
+function compileScalar(col: string, p: Predicate, b: SqlBuilder, cast: Cast): string {
+  const v = (x: unknown) => `${b.p(x)}::${cast}`;
   switch (p.op) {
     case "eq":
-      return `${col} = ${b.p(p.value)}`;
+      return `${col} = ${v(p.value)}`;
     case "neq":
-      return `${col} <> ${b.p(p.value)}`;
+      return `${col} <> ${v(p.value)}`;
     case "gt":
-      return `${col} > ${b.p(p.value)}`;
+      return `${col} > ${v(p.value)}`;
     case "gte":
-      return `${col} >= ${b.p(p.value)}`;
+      return `${col} >= ${v(p.value)}`;
     case "lt":
-      return `${col} < ${b.p(p.value)}`;
+      return `${col} < ${v(p.value)}`;
     case "lte":
-      return `${col} <= ${b.p(p.value)}`;
+      return `${col} <= ${v(p.value)}`;
     case "between": {
-      const v = list(p);
-      if (v.length !== 2) throw invalid("between needs [lo, hi]", p);
-      return `${col} BETWEEN ${b.p(v[0])} AND ${b.p(v[1])}`;
+      const vals = list(p);
+      if (vals.length !== 2) throw invalid("between needs [lo, hi]", p);
+      return `${col} BETWEEN ${v(vals[0])} AND ${v(vals[1])}`;
     }
     case "is_empty":
       return `${col} IS NULL`;
     case "not_empty":
       return `${col} IS NOT NULL`;
     case "in":
-      return `${col} = ANY(${b.p(list(p))})`;
+      return `${col} = ANY(${b.p(list(p).map((x) => (cast === "numeric" ? x : String(x))))}::${cast}[])`;
     default:
       throw invalid(`op ${p.op} not valid for scalar`, p);
   }
@@ -112,18 +119,18 @@ function compileTarget(p: Predicate, b: SqlBuilder): string {
   const metric = p.field.metric;
   // Built only where used: an unreferenced $n makes Postgres reject the statement.
   const t = () => `(SELECT tv.value FROM target t JOIN target_version tv ON tv.id = t.current_version_id
-              WHERE t.envelope_id = e.id AND t.metric_key = ${b.p(metric)} LIMIT 1)`;
+              WHERE t.envelope_id = e.id AND t.metric_key = ${b.p(metric)}::text LIMIT 1)`;
   switch (p.field.field) {
     case "exists":
       if (p.op === "is_empty") return `${t()} IS NULL`;
       if (p.op === "not_empty") return `${t()} IS NOT NULL`;
       throw invalid(`op ${p.op} not valid for target exists`, p);
     case "value":
-      return compileScalar(t(), p, b);
+      return compileScalar(t(), p, b, "numeric");
     case "actual":
-      return compileScalar(`m.kpi_${sanitize(metric)}`, p, b);
+      return compileScalar(`m.kpi_${sanitize(metric)}`, p, b, "numeric");
     case "vs_target_pct":
-      return compileScalar(`(m.kpi_${sanitize(metric)} / NULLIF(${t()},0))`, p, b);
+      return compileScalar(`(m.kpi_${sanitize(metric)} / NULLIF(${t()},0))`, p, b, "numeric");
   }
 }
 
@@ -131,18 +138,18 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
   if (p.field.kind !== "attr") throw new Error("unreachable");
   switch (p.field.key) {
     case "status":
-      return compileScalar(`e.status::text`, p, b);
+      return compileScalar(`e.status::text`, p, b, "text");
     case "owner_id":
-      return p.op === "eq" && p.value === "@me" ? `e.owner_id = app_user_id()` : compileScalar(`e.owner_id::text`, p, b);
+      return p.op === "eq" && p.value === "@me" ? `e.owner_id = app_user_id()` : compileScalar(`e.owner_id::text`, p, b, "text");
     case "currency":
-      return compileScalar(`e.currency`, p, b);
+      return compileScalar(`e.currency::text`, p, b, "text");
     case "name":
-      if (p.op === "contains") return `e.name ILIKE ${b.p("%" + String(p.value) + "%")}`;
-      if (p.op === "starts_with") return `e.name ILIKE ${b.p(String(p.value) + "%")}`;
-      return compileScalar("e.name", p, b);
+      if (p.op === "contains") return `e.name ILIKE ${b.p("%" + String(p.value) + "%")}::text`;
+      if (p.op === "starts_with") return `e.name ILIKE ${b.p(String(p.value) + "%")}::text`;
+      return compileScalar("e.name", p, b, "text");
     case "tag": {
       if (p.op !== "eq" && p.op !== "in") throw invalid(`op ${p.op} not valid for tag`, p);
-      const match = p.op === "in" ? `= ANY(${b.p(list(p).map(String))}::text[])` : `= ${b.p(p.value)}`;
+      const match = p.op === "in" ? `= ANY(${b.p(list(p).map(String))}::text[])` : `= ${b.p(String(p.value))}::text`;
       return `EXISTS (SELECT 1 FROM taggable tg JOIN tag t ON t.id = tg.tag_id WHERE tg.entity_type='envelope' AND tg.entity_id = e.id AND t.name ${match})`;
     }
     case "has_open_thread":
@@ -159,7 +166,7 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
                 AND r.entity_id IN (SELECT id FROM envelope_version WHERE envelope_id = e.id)
                 AND eligible_approver(r.id, ${p.value === "@me" ? "app_user_id()" : b.p(p.value) + "::uuid"}))`;
     case "alert_severity":
-      return `EXISTS (SELECT 1 FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED') AND ${compileScalar("a.severity", p, b)})`;
+      return `EXISTS (SELECT 1 FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED') AND ${compileScalar("a.severity", p, b, "text")})`;
     case "created_at":
     case "updated_at":
     case "start_date":
@@ -190,7 +197,7 @@ function compileDate(col: string, p: Predicate, b: SqlBuilder, ctx: CompileCtx):
     const hi = r.amount < 0 ? `${anchor}::date` : shifted;
     return `${col} BETWEEN ${lo} AND ${hi}`;
   }
-  return compileScalar(col, p, b);
+  return compileScalar(col, p, b, col.endsWith("_at") ? "timestamptz" : "date");
 }
 
 export const sanitize = (s: string) => s.replace(/[^a-z0-9_]/gi, "_").toLowerCase();
