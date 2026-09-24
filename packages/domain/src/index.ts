@@ -64,6 +64,20 @@ export {
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
 
+export {
+  ColumnMapping,
+  CreateSourceInput,
+  CreateUploadInput,
+  DimensionColumn,
+  IngestRequested,
+  MapUnmatchedInput,
+  RoleColumn,
+  SourceConfig,
+  SourceKind,
+  SourceMapping,
+  UpdateSourceInput,
+} from "./sources.js";
+
 export { newId } from "./ids.js";
 
 export { largestRemainder, rephase } from "./money.js";

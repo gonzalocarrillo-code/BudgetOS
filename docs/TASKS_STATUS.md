@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-026a, T-026b, and T-026c are done. T-016 is `blocked` on its cloud clause with the local gate green. Later tasks are `pending`.
+Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-026a, T-026b, and T-026c are done. T-016 and T-017 are `blocked` on their cloud clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -26,13 +26,13 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-009 | 7 | T-002, T-003, T-004 | done | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
 | T-010 | 8 | T-004, T-009 | done | 409 with `currentVersionId` | — |
 | T-011 | 8 | T-010 | done | epic 1.3 acceptance; cap trigger | — |
-| T-006 | 9 | T-005, T-010, T-011 | done | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, closures added by later tasks (targets: T-015) |
+| T-006 | 9 | T-005, T-010, T-011 | done | `pnpm db:seed` < 60 s; assertions file committed | threads, closures added by later tasks (targets: T-015, facts: T-017) |
 | T-012 | 10 | T-006, T-011 | done | replay over golden history matches assertions | — |
 | T-013 | 11 | T-010 | done | 10k rows < 10 s | — |
 | T-014 | 11 | T-010, T-011 | done | cap re-validation | — |
-| T-015 | 11 | T-007, T-010 | done | CPA roll-up = spend / conversions at every level | `POST /workspaces/:ws/targets/import` waits for the connectors (T-017); ADR-009 |
+| T-015 | 11 | T-007, T-010 | done | CPA roll-up = spend / conversions at every level | `POST /workspaces/:ws/targets/import` not built: the connectors exist (T-017), the pipeline has no `target` kind yet; ADR-009 |
 | T-016 | 12 | T-004 | blocked | duplicate delivery applies once — green (`apps/workers/src/outbox.test.ts`, ADR-010) | live Pub/Sub topic, Cloud Run services, push auth (GCP phase) |
-| T-017 | 12 | T-002, T-005, T-010 | pending | ≥ 99% match on golden CSV; rejected-rows report via the GCS emulator named in §22 | live Snowflake, Sheets, BigQuery (plan §16.4; no credentials in spec) |
+| T-017 | 12 | T-002, T-005, T-010 | blocked | ≥ 99% match on golden CSV (99.69%) and rejected-rows report in the GCS emulator — green (`seed/golden.test.ts`, `workers/src/ingest`, ADR-011) | live Snowflake, Sheets, BigQuery (plan §16.4; no credentials in spec); Secret Manager; `suggest-mapping` needs `OPENAI_API_KEY` |
 | T-018 | 12 | T-015, T-017 | pending | consecutive-days test; no duplicate open alerts | Cloud Scheduler 15 min trigger (GCP phase) |
 | T-019 | 12 | T-011 | pending | blocking thread blocks submit; mention notifies | — |
 | T-020 | 12 | T-016 | pending | index lag < 5 s on small golden; suggest API | p95 < 150 ms at 1M docs is the T-034 load job |

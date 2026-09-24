@@ -13,8 +13,14 @@
     "test": "vitest run --root . --config ../../vitest.config.mjs"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@budget/domain": "workspace:^",
+    "openai": "7.23.0",
+    "zod": "3.25.76"
   }
 }

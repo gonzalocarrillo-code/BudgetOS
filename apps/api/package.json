@@ -15,6 +15,7 @@
     "seed:golden": "tsx src/seed/golden.ts"
   },
   "devDependencies": {
+    "@google-cloud/storage": "8.2.0",
     "@types/node": "22.20.4",
     "eslint": "catalog:",
     "tsx": "4.20.6",
@@ -22,9 +23,11 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@budget/ai": "workspace:^",
     "@budget/db": "workspace:^",
     "@budget/domain": "workspace:^",
     "@budget/query-planner": "workspace:^",
+    "@budget/workers": "workspace:^",
     "@nestjs/common": "11.2.6",
     "@nestjs/core": "11.2.6",
     "@nestjs/platform-fastify": "11.2.6",

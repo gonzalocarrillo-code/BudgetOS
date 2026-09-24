@@ -593,12 +593,13 @@ model IngestRun {
   sourceId       String    @map("source_id") @db.Uuid
   startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz
   finishedAt     DateTime? @map("finished_at") @db.Timestamptz
-  status         String    @default("running") // running | ok | failed
+  status         String    @default("running") // queued | running | ok | failed
   rowsRead       Int       @default(0) @map("rows_read")
   rowsAccepted   Int       @default(0) @map("rows_accepted")
   rowsRejected   Int       @default(0) @map("rows_rejected")
   errorReportUri String?   @map("error_report_uri")
   formulaVersion String?   @map("formula_version")
+  summary        Json      @default("{}") // matchCoverage, matched / unmatched rows, reject reasons, error (spec §24.3)
 
   @@index([sourceId, startedAt])
   @@map("ingest_run")

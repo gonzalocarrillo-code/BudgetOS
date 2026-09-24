@@ -12,6 +12,8 @@ export { audit, bumpDataVersion, outbox } from "./sql.js";
 export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
+export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
+export type { FactLoad, KpiFactInput, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
 export { eligibleApproverSql, lockApprovalRequest, lockParentCap } from "./approvals.js";
@@ -26,6 +28,7 @@ export {
   GOLDEN_PENDING_BULK,
   GOLDEN_ROUNDS,
   GOLDEN_SEED,
+  GOLDEN_FACTS,
   GOLDEN_FILTER_TARGET,
   GOLDEN_SPLIT,
   GOLDEN_TARGET_POLICY,
@@ -33,11 +36,13 @@ export {
   GOLDEN_TREE,
   computeTotals,
   goldenPlan,
+  goldenFactRows,
+  goldenFactsCsv,
   goldenTargets,
   phase,
   splitAmounts,
 } from "../seed/golden.plan.js";
-export type { GoldenTotals, PlannedEnvelope, PlannedTarget, PlannedVersion } from "../seed/golden.plan.js";
+export type { GoldenFactRow, GoldenTotals, PlannedEnvelope, PlannedTarget, PlannedVersion } from "../seed/golden.plan.js";
 export type { DefaultPolicySeed } from "../seed/defaults.policies.js";
 export { actualsByEnvelope, archiveEnvelopes, auditMany, capInputs, closeBulkVersions, insertBulkChange, loadBulkChange, envelopePaths, insertBulkVersions, loadBulkHeads, lockEnvelopes, previousPeriodAmounts, setDraftPointers, supersedeDrafts } from "./bulk.js";
 export type { BulkChangeRow, BulkHeadRow, BulkVersionRow } from "./bulk.js";

@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenPlan, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { MemoryObjectStore, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -21,6 +22,7 @@ import { InMemoryAssetStore } from "../modules/registry/assets/asset-store.js";
 import { addValues } from "../modules/registry/commands/add-values.js";
 import { createDimension } from "../modules/registry/commands/create-dimension.js";
 import { saveHierarchyTemplate } from "../modules/registry/commands/save-hierarchy-template.js";
+import { createSource, queueRun } from "../modules/sources/commands/sources.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -49,6 +51,8 @@ export interface GoldenResult {
   workspaceId: string;
   users: Record<Persona, string>;
   envelopeIds: Map<string, string>;
+  /** T-017: the golden CSV source, its run, and the object store holding the upload and the rejected-rows report. */
+  ingest: { sourceId: string; runId: string; store: MemoryObjectStore } | null;
   created: boolean;
   elapsedMs: number;
 }
@@ -84,7 +88,7 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   const existing = await owner.workspace.findFirst({ where: { slug }, select: { id: true, orgId: true } });
   if (existing) {
     log(`golden: workspace '${slug}' already exists (${existing.id}); nothing to do. Use pnpm db:reset for a fresh one.`);
-    return { orgId: existing.orgId, workspaceId: existing.id, users: {} as Record<Persona, string>, envelopeIds: new Map(), created: false, elapsedMs: performance.now() - started };
+    return { orgId: existing.orgId, workspaceId: existing.id, users: {} as Record<Persona, string>, envelopeIds: new Map(), ingest: null, created: false, elapsedMs: performance.now() - started };
   }
 
   // ---- Bootstrap: no command creates orgs, workspaces or users yet (spec §27). ----
@@ -250,9 +254,19 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   } finally {
     clock.now = () => new Date();
   }
+
+  // ---- T-017: actuals through the real ingest pipeline (CSV connector, in-memory object store). ----
+  const objects = new MemoryObjectStore();
+  const uri = `gs://${uploadBucket()}/uploads/${workspaceId}/golden-2026.csv`;
+  await objects.write(uri, goldenFactsCsv(plan), "text/csv");
+  const source = await createSource(app, auth("admin"), { name: "Golden actuals (CSV)", config: { kind: "csv", uri }, mapping: GOLDEN_FACTS.mapping });
+  const { runId } = await queueRun(app, auth("admin"), source.id);
+  const run = await runIngest({ prisma: app, store: objects, reportBucket: uploadBucket() }, { workspaceId, orgId }, runId);
+  log(`golden: ${run.rowsRead} fact rows, ${run.rowsRejected} rejected, match coverage ${run.coverage.matchCoverage}`);
+
   const elapsedMs = performance.now() - started;
   log(`golden: ${plan.length} envelopes in ${(elapsedMs / 1000).toFixed(1)} s`);
-  return { orgId, workspaceId, users, envelopeIds: ids, created: true, elapsedMs };
+  return { orgId, workspaceId, users, envelopeIds: ids, ingest: { sourceId: source.id, runId, store: objects }, created: true, elapsedMs };
 }
 
 // ---- CLI: `pnpm db:seed [--size small|large]` ----

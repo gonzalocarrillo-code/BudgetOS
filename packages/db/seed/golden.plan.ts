@@ -8,7 +8,7 @@ import { Decimal } from "decimal.js";
  *
  * Scope (LOCAL_BUILD_PHASES phase 9): registry, envelope tree, approved versions, phasing. Facts,
  * threads, tags, pacing rules and closures are added by the tasks that build their commands;
- * targets arrived with T-015 (goldenTargets).
+ * targets arrived with T-015 (goldenTargets), facts with T-017 (goldenFactsCsv).
  */
 
 export const GOLDEN_SEED = 20260101;
@@ -97,6 +97,72 @@ export function goldenTargets(plan: PlannedEnvelope[], seed = GOLDEN_SEED): Plan
   const leaves = plan.filter((e) => e.level === 4 && e.key !== GOLDEN_SPLIT.sourceKey);
   const overrides = leaves.filter((_, i) => i % 2 === 0).map((e) => ({ envelopeKey: e.key, metricKey: "cpa" as const, value: cpa() }));
   return [...countries, ...overrides];
+}
+
+/**
+ * T-017's rows: a spend + KPI CSV loaded through the real ingest pipeline. Eight months of actuals
+ * (Jan–Aug 2026) for every live leaf except the split source, plus rows the pipeline must not match
+ * (a valid US tuple with no envelope) and rows it must reject, each with its reason.
+ */
+export const GOLDEN_FACTS = {
+  months: ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"],
+  header: ["REGION", "COUNTRY", "PLATFORM", "OBJECTIVE", "AUDIENCE", "MONTH", "SPEND_USD", "CONVERSIONS", "REVENUE"],
+  /** Registry-valid, but no envelope has this tuple: lands in the unmatched queue. */
+  unmatched: { region: "AMER", country: "US", platform: "Meta", objective: "awareness", audience: "prospecting", spend: "250.00" },
+  rejected: [
+    ["LATAM", "BR", "MySpace", "awareness", "prospecting", "2026-03", "10.00", "1", "20.00"],
+    ["EMEA", "DE", "Meta", "awareness", "prospecting", "2026-13", "10.00", "1", "20.00"],
+    ["EMEA", "FR", "TikTok", "conversion", "retargeting", "2026-04", "n/a", "1", "20.00"],
+  ],
+  mapping: {
+    kind: "spend+kpi",
+    columns: {
+      REGION: { dimension: "region" },
+      COUNTRY: { dimension: "country" },
+      PLATFORM: { dimension: "platform", transform: "lower", valueMap: { "google ads": "google_ads" } },
+      OBJECTIVE: { dimension: "objective" },
+      AUDIENCE: { dimension: "audience" },
+      MONTH: { role: "period_date", format: "yyyy-MM" },
+      SPEND_USD: { role: "amount", currency: "USD" },
+      CONVERSIONS: { role: "kpi", metric: "conversions" },
+      REVENUE: { role: "kpi", metric: "revenue" },
+    },
+  },
+} as const;
+
+const PLATFORM_LABEL: Record<string, string> = { meta: "Meta", google_ads: "Google Ads", tiktok: "TikTok", amazon: "Amazon" };
+
+export interface GoldenFactRow {
+  leafKey: string | null; // null for the unmatched and rejected rows
+  cells: string[];
+}
+
+/** The golden facts CSV rows in file order (header excluded). Same seed → same file. */
+export function goldenFactRows(plan: PlannedEnvelope[], seed = GOLDEN_SEED): GoldenFactRow[] {
+  const rand = prng(seed + 17);
+  const rows: GoldenFactRow[] = [];
+  for (const e of plan.filter((x) => x.level === 4 && x.key !== GOLDEN_SPLIT.sourceKey)) {
+    const cpa = new Decimal(Math.floor(rand() * 29) + 12); // 12 … 40
+    const roas = new Decimal(Math.floor(rand() * 31) + 20).div(10); // 2.0 … 5.0
+    const phasing = e.versions.find((v) => v.round === 3)?.phasing ?? [];
+    for (const month of GOLDEN_FACTS.months) {
+      const planned = new Decimal(phasing.find((p) => p.month === `${month}-01`)?.amount ?? 0);
+      const spend = planned.mul(new Decimal(Math.floor(rand() * 31) + 80).div(100)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); // 80 … 110 % of plan
+      const d = e.dimensionValues;
+      rows.push({
+        leafKey: e.key,
+        cells: [d["region"] ?? "", d["country"] ?? "", PLATFORM_LABEL[d["platform"] ?? ""] ?? "", d["objective"] ?? "", d["audience"] ?? "", month, spend.toFixed(2), spend.div(cpa).floor().toFixed(0), spend.mul(roas).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2)],
+      });
+    }
+  }
+  const u = GOLDEN_FACTS.unmatched;
+  for (const month of GOLDEN_FACTS.months) rows.push({ leafKey: null, cells: [u.region, u.country, u.platform, u.objective, u.audience, month, u.spend, "5", "500.00"] });
+  for (const r of GOLDEN_FACTS.rejected) rows.push({ leafKey: null, cells: [...r] });
+  return rows;
+}
+
+export function goldenFactsCsv(plan: PlannedEnvelope[]): string {
+  return `${[GOLDEN_FACTS.header.join(","), ...goldenFactRows(plan).map((r) => r.cells.join(","))].join("\n")}\n`;
 }
 
 export interface PlannedVersion {
@@ -236,6 +302,19 @@ export interface GoldenTotals {
    * target, else the country's, summed by region — what effective_target() resolves.
    */
   targets: { envelope: number; filter: number; leafOverrides: number; effectiveCpa: { leaves: number; byRegion: Record<string, string> }; filterRoasLeaves: number };
+  /** T-017: the golden facts CSV through the ingest pipeline (reporting currency). */
+  facts: {
+    rowsRead: number;
+    rowsRejected: number;
+    spendRows: number;
+    matchedSpendRows: number;
+    spend: string;
+    matchedSpend: string;
+    matchCoverage: string;
+    leafActualByRegion: Record<string, string>;
+    leafConversionsByRegion: Record<string, string>;
+    unmatchedTuples: number;
+  };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -297,6 +376,26 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
         leafOverrides: targets.filter((t) => t.envelopeKey.split("/").length === 5).length,
         effectiveCpa: { leaves: live.length, byRegion: sumBy(rows) },
         filterRoasLeaves: live.filter((l) => l.region === GOLDEN_FILTER_TARGET.region).length,
+      };
+    })(),
+    facts: (() => {
+      const rows = goldenFactRows(plan);
+      const matched = rows.filter((r) => r.leafKey !== null);
+      const valid = rows.length - GOLDEN_FACTS.rejected.length;
+      const sum = (rs: GoldenFactRow[], i: number) => rs.reduce((acc, r) => acc.plus(r.cells[i] ?? 0), new Decimal(0));
+      const spend = sum(rows.slice(0, valid), 6);
+      const matchedSpend = sum(matched, 6);
+      return {
+        rowsRead: rows.length,
+        rowsRejected: GOLDEN_FACTS.rejected.length,
+        spendRows: valid,
+        matchedSpendRows: matched.length,
+        spend: spend.toFixed(2),
+        matchedSpend: matchedSpend.toFixed(2),
+        matchCoverage: matchedSpend.div(spend).toDecimalPlaces(6).toString(),
+        leafActualByRegion: sumBy(matched.map((r) => ({ k: r.cells[0] ?? "", v: new Decimal(r.cells[6] ?? 0) }))),
+        leafConversionsByRegion: sumBy(matched.map((r) => ({ k: r.cells[0] ?? "", v: new Decimal(r.cells[7] ?? 0) }))),
+        unmatchedTuples: 1,
       };
     })(),
   };

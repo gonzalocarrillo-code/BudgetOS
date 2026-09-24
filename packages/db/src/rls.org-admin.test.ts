@@ -555,3 +555,17 @@ it("every other public table has RLS enabled and forced", async () => {
       AND NOT (c.relrowsecurity AND c.relforcerowsecurity)`;
   expect(rows.map((r) => r.relname).filter((t) => !withoutRls.has(t)).sort()).toEqual([]);
 });
+
+// Partitions have no policies of their own; only reads through the parent are filtered (migration
+// 20260924080000). A direct query on a partition must be refused, including partitions created later.
+it("budget_app holds no privileges on fact or audit partitions, old or new", async () => {
+  await owner.$executeRaw`SELECT ensure_fact_partitions('2031-01-01'::date, 0)`;
+  const rows = await owner.$queryRaw<Array<{ relname: string }>>`
+    SELECT c.relname FROM pg_class c JOIN pg_inherits i ON i.inhrelid = c.oid JOIN pg_class parent ON parent.oid = i.inhparent
+    WHERE parent.relname IN ('spend_fact', 'kpi_fact', 'projection_fact', 'audit_event')
+      AND (has_table_privilege('budget_app', c.oid, 'SELECT') OR has_table_privilege('budget_app', c.oid, 'INSERT')
+           OR has_table_privilege('budget_app', c.oid, 'UPDATE') OR has_table_privilege('budget_app', c.oid, 'DELETE'))`;
+  expect(rows.map((r) => r.relname)).toEqual([]);
+  const partitions = await owner.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_class WHERE relname = 'spend_fact_203101'`;
+  expect(Number(partitions[0]?.n)).toBe(1);
+});

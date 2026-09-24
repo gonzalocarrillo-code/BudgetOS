@@ -3671,6 +3671,998 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/sources": {
+      "get": {
+        "operationId": "listSources",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data sources (non-secret config and column mapping)"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSource",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "config": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "csv"
+                            ]
+                          },
+                          "uri": {
+                            "type": "string",
+                            "pattern": "^gs:\\/\\/[^/]+\\/.+\\.csv$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "uri"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "snowflake"
+                            ]
+                          },
+                          "account": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "username": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "warehouse": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "database": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "schema": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "view": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+                          },
+                          "secretRef": {
+                            "type": "string",
+                            "pattern": "^projects\\/[^/]+\\/secrets\\/[^/]+(\\/versions\\/[^/]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "account",
+                          "username",
+                          "warehouse",
+                          "database",
+                          "schema",
+                          "view",
+                          "secretRef"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sheets"
+                            ]
+                          },
+                          "spreadsheetId": {
+                            "type": "string",
+                            "minLength": 10
+                          },
+                          "range": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "secretRef": {
+                            "type": "string",
+                            "pattern": "^projects\\/[^/]+\\/secrets\\/[^/]+(\\/versions\\/[^/]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "spreadsheetId",
+                          "range"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "bigquery"
+                            ]
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "dataset": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_]+$"
+                          },
+                          "table": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_]+$"
+                          },
+                          "updatedAtColumn": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "secretRef": {
+                            "type": "string",
+                            "pattern": "^projects\\/[^/]+\\/secrets\\/[^/]+(\\/versions\\/[^/]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "projectId",
+                          "dataset",
+                          "table"
+                        ]
+                      }
+                    ]
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "columns": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dimension": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "transform": {
+                                  "type": "string",
+                                  "enum": [
+                                    "lower",
+                                    "upper",
+                                    "trim"
+                                  ]
+                                },
+                                "valueMap": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "required": [
+                                "dimension"
+                              ]
+                            },
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "period_date"
+                                      ]
+                                    },
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "yyyy-MM-dd",
+                                        "yyyy-MM",
+                                        "dd/MM/yyyy",
+                                        "MM/dd/yyyy"
+                                      ],
+                                      "default": "yyyy-MM-dd"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amount"
+                                      ]
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "currency"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "kpi"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                    },
+                                    "attributionModel": {
+                                      "type": "string",
+                                      "maxLength": 40
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "metric"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "projection"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                      "default": "spend"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "formula_version"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "horizon_end"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ignore"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "spend",
+                          "kpi",
+                          "spend+kpi",
+                          "projection"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "columns",
+                      "kind"
+                    ]
+                  },
+                  "schedule": {
+                    "type": "string",
+                    "pattern": "^(\\S+\\s){4}\\S+$"
+                  }
+                },
+                "required": [
+                  "name",
+                  "config",
+                  "mapping"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created source; a csv source must point at this workspace's uploads"
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}": {
+      "patch": {
+        "operationId": "updateSource",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "config": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "csv"
+                            ]
+                          },
+                          "uri": {
+                            "type": "string",
+                            "pattern": "^gs:\\/\\/[^/]+\\/.+\\.csv$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "uri"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "snowflake"
+                            ]
+                          },
+                          "account": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "username": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "warehouse": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "database": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "schema": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "view": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+                          },
+                          "secretRef": {
+                            "type": "string",
+                            "pattern": "^projects\\/[^/]+\\/secrets\\/[^/]+(\\/versions\\/[^/]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "account",
+                          "username",
+                          "warehouse",
+                          "database",
+                          "schema",
+                          "view",
+                          "secretRef"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sheets"
+                            ]
+                          },
+                          "spreadsheetId": {
+                            "type": "string",
+                            "minLength": 10
+                          },
+                          "range": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "secretRef": {
+                            "type": "string",
+                            "pattern": "^projects\\/[^/]+\\/secrets\\/[^/]+(\\/versions\\/[^/]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "spreadsheetId",
+                          "range"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "bigquery"
+                            ]
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "dataset": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_]+$"
+                          },
+                          "table": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_]+$"
+                          },
+                          "updatedAtColumn": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "secretRef": {
+                            "type": "string",
+                            "pattern": "^projects\\/[^/]+\\/secrets\\/[^/]+(\\/versions\\/[^/]+)?$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "projectId",
+                          "dataset",
+                          "table"
+                        ]
+                      }
+                    ]
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "columns": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dimension": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "transform": {
+                                  "type": "string",
+                                  "enum": [
+                                    "lower",
+                                    "upper",
+                                    "trim"
+                                  ]
+                                },
+                                "valueMap": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "required": [
+                                "dimension"
+                              ]
+                            },
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "period_date"
+                                      ]
+                                    },
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "yyyy-MM-dd",
+                                        "yyyy-MM",
+                                        "dd/MM/yyyy",
+                                        "MM/dd/yyyy"
+                                      ],
+                                      "default": "yyyy-MM-dd"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amount"
+                                      ]
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "currency"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "kpi"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                    },
+                                    "attributionModel": {
+                                      "type": "string",
+                                      "maxLength": 40
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "metric"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "projection"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                      "default": "spend"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "formula_version"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "horizon_end"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ignore"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "spend",
+                          "kpi",
+                          "spend+kpi",
+                          "projection"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "columns",
+                      "kind"
+                    ]
+                  },
+                  "schedule": {
+                    "type": "string",
+                    "pattern": "^(\\S+\\s){4}\\S+$",
+                    "nullable": true
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated source (the kind never changes)"
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/suggest-mapping": {
+      "post": {
+        "operationId": "suggestSourceMapping",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Suggested column mapping from @budget/ai (not applied); 503 without OPENAI_API_KEY"
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/run": {
+      "post": {
+        "operationId": "runSource",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running"
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/runs": {
+      "get": {
+        "operationId": "listSourceRuns",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs, newest first: counts, match coverage summary, rejected-rows report URI"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/unmatched-spend": {
+      "get": {
+        "operationId": "listUnmatchedSpend",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unmatched spend grouped by dimension tuple, largest first"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/unmatched-spend/map": {
+      "post": {
+        "operationId": "mapUnmatchedSpend",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dimensionValues": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "envelopeId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "dimensionValues",
+                  "envelopeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Facts assigned to the envelope, per fact table"
+          }
+        }
+      }
+    },
+    "/api/v1/uploads": {
+      "post": {
+        "operationId": "createUpload",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filename": {
+                    "type": "string",
+                    "pattern": "^[\\w.\\- ]{1,120}\\.csv$"
+                  }
+                },
+                "required": [
+                  "filename"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "gs:// URI and a URL to PUT the CSV to"
+          }
+        }
+      }
+    },
     "/api/v1/assets": {
       "post": {
         "operationId": "uploadIconAsset",

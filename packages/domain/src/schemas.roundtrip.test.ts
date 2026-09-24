@@ -222,6 +222,40 @@ const samples: Record<string, readonly unknown[]> = {
   SplitEnvelopeInput: [
     { basedOnVersionId: workspaceId, rationale: "by retailer", parts: [{ name: "A", amount: "1.00" }, { name: "B", amount: "2.00", dimensionValues: { retailer: "walmart" } }] },
   ],
+  DimensionColumn: [{ dimension: "country" }, { dimension: "objective", transform: "lower", valueMap: { brand: "brand", "non-brand": "non_brand" } }],
+  RoleColumn: [{ role: "period_date", format: "yyyy-MM-dd" }, { role: "amount", currency: "EUR" }, { role: "kpi", metric: "conversions", attributionModel: "7d_click" }, { role: "projection", metric: "spend" }, { role: "ignore" }],
+  ColumnMapping: [{ dimension: "platform", transform: "lower" }, { role: "currency" }],
+  SourceKind: ["spend+kpi", "projection"],
+  SourceMapping: [
+    {
+      kind: "spend+kpi",
+      columns: {
+        COUNTRY_CODE: { dimension: "country" },
+        PLATFORM: { dimension: "platform", transform: "lower" },
+        DATE: { role: "period_date", format: "yyyy-MM-dd" },
+        SPEND_EUR: { role: "amount", currency: "EUR" },
+        CONVERSIONS: { role: "kpi", metric: "conversions", attributionModel: "7d_click" },
+      },
+    },
+  ],
+  SourceConfig: [
+    { kind: "csv", uri: "gs://budget-os-uploads/uploads/01927a00-0000-7000-8000-0000000000a1/spend.csv" },
+    { kind: "snowflake", account: "acme-eu", username: "BUDGET_OS", warehouse: "WH", database: "MKT", schema: "PUBLIC", view: "SPEND_DAILY", secretRef: "projects/p/secrets/snowflake-key" },
+    { kind: "sheets", spreadsheetId: "1AbCdEfGhIjKlMnOp", range: "Spend!A1:H" },
+    { kind: "bigquery", projectId: "acme-data", dataset: "marketing", table: "spend_daily", updatedAtColumn: "updated_at" },
+  ],
+  CreateSourceInput: [
+    {
+      name: "Golden CSV",
+      config: { kind: "csv", uri: "gs://b/uploads/x/golden.csv" },
+      mapping: { kind: "spend", columns: { COUNTRY: { dimension: "country" }, DATE: { role: "period_date", format: "yyyy-MM" }, SPEND: { role: "amount", currency: "USD" } } },
+      schedule: "0 6 * * *",
+    },
+  ],
+  UpdateSourceInput: [{ name: "Renamed" }, { isActive: false, schedule: null }],
+  MapUnmatchedInput: [{ dimensionValues: { country: "BR", platform: "meta" }, envelopeId: workspaceId }],
+  CreateUploadInput: [{ filename: "spend 2026-Q1.csv" }],
+  IngestRequested: [{ runId: workspaceId, sourceId: workspaceId }],
   OutboxId: ["1", "9223372036854775807"],
   OutboxEventAttributes: [{ outboxId: "42", workspaceId, orgId: workspaceId, topic: "budget.changed" }],
   PubSubPush: [
@@ -300,6 +334,7 @@ it("maps domain errors to HTTP status", () => {
     "LOCKED",
     "POLICY_NOT_FOUND",
     "RATE_LIMITED",
+    "UNAVAILABLE",
   ]);
   const error = new DomainError("LOCKED", "period is closed", { periodId: workspaceId });
   expect(error).toBeInstanceOf(Error);

@@ -7,7 +7,8 @@ export type ErrorCode =
   | "CAP_EXCEEDED"
   | "LOCKED"
   | "POLICY_NOT_FOUND"
-  | "RATE_LIMITED";
+  | "RATE_LIMITED"
+  | "UNAVAILABLE";
 
 export class DomainError extends Error {
   constructor(
@@ -29,4 +30,5 @@ export const httpStatus: Record<ErrorCode, number> = {
   LOCKED: 423,
   POLICY_NOT_FOUND: 500,
   RATE_LIMITED: 429,
+  UNAVAILABLE: 503,
 };
