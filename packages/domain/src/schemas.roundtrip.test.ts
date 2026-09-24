@@ -222,6 +222,22 @@ const samples: Record<string, readonly unknown[]> = {
   SplitEnvelopeInput: [
     { basedOnVersionId: workspaceId, rationale: "by retailer", parts: [{ name: "A", amount: "1.00" }, { name: "B", amount: "2.00", dimensionValues: { retailer: "walmart" } }] },
   ],
+  TargetValue: ["18.25", "0.0125"],
+  TargetComparator: ["lte", "between"],
+  TargetScope: [
+    { type: "envelope", envelopeId: workspaceId },
+    { type: "filter", filter: { logic: "and", children: [{ field: { kind: "dimension", key: "country" }, op: "eq", value: "BR" }] } },
+  ],
+  CreateMetricInput: [
+    { key: "cpa", label: "CPA", numerator: "spend", denominator: "kpi:conversions", multiplier: "1", direction: "lower_is_better", format: "currency" },
+    { key: "cpm", label: "CPM", numerator: "spend", denominator: "kpi:impressions", multiplier: "1000", direction: "lower_is_better", format: "currency", unit: "USD" },
+  ],
+  CreateTargetInput: [
+    { scope: { type: "envelope", envelopeId: workspaceId }, metricKey: "cpa", value: "18.00", comparator: "lte" },
+    { scope: { type: "filter", filter: {} }, metricKey: "roas", startDate: "2026-01-01", endDate: "2026-12-31", value: "3", comparator: "between", valueUpper: "5", rationale: "FY" },
+  ],
+  CreateTargetDraftInput: [{ basedOnVersionId: workspaceId, value: "17.5", comparator: "lte" }, { basedOnVersionId: null, value: "1", comparator: "gte", rationale: "x" }],
+  ListTargetsQuery: [{}, { metric: "cpa", envelopeId: workspaceId, scopeType: "envelope" }],
   MergeEnvelopesInput: [{ sourceIds: [workspaceId, workspaceId], name: "Merged", dimensionValues: { country: "BR" }, rationale: "consolidate" }],
   AddValuesInput: [
     {

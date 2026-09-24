@@ -99,5 +99,18 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
         "amount": "4143.90"
       }
     ]
+  },
+  "targets": {
+    "envelope": 104,
+    "filter": 1,
+    "leafOverrides": 96,
+    "effectiveCpa": {
+      "leaves": 193,
+      "byRegion": {
+        "EMEA": "2312.00",
+        "LATAM": "2281.50"
+      }
+    },
+    "filterRoasLeaves": 96
   }
 };

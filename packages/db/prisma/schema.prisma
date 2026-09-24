@@ -314,6 +314,7 @@ model MetricDefinition {
   direction   String // lower_is_better | higher_is_better
   format      String // currency | number | percent | ratio
   unit        String?
+  multiplier  Decimal @default(1) @db.Decimal // applied after the division: cpm = spend / impressions × 1000
   isActive    Boolean @default(true) @map("is_active")
 
   @@unique([orgId, key])

@@ -7,7 +7,8 @@ import { Decimal } from "decimal.js";
  * holds the totals this plan implies. Same seed → same plan, byte for byte.
  *
  * Scope (LOCAL_BUILD_PHASES phase 9): registry, envelope tree, approved versions, phasing. Facts,
- * targets, threads, tags, pacing rules and closures are added by the tasks that build their commands.
+ * threads, tags, pacing rules and closures are added by the tasks that build their commands;
+ * targets arrived with T-015 (goldenTargets).
  */
 
 export const GOLDEN_SEED = 20260101;
@@ -73,6 +74,29 @@ export function splitAmounts(plan: PlannedEnvelope[]): Array<{ name: string; ret
     used = used.plus(amount);
     return { name: p.name, retailer: p.retailer, amount: amount.toFixed(2) };
   });
+}
+
+/**
+ * T-015's rows: a CPA target on every country envelope (leaves inherit it), an override on every
+ * other leaf in plan order (never the split source), and one filter-scoped ROAS target on EMEA. A
+ * workspace policy auto-approves target versions, so every target is current after the seed.
+ */
+export const GOLDEN_TARGET_POLICY = { name: "Targets auto-approve (golden)", priority: 0 } as const;
+export const GOLDEN_FILTER_TARGET = { metricKey: "roas", region: "EMEA", value: "3.5", comparator: "gte" } as const;
+
+export interface PlannedTarget {
+  envelopeKey: string;
+  metricKey: "cpa";
+  value: string; // NUMERIC(18,4) as a decimal string, USD
+}
+
+export function goldenTargets(plan: PlannedEnvelope[], seed = GOLDEN_SEED): PlannedTarget[] {
+  const rand = prng(seed + 15);
+  const cpa = () => new Decimal(Math.floor(rand() * 57) + 24).div(2).toFixed(2); // 12.00 … 40.00 in 0.50 steps
+  const countries = plan.filter((e) => e.level === 1).map((e) => ({ envelopeKey: e.key, metricKey: "cpa" as const, value: cpa() }));
+  const leaves = plan.filter((e) => e.level === 4 && e.key !== GOLDEN_SPLIT.sourceKey);
+  const overrides = leaves.filter((_, i) => i % 2 === 0).map((e) => ({ envelopeKey: e.key, metricKey: "cpa" as const, value: cpa() }));
+  return [...countries, ...overrides];
 }
 
 export interface PlannedVersion {
@@ -207,6 +231,11 @@ export interface GoldenTotals {
   pendingBulk: { rows: number; totalsBefore: string; totalsAfter: string };
   /** The split (GOLDEN_SPLIT): source, parts and their approved amounts. */
   split: { sourceKey: string; parts: Array<{ name: string; retailer: string; amount: string }> };
+  /**
+   * T-015 targets. `effectiveCpa` covers the live leaves (split parts in, archived source out): own
+   * target, else the country's, summed by region — what effective_target() resolves.
+   */
+  targets: { envelope: number; filter: number; leafOverrides: number; effectiveCpa: { leaves: number; byRegion: Record<string, string> }; filterRoasLeaves: number };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -253,5 +282,22 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       return { rows: rows.length, totalsBefore: before.toFixed(2), totalsAfter: after.toFixed(2) };
     })(),
     split: { sourceKey: GOLDEN_SPLIT.sourceKey, parts: splitAmounts(plan) },
+    targets: (() => {
+      const targets = goldenTargets(plan);
+      const own = new Map(targets.map((t) => [t.envelopeKey, t.value]));
+      const countryOf = (key: string) => key.split("/").slice(0, 2).join("/");
+      const live = [
+        ...leaves.filter((e) => e.key !== GOLDEN_SPLIT.sourceKey).map((e) => ({ key: e.key, region: e.dimensionValues["region"] as string })),
+        ...GOLDEN_SPLIT.parts.map(() => ({ key: `${GOLDEN_SPLIT.sourceKey}#part`, region: GOLDEN_SPLIT.sourceKey.split("/")[0] as string })),
+      ];
+      const rows = live.map((l) => ({ k: l.region, v: new Decimal(own.get(l.key) ?? own.get(countryOf(l.key)) ?? 0) }));
+      return {
+        envelope: targets.length,
+        filter: 1,
+        leafOverrides: targets.filter((t) => t.envelopeKey.split("/").length === 5).length,
+        effectiveCpa: { leaves: live.length, byRegion: sumBy(rows) },
+        filterRoasLeaves: live.filter((l) => l.region === GOLDEN_FILTER_TARGET.region).length,
+      };
+    })(),
   };
 }

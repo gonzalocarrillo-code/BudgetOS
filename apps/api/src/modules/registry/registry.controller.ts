@@ -5,6 +5,7 @@ import { RegistryService } from "./registry.service.js";
 import {
   AddValuesDto,
   CreateDimensionDto,
+  CreateMetricDto,
   MergeValuesDto,
   SaveHierarchyTemplateDto,
   UpdateDimensionDto,
@@ -76,6 +77,21 @@ export class RegistryController {
     const { roles } = auth;
     const ctx = orgAdminCtx(auth);
     return this.registry.saveTemplate(ctx, roles, body);
+  }
+
+  @Get("workspaces/:ws/metrics")
+  @Permission("workspace.member")
+  listMetrics(@Tenant() auth: AuthContext, @Param("ws") workspaceId: string) {
+    const ctx = orgAdminCtx(auth);
+    return this.registry.listMetrics(ctx, workspaceId);
+  }
+
+  @Post("workspaces/:ws/metrics")
+  @Permission("registry.manage")
+  createMetric(@Tenant() auth: AuthContext, @Param("ws") workspaceId: string, @Body() body: CreateMetricDto) {
+    const { roles } = auth;
+    const ctx = orgAdminCtx(auth);
+    return this.registry.createMetric(ctx, roles, body);
   }
 
   @Post("assets")

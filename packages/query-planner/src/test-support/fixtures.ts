@@ -22,6 +22,7 @@ export interface VersionSpec {
 
 export interface EnvelopeSpec {
   name: string;
+  parentId?: string | null;
   geo?: string | null;
   platform?: string | null;
   status: "DRAFT" | "PENDING" | "APPROVED";
@@ -120,8 +121,8 @@ export async function insertEnvelope(
   if (spec.geo) dims["geo"] = spec.geo;
   if (spec.platform) dims["platform"] = spec.platform;
   await owner.query(
-    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, owner_id, created_by, created_at, updated_at)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::"EnvelopeStatus", $9, $10, $11, $11)`,
+    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, owner_id, created_by, created_at, updated_at, parent_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::"EnvelopeStatus", $9, $10, $11, $11, $12)`,
     [
       id,
       workspaceId,
@@ -134,6 +135,7 @@ export async function insertEnvelope(
       spec.ownerId ?? null,
       org.users.u1,
       spec.createdAt ?? "2026-01-02T00:00:00Z",
+      spec.parentId ?? null,
     ],
   );
   for (const code of Object.values(dims)) {

@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AssetStore } from "../assets/asset-store.js";
 import { addValues } from "./add-values.js";
 import { createDimension } from "./create-dimension.js";
+import { seedDefaultMetrics } from "./metrics.js";
 import { saveHierarchyTemplate } from "./save-hierarchy-template.js";
 
 export async function seedDefaultRegistry(
@@ -62,4 +63,5 @@ export async function seedDefaultRegistry(
     path: [...DEFAULT_HIERARCHY.path],
     isDefault: DEFAULT_HIERARCHY.isDefault,
   });
+  await seedDefaultMetrics(prisma, ctx);
 }

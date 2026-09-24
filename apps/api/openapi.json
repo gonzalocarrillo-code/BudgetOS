@@ -3221,6 +3221,456 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/metrics": {
+      "get": {
+        "operationId": "listMetrics",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The org's metric library (numerator / denominator over facts, multiplier)"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMetric",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "numerator": {
+                    "type": "string",
+                    "pattern": "^(spend|budget|kpi:[a-z][a-z0-9_]{0,62})$"
+                  },
+                  "denominator": {
+                    "type": "string",
+                    "pattern": "^(spend|budget|kpi:[a-z][a-z0-9_]{0,62})$",
+                    "nullable": true,
+                    "default": null
+                  },
+                  "multiplier": {
+                    "type": "string",
+                    "pattern": "^\\d{1,12}(\\.\\d{1,6})?$",
+                    "default": "1"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "lower_is_better",
+                      "higher_is_better"
+                    ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "currency",
+                      "number",
+                      "percent",
+                      "ratio"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 20
+                  }
+                },
+                "required": [
+                  "key",
+                  "label",
+                  "numerator",
+                  "direction",
+                  "format"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created metric (org admin only)"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/targets": {
+      "get": {
+        "operationId": "listTargets",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "envelopeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "scopeType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "envelope",
+                "filter"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active targets with their current and draft versions"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTarget",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "envelope"
+                            ]
+                          },
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "envelopeId"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "filter"
+                            ]
+                          },
+                          "filter": {
+                            "oneOf": [
+                              {},
+                              {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "filter"
+                        ]
+                      }
+                    ]
+                  },
+                  "metricKey": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  },
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,14}(\\.\\d{1,4})?$"
+                  },
+                  "comparator": {
+                    "type": "string",
+                    "enum": [
+                      "lte",
+                      "gte",
+                      "eq",
+                      "between"
+                    ],
+                    "default": "lte"
+                  },
+                  "valueUpper": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,14}(\\.\\d{1,4})?$"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "scope",
+                  "metricKey",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created target with its v1 draft"
+          }
+        }
+      }
+    },
+    "/api/v1/targets/{id}/draft": {
+      "patch": {
+        "operationId": "createTargetDraft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,14}(\\.\\d{1,4})?$"
+                  },
+                  "comparator": {
+                    "type": "string",
+                    "enum": [
+                      "lte",
+                      "gte",
+                      "eq",
+                      "between"
+                    ],
+                    "default": "lte"
+                  },
+                  "valueUpper": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,14}(\\.\\d{1,4})?$"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "basedOnVersionId",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New draft version; 409 with currentVersionId when basedOnVersionId is stale"
+          }
+        }
+      }
+    },
+    "/api/v1/targets/{id}/submit": {
+      "post": {
+        "operationId": "submitTarget",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "versionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "versionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Approval request, or auto-approved by policy (entityType target_version)"
+          }
+        }
+      }
+    },
+    "/api/v1/targets/{id}/versions": {
+      "get": {
+        "operationId": "listTargetVersions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Target with every version, newest first"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/targets": {
+      "get": {
+        "operationId": "getEnvelopeTargets",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective target per metric (own, inherited or filter-scoped) with implied volume = budget / target"
+          }
+        }
+      }
+    },
     "/api/v1/assets": {
       "post": {
         "operationId": "uploadIconAsset",

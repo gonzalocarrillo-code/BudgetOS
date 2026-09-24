@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import { ASSET_STORE, type AssetStore } from "./assets/asset-store.js";
 import { addValues } from "./commands/add-values.js";
 import { createDimension } from "./commands/create-dimension.js";
+import { createMetric, listMetrics } from "./commands/metrics.js";
 import { mergeValues } from "./commands/merge-values.js";
 import { saveHierarchyTemplate } from "./commands/save-hierarchy-template.js";
 import { updateDimension } from "./commands/update-dimension.js";
@@ -61,6 +62,14 @@ export class RegistryService {
 
   saveTemplate(ctx: TenantContext, roles: Role[], body: unknown) {
     return saveHierarchyTemplate(this.prisma, ctx, roles, body);
+  }
+
+  listMetrics(ctx: TenantContext, workspaceId: string) {
+    return listMetrics(this.prisma, { ...ctx, workspaceId });
+  }
+
+  createMetric(ctx: TenantContext, roles: Role[], body: unknown) {
+    return createMetric(this.prisma, ctx, roles, body);
   }
 
   uploadAsset(ctx: TenantContext, roles: Role[], body: unknown) {
