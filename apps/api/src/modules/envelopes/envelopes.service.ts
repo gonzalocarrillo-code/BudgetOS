@@ -4,6 +4,8 @@ import type { AuthContext } from "../../common/tenant.js";
 import { createDraftVersion } from "./commands/create-draft-version.js";
 import { createEnvelope } from "./commands/create-envelope.js";
 import { restoreVersion } from "./commands/restore-version.js";
+import { submitVersion } from "./commands/submit-version.js";
+import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
 import { updateEnvelope } from "./commands/update-envelope.js";
 import { updatePhasing } from "./commands/update-phasing.js";
 import { getEnvelope, listVersions, versionDto } from "./queries/get-envelope.js";
@@ -32,6 +34,12 @@ export class EnvelopesService {
   async restore(auth: AuthContext, id: string, versionId: string, body: unknown) {
     const v = await restoreVersion(this.prisma, auth, id, versionId, body);
     return (await listVersions(this.prisma, auth, id)).find((x) => x.id === v.id);
+  }
+  submit(auth: AuthContext, id: string, body: unknown) {
+    return submitVersion(this.prisma, auth, id, body);
+  }
+  withdraw(auth: AuthContext, id: string, body: unknown) {
+    return withdrawEnvelope(this.prisma, auth, id, body);
   }
   async update(auth: AuthContext, id: string, body: unknown) {
     await updateEnvelope(this.prisma, auth, id, body);

@@ -707,6 +707,787 @@
         }
       }
     },
+    "/api/v1/envelopes/{id}/submit": {
+      "post": {
+        "operationId": "submitEnvelopeVersion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "versionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "versionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approval request created, or auto-approved by policy"
+          },
+          "409": {
+            "description": "Not the open draft, request already open, or blocking threads"
+          },
+          "500": {
+            "description": "POLICY_NOT_FOUND"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/withdraw": {
+      "post": {
+        "operationId": "withdrawEnvelopeRequest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Open request withdrawn"
+          }
+        }
+      }
+    },
+    "/api/v1/approvals": {
+      "get": {
+        "operationId": "listApprovals",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated RequestStatus; default PENDING,ESCALATED"
+          },
+          {
+            "name": "assignee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "me"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inbox page: { rows, nextCursor }"
+          }
+        }
+      }
+    },
+    "/api/v1/approvals/{id}": {
+      "get": {
+        "operationId": "getApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request with frozen policy, diff and decisions"
+          }
+        }
+      }
+    },
+    "/api/v1/approvals/{id}/decisions": {
+      "post": {
+        "operationId": "decideApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "reject",
+                      "request_changes"
+                    ]
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "app",
+                      "slack",
+                      "email"
+                    ],
+                    "default": "app"
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Request after the decision"
+          },
+          "403": {
+            "description": "Not an eligible approver for the current step"
+          },
+          "422": {
+            "description": "CAP_EXCEEDED on final approval"
+          }
+        }
+      }
+    },
+    "/api/v1/approvals/{id}/external-evidence": {
+      "post": {
+        "operationId": "recordExternalEvidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gcsUri": {
+                    "type": "string",
+                    "pattern": "^gs:\\/\\/[^/]+\\/.+"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "approverName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "approvedOn": {
+                    "type": "string"
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "gcsUri",
+                  "sha256",
+                  "approverName",
+                  "approvedOn"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evidence recorded; counts toward the step when the policy allows it"
+          }
+        }
+      }
+    },
+    "/api/v1/approvals/{id}/withdraw": {
+      "post": {
+        "operationId": "withdrawApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Request withdrawn"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/policies": {
+      "get": {
+        "operationId": "listPolicies",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval policies by priority"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPolicy",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": false,
+                    "maximum": 100000,
+                    "exclusiveMaximum": false
+                  },
+                  "conditions": {
+                    "type": "object",
+                    "properties": {
+                      "entityType": {
+                        "type": "string",
+                        "enum": [
+                          "envelope_version",
+                          "target_version",
+                          "bulk_change"
+                        ]
+                      },
+                      "amountAbs": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "number"
+                          },
+                          "lt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "deltaAbs": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "number"
+                          },
+                          "lt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "deltaPct": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "number"
+                          },
+                          "lt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "isOverAllocation": {
+                        "type": "boolean"
+                      },
+                      "level": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "integer"
+                          },
+                          "lte": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "dimension": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "daysRemaining": {
+                        "type": "object",
+                        "properties": {
+                          "lt": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "metricKey": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "any": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    }
+                  },
+                  "chain": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "PLANNER",
+                            "BUDGET_OWNER",
+                            "APPROVER",
+                            "FINANCE",
+                            "WORKSPACE_ADMIN"
+                          ]
+                        },
+                        "groupId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "minApprovals": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false,
+                          "default": 1
+                        },
+                        "timeoutHours": {
+                          "type": "integer",
+                          "default": 48
+                        },
+                        "escalateTo": {
+                          "type": "string",
+                          "enum": [
+                            "FINANCE",
+                            "WORKSPACE_ADMIN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "role"
+                      ]
+                    }
+                  },
+                  "allowExternalEvidence": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "blockSelfApproval": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "required": [
+                  "name",
+                  "priority",
+                  "conditions",
+                  "chain"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created policy"
+          }
+        }
+      }
+    },
+    "/api/v1/policies/{id}": {
+      "patch": {
+        "operationId": "updatePolicy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": false,
+                    "maximum": 100000,
+                    "exclusiveMaximum": false
+                  },
+                  "conditions": {
+                    "type": "object",
+                    "properties": {
+                      "entityType": {
+                        "type": "string",
+                        "enum": [
+                          "envelope_version",
+                          "target_version",
+                          "bulk_change"
+                        ]
+                      },
+                      "amountAbs": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "number"
+                          },
+                          "lt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "deltaAbs": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "number"
+                          },
+                          "lt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "deltaPct": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "number"
+                          },
+                          "lt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "isOverAllocation": {
+                        "type": "boolean"
+                      },
+                      "level": {
+                        "type": "object",
+                        "properties": {
+                          "gte": {
+                            "type": "integer"
+                          },
+                          "lte": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "dimension": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "daysRemaining": {
+                        "type": "object",
+                        "properties": {
+                          "lt": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "metricKey": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "any": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    }
+                  },
+                  "chain": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "PLANNER",
+                            "BUDGET_OWNER",
+                            "APPROVER",
+                            "FINANCE",
+                            "WORKSPACE_ADMIN"
+                          ]
+                        },
+                        "groupId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "minApprovals": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false,
+                          "default": 1
+                        },
+                        "timeoutHours": {
+                          "type": "integer",
+                          "default": 48
+                        },
+                        "escalateTo": {
+                          "type": "string",
+                          "enum": [
+                            "FINANCE",
+                            "WORKSPACE_ADMIN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "role"
+                      ]
+                    }
+                  },
+                  "allowExternalEvidence": {
+                    "type": "boolean"
+                  },
+                  "blockSelfApproval": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated policy (version + 1)"
+          },
+          "409": {
+            "description": "Stale version"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{ws}/groups/sync": {
       "post": {
         "operationId": "syncGroups",

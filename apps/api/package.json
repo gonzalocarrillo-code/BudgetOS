@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root . --config ../../vitest.config.mjs",
-    "test:acceptance": "vitest run --root . --config ../../vitest.config.mjs src/modules/registry/epic-0.4.acceptance.test.ts"
+    "test:acceptance": "vitest run --root . --config ../../vitest.config.mjs src/modules/registry/epic-0.4.acceptance.test.ts src/modules/approvals/epic-1.3.acceptance.test.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.4",
