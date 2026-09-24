@@ -17,6 +17,7 @@ export const PeriodSpec = z.discriminatedUnion("kind", [
     ]),
   }),
 ]);
+export type PeriodSpec = z.infer<typeof PeriodSpec>;
 export const Grain = z.enum(["total", "day", "week", "month", "quarter"]);
 
 export const QueryRequest = z.object({

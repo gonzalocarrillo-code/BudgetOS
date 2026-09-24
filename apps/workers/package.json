@@ -21,6 +21,7 @@
   "dependencies": {
     "@budget/db": "workspace:^",
     "@budget/domain": "workspace:^",
+    "@budget/query-planner": "workspace:^",
     "@google-cloud/bigquery": "9.1.0",
     "@google-cloud/pubsub": "6.1.0",
     "@google-cloud/storage": "8.2.0",

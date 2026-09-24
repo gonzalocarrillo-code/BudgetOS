@@ -118,17 +118,32 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "rowsRejected": 3,
     "spendRows": 1536,
     "matchedSpendRows": 1528,
-    "spend": "648406.32",
-    "matchedSpend": "646406.32",
-    "matchCoverage": "0.996916",
+    "spend": "655984.46",
+    "matchedSpend": "653984.46",
+    "matchCoverage": "0.996951",
     "leafActualByRegion": {
-      "EMEA": "319728.64",
-      "LATAM": "326677.68"
+      "EMEA": "322976.22",
+      "LATAM": "331008.24"
     },
     "leafConversionsByRegion": {
-      "EMEA": "13851.00",
-      "LATAM": "14289.00"
+      "EMEA": "13965.00",
+      "LATAM": "14491.00"
     },
     "unmatchedTuples": 1
+  },
+  "pacing": {
+    "days": [
+      "2026-08-13",
+      "2026-08-14",
+      "2026-08-15"
+    ],
+    "openAlertsByRule": {
+      "Over-pace": 8,
+      "Projected overrun": 0,
+      "Projected underspend near close": 0,
+      "CPA over target": 102,
+      "CPA far over target": 83,
+      "Implied volume gap": 0
+    }
   }
 };

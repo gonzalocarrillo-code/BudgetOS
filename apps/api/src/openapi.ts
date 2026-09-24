@@ -32,6 +32,9 @@ import {
   UpdateSourceInput,
   MapUnmatchedInput,
   CreateUploadInput,
+  CreateRuleInput,
+  UpdateRuleInput,
+  UpdateAlertInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -247,6 +250,44 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/uploads": {
         post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },
+      },
+      "/api/v1/workspaces/{ws}/pacing": {
+        get: {
+          operationId: "getPacing",
+          parameters: [
+            workspaceParam,
+            { name: "filter", in: "query", required: false, schema: { type: "string" }, description: "FilterGroup as JSON" },
+            { name: "period", in: "query", required: false, schema: { type: "string" }, description: "Preset name (current_year, current_quarter, …) or a PeriodSpec as JSON; default current_year" },
+            { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 1000 } },
+          ],
+          responses: { "200": { description: "Pace measures per envelope, CPA vs target, open alerts, totals" } },
+        },
+      },
+      "/api/v1/workspaces/{ws}/rules": {
+        get: { operationId: "listRules", parameters: [workspaceParam], responses: { "200": { description: "Pacing rules" } } },
+        post: { operationId: "createRule", parameters: [workspaceParam], requestBody: json(CreateRuleInput), responses: { "201": { description: "Created rule (workspace-wide rule.manage role)" } } },
+      },
+      "/api/v1/rules/{id}": {
+        patch: { operationId: "updateRule", parameters: [idParam, workspaceHeader], requestBody: json(UpdateRuleInput), responses: { "200": { description: "Updated rule" } } },
+      },
+      "/api/v1/alerts": {
+        get: {
+          operationId: "listAlerts",
+          parameters: [
+            workspaceHeader,
+            { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated OPEN, ACKNOWLEDGED, SNOOZED, RESOLVED; default the open ones" },
+            { name: "severity", in: "query", required: false, schema: { type: "string", enum: ["info", "warning", "critical", "data"] } },
+            { name: "ruleId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+            { name: "envelopeId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+            { name: "filter", in: "query", required: false, schema: { type: "string" }, description: "FilterGroup as JSON" },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 500 } },
+          ],
+          responses: { "200": { description: "Alerts, newest first, within the caller's scope" } },
+        },
+      },
+      "/api/v1/alerts/{id}": {
+        patch: { operationId: "updateAlert", parameters: [idParam, workspaceHeader], requestBody: json(UpdateAlertInput), responses: { "200": { description: "Updated alert; 409 once resolved" } } },
       },
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },

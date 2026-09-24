@@ -12,6 +12,10 @@ export { audit, bumpDataVersion, outbox } from "./sql.js";
 export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
+export { openAlert, saveRuleStates } from "./alerts.js";
+export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
+export { currentFilterTargets, metricLibrary, plannerOptions } from "./planner-options.js";
+export type { CurrentFilterTarget } from "./planner-options.js";
 export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 export type { FactLoad, KpiFactInput, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
@@ -20,6 +24,8 @@ export { eligibleApproverSql, lockApprovalRequest, lockParentCap } from "./appro
 export type { LockedRequestRow } from "./approvals.js";
 export { DEFAULT_POLICIES } from "../seed/defaults.policies.js";
 export { DEFAULT_METRICS } from "../seed/defaults.metrics.js";
+export { DEFAULT_RULES } from "../seed/defaults.rules.js";
+export type { DefaultRuleSeed } from "../seed/defaults.rules.js";
 export type { DefaultMetricSeed } from "../seed/defaults.metrics.js";
 export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
 export {
@@ -30,6 +36,7 @@ export {
   GOLDEN_SEED,
   GOLDEN_FACTS,
   GOLDEN_FILTER_TARGET,
+  GOLDEN_PACING,
   GOLDEN_SPLIT,
   GOLDEN_TARGET_POLICY,
   GOLDEN_TEMPLATES,

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@budget/domain": "workspace:^",
+    "@budget/query-planner": "workspace:^",
     "@prisma/client": "6.19.3",
     "decimal.js": "10.6.0"
   },
