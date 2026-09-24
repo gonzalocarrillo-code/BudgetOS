@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Licence gate (AGENTS.md §3/§4): every production dependency of every
 // workspace package, direct or transitive, must carry an allowlisted licence.
-// Exits non-zero on a disallowed licence, an unparseable report, or a report
+// A package outside the allowlist passes only if scripts/license-exceptions.json
+// names its exact name, version and licence (ADR-004). Exits non-zero on a
+// disallowed licence, a stale exception, an unparseable report, or a report
 // that is empty or misses a declared dependency.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -49,12 +51,20 @@ try {
   fail(`could not parse \`pnpm licenses list\` output:\n${raw.trim()}`);
 }
 
+const exceptions = JSON.parse(readFileSync(join(root, 'scripts/license-exceptions.json'), 'utf8'));
+const exceptionKey = (name, version, license) => `${name}@${version} ${license}`;
+const unused = new Map(exceptions.map((e) => [exceptionKey(e.package, e.version, e.license), e]));
+
 const found = new Set();
 const violations = [];
 for (const [license, pkgs] of Object.entries(report)) {
   for (const pkg of pkgs) {
     found.add(pkg.name);
-    if (!isAllowed(license)) violations.push(`  ${pkg.name}@${pkg.versions.join(',')}  ${license}`);
+    if (isAllowed(license)) continue;
+    for (const version of pkg.versions) {
+      const key = exceptionKey(pkg.name, version, license);
+      if (!unused.delete(key)) violations.push(`  ${key}`);
+    }
   }
 }
 
@@ -63,7 +73,10 @@ const missing = [...declared].filter((name) => !found.has(name));
 if (missing.length > 0) fail(`declared dependencies missing from the licence report: ${missing.join(', ')}`);
 
 if (violations.length > 0) {
-  fail(`${violations.length} production dependencies outside ${[...ALLOW].join(';')}:\n${violations.sort().join('\n')}\nRun \`pnpm -r why <name> --prod\` to find the importer.`);
+  fail(`${violations.length} production dependencies outside ${[...ALLOW].join(';')} and not in scripts/license-exceptions.json:\n${violations.sort().join('\n')}\nRun \`pnpm -r why <name> --prod\` to find the importer.`);
+}
+if (unused.size > 0) {
+  fail(`stale entries in scripts/license-exceptions.json (not in the production tree; remove or re-review):\n${[...unused.keys()].map((k) => `  ${k}`).join('\n')}`);
 }
 
-process.stdout.write(`license-check: ${found.size} production dependencies, all allowlisted\n`);
+process.stdout.write(`license-check: ${found.size} production dependencies, all allowlisted (${exceptions.length} reviewed exceptions)\n`);

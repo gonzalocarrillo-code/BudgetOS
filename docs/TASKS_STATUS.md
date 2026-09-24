@@ -134,7 +134,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 ## License-check fix (no task id; ADR-004)
 
 - Until this change, `pnpm license-check` checked no packages and exited 0. The "`pnpm license-check` green" results recorded for T-026a, T-026b and T-026c therefore did not check anything.
-- The gate now checks every workspace package's production tree, including transitive dependencies. It is red because six transitive dependencies are outside the allowlist: MIT-0, Python-2.0, CC-BY-4.0 and BlueOak-1.0.0. ADR-004 lists them and leaves the fix open.
+- The gate now checks every workspace package's production tree, including transitive dependencies. Six transitive packages with permissive licences outside the allowlist (MIT-0, Python-2.0, CC-BY-4.0, BlueOak-1.0.0) pass as exact-version entries in `scripts/license-exceptions.json`. Any other disallowed licence, and any stale entry, fails the gate.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

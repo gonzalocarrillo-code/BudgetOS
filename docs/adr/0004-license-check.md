@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Accepted.
 
 ## Context
 
@@ -18,10 +18,13 @@ Pointing the same tool at each package with `--start` is not enough. It reads `n
 - applies the spec §2 allowlist unchanged (`MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;Unlicense`), where an SPDX `OR` passes if one branch passes and an `AND` passes only if every term does;
 - exits non-zero on any disallowed licence, on output it cannot parse, on an empty report, or when a declared non-workspace dependency of `apps/*` or `packages/*` is missing from the report.
 
+A package outside the allowlist passes only when `scripts/license-exceptions.json` has an entry for its exact name, version and licence string, with `via` (the importer) and `reason`. An entry that matches nothing in the production tree fails the check as stale. A version bump or licence change therefore needs a fresh review, and the list cannot silently outlive its packages.
+
 `license-checker-rseidelsohn` is removed from the root devDependencies, because nothing uses it any more.
 
 ## Consequences
 
-- With the gate working, it fails on the current tree. Six transitive dependencies carry permissive licences that are not on the allowlist: `@csstools/color-helpers` and `@csstools/css-syntax-patches-for-csstree` (MIT-0, via jsdom), `argparse` (Python-2.0, via @nestjs/swagger and nestjs-zod), `caniuse-lite` (CC-BY-4.0, via Glide Data Grid), `lru-cache` (BlueOak-1.0.0, via jsdom and Glide) and `sax` (BlueOak-1.0.0, via svgo). Earlier "`pnpm license-check` green" results in `docs/TASKS_STATUS.md` were not real.
-- Still open: whether to widen the allowlist, to add a reviewed per-package exception list, or to replace the dependencies that pull these in. Nobody has decided that yet. Until someone does, the gate stays red.
+- The first run of the working gate found six transitive dependencies with permissive licences that are not on the allowlist. They are now reviewed exceptions: `@csstools/color-helpers` 6.1.1 and `@csstools/css-syntax-patches-for-csstree` 1.1.14 (MIT-0, via jsdom), `argparse` 2.0.1 (Python-2.0, via @nestjs/swagger and nestjs-zod), `caniuse-lite` 1.0.30001810 (CC-BY-4.0, via Glide Data Grid), `lru-cache` 11.5.3 (BlueOak-1.0.0, via jsdom and Glide) and `sax` 1.6.1 (BlueOak-1.0.0, via svgo). The allowlist itself is unchanged.
+- Earlier "`pnpm license-check` green" results in `docs/TASKS_STATUS.md` were not real.
+- A lockfile update that bumps an excepted package, for example `caniuse-lite`, turns the gate red until someone reviews the new version and updates its entry.
 - Spec §2's dependency table and script line are now out of date. The spec should point to this ADR.
