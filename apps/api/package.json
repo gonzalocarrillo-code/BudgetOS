@@ -15,7 +15,6 @@
     "seed:golden": "tsx src/seed/golden.ts"
   },
   "devDependencies": {
-    "@budget/query-planner": "workspace:^",
     "@types/node": "22.20.4",
     "eslint": "catalog:",
     "tsx": "4.20.6",
@@ -25,11 +24,13 @@
   "dependencies": {
     "@budget/db": "workspace:^",
     "@budget/domain": "workspace:^",
+    "@budget/query-planner": "workspace:^",
     "@nestjs/common": "11.2.6",
     "@nestjs/core": "11.2.6",
     "@nestjs/platform-fastify": "11.2.6",
     "@nestjs/swagger": "11.4.7",
     "@prisma/client": "6.19.3",
+    "@redis/client": "6.2.1",
     "decimal.js": "10.6.0",
     "dompurify": "3.4.16",
     "jose": "6.2.12",

@@ -1,4 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { commitBulk } from "./bulk/commit.js";
+import { exportCsv, importCsv } from "./bulk/csv-roundtrip.js";
+import { buildPreview } from "./bulk/preview.js";
+import { PREVIEW_STORE, type PreviewStore } from "./bulk/preview-store.js";
 import { PrismaClient } from "@prisma/client";
 import type { AuthContext } from "../../common/tenant.js";
 import { createDraftVersion } from "./commands/create-draft-version.js";
@@ -13,7 +17,23 @@ import { getTimeline, type TimelineParams } from "./queries/timeline.js";
 
 @Injectable()
 export class EnvelopesService {
-  constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PrismaClient) private readonly prisma: PrismaClient,
+    @Inject(PREVIEW_STORE) private readonly previews: PreviewStore,
+  ) {}
+
+  bulkPreview(auth: AuthContext, body: unknown) {
+    return buildPreview(this.prisma, auth, body, this.previews);
+  }
+  bulkCommit(auth: AuthContext, previewId: string) {
+    return commitBulk(this.prisma, auth, previewId, this.previews);
+  }
+  csvExport(auth: AuthContext, body: unknown) {
+    return exportCsv(this.prisma, auth, body);
+  }
+  csvImport(auth: AuthContext, body: unknown) {
+    return importCsv(this.prisma, auth, body, this.previews);
+  }
 
   create(auth: AuthContext, body: unknown) {
     return createEnvelope(this.prisma, auth, body).then((e) => getEnvelope(this.prisma, auth, e.id));

@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Res } from "@nestjs/common";
 import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { BulkRequestDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -68,5 +68,33 @@ export class EnvelopesController {
   @Permission("envelope.submit")
   withdraw(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: WithdrawDto) {
     return this.envelopes.withdraw(auth, id, body);
+  }
+
+  /** Bulk edit (spec §7.4): preview first; nothing changes until commit. */
+  @Post("envelopes/bulk")
+  @Permission("envelope.bulk")
+  bulkPreview(@Tenant() auth: AuthContext, @Body() body: BulkRequestDto) {
+    return this.envelopes.bulkPreview(auth, body);
+  }
+
+  @Post("envelopes/bulk/:previewId/commit")
+  @Permission("envelope.bulk")
+  bulkCommit(@Tenant() auth: AuthContext, @Param("previewId") previewId: string) {
+    return this.envelopes.bulkCommit(auth, previewId);
+  }
+
+  @Post("workspaces/:ws/envelopes/csv-export")
+  @Permission("export.run")
+  async csvExport(@Tenant() auth: AuthContext, @Body() body: CsvExportDto, @Res({ passthrough: true }) reply: { header(name: string, value: string): unknown }) {
+    const csv = await this.envelopes.csvExport(auth, body);
+    // Set only on success: a CSV content type on an error would break the JSON error body.
+    reply.header("content-type", "text/csv; charset=utf-8");
+    return csv;
+  }
+
+  @Post("workspaces/:ws/envelopes/csv-import")
+  @Permission("envelope.bulk")
+  csvImport(@Tenant() auth: AuthContext, @Body() body: CsvImportDto) {
+    return this.envelopes.csvImport(auth, body);
   }
 }

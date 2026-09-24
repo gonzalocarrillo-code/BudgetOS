@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FilterGroup } from "./filter-ast.js";
 
 /** NUMERIC(18,2): up to 16 integer digits and 2 decimals, as a decimal string (never a JS number). */
 export const MoneyString = z.string().regex(/^-?\d{1,16}(\.\d{1,2})?$/, "Money is a decimal string with at most 2 decimals");
@@ -64,3 +65,76 @@ export const UpdateEnvelopeInput = z
   })
   .strict();
 export type UpdateEnvelopeInput = z.infer<typeof UpdateEnvelopeInput>;
+
+// ---------------------------------------------------------------------------------------------
+// Bulk edit (spec §7.4, plan §9.3)
+// ---------------------------------------------------------------------------------------------
+
+export const BULK_MAX_ROWS = 10_000;
+
+export const BulkOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("set"), amount: MoneyString }),
+  z.object({ op: z.literal("add"), amount: MoneyString }), // negative allowed
+  z.object({ op: z.literal("pct"), pct: z.number().min(-100).max(10_000) }), // +15 => ×1.15
+  z.object({
+    op: z.literal("redistribute"),
+    parentId: z.string().uuid(),
+    method: z.enum(["proportional", "even", "by_last_actuals", "by_weights"]),
+    weights: z.record(z.string().uuid(), z.number().min(0)).optional(),
+    total: MoneyString.optional(),
+  }),
+  z.object({ op: z.literal("copy_previous_period"), factor: z.number().min(0).max(100).default(1) }),
+  z.object({ op: z.literal("scale_to_total"), total: MoneyString }),
+  z.object({ op: z.literal("paste"), rows: z.array(z.object({ envelopeId: z.string().uuid(), amount: MoneyString })).min(1).max(BULK_MAX_ROWS) }),
+]);
+export type BulkOperation = z.infer<typeof BulkOperation>;
+
+export const BulkRequest = z.object({
+  workspaceId: z.string().uuid(),
+  selection: z.union([z.object({ envelopeIds: z.array(z.string().uuid()).min(1).max(BULK_MAX_ROWS) }), z.object({ filter: FilterGroup })]),
+  operation: BulkOperation,
+  rationale: z.string().min(3).max(4000),
+});
+export type BulkRequest = z.infer<typeof BulkRequest>;
+
+export const BulkPreview = z.object({
+  previewId: z.string().uuid(),
+  rows: z.array(
+    z.object({
+      envelopeId: z.string().uuid(),
+      path: z.array(z.string()),
+      before: z.string().nullable(),
+      after: z.string(),
+      delta: z.string(),
+    }),
+  ),
+  totalsBefore: z.string(),
+  totalsAfter: z.string(),
+  capViolations: z.array(z.object({ parentId: z.string().uuid(), parentAmount: z.string(), childrenAfter: z.string() })),
+  policyPreview: z.object({ name: z.string(), chain: z.array(z.string()) }).nullable(),
+  /** Rows the operation could not produce (e.g. no previous period), with the reason. Not committed. */
+  skipped: z.array(z.object({ envelopeId: z.string().uuid(), reason: z.string() })).default([]),
+  expiresAt: z.string().datetime(),
+});
+export type BulkPreview = z.infer<typeof BulkPreview>;
+
+/** POST …/envelopes/csv-import: a CSV (header row: envelope_id, amount; other columns ignored) becomes a paste preview. */
+export const CsvImportReport = z.object({
+  rowsRead: z.number().int(),
+  errors: z.array(z.object({ line: z.number().int(), message: z.string() })),
+  preview: BulkPreview.nullable(),
+});
+export type CsvImportReport = z.infer<typeof CsvImportReport>;
+
+/** POST /workspaces/:ws/envelopes/csv-export: the selection to write out for editing. */
+export const CsvExportInput = z.object({
+  selection: z.union([z.object({ envelopeIds: z.array(z.string().uuid()).min(1).max(BULK_MAX_ROWS) }), z.object({ filter: FilterGroup })]),
+});
+export type CsvExportInput = z.infer<typeof CsvExportInput>;
+
+/** POST /workspaces/:ws/envelopes/csv-import: the edited CSV back; columns mapped by header. */
+export const CsvImportInput = z.object({
+  csv: z.string().min(1).max(5_000_000),
+  rationale: z.string().min(3).max(4000),
+});
+export type CsvImportInput = z.infer<typeof CsvImportInput>;

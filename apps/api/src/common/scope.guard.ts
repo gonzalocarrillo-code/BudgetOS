@@ -43,3 +43,23 @@ export async function scopeTargetForValues(tx: Tx, rows: Array<{ dimensionId: st
   }
   return { dims, ancestors };
 }
+
+/** Scope targets for many envelopes with three queries in total (bulk edit over up to 10k rows). */
+export async function envelopeScopeTargets(tx: Tx, envelopeIds: string[]): Promise<Map<string, ScopeTarget>> {
+  const rows = await tx.envelopeDimension.findMany({ where: { envelopeId: { in: envelopeIds } }, select: { envelopeId: true, dimensionId: true, valueId: true } });
+  const dimensionIds = [...new Set(rows.map((r) => r.dimensionId))];
+  const keys = new Map((await tx.dimension.findMany({ where: { id: { in: dimensionIds } }, select: { id: true, key: true } })).map((d) => [d.id, d.key]));
+  const byId = new Map((await dimensionValuePaths(tx, dimensionIds)).map((p) => [p.id, p]));
+  const out = new Map<string, ScopeTarget>(envelopeIds.map((id) => [id, { dims: {}, ancestors: {} }]));
+  for (const r of rows) {
+    const key = keys.get(r.dimensionId);
+    const value = byId.get(r.valueId);
+    const t = out.get(r.envelopeId);
+    if (key === undefined || value === undefined || t === undefined) continue;
+    t.dims[key] = value.code;
+    const chain: string[] = [];
+    for (let v: typeof value | undefined = value; v !== undefined; v = v.parentValueId ? byId.get(v.parentValueId) : undefined) chain.unshift(v.code);
+    (t.ancestors as Record<string, string[]>)[key] = chain;
+  }
+  return out;
+}

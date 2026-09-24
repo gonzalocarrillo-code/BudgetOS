@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FY, GOLDEN_ROUNDS, GOLDEN_TEMPLATES, goldenPlan, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_TEMPLATES, goldenPlan, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -13,6 +13,9 @@ import { PolicySnapshot } from "../modules/approvals/engine.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
+import { commitBulk } from "../modules/envelopes/bulk/commit.js";
+import { buildPreview } from "../modules/envelopes/bulk/preview.js";
+import { MemoryPreviewStore } from "../modules/envelopes/bulk/preview-store.js";
 import { InMemoryAssetStore } from "../modules/registry/assets/asset-store.js";
 import { addValues } from "../modules/registry/commands/add-values.js";
 import { createDimension } from "../modules/registry/commands/create-dimension.js";
@@ -194,6 +197,15 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
       });
       log(`golden: round ${round.round} approved`);
     }
+    // T-013: one bulk change through preview + commit, left pending approval (not counted as budget).
+    const bulk = GOLDEN_PENDING_BULK;
+    const bulkIds = plan
+      .filter((e) => e.level === 4 && e.dimensionValues["region"] === bulk.region && e.dimensionValues["platform"] === bulk.platform)
+      .map((e) => ids.get(e.key) as string);
+    const previews = new MemoryPreviewStore();
+    const preview = await buildPreview(app, auth("planner"), { workspaceId, selection: { envelopeIds: bulkIds }, operation: { op: "pct", pct: bulk.pct }, rationale: bulk.rationale }, previews);
+    await commitBulk(app, auth("planner"), preview.previewId, previews);
+    log(`golden: bulk change pending (${bulkIds.length} rows)`);
   } finally {
     clock.now = () => new Date();
   }

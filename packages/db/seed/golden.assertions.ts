@@ -79,5 +79,10 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "Q2": "257624.82",
     "Q3": "257624.82",
     "Q4": "334924.73"
+  },
+  "pendingBulk": {
+    "rows": 24,
+    "totalsBefore": "137599.59",
+    "totalsAfter": "144479.57"
   }
 };
