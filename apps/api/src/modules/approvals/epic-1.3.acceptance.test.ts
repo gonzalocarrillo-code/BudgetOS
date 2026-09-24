@@ -251,7 +251,7 @@ describe("overdue requests escalate", () => {
     await decide(s.requestId!, users.budgetOwner); // now at the approver step (escalateTo FINANCE)
     await owner.approvalRequest.update({ where: { id: s.requestId! }, data: { dueAt: new Date(Date.now() - 3_600_000) } });
 
-    const out = await escalateOverdue(appDb);
+    const out = await escalateOverdue(appDb, [orgId]);
     expect(out.escalated).toContain(s.requestId);
     const r = (await as(users.planner, "GET", `/api/v1/approvals/${s.requestId}`)).body as { status: string; currentStep: number; policySnapshot: { chain: Array<{ role: string; escalatedFrom?: number }> } };
     expect(r.status).toBe("ESCALATED");
@@ -260,7 +260,7 @@ describe("overdue requests escalate", () => {
     expect(r.currentStep).toBe(2);
     expect(await inbox(users.finance1)).toContain(s.requestId);
     expect(await inbox(users.approver)).not.toContain(s.requestId);
-    expect((await escalateOverdue(appDb)).escalated).not.toContain(s.requestId); // escalates once
+    expect((await escalateOverdue(appDb, [orgId])).escalated).not.toContain(s.requestId); // escalates once
     expect((await decide(s.requestId!, users.finance1)).status).toBe(201);
     expect((await envelope(e.id)).status).toBe("APPROVED");
   });
@@ -269,7 +269,7 @@ describe("overdue requests escalate", () => {
     const e = await newEnvelope("9000.00");
     const s = await submit(e.id, e.draft); // step 0: BUDGET_OWNER, no escalateTo
     await owner.approvalRequest.update({ where: { id: s.requestId! }, data: { dueAt: new Date(Date.now() - 3_600_000) } });
-    expect((await escalateOverdue(appDb)).escalated).not.toContain(s.requestId);
+    expect((await escalateOverdue(appDb, [orgId])).escalated).not.toContain(s.requestId);
   });
 });
 
