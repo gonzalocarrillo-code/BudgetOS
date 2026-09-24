@@ -5,6 +5,8 @@ Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
 Repo on 2026-09-23: T-001 through T-005, T-007, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
+Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
+
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
 
