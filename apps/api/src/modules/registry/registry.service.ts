@@ -16,7 +16,7 @@ import { listDimensions, listHierarchyTemplates } from "./queries/list-registry.
 @Injectable()
 export class RegistryService {
   constructor(
-    private readonly prisma: PrismaClient,
+    @Inject(PrismaClient) private readonly prisma: PrismaClient,
     @Inject(ASSET_STORE) private readonly assets: AssetStore,
   ) {}
 

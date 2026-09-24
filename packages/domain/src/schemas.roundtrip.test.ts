@@ -139,6 +139,27 @@ const samples: Record<string, readonly unknown[]> = {
     },
   ],
   UpdateDimensionInput: [{ label: "Retailers" }, { isActive: false, color: null }],
+  RoleEnum: ["VIEWER", "WORKSPACE_ADMIN", "ORG_ADMIN"],
+  ScopeFilter: [
+    {},
+    {
+      logic: "and",
+      children: [
+        { field: { kind: "dimension", key: "region" }, op: "descends_from", value: "latam" },
+        { logic: "or", not: true, children: [{ field: { kind: "dimension", key: "platform" }, op: "in", value: ["meta", "google"] }] },
+      ],
+    },
+  ],
+  AssignRoleInput: [
+    { principalType: "user", principalId: workspaceId, role: "PLANNER" },
+    {
+      principalType: "group",
+      principalId: workspaceId,
+      role: "BUDGET_OWNER",
+      scope: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "br" }] },
+    },
+  ],
+  GroupsSyncInput: [{ groups: [{ googleGroup: "latam-media-leads@example.com", name: "LATAM media leads", members: ["a@example.com"] }] }],
   AddValuesInput: [
     {
       values: [
@@ -185,6 +206,7 @@ it("round-trips every zod schema", () => {
 it("maps domain errors to HTTP status", () => {
   const codes = Object.keys(httpStatus) as ErrorCode[];
   expect(codes).toEqual([
+    "UNAUTHENTICATED",
     "NOT_FOUND",
     "FORBIDDEN",
     "CONFLICT",

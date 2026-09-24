@@ -16,8 +16,10 @@ export type { FilterGroupT } from "./filter-ast.js";
 
 export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow } from "./query.js";
 
-export { can, permissions } from "./permissions.js";
-export type { Action, Role } from "./permissions.js";
+export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope, permissions } from "./permissions.js";
+export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
+
+export { AssignRoleInput, GroupsSyncInput } from "./access.js";
 
 export { ChainStep, PolicyConditions } from "./approvals.js";
 
