@@ -1,6 +1,9 @@
 import {
   AddValuesInput,
   AssignRoleInput,
+  BulkRequest,
+  CsvExportInput,
+  CsvImportInput,
   CreatePolicyInput,
   DecideInput,
   ExternalEvidenceInput,
@@ -90,6 +93,22 @@ export function openApiDocument(): Record<string, unknown> {
           requestBody: json(RestoreVersionInput),
           responses: { "200": { description: "New draft version copied from the given version" } },
         },
+      },
+      "/api/v1/envelopes/bulk": {
+        post: { operationId: "previewBulkEdit", parameters: [workspaceHeader], requestBody: json(BulkRequest), responses: { "200": { description: "BulkPreview: before/after/delta per row, totals, cap violations, policy preview; kept 30 min" } } },
+      },
+      "/api/v1/envelopes/bulk/{previewId}/commit": {
+        post: {
+          operationId: "commitBulkEdit",
+          parameters: [{ name: "previewId", in: "path", required: true, schema: { type: "string", format: "uuid" } }, workspaceHeader],
+          responses: { "200": { description: "One draft per row, one bulk_change, one approval request (or auto-approved)" }, "409": { description: "Rows changed since the preview" }, "404": { description: "Preview expired" } },
+        },
+      },
+      "/api/v1/workspaces/{ws}/envelopes/csv-export": {
+        post: { operationId: "exportEnvelopesCsv", parameters: [workspaceParam], requestBody: json(CsvExportInput), responses: { "200": { description: "text/csv: envelope_id, path, currency, approved_amount, amount" } } },
+      },
+      "/api/v1/workspaces/{ws}/envelopes/csv-import": {
+        post: { operationId: "importEnvelopesCsv", parameters: [workspaceParam], requestBody: json(CsvImportInput), responses: { "200": { description: "CsvImportReport: line errors plus a paste preview of the valid rows" } } },
       },
       "/api/v1/envelopes/{id}/submit": {
         post: { operationId: "submitEnvelopeVersion", parameters: [idParam, workspaceHeader], requestBody: json(SubmitVersionInput), responses: { "200": { description: "Approval request created, or auto-approved by policy" }, "409": { description: "Not the open draft, request already open, or blocking threads" }, "500": { description: "POLICY_NOT_FOUND" } } },

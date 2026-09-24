@@ -191,6 +191,33 @@ const samples: Record<string, readonly unknown[]> = {
     { name: "Auto", priority: 1, conditions: { deltaPct: { lt: 0.02 } }, chain: [], allowExternalEvidence: true },
   ],
   UpdatePolicyInput: [{ version: 1, priority: 5 }, { version: 2, isActive: false, chain: [{ role: "FINANCE", minApprovals: 2 }] }],
+  BulkOperation: [
+    { op: "set", amount: "100.00" },
+    { op: "add", amount: "-50" },
+    { op: "pct", pct: 15 },
+    { op: "redistribute", parentId: workspaceId, method: "by_weights", weights: { [workspaceId]: 2 }, total: "1000" },
+    { op: "copy_previous_period" },
+    { op: "scale_to_total", total: "5000.00" },
+    { op: "paste", rows: [{ envelopeId: workspaceId, amount: "12.34" }] },
+  ],
+  BulkRequest: [
+    { workspaceId, selection: { envelopeIds: [workspaceId] }, operation: { op: "pct", pct: -5 }, rationale: "Q4 cut" },
+    { workspaceId, selection: { filter: { logic: "and", children: [] } }, operation: { op: "set", amount: "1" }, rationale: "reset" },
+  ],
+  BulkPreview: [
+    {
+      previewId: workspaceId,
+      rows: [{ envelopeId: workspaceId, path: ["LATAM", "BR"], before: "100.00", after: "115.00", delta: "15.00" }],
+      totalsBefore: "100.00",
+      totalsAfter: "115.00",
+      capViolations: [],
+      policyPreview: { name: "Standard", chain: ["BUDGET_OWNER", "APPROVER"] },
+      expiresAt: "2026-10-01T00:30:00.000Z",
+    },
+  ],
+  CsvExportInput: [{ selection: { envelopeIds: [workspaceId] } }, { selection: { filter: { logic: "and", children: [] } } }],
+  CsvImportInput: [{ csv: "envelope_id,amount\n", rationale: "edited in Sheets" }],
+  CsvImportReport: [{ rowsRead: 2, errors: [{ line: 3, message: "bad amount" }], preview: null }],
   AddValuesInput: [
     {
       values: [

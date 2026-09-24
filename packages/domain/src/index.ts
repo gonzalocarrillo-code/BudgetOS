@@ -22,7 +22,14 @@ export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
 export { AssignRoleInput, GroupsSyncInput } from "./access.js";
 
 export {
+  BULK_MAX_ROWS,
+  BulkOperation,
+  BulkPreview,
+  BulkRequest,
   CreateDraftVersionInput,
+  CsvExportInput,
+  CsvImportInput,
+  CsvImportReport,
   CreateEnvelopeInput,
   MoneyString,
   PhasingEntry,

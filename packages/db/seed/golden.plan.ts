@@ -41,6 +41,12 @@ export const GOLDEN_TEMPLATES = [
   { name: "Channel first", path: ["channel", "platform", "objective", "audience"] },
 ] as const;
 
+/**
+ * T-013's rows: after round 3, a bulk +5% on every EMEA × amazon leaf, committed and left pending
+ * approval. Pending drafts never count as budget, so every approved total above is unchanged.
+ */
+export const GOLDEN_PENDING_BULK = { region: "EMEA", platform: "amazon", pct: 5, rationale: "Q4 retail push (bulk, pending approval)" } as const;
+
 export interface PlannedVersion {
   round: 1 | 2 | 3;
   amount: string; // NUMERIC(18,2), USD (the golden workspace reports in USD)
@@ -169,6 +175,8 @@ export interface GoldenTotals {
   parentBudget: { byRegion: Record<string, string> };
   /** Current leaf phasing summed by quarter. */
   leafPhasingByQuarter: Record<"Q1" | "Q2" | "Q3" | "Q4", string>;
+  /** The pending bulk change (GOLDEN_PENDING_BULK): rows and before/after totals (USD). */
+  pendingBulk: { rows: number; totalsBefore: string; totalsAfter: string };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -200,5 +208,13 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
     leafBudgetCurrent: { byCountry: current("country"), byPlatform: current("platform"), byObjective: current("objective") },
     parentBudget: { byRegion: sumBy(parents.filter((p) => p.level === 0).map((p) => ({ k: p.dimensionValues["region"] as string, v: at(p, 1) }))) },
     leafPhasingByQuarter: phasing as GoldenTotals["leafPhasingByQuarter"],
+    pendingBulk: (() => {
+      const b = GOLDEN_PENDING_BULK;
+      const rows = leaves.filter((e) => e.dimensionValues["region"] === b.region && e.dimensionValues["platform"] === b.platform);
+      const before = rows.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0));
+      // Same rounding as the bulk `pct` operation: per row, to the cent, half up.
+      const after = rows.reduce((s, e) => s.plus(at(e, 3).mul(100 + b.pct).div(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)), new Decimal(0));
+      return { rows: rows.length, totalsBefore: before.toFixed(2), totalsAfter: after.toFixed(2) };
+    })(),
   };
 }

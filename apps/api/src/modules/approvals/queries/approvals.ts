@@ -2,9 +2,9 @@ import { DomainError, canInScope, eligibleApprover, type Role } from "@budget/do
 import { eligibleApproverSql, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
-import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
+import { assertInScope, envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { PolicySnapshot } from "../engine.js";
+import { PolicySnapshot, requestTargets } from "../engine.js";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CHANGES_REQUESTED", "WITHDRAWN", "ESCALATED"] as const;
 type Status = (typeof STATUSES)[number];
@@ -56,28 +56,34 @@ export async function listApprovals(prisma: PrismaClient, auth: AuthContext, que
       if (batch.length === 0) break;
       for (const r of batch) {
         after = { at: r.requestedAt, id: r.id };
-        const version = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { envelopeId: true, createdBy: true, amount: true, versionNo: true } });
-        if (version === null) continue;
-        const target = await envelopeScopeTarget(tx, version.envelopeId);
+        if (r.entityType !== "envelope_version" && r.entityType !== "bulk_change") continue;
+        const targets = await requestTargets(tx, r).catch(() => null);
+        if (targets === null || targets.versions.length === 0) continue;
+        const scopes = [...(await envelopeScopeTargets(tx, [...new Set(targets.versions.map((v) => v.envelopeId))])).values()];
         if (q.mine) {
           const snapshot = PolicySnapshot.safeParse(r.policySnapshot);
           const step = snapshot.success ? snapshot.data.chain[r.currentStep] : undefined;
           if (step === undefined || !snapshot.success) continue;
           const ok =
             (await eligibleApproverSql(tx, r.id, auth.user.id)) &&
-            eligibleApprover({ assignments: auth.assignments, stepRole: step.role as Role, target, userId: auth.user.id, authorId: version.createdBy, blockSelfApproval: snapshot.data.blockSelfApproval });
+            scopes.every((target) =>
+              eligibleApprover({ assignments: auth.assignments, stepRole: step.role as Role, target, userId: auth.user.id, authorId: targets.authorId, blockSelfApproval: snapshot.data.blockSelfApproval }),
+            );
           if (!ok) continue;
-        } else if (!auth.isOrgAdmin && !canInScope(auth.assignments, "envelope.read", target)) {
+        } else if (!auth.isOrgAdmin && !scopes.every((target) => canInScope(auth.assignments, "envelope.read", target))) {
           continue;
         }
+        const single = r.entityType === "envelope_version" ? await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { versionNo: true, amount: true } }) : null;
         out.push({
           id: r.id,
+          entityType: r.entityType,
           status: r.status,
           summary: r.summary,
-          envelopeId: version.envelopeId,
-          versionId: r.entityId,
-          versionNo: version.versionNo,
-          amount: version.amount.toFixed(2),
+          envelopeId: r.entityType === "envelope_version" ? (targets.versions[0]?.envelopeId ?? null) : null,
+          versionId: r.entityType === "envelope_version" ? r.entityId : null,
+          versionNo: single?.versionNo ?? null,
+          amount: single?.amount.toFixed(2) ?? null,
+          rows: targets.versions.length,
           currentStep: r.currentStep,
           policyId: r.policyId,
           policyVersion: r.policyVersion,
@@ -101,11 +107,28 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
   return withTenant(prisma, auth.ctx, async (tx) => {
     const r = await tx.approvalRequest.findUnique({ where: { id }, include: { decisions: { orderBy: { decidedAt: "asc" } } } });
     if (r === null) throw new DomainError("NOT_FOUND", "Request not found");
-    const version = await tx.envelopeVersion.findUniqueOrThrow({ where: { id: r.entityId }, include: { envelope: true } });
-    assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, version.envelopeId));
-    const current = version.envelope.currentVersionId ? await tx.envelopeVersion.findUnique({ where: { id: version.envelope.currentVersionId } }) : null;
+    const targets = await requestTargets(tx, r);
+    const envelopeIds = [...new Set(targets.versions.map((v) => v.envelopeId))];
+    for (const t of (await envelopeScopeTargets(tx, envelopeIds)).values()) assertInScope(auth, "envelope.read", t);
+    const versions = await tx.envelopeVersion.findMany({ where: { id: { in: targets.versions.map((v) => v.id) } }, include: { envelope: true } });
+    const currentIds = versions.map((v) => v.envelope.currentVersionId).filter((x): x is string => x !== null);
+    const currents = new Map((await tx.envelopeVersion.findMany({ where: { id: { in: currentIds } }, select: { id: true, amountReporting: true } })).map((c) => [c.id, c]));
+    const rows = versions.map((v) => ({
+      envelopeId: v.envelopeId,
+      envelopeName: v.envelope.name,
+      versionId: v.id,
+      versionNo: v.versionNo,
+      status: v.status,
+      amount: v.amount.toFixed(2),
+      amountReporting: v.amountReporting.toFixed(2),
+      approvedAmountReporting: v.envelope.currentVersionId ? (currents.get(v.envelope.currentVersionId)?.amountReporting.toFixed(2) ?? null) : null,
+      rationale: v.rationale,
+    }));
+    const first = versions[0];
     return {
       id: r.id,
+      entityType: r.entityType,
+      entityId: r.entityId,
       status: r.status,
       summary: r.summary,
       currentStep: r.currentStep,
@@ -116,15 +139,9 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
       requestedAt: r.requestedAt.toISOString(),
       dueAt: r.dueAt?.toISOString() ?? null,
       resolvedAt: r.resolvedAt?.toISOString() ?? null,
-      envelope: { id: version.envelope.id, name: version.envelope.name, currency: version.envelope.currency, dimensionValues: version.envelope.dimensionValues },
-      diff: {
-        versionId: version.id,
-        versionNo: version.versionNo,
-        amount: version.amount.toFixed(2),
-        amountReporting: version.amountReporting.toFixed(2),
-        approvedAmountReporting: current?.amountReporting.toFixed(2) ?? null,
-        rationale: version.rationale,
-      },
+      envelope: r.entityType === "envelope_version" && first ? { id: first.envelope.id, name: first.envelope.name, currency: first.envelope.currency, dimensionValues: first.envelope.dimensionValues } : null,
+      diff: r.entityType === "envelope_version" && rows[0] ? { ...rows[0] } : null,
+      rows,
       decisions: r.decisions.map((d) => ({
         id: d.id,
         stepIndex: d.stepIndex,

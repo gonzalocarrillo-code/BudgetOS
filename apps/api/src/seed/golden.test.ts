@@ -98,7 +98,9 @@ describe("pnpm db:seed (T-006 done-when)", () => {
     expect(await owner.envelope.count({ where: { workspaceId: ws, parentId: null } })).toBe(2);
     const approved = await owner.envelopeVersion.count({ where: { envelope: { workspaceId: ws }, approvedAt: { not: null } } });
     expect(approved).toBe(A.approvedVersions);
-    expect(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "APPROVED" } } })).toBe(0);
+    // Everything is approved except the envelopes of the pending bulk change (T-013).
+    expect(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "APPROVED" } } })).toBe(A.pendingBulk.rows);
+    expect(await owner.envelope.count({ where: { workspaceId: ws, status: "PENDING" } })).toBe(A.pendingBulk.rows);
     const audits = await owner.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(
       `SELECT action, count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid GROUP BY action`,
       ws,
@@ -131,6 +133,26 @@ describe("pnpm db:seed (T-006 done-when)", () => {
     expect(dims.find((d) => d.key === "market_tier")?.icon).toMatch(/^asset:/);
     const templates = await owner.hierarchyTemplate.findMany({ where: { workspaceId: golden.workspaceId }, select: { name: true } });
     expect(templates.map((t) => t.name).sort()).toEqual(["Channel first", "Default", "Region first"]);
+  });
+});
+
+describe("pending bulk change (T-013 seed rows)", () => {
+  it("is one bulk_change with one open approval request and the asserted totals", async () => {
+    const [bulk] = await owner.$queryRawUnsafe<Array<{ id: string; n: number }>>(
+      `SELECT id::text AS id, cardinality(version_ids) AS n FROM bulk_change WHERE workspace_id = $1::uuid`,
+      golden.workspaceId,
+    );
+    expect(bulk?.n).toBe(A.pendingBulk.rows);
+    const request = await owner.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, entityType: "bulk_change", entityId: bulk?.id ?? "" } });
+    expect(request.status).toBe("PENDING");
+    const [sums] = await owner.$queryRawUnsafe<Array<{ after: string; before: string }>>(
+      `SELECT sum(v.amount)::text AS after, sum(c.amount)::text AS before
+       FROM envelope e JOIN envelope_version v ON v.id = e.draft_version_id JOIN envelope_version c ON c.id = e.current_version_id
+       WHERE e.workspace_id = $1::uuid AND v.status = 'PENDING'`,
+      golden.workspaceId,
+    );
+    expect(new Decimal(sums?.before ?? 0).toFixed(2)).toBe(A.pendingBulk.totalsBefore);
+    expect(new Decimal(sums?.after ?? 0).toFixed(2)).toBe(A.pendingBulk.totalsAfter);
   });
 });
 

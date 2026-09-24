@@ -2,9 +2,9 @@ import { DecideInput, DomainError, eligibleApprover, newId, type Role } from "@b
 import { eligibleApproverSql, lockApprovalRequest, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
-import { envelopeScopeTarget } from "../../../common/scope.guard.js";
+import { envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { advanceIfComplete, assertEnvelopeRequest, assertOpen, closeRequest, openBlockingThread, recordRequestChange, snapshotOf } from "../engine.js";
+import { advanceIfComplete, assertEnvelopeRequest, assertOpen, closeRequest, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
 
 /**
  * POST /approvals/:id/decisions (spec §9.3). Eligibility = SQL eligible_approver() (step role,
@@ -23,17 +23,20 @@ export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequest
     const step = snapshot.chain[r.currentStep];
     if (step === undefined) throw new DomainError("VALIDATION", "Request is past its last step");
 
-    const version = await tx.envelopeVersion.findUniqueOrThrow({ where: { id: r.entityId }, select: { envelopeId: true, createdBy: true } });
-    const target = await envelopeScopeTarget(tx, version.envelopeId);
+    const targets = await requestTargets(tx, r);
+    const scopes = await envelopeScopeTargets(tx, [...new Set(targets.versions.map((v) => v.envelopeId))]);
     const sqlOk = await eligibleApproverSql(tx, r.id, auth.user.id);
-    const appOk = eligibleApprover({
-      assignments: auth.assignments,
-      stepRole: step.role as Role,
-      target,
-      userId: auth.user.id,
-      authorId: version.createdBy,
-      blockSelfApproval: snapshot.blockSelfApproval,
-    });
+    // The step role's scope must cover every envelope the request would approve.
+    const appOk = [...scopes.values()].every((target) =>
+      eligibleApprover({
+        assignments: auth.assignments,
+        stepRole: step.role as Role,
+        target,
+        userId: auth.user.id,
+        authorId: targets.authorId,
+        blockSelfApproval: snapshot.blockSelfApproval,
+      }),
+    );
     if (!sqlOk || !appOk) throw new DomainError("FORBIDDEN", "You are not an eligible approver for this step", { step: r.currentStep, role: step.role });
     const already = await tx.approvalDecision.count({ where: { requestId: r.id, stepIndex: r.currentStep, decidedBy: auth.user.id } });
     if (already) throw new DomainError("CONFLICT", "You already decided this step");

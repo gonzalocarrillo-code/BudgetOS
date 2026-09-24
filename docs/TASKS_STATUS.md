@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
+Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -28,7 +28,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-011 | 8 | T-010 | done | epic 1.3 acceptance; cap trigger | — |
 | T-006 | 9 | T-005, T-010, T-011 | done | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, targets, closures added by later tasks |
 | T-012 | 10 | T-006, T-011 | done | replay over golden history matches assertions | — |
-| T-013 | 11 | T-010 | pending | 10k rows < 10 s | — |
+| T-013 | 11 | T-010 | done | 10k rows < 10 s | — |
 | T-014 | 11 | T-010, T-011 | pending | cap re-validation | — |
 | T-015 | 11 | T-007, T-010 | pending | CPA roll-up = spend / conversions at every level | — |
 | T-016 | 12 | T-004 | pending | duplicate delivery applies once | live Pub/Sub topic (GCP phase) |
