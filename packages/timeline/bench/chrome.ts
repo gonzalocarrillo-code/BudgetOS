@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { resolveChromePath } from "../../../scripts/chrome-path.mjs";
 import type { EngineSample } from "./session.js";
 
 export type TimelineEngine = "svar" | "vis" | "canvas";
@@ -183,7 +184,7 @@ export async function measureEngine(engine: TimelineEngine): Promise<EngineSampl
     server = served.server;
     const debugPort = await freePort();
     chrome = spawn(
-      "google-chrome",
+      resolveChromePath(),
       [
         "--headless=new",
         "--no-sandbox",

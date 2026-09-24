@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { resolveChromePath } from "../../../scripts/chrome-path.mjs";
 
 export type ScrollEngine = "glide" | "tanstack";
 
@@ -204,7 +205,7 @@ export async function measurePage(
     const served = await serve(dir, glideStyles);
     server = served.server;
     const debugPort = await freePort();
-    chrome = spawn("google-chrome", [
+    chrome = spawn(resolveChromePath(), [
       "--headless=new",
       "--no-sandbox",
       "--disable-dev-shm-usage",
