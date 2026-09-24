@@ -1,0 +1,434 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`alert blocks > critical alert 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "🚨 CPA far over target",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Severity*
+critical",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Owner*
+Ana &lt;Lima&gt; &amp; Co",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Budget*
+USD 1,250,000.00",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Actual*
+USD 812,345.50",
+          "type": "mrkdwn",
+        },
+      ],
+      "text": {
+        "text": "*LATAM › Brazil › Meta › Conversion*
+\`kpi_vs_target_pct\` is *1.3812* (rule: > 1.25)",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "open_alert",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Open alert",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/alerts?select=01927a00-0000-7000-8000-0000000000d1",
+        },
+        {
+          "action_id": "open_envelope",
+          "text": {
+            "emoji": true,
+            "text": "Open envelope",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/budgets?select=01927a00-0000-7000-8000-0000000000e1",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Evaluated for 2026-08-15",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Budget OS pacing",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": ":rotating_light: CPA far over target — LATAM › Brazil › Meta › Conversion",
+}
+`;
+
+exports[`alert blocks > reopened warning without owner 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "⚠️ Reopened: Over-pace",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Severity*
+warning",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Owner*
+Unassigned",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Budget*
+—",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Actual*
+EUR 0",
+          "type": "mrkdwn",
+        },
+      ],
+      "text": {
+        "text": "*EMEA › Germany*
+\`pace_index\` is *1.1402* (rule: > 1.10)",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "open_alert",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Open alert",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/alerts?select=01927a00-0000-7000-8000-0000000000d2",
+        },
+        {
+          "action_id": "open_envelope",
+          "text": {
+            "emoji": true,
+            "text": "Open envelope",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/budgets?select=01927a00-0000-7000-8000-0000000000e2",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Evaluated for 2026-08-15",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Budget OS pacing",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": ":warning: Reopened: Over-pace — EMEA › Germany",
+}
+`;
+
+exports[`approval blocks > approved bulk change (no amounts) 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "✅ Approved: Bulk change (24 rows)",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Requested by*
+Planner Pat",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Policy*
+Standard",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*By*
+Finance Fay",
+          "type": "mrkdwn",
+        },
+      ],
+      "text": {
+        "text": "BR Meta Conversion: 100000.00 → 115000.00 (reporting, 15.0%). Rationale: Black Friday",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "open_approval",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Open",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/approvals/01927a00-0000-7000-8000-0000000000f1",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Decide in Budget OS; interactive Slack approvals come in Phase 2",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "✅ Approved: Bulk change (24 rows)",
+}
+`;
+
+exports[`approval blocks > changes requested, with the approver's comment 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "↩️ Changes requested: BR Meta Conversion",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Requested by*
+Planner Pat",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Policy*
+Standard",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Change*
+USD 100,000.00 → USD 115,000.00",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*By*
+Owner Olga",
+          "type": "mrkdwn",
+        },
+      ],
+      "text": {
+        "text": "BR Meta Conversion: 100000.00 → 115000.00 (reporting, 15.0%). Rationale: Black Friday",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "> Split this by retailer
+> before Q4",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "open_approval",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Open",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/approvals/01927a00-0000-7000-8000-0000000000f1",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Decide in Budget OS; interactive Slack approvals come in Phase 2",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "↩️ Changes requested: BR Meta Conversion",
+}
+`;
+
+exports[`approval blocks > requested 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "📝 Approval requested: BR Meta Conversion",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Requested by*
+Planner Pat",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Policy*
+Standard",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Change*
+USD 100,000.00 → USD 115,000.00",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Waiting on*
+BUDGET_OWNER, due 2026-09-26",
+          "type": "mrkdwn",
+        },
+      ],
+      "text": {
+        "text": "BR Meta Conversion: 100000.00 → 115000.00 (reporting, 15.0%). Rationale: Black Friday",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "open_approval",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Review",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/approvals/01927a00-0000-7000-8000-0000000000f1",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Decide in Budget OS; interactive Slack approvals come in Phase 2",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "📝 Approval requested: BR Meta Conversion",
+}
+`;
+
+exports[`mention blocks > mention DM 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "💬 Planner Pat mentioned you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*Pacing check*
+> @Owner Olga is this pacing as planned?
+> Launch moved to *March*.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "open_thread",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Reply in Budget OS",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/threads?comment=01927a00-0000-7000-8000-0000000000a9",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "LATAM › Brazil › Meta",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "Planner Pat mentioned you on LATAM › Brazil › Meta",
+}
+`;
