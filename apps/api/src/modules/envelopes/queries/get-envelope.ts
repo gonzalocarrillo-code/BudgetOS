@@ -3,6 +3,7 @@ import { withTenant, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
+import { parseAsOf } from "./timeline.js";
 import type { AuthContext } from "../../../common/tenant.js";
 
 type VersionRow = NonNullable<Awaited<ReturnType<typeof loadVersion>>>;
@@ -33,14 +34,28 @@ export function versionDto(v: VersionRow) {
   };
 }
 
-/** GET /envelopes/:id: identity, metadata, the approved version and the open draft (as_of is T-012). */
-export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId: string) {
+/**
+ * GET /envelopes/:id[?as_of=]: identity, metadata, the approved version and the open draft. With
+ * `as_of`, also the budget approved at that instant: the latest BUDGET version approved by then,
+ * whatever it is now (superseded versions keep their approved_at) — the same rule as the planner's
+ * `budget` measure (T-012).
+ */
+export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId: string, rawAsOf?: string) {
   const id = parseId(rawId);
+  const asOf = parseAsOf(rawAsOf);
   return withTenant(prisma, auth.ctx, async (tx) => {
     const env = await tx.envelope.findUnique({ where: { id } });
     if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
     assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
     const [current, draft] = await Promise.all([loadVersion(tx, env.currentVersionId), loadVersion(tx, env.draftVersionId)]);
+    const atInstant =
+      asOf === null
+        ? null
+        : await tx.envelopeVersion.findFirst({
+            where: { envelopeId: id, amountType: "BUDGET", status: { in: ["APPROVED", "SUPERSEDED"] }, approvedAt: { lte: asOf } },
+            orderBy: { approvedAt: "desc" },
+            include: { phasing: { orderBy: { month: "asc" } } },
+          });
     return {
       id: env.id,
       workspaceId: env.workspaceId,
@@ -59,6 +74,7 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       draftVersionId: env.draftVersionId,
       current: current ? versionDto(current) : null,
       draft: draft ? versionDto(draft) : null,
+      ...(asOf === null ? {} : { asOf: { at: asOf.toISOString(), approved: atInstant ? versionDto(atInstant) : null } }),
     };
   });
 }

@@ -54,8 +54,25 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "createEnvelope", parameters: [workspaceParam], requestBody: json(CreateEnvelopeInput), responses: { "200": { description: "Created envelope (with v1 draft when an amount is given)" } } },
       },
       "/api/v1/envelopes/{id}": {
-        get: { operationId: "getEnvelope", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Envelope with its approved version and open draft" } } },
+        get: {
+          operationId: "getEnvelope",
+          parameters: [idParam, workspaceHeader, { name: "as_of", in: "query", required: false, schema: { type: "string" }, description: "YYYY-MM-DD (end of day UTC) or ISO datetime: adds the budget approved at that instant" }],
+          responses: { "200": { description: "Envelope with its approved version, open draft and, with as_of, the approved version at that instant" } },
+        },
         patch: { operationId: "updateEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(UpdateEnvelopeInput), responses: { "200": { description: "Updated envelope metadata" }, "409": { description: "Stale rowVersion; details carry currentRowVersion and currentVersionId" } } },
+      },
+      "/api/v1/envelopes/{id}/timeline": {
+        get: {
+          operationId: "getEnvelopeTimeline",
+          parameters: [
+            idParam,
+            workspaceHeader,
+            { name: "descendants", in: "query", required: false, schema: { type: "boolean" }, description: "Roll-up timeline of the whole subtree" },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 500 } },
+            { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Decision timeline, newest first: { rows: [{ at, kind, title, actor, detail, refs }], nextCursor }" } },
+        },
       },
       "/api/v1/envelopes/{id}/versions": {
         get: { operationId: "listEnvelopeVersions", parameters: [idParam, workspaceHeader], responses: { "200": { description: "All versions, newest first" } } },

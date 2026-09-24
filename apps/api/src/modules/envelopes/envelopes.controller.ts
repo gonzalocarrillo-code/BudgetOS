@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
@@ -17,8 +18,14 @@ export class EnvelopesController {
 
   @Get("envelopes/:id")
   @Permission("envelope.read")
-  get(@Tenant() auth: AuthContext, @Param("id") id: string) {
-    return this.envelopes.get(auth, id);
+  get(@Tenant() auth: AuthContext, @Param("id") id: string, @Query("as_of") asOf?: string) {
+    return this.envelopes.get(auth, id, asOf);
+  }
+
+  @Get("envelopes/:id/timeline")
+  @Permission("envelope.read")
+  timeline(@Tenant() auth: AuthContext, @Param("id") id: string, @Query() params: TimelineParams) {
+    return this.envelopes.timeline(auth, id, params);
   }
 
   @Get("envelopes/:id/versions")
