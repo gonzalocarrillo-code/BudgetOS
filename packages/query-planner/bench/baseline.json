@@ -7,7 +7,11 @@
     "node": "v22.23.3",
     "date": "2026-09-24"
   },
-  "executePageP50Ms": 21,
-  "executeGroupP50Ms": 145,
-  "executeTotalsP50Ms": 110
+  "executePageToCalibrationP50Ratio": 0.7785,
+  "executePageP50Ms": 21.81,
+  "executeCalibrationP50Ms": 27.17,
+  "executeGroupToCalibrationP50Ratio": 4.9909,
+  "executeGroupP50Ms": 138.31,
+  "executeTotalsToCalibrationP50Ratio": 3.9154,
+  "executeTotalsP50Ms": 106.38
 }
