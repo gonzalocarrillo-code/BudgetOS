@@ -379,7 +379,7 @@ describe("dimension scopes", () => {
 
     const access = await new AccessRepository(appDb).access(scoped.id, wsA);
     const auth: AuthContext = {
-      ctx: { workspaceId: wsA, userId: scoped.id, isOrgAdmin: false, actorType: "user", requestId: "t009-scope" },
+      ctx: { workspaceId: wsA, orgId: orgA, userId: scoped.id, isOrgAdmin: false, actorType: "user", requestId: "t009-scope" },
       user: { id: scoped.id, orgId: orgA, email: scoped.email, name: scoped.email },
       isOrgAdmin: false,
       roles: ["BUDGET_OWNER"],

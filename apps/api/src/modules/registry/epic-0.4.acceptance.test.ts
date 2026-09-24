@@ -65,6 +65,7 @@ const seedRequestId = `epic-0.4-seed-${orgId}`;
 
 const adminCtx: TenantContext = {
   workspaceId,
+  orgId,
   userId,
   isOrgAdmin: true,
   actorType: "user",
@@ -73,6 +74,7 @@ const adminCtx: TenantContext = {
 
 const workspaceAdminCtx: TenantContext = {
   workspaceId,
+  orgId,
   userId,
   isOrgAdmin: false,
   actorType: "user",
