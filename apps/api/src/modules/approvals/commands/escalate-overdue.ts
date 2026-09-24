@@ -12,13 +12,20 @@ const ESCALATION_TIMEOUT_HOURS = 72;
  * records `escalatedFrom`; a synthetic step never escalates again.
  */
 export async function escalateOverdue(prisma: PrismaClient, now: Date = new Date()): Promise<{ escalated: string[] }> {
-  const scan: TenantContext = { workspaceId: null, userId: null, isOrgAdmin: true, actorType: "system", requestId: `escalate-${randomUUID()}` };
-  const due = await withTenant(prisma, scan, (tx) =>
-    tx.approvalRequest.findMany({ where: { status: "PENDING", dueAt: { lt: now } }, select: { id: true, workspaceId: true }, orderBy: { dueAt: "asc" }, take: 500 }),
-  );
+  const requestId = `escalate-${randomUUID()}`;
+  // The org-admin bypass is scoped to app.org_id (migration 20260924000000), so the scan runs per org.
+  const orgs = await prisma.organization.findMany({ select: { id: true } });
+  const due: Array<{ id: string; workspaceId: string; orgId: string }> = [];
+  for (const org of orgs) {
+    const scan: TenantContext = { workspaceId: null, orgId: org.id, userId: null, isOrgAdmin: true, actorType: "system", requestId };
+    const rows = await withTenant(prisma, scan, (tx) =>
+      tx.approvalRequest.findMany({ where: { status: "PENDING", dueAt: { lt: now } }, select: { id: true, workspaceId: true }, orderBy: { dueAt: "asc" }, take: 500 }),
+    );
+    due.push(...rows.map((r) => ({ ...r, orgId: org.id })));
+  }
   const escalated: string[] = [];
   for (const d of due) {
-    const ctx: TenantContext = { workspaceId: d.workspaceId, userId: null, isOrgAdmin: false, actorType: "system", requestId: scan.requestId };
+    const ctx: TenantContext = { workspaceId: d.workspaceId, orgId: d.orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId };
     const done = await withTenant(prisma, ctx, async (tx) => {
       const r = await lockApprovalRequest(tx, d.id);
       if (r === null || r.status !== "PENDING") return false;

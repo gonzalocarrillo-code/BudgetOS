@@ -94,7 +94,7 @@ beforeAll(async () => {
   await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'latam', 'LATAM')`, latam, region);
   await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, 'br', 'Brazil', $3::uuid)`, randomUUID(), region, latam);
   h = await startHarness();
-  const ctx: TenantContext = { workspaceId: ws, userId: users.admin.id, isOrgAdmin: false, actorType: "user", requestId: `e13-seed-${ws}` };
+  const ctx: TenantContext = { workspaceId: ws, orgId, userId: users.admin.id, isOrgAdmin: false, actorType: "user", requestId: `e13-seed-${ws}` };
   expect(await seedDefaultPolicies(appDb, ctx)).toBe(5);
 }, 60_000);
 
