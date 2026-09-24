@@ -1,4 +1,5 @@
 import { permissions, type Action, type Role } from "@budget/domain";
+import { withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import type { AccessRepository } from "../../../common/auth/access.repository.js";
 import type { AuthContext } from "../../../common/tenant.js";
@@ -19,7 +20,9 @@ export interface Me {
 /** GET /me: the caller, their roles per workspace in their org, and the resulting permissions. */
 export async function getMe(prisma: PrismaClient, access: AccessRepository, auth: AuthContext): Promise<Me> {
   const orgWide = await access.access(auth.user, null, auth.ctx.requestId);
-  const workspaces = await prisma.workspace.findMany({ where: { orgId: auth.user.orgId }, orderBy: { name: "asc" } });
+  const workspaces = await withTenant(prisma, auth.ctx, (tx) =>
+    tx.workspace.findMany({ where: { orgId: auth.user.orgId }, orderBy: { name: "asc" } }),
+  );
   const out: MeWorkspace[] = [];
   for (const ws of workspaces) {
     const a = await access.access(auth.user, ws.id, auth.ctx.requestId);

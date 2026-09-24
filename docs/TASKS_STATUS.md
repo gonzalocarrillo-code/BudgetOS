@@ -147,7 +147,8 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - Migration `20260924010000_rls_dimension_value_processed_event` adds RLS to `dimension_value` (through `dimension`) and `processed_event` (through `outbox`). Outbox consumers must dedupe inside `withTenant()` for the event's workspace.
 - `rls.org-admin.test.ts` fails if any public table other than a listed exception lacks enabled and forced RLS.
 - Migration `20260924020000_rls_org_tables` adds RLS to `role_assignment` (org-wide read by principal org, workspace-limited write; ADR-005), `metric_definition` (org; org admin writes), `value_constraint` (through `dimension`) and `ingest_run` (through `data_source`).
-- The remaining exceptions are `organization`, `workspace`, `app_user`, `app_group`, `app_group_member` (all read before a tenant exists) and `fx_rate` (global).
+- Migration `20260924030000_rls_identity_tables` adds RLS to `organization`, `workspace`, `app_user` and `app_group` (org-scoped; ADR-005). The auth lookup uses `withIdentity()`.
+- The remaining exceptions are `app_group_member` (no org or workspace column; follow-up), `fx_rate` (global) and `_prisma_migrations`.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

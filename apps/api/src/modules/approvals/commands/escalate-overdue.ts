@@ -6,15 +6,17 @@ import { addHours, recordRequestChange, snapshotOf } from "../engine.js";
 const ESCALATION_TIMEOUT_HOURS = 72;
 
 /**
- * escalateOverdue() (spec §9.3), run by the pacing job every 15 min. A PENDING request whose due
+ * escalateOverdue() (spec §9.3), run by the pacing job every 15 min for the orgs it serves. A PENDING request whose due
  * date passed and whose current step names `escalateTo` gets a synthetic step for that role right
  * after the current one; the request moves to it with status ESCALATED. The chain in the snapshot
  * records `escalatedFrom`; a synthetic step never escalates again.
  */
-export async function escalateOverdue(prisma: PrismaClient, now: Date = new Date()): Promise<{ escalated: string[] }> {
+export async function escalateOverdue(prisma: PrismaClient, orgIds: readonly string[], now: Date = new Date()): Promise<{ escalated: string[] }> {
   const requestId = `escalate-${randomUUID()}`;
-  // The org-admin bypass is scoped to app.org_id (migration 20260924000000), so the scan runs per org.
-  const orgs = await prisma.organization.findMany({ select: { id: true } });
+  // The org-admin bypass is scoped to app.org_id and `organization` itself has RLS (migrations
+  // 20260924000000, 20260924030000), so the job cannot discover orgs: the scheduler passes them
+  // (the pacing job, T-018, runs per org).
+  const orgs = orgIds.map((id) => ({ id }));
   const due: Array<{ id: string; workspaceId: string; orgId: string }> = [];
   for (const org of orgs) {
     const scan: TenantContext = { workspaceId: null, orgId: org.id, userId: null, isOrgAdmin: true, actorType: "system", requestId };

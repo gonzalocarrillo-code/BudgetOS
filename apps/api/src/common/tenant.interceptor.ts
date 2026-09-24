@@ -43,12 +43,12 @@ export class TenantInterceptor implements NestInterceptor {
     if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "Unknown or inactive user");
 
     const workspaceId = resolveWorkspace(request);
+    const requestId = header(request, "x-request-id") ?? randomUUID();
     if (workspaceId !== null) {
-      const orgId = await this.access.workspaceOrg(workspaceId);
+      const orgId = await this.access.workspaceOrg(workspaceId, user, requestId);
       // Same answer for "no such workspace" and "another org's workspace".
       if (orgId !== user.orgId) throw new DomainError("FORBIDDEN", "No access to this workspace");
     }
-    const requestId = header(request, "x-request-id") ?? randomUUID();
     const access = await this.cachedAccess(user, workspaceId, requestId);
     const roles = [...new Set(access.assignments.map((a) => a.role))] as Role[];
 
