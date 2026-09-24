@@ -773,6 +773,221 @@
         }
       }
     },
+    "/api/v1/envelopes/{id}/move": {
+      "post": {
+        "operationId": "moveEnvelope",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "rowVersion": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "parentId",
+                  "rowVersion"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moved; lineage written; an open request re-routed if its policy changed"
+          },
+          "409": {
+            "description": "Stale rowVersion"
+          },
+          "422": {
+            "description": "CAP_EXCEEDED under the new parent, or a cycle"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/split": {
+      "post": {
+        "operationId": "splitEnvelope",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000
+                  },
+                  "parts": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        },
+                        "dimensionValues": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": {}
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "amount"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "basedOnVersionId",
+                  "rationale",
+                  "parts"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New siblings with drafts summing to the approved amount; one approval (or auto-approved); source archived once approved"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/merge": {
+      "post": {
+        "operationId": "mergeEnvelopes",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sourceIds": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "dimensionValues": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "sourceIds",
+                  "name",
+                  "dimensionValues",
+                  "rationale"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New sibling holding the sources' approved total; one approval (or auto-approved); sources archived once approved"
+          }
+        }
+      }
+    },
     "/api/v1/envelopes/bulk": {
       "post": {
         "operationId": "previewBulkEdit",

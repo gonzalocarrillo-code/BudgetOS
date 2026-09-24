@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_TEMPLATES, goldenPlan, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, splitAmounts, GOLDEN_TEMPLATES, goldenPlan, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -12,6 +12,7 @@ import { seedDefaultPolicies } from "../modules/approvals/commands/policies.js";
 import { PolicySnapshot } from "../modules/approvals/engine.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
+import { splitEnvelope } from "../modules/envelopes/commands/structure.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
 import { commitBulk } from "../modules/envelopes/bulk/commit.js";
 import { buildPreview } from "../modules/envelopes/bulk/preview.js";
@@ -206,6 +207,19 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     const preview = await buildPreview(app, auth("planner"), { workspaceId, selection: { envelopeIds: bulkIds }, operation: { op: "pct", pct: bulk.pct }, rationale: bulk.rationale }, previews);
     await commitBulk(app, auth("planner"), preview.previewId, previews);
     log(`golden: bulk change pending (${bulkIds.length} rows)`);
+
+    // T-014: one split, auto-approved (a structural change keeps the total), source archived.
+    clock.now = () => new Date(GOLDEN_SPLIT.at);
+    const sourceId = ids.get(GOLDEN_SPLIT.sourceKey) as string;
+    const head = await withTenant(app, auth("planner").ctx, (tx) => tx.envelope.findUniqueOrThrow({ where: { id: sourceId }, select: { currentVersionId: true } }));
+    const parts = splitAmounts(plan);
+    const split = await splitEnvelope(app, auth("planner"), sourceId, {
+      basedOnVersionId: head.currentVersionId,
+      rationale: GOLDEN_SPLIT.rationale,
+      parts: parts.map((p) => ({ name: p.name, amount: p.amount, dimensionValues: { retailer: p.retailer } })),
+    });
+    split.partIds.forEach((pid, i) => ids.set(`${GOLDEN_SPLIT.sourceKey}#${parts[i]?.retailer}`, pid));
+    log(`golden: split ${GOLDEN_SPLIT.sourceKey} into ${split.partIds.length} (${split.autoApproved ? "auto-approved" : "pending"})`);
   } finally {
     clock.now = () => new Date();
   }

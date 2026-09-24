@@ -1,5 +1,5 @@
 import { ChainStep, DomainError, newId } from "@budget/domain";
-import { audit, closeBulkVersions, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
+import { archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { z } from "zod";
 import { clock } from "../../common/clock.js";
 import { approveVersion } from "./commands/approve-version.js";
@@ -44,15 +44,32 @@ export interface RequestTargets {
 /** The versions and author behind a request (envelope_version or bulk_change). */
 export async function requestTargets(tx: Tx, r: { entityType: string; entityId: string }): Promise<RequestTargets> {
   if (r.entityType === "bulk_change") {
-    const [bulk] = await tx.$queryRaw<Array<{ ids: string[]; createdBy: string }>>`
-      SELECT version_ids::text[] AS ids, created_by::text AS "createdBy" FROM bulk_change WHERE id = ${r.entityId}::uuid`;
+    const bulk = await loadBulkChange(tx, r.entityId);
     if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
-    const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.ids } }, select: { id: true, envelopeId: true } });
+    const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { id: true, envelopeId: true } });
     return { versions, authorId: bulk.createdBy };
   }
   const v = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { id: true, envelopeId: true, createdBy: true } });
   if (v === null) throw new DomainError("NOT_FOUND", "Version not found");
   return { versions: [{ id: v.id, envelopeId: v.envelopeId }], authorId: v.createdBy };
+}
+
+/**
+ * Approves every version of a bulk change (plan §9.3; split / merge per spec §7.5). Sources being
+ * archived go first — their version is the zero amount — so the new siblings fit the parent's cap;
+ * the rest go parents first. Then the sources are archived.
+ */
+export async function finalizeBulk(tx: Tx, ctx: TenantContext, bulkChangeId: string, requestId: string | null, reason: string): Promise<void> {
+  const bulk = await loadBulkChange(tx, bulkChangeId);
+  if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
+  const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { id: true, envelopeId: true } });
+  const archive = new Set(bulk.archiveIds);
+  const d = await depths(tx, versions.map((v) => v.envelopeId));
+  const rank = (v: { envelopeId: string }) => (archive.has(v.envelopeId) ? -1 : (d.get(v.envelopeId) ?? 0));
+  for (const v of versions.slice().sort((a, b) => rank(a) - rank(b))) {
+    await approveVersion(tx, ctx, v.id, requestId, `${reason} (${bulk.kind} ${bulkChangeId})`);
+  }
+  await archiveEnvelopes(tx, bulk.archiveIds);
 }
 
 /** Envelope depth (0 = root) so bulk approvals run parents first and child caps see the parent's new amount. */
@@ -79,11 +96,7 @@ export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedReq
   if (next >= snapshot.chain.length) {
     const reason = `approved via policy ${snapshot.policyName ?? r.policyId} v${r.policyVersion}`;
     if (r.entityType === "bulk_change") {
-      const { versions } = await requestTargets(tx, r);
-      const d = await depths(tx, versions.map((v) => v.envelopeId));
-      for (const v of versions.slice().sort((a, b) => (d.get(a.envelopeId) ?? 0) - (d.get(b.envelopeId) ?? 0))) {
-        await approveVersion(tx, ctx, v.id, r.id, `${reason} (bulk ${r.entityId})`);
-      }
+      await finalizeBulk(tx, ctx, r.entityId, r.id, reason);
     } else {
       await approveVersion(tx, ctx, r.entityId, r.id, reason);
     }
@@ -102,8 +115,11 @@ export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedReq
  */
 export async function closeRequest(tx: Tx, r: LockedRequestRow, outcome: "REJECTED" | "WITHDRAWN" | "CHANGES_REQUESTED"): Promise<void> {
   if (r.entityType === "bulk_change") {
-    const { versions } = await requestTargets(tx, r);
-    await closeBulkVersions(tx, versions.map((v) => v.id), outcome);
+    const bulk = await loadBulkChange(tx, r.entityId);
+    if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
+    await closeBulkVersions(tx, bulk.versionIds, outcome);
+    // New split / merge envelopes that will never be approved.
+    if (outcome !== "CHANGES_REQUESTED") await archiveEnvelopes(tx, bulk.createdIds);
     await tx.approvalRequest.update({ where: { id: r.id }, data: outcome === "CHANGES_REQUESTED" ? { status: outcome } : { status: outcome, resolvedAt: new Date() } });
     return;
   }

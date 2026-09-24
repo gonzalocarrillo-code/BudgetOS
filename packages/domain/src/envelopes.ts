@@ -138,3 +138,44 @@ export const CsvImportInput = z.object({
   rationale: z.string().min(3).max(4000),
 });
 export type CsvImportInput = z.infer<typeof CsvImportInput>;
+
+// ---------------------------------------------------------------------------------------------
+// Move / split / merge (spec §7.5)
+// ---------------------------------------------------------------------------------------------
+
+/** POST /envelopes/:id/move. `parentId: null` moves to the root. */
+export const MoveEnvelopeInput = z.object({
+  parentId: z.string().uuid().nullable(),
+  rowVersion: z.number().int().min(1),
+  rationale: z.string().max(4000).optional(),
+});
+export type MoveEnvelopeInput = z.infer<typeof MoveEnvelopeInput>;
+
+/**
+ * POST /envelopes/:id/split: N new siblings (same parent, dates, currency) whose drafts sum to the
+ * source's approved amount. Each part's dimensions default to the source's; given keys override.
+ */
+export const SplitEnvelopeInput = z.object({
+  basedOnVersionId: z.string().uuid(),
+  rationale: z.string().min(3).max(4000),
+  parts: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(200),
+        amount: MoneyString,
+        dimensionValues: z.record(z.string().min(1), z.string().min(1)).default({}),
+      }),
+    )
+    .min(2)
+    .max(50),
+});
+export type SplitEnvelopeInput = z.infer<typeof SplitEnvelopeInput>;
+
+/** POST /envelopes/merge: siblings in one currency become one new sibling holding their approved total. */
+export const MergeEnvelopesInput = z.object({
+  sourceIds: z.array(z.string().uuid()).min(2).max(50),
+  name: z.string().min(1).max(200),
+  dimensionValues: z.record(z.string().min(1), z.string().min(1)),
+  rationale: z.string().min(3).max(4000),
+});
+export type MergeEnvelopesInput = z.infer<typeof MergeEnvelopesInput>;

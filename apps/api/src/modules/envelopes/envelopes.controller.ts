@@ -3,7 +3,7 @@ import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { BulkRequestDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { BulkRequestDto, MergeEnvelopesDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -68,6 +68,25 @@ export class EnvelopesController {
   @Permission("envelope.submit")
   withdraw(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: WithdrawDto) {
     return this.envelopes.withdraw(auth, id, body);
+  }
+
+  /** Re-parent / split / merge (spec §7.5). Literal "merge" is registered before ":id" routes by Fastify's static-first matching. */
+  @Post("envelopes/merge")
+  @Permission("envelope.move")
+  merge(@Tenant() auth: AuthContext, @Body() body: MergeEnvelopesDto) {
+    return this.envelopes.merge(auth, body);
+  }
+
+  @Post("envelopes/:id/move")
+  @Permission("envelope.move")
+  move(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: MoveEnvelopeDto) {
+    return this.envelopes.move(auth, id, body);
+  }
+
+  @Post("envelopes/:id/split")
+  @Permission("envelope.move")
+  split(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: SplitEnvelopeDto) {
+    return this.envelopes.split(auth, id, body);
   }
 
   /** Bulk edit (spec §7.4): preview first; nothing changes until commit. */

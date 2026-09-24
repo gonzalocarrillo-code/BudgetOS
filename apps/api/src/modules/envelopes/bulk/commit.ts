@@ -1,11 +1,10 @@
 import { DomainError, newId } from "@budget/domain";
-import { audit, auditMany, bumpDataVersion, insertBulkVersions, loadBulkHeads, lockEnvelopes, outbox, setDraftPointers, supersedeDrafts, withTenant, type BulkVersionRow } from "@budget/db";
+import { audit, auditMany, bumpDataVersion, insertBulkChange, insertBulkVersions, loadBulkHeads, lockEnvelopes, outbox, setDraftPointers, supersedeDrafts, withTenant, type BulkVersionRow } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseId, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { approveVersion } from "../../approvals/commands/approve-version.js";
-import { addHours, type PolicySnapshot } from "../../approvals/engine.js";
+import { addHours, finalizeBulk, type PolicySnapshot } from "../../approvals/engine.js";
 import { matchPolicy } from "../../approvals/policy-matcher.js";
 import { resolveFx } from "../commands/version-writer.js";
 import { capViolations } from "./caps.js";
@@ -90,7 +89,7 @@ export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPre
 
       const versionIds = versions.map((v) => v.id);
       const bulkChangeId = newId();
-      await tx.$executeRaw`INSERT INTO bulk_change (id, workspace_id, version_ids, created_by) VALUES (${bulkChangeId}::uuid, ${workspaceId}::uuid, ${versionIds}::uuid[], ${auth.user.id}::uuid)`;
+      await insertBulkChange(tx, { id: bulkChangeId, workspaceId, kind: "edit", versionIds, createdBy: auth.user.id });
 
       const policy = await matchPolicy(tx, workspaceId, {
         entityType: "bulk_change",
@@ -157,14 +156,8 @@ export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPre
       await outbox(tx, { workspaceId, topic: "budget.changed", payload: { bulk: true, bulkChangeId, requestId, versionIds } });
 
       if (policy.chain.length === 0) {
-        // Auto-approve per policy (plan §9.3): parents first so their caps are in place for children.
-        const depth = await tx.$queryRaw<Array<{ id: string; d: number }>>`
-          WITH RECURSIVE up AS (SELECT id AS start, parent_id, 0 AS d FROM envelope WHERE id = ANY(${ids}::uuid[])
-            UNION ALL SELECT up.start, e.parent_id, up.d + 1 FROM envelope e JOIN up ON e.id = up.parent_id)
-          SELECT start::text AS id, max(d)::int AS d FROM up GROUP BY start`;
-        const byDepth = new Map(depth.map((x) => [x.id, x.d]));
-        const order = pointers.slice().sort((a, b) => (byDepth.get(a.envelopeId) ?? 0) - (byDepth.get(b.envelopeId) ?? 0));
-        for (const ptr of order) await approveVersion(tx, auth.ctx, ptr.versionId, null, `auto-approved by policy ${policy.name} v${policy.version} (bulk ${bulkChangeId})`);
+        // Auto-approve per policy (plan §9.3), parents first so their caps are in place for children.
+        await finalizeBulk(tx, auth.ctx, bulkChangeId, null, `auto-approved by policy ${policy.name} v${policy.version}`);
       }
       await bumpDataVersion(tx, workspaceId);
       return { bulkChangeId, requestId, autoApproved: policy.chain.length === 0, policy: { name: policy.name, version: policy.version }, versions: versionIds.length };
