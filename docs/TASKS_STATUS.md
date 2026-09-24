@@ -148,7 +148,8 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - `rls.org-admin.test.ts` fails if any public table other than a listed exception lacks enabled and forced RLS.
 - Migration `20260924020000_rls_org_tables` adds RLS to `role_assignment` (org-wide read by principal org, workspace-limited write; ADR-005), `metric_definition` (org; org admin writes), `value_constraint` (through `dimension`) and `ingest_run` (through `data_source`).
 - Migration `20260924030000_rls_identity_tables` adds RLS to `organization`, `workspace`, `app_user` and `app_group` (org-scoped; ADR-005). The auth lookup uses `withIdentity()`.
-- The remaining exceptions are `app_group_member` (no org or workspace column; follow-up), `fx_rate` (global) and `_prisma_migrations`.
+- Migration `20260924040000_rls_group_member` adds RLS to `app_group_member` (through `app_group`; the member must be in the same org).
+- The remaining exceptions are `fx_rate` (global) and `_prisma_migrations`.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

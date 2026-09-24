@@ -16,8 +16,7 @@ export interface AppUserRef {
 /**
  * Identity and role lookups. `findUser` runs in withIdentity(), which exposes only the app_user
  * matching the verified token. The org is known after that, so the other lookups run in
- * withTenant() with the user's org (migrations 20260924020000 and 20260924030000).
- * app_group_member has no RLS.
+ * withTenant() with the user's org (migrations 20260924020000 to 20260924040000).
  */
 @Injectable()
 export class AccessRepository {
@@ -51,21 +50,23 @@ export class AccessRepository {
     requestId: string,
   ): Promise<WorkspaceAccess> {
     const userId = user.id;
-    const groups = await this.prisma.groupMember.findMany({ where: { userId }, select: { groupId: true } });
     const ctx = { workspaceId, orgId: user.orgId, userId, isOrgAdmin: false, actorType: "user" as const, requestId };
-    const rows = await withTenant(this.prisma, ctx, (tx) => tx.roleAssignment.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
-              { principalType: "user", principalId: userId },
-              { principalType: "group", principalId: { in: groups.map((g) => g.groupId) } },
-            ],
-          },
-          { OR: [{ workspaceId: null }, ...(workspaceId ? [{ workspaceId }] : [])] },
-        ],
-      },
-    }));
+    const rows = await withTenant(this.prisma, ctx, async (tx) => {
+      const groups = await tx.groupMember.findMany({ where: { userId }, select: { groupId: true } });
+      return tx.roleAssignment.findMany({
+        where: {
+          AND: [
+            {
+              OR: [
+                { principalType: "user", principalId: userId },
+                { principalType: "group", principalId: { in: groups.map((g) => g.groupId) } },
+              ],
+            },
+            { OR: [{ workspaceId: null }, ...(workspaceId ? [{ workspaceId }] : [])] },
+          ],
+        },
+      });
+    });
     const assignments: ScopedRole[] = [];
     let isOrgAdmin = false;
     for (const row of rows) {
