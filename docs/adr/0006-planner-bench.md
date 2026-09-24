@@ -35,3 +35,11 @@ The committed baseline is `0.6406` on an Apple M2 with Node v22.23.3 (5 recordin
 - The calibration cancels most of a uniform slowdown, but not all of it. With 8 `yes` processes on 8 cores, absolute p50 rose about 2.5× (14.5–16.3 ms) and the ratio rose to 0.686–0.741. That failed 1 run in 3. The bench still assumes an otherwise idle machine, the same as ADR-002 `## Notes`.
 - The ratio still depends on the microarchitecture. It was measured only on Apple M2 performance cores. The efficiency-core probe ran under background QoS, which also throttles, so it is only a rough proxy for another machine. On a Linux x64 CI runner the ratio may sit anywhere from well under to over 0.70. If CI fails right after this lands, or if it passes with a large margin, re-record on the reference CI runner with the method above. Do not loosen the 10% limit.
 - A bench run takes about 3 s instead of about 0.4 s.
+
+## Addendum: execute bench (2026-09-24)
+
+`bench/execute.bench.ts` (added with the T-007 fixes) gated absolute p50 milliseconds of the page, group and totals queries. On a busy laptop the page query drifted from 21 ms to 24–26 ms, and the gate failed about one run in two. It now follows the same method as the compile bench:
+- Each sample is interleaved with a fixed DB calibration query (`SELECT sum(x::numeric * 1.01) FROM generate_series(1, 150000) x`), run as `budget_app` through the same pool.
+- The gate is `p50 / calibration p50`, and the baseline keys are `execute{Page,Group,Totals}ToCalibrationP50Ratio`.
+- `BENCH_RECORD=1` re-records them and merges them into `baseline.json`.
+- Recorded on an Apple M2: page 0.7785, group 4.9909, totals 3.9154.
