@@ -7,6 +7,8 @@ Repo on 2026-09-23: T-001 through T-005, T-007, T-026a, T-026b, and T-026c are d
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
+Planner bench maintenance (`task/planner-bench-stable`, 2026-09-23, not a §22 task): the `compileQuery` bench warms up for 200k calls, times 31 batches, and gates the p50 ratio to a planner-shaped calibration loop at 10%. The baseline was re-recorded on an Apple M2. ADR-004 has the method and the numbers.
+
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
 
@@ -101,7 +103,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - The target-value subquery binds its metric parameter only on the `exists`, `value`, and `vs_target_pct` branches. The spec builds that subquery before the switch, which leaves an unused parameter on `actual`. Postgres rejects a statement that binds a parameter it does not reference.
 - `mentions_user` for `@me` follows the spec expression. The JSON is bound before the `"__ME__"` replace, so the replace does not rewrite the parameter. The suite asserts a concrete user id.
 - The cursor is the spec's base64url offset. The stability test covers an uncommitted insert and a committed insert that sorts after the page window.
-- `pnpm bench` times `compileQuery` against `packages/query-planner/bench/baseline.json` and fails when the p50 is more than 10% above that baseline.
+- `pnpm bench` times `compileQuery` against `packages/query-planner/bench/baseline.json`. It fails when the p50 is more than 10% above that baseline. Since `task/planner-bench-stable` the p50 is divided by a warmed calibration loop; see ADR-004.
 
 ## T-026a assumptions
 
