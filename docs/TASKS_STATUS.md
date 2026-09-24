@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-026a, T-026b, and T-026c are done. T-016, T-017 and T-018 are `blocked` on their cloud clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018 and T-020 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -18,7 +18,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-002 | 2 | T-001 | done | `pnpm db:migrate` on fresh Postgres 16; RLS test | — |
 | T-003 | 2 | T-001 | done | zod round-trip; `parseSearch` 20 cases | — |
 | T-004 | 2 | T-002, T-003 | done | concurrent `SET LOCAL` isolation test | — |
-| T-005 | 3 | T-002, T-004 | done | registry acceptance, excluding search and MCP clauses | search qualifier (T-020); MCP parameter (T-025) |
+| T-005 | 3 | T-002, T-004 | done | registry acceptance, excluding search and MCP clauses; search qualifier covered by T-020 (suggest test) | MCP parameter (T-025) |
 | T-007 | 4 | T-002, T-003, T-004 | done | planner suite including property tests, on SQL fixtures | — |
 | T-026a | 5 | T-001 | done | bench numbers in ADR-002 | DB golden at 100k leaves is T-034 |
 | T-026b | 5 | T-001 | done | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
@@ -35,7 +35,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-017 | 12 | T-002, T-005, T-010 | blocked | ≥ 99% match on golden CSV (99.69%) and rejected-rows report in the GCS emulator — green (`seed/golden.test.ts`, `workers/src/ingest`, ADR-011) | live Snowflake, Sheets, BigQuery (plan §16.4; no credentials in spec); Secret Manager; `suggest-mapping` needs `OPENAI_API_KEY` |
 | T-018 | 12 | T-015, T-017 | blocked | consecutive-days test; no duplicate open alerts — green (`workers/src/pacing`, golden pacing rows, ADR-012) | Cloud Scheduler 15 min trigger (GCP phase); "unmatched spend > 2 %" default rule waits for a workspace-level alert (ADR-012) |
 | T-019 | 12 | T-011 | done | blocking thread blocks submit; mention notifies — green (`modules/threads`, golden threads and tags, ADR-013) | — |
-| T-020 | 12 | T-016 | pending | index lag < 5 s on small golden; suggest API | p95 < 150 ms at 1M docs is the T-034 load job |
+| T-020 | 12 | T-016 | blocked | index lag < 5 s on small golden; suggest API — green (`seed/golden.test.ts`, `modules/search`, ADR-014) | p95 < 150 ms at 1M docs is the T-034 load job |
 | T-021 | 12 | T-016, T-018, T-019 | pending | Slack Block Kit snapshot tests | live Slack workspace |
 | T-022 | 12 | T-007, T-016 | pending | tree totals = pivot totals on golden | — |
 | T-023 | 13 | T-007 | pending | CSV/XLSX export respects filter | Sheets push; BigQuery views queryable (GCP phase) |

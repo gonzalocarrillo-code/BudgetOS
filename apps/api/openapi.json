@@ -5976,6 +5976,86 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/search": {
+      "get": {
+        "operationId": "search",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Free text plus qualifiers: type:, status:, owner:@me, tag:, period:, budget:>N, cpa:>target, has:open-thread, mentions:@me, updated:<7d, <dimension key>:<code>"
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated entity types"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "description": "Hits per type (default 5)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed }"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/search/suggest": {
+      "get": {
+        "operationId": "searchSuggest",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A qualifier-key prefix, or key: plus a value prefix"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ keys: [{ key, label, kind }], values: [{ value, label }] }"
+          }
+        }
+      }
+    },
     "/api/v1/assets": {
       "post": {
         "operationId": "uploadIconAsset",

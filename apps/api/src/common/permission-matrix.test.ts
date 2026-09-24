@@ -126,6 +126,8 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/values/{id}/merge", permission: "registry.manage", url: () => `/api/v1/values/${rid}/merge`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/hierarchy-templates", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/hierarchy-templates` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/hierarchy-templates", permission: "registry.manage", url: () => `/api/v1/workspaces/${wsA}/hierarchy-templates`, body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/search", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/search?q=x` },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/search/suggest", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/search/suggest?prefix=re` },
   { method: "GET", path: "/api/v1/threads", permission: "thread.comment", url: () => `/api/v1/threads?anchorType=envelope&anchorId=${rid}`, headers: X() },
   { method: "POST", path: "/api/v1/threads", permission: "thread.comment", url: () => `/api/v1/threads`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/threads/{id}/comments", permission: "thread.comment", url: () => `/api/v1/threads/${rid}/comments`, headers: X(), body: {} },

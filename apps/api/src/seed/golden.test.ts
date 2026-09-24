@@ -15,6 +15,9 @@ import type { AuthContext } from "../common/tenant.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
 import { GOLDEN_COLLAB } from "@budget/db";
+import { handleSearchEvent } from "@budget/workers";
+import { search } from "../modules/search/search.js";
+import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
 
 /**
  * T-006 done-when: the golden seed runs through the real commands in under 60 s and
@@ -285,6 +288,59 @@ describe("threads and tags (T-019 seed rows)", () => {
     const head = await owner.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { currentVersionId: true } });
     const draft = await createDraftVersion(app, planner, envelopeId, { amount: "1.00", basedOnVersionId: head.currentVersionId });
     await expect(submitVersion(app, planner, envelopeId, { versionId: draft.id })).rejects.toMatchObject({ code: "CONFLICT", details: { blockingThreads: 1 } });
+  });
+});
+
+describe("search (T-020 seed rows; done-when: index lag < 5 s on the small golden)", () => {
+  const S = A.search;
+  const persona = (p: "planner" | "budgetOwner", role: "PLANNER" | "BUDGET_OWNER"): AuthContext => ({
+    ctx: { ...ctx(), userId: golden.users[p] },
+    user: { id: golden.users[p], orgId: golden.orgId, email: `${p}@golden.test`, name: p },
+    isOrgAdmin: false,
+    roles: [role],
+    assignments: [{ role, scope: {} }],
+  });
+  const find = async (q: string, who = persona("planner", "PLANNER")) => search(app, who, { q, limit: "50" });
+  const count = async (q: string, type: string) => (await find(q)).groups.find((g) => g.type === type)?.count ?? 0;
+
+  it("the seed's re-index holds one document per entity", async () => {
+    const rows = await owner.$queryRawUnsafe<Array<{ entity_type: string; n: bigint }>>(`SELECT entity_type, count(*) AS n FROM search_document WHERE workspace_id = $1::uuid GROUP BY entity_type`, golden.workspaceId);
+    const counts = Object.fromEntries(rows.map((r) => [r.entity_type, Number(r.n)]));
+    const requests = await owner.approvalRequest.count({ where: { workspaceId: golden.workspaceId } });
+    expect(counts).toEqual({ ...S, approval_request: requests });
+  });
+
+  it("qualifiers and fuzzy text find the planned rows", async () => {
+    expect(await count("tag:q4-push type:envelope", "envelope")).toBe(A.collab.tags["q4-push"]);
+    const br = goldenPlan().filter((e) => e.dimensionValues["country"] === "BR").length;
+    expect(await count("country:br type:envelope", "envelope")).toBe(br);
+    expect(await count("status:pending type:approval", "approval_request")).toBe(await owner.approvalRequest.count({ where: { workspaceId: golden.workspaceId, status: "PENDING" } }));
+    const fuzzy = (await find("brazl meta awareness")).groups.find((g) => g.type === "envelope")?.hits as Array<{ path: string }>;
+    expect(fuzzy[0]?.path).toMatch(/BR › .*meta.*awareness/i);
+    // Search counts any open thread on the envelope, cell threads included (the GB blocking thread and
+    // the DE October cell thread); the planner's has_open_thread reads envelope-anchored threads only.
+    const withThreads = new Set(GOLDEN_COLLAB.threads.filter((t) => !t.resolve).map((t) => t.leafKey)).size;
+    expect(await count("has:open-thread type:envelope", "envelope")).toBe(withThreads);
+    const mine = await find("mentions:@me", persona("budgetOwner", "BUDGET_OWNER"));
+    expect(mine.groups.map((g) => [g.type, g.count])).toEqual([["comment", 1]]);
+  });
+
+  it("a change is searchable within 5 s of its commit: command → outbox → indexer → search", async () => {
+    const id = golden.envelopeIds.get("LATAM/CO/meta/awareness/retargeting") as string;
+    const [{ max }] = (await owner.$queryRawUnsafe<Array<{ max: string | null }>>(`SELECT max(id)::text AS max FROM outbox WHERE workspace_id = $1::uuid`, golden.workspaceId)) as [{ max: string | null }];
+    const env = await owner.envelope.findUniqueOrThrow({ where: { id }, select: { rowVersion: true } });
+    const name = `Colombia retargeting relaunch ${randomUUID().slice(0, 6)}`;
+    const started = performance.now();
+    await updateEnvelope(app, persona("planner", "PLANNER"), id, { rowVersion: env.rowVersion, name });
+    // What the publisher would push, in outbox order (Pub/Sub transport itself is phase 20).
+    const events = await owner.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, golden.workspaceId, max ?? "0");
+    for (const e of events) {
+      await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(e.payload)).toString("base64"), attributes: { outboxId: e.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: e.topic }, messageId: e.id }, subscription: "search-indexer" }, TODAY);
+    }
+    const hit = (await find(`"${name}"`)).groups.find((g) => g.type === "envelope")?.hits as Array<{ id: string }> | undefined;
+    const lagMs = performance.now() - started;
+    expect(hit?.[0]?.id).toBe(id);
+    expect(lagMs).toBeLessThan(5_000);
   });
 });
 

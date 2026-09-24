@@ -10,3 +10,5 @@ export {
   pageOf,
 } from "./compile-query.js";
 export type { CompiledQuery, CompileOptions, FilterTarget, MetricDef, OrderKey } from "./compile-query.js";
+export { SEARCH_TYPES, compileSearch, parseRelative, searchTypes } from "./compile-search.js";
+export type { CompiledSearch, SearchContext } from "./compile-search.js";

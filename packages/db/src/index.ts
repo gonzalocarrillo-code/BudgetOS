@@ -13,6 +13,8 @@ export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";
+export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
+export type { SearchDoc } from "./search.js";
 export { openAlert, saveRuleStates } from "./alerts.js";
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
 export { currentFilterTargets, metricLibrary, plannerOptions } from "./planner-options.js";

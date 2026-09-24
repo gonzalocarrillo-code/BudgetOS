@@ -158,5 +158,13 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     },
     "comments": 5,
     "envelopesWithOpenThreads": 1
+  },
+  "search": {
+    "envelope": 332,
+    "target": 105,
+    "alert": 193,
+    "comment": 5,
+    "tag": 2,
+    "dimension_value": 302
   }
 };

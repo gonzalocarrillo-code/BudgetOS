@@ -10,11 +10,13 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root . --config ../../vitest.config.mjs"
+    "test": "vitest run --root . --config ../../vitest.config.mjs",
+    "reindex": "tsx src/search-indexer/main.ts reindex"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "eslint": "catalog:",
+    "tsx": "4.20.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

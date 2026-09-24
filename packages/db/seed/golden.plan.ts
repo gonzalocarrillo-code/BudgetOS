@@ -1,5 +1,6 @@
 import { rephase } from "@budget/domain";
 import { Decimal } from "decimal.js";
+import { DEFAULT_DIMENSIONS } from "./defaults.registry.js";
 
 /**
  * The golden dataset as a pure, deterministic plan (spec §21). `apps/api/src/seed/golden.ts` turns
@@ -9,7 +10,7 @@ import { Decimal } from "decimal.js";
  * Scope (LOCAL_BUILD_PHASES phase 9): registry, envelope tree, approved versions, phasing. Facts,
  * threads, tags, pacing rules and closures are added by the tasks that build their commands;
  * targets arrived with T-015 (goldenTargets), facts with T-017 (goldenFactsCsv), pacing alerts with
- * T-018 (GOLDEN_PACING), threads and tags with T-019 (GOLDEN_COLLAB).
+ * T-018 (GOLDEN_PACING), threads and tags with T-019 (GOLDEN_COLLAB), search documents with T-020.
  */
 
 export const GOLDEN_SEED = 20260101;
@@ -388,6 +389,8 @@ export interface GoldenTotals {
   pacing: { days: string[]; openAlertsByRule: Record<string, number> };
   /** T-019: threads, comments and tag counts (GOLDEN_COLLAB). */
   collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; envelopesWithOpenThreads: number };
+  /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
+  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value", number>;
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -483,5 +486,13 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
         envelopesWithOpenThreads: new Set(open.filter((t) => t.anchor === "envelope").map((t) => t.leafKey)).size,
       };
     })(),
+    search: {
+      envelope: plan.length + GOLDEN_SPLIT.parts.length,
+      target: goldenTargets(plan).length + 1,
+      alert: Object.values(expectedPacing(plan)).reduce((n, c) => n + c, 0),
+      comment: GOLDEN_COLLAB.threads.reduce((n, t) => n + t.comments.length, 0),
+      tag: GOLDEN_COLLAB.tags.length,
+      dimension_value: DEFAULT_DIMENSIONS.reduce((n, d) => n + d.values.length, 0) + GOLDEN_CUSTOM_DIMENSIONS.reduce((n, d) => n + d.values.length, 0),
+    },
   };
 }
