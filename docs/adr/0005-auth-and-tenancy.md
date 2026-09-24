@@ -68,4 +68,4 @@ T-010's cross-workspace test found that an org admin who sent `X-Workspace-Id` f
   - **Pre-org user match:** `withIdentity()` sets `app.auth_subs` and `app.auth_email` from the verified token, and an `app_user` policy exposes only the matching rows. The email is set only when `email_verified` is true. A SECURITY DEFINER lookup would not bypass FORCE ROW LEVEL SECURITY, because FORCE also applies to the owner.
   - The interceptor's workspace-to-org check and `/me`'s workspace list now run in `withTenant()`. Another org's workspace is invisible, so it still gets the same 403.
   - `app_is_org_admin()` now treats `''` as false. After a `SET LOCAL` transaction on a pooled connection the setting reads `''`, and the old cast raised 22P02 in any later session that did not set it.
-  - `app_group_member` is the only identity table left without RLS.
+  - `app_group_member` (migration `20260924040000_rls_group_member`) follows `app_group`, and a write also needs the member to be a user of the same org. `AccessRepository.access` reads memberships inside `withTenant()`.
