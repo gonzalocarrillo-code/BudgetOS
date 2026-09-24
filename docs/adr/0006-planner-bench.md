@@ -1,4 +1,4 @@
-# ADR-004: planner bench warm-up and calibration
+# ADR-006: planner bench warm-up and calibration
 
 ## Status
 

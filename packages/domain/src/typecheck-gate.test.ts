@@ -16,8 +16,8 @@ const expectedScripts = {
   "db:migrate": "pnpm --filter @budget/db prisma migrate deploy",
   "db:seed": "pnpm --filter @budget/db tsx seed/golden.ts",
   "db:reset": "./scripts/dev-reset.sh",
-  "license-check":
-    'license-checker-rseidelsohn --production --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;Unlicense" --excludePrivatePackages',
+  // ADR 0004: license-checker-rseidelsohn saw no pnpm workspace dependencies.
+  "license-check": "node scripts/license-check.mjs",
   bench: "turbo run bench",
 };
 

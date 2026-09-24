@@ -78,7 +78,9 @@ it("compileQuery p50 stays within 10% of the committed baseline", () => {
       calibration5000P50Ms: Number(calibrationP50.toFixed(2)),
       recordedOn: { cpu: cpus()[0]?.model ?? "unknown", node: process.version, date: new Date().toISOString().slice(0, 10) },
     };
-    writeFileSync(baselinePath, `${JSON.stringify(recorded, null, 2)}\n`);
+    // Merge: execute.bench.ts keeps its own keys in the same file.
+    const existing = JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, unknown>;
+    writeFileSync(baselinePath, `${JSON.stringify({ ...existing, ...recorded }, null, 2)}\n`);
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as PlannerBaseline;
   expect(

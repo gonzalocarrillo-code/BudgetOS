@@ -14,7 +14,9 @@
     "bench": "vitest run --root . --config vitest.bench.config.mjs"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "@types/pg": "8.23.1",
+    "decimal.js": "10.6.0",
     "eslint": "catalog:",
     "fast-check": "3.23.2",
     "pg": "8.23.0",

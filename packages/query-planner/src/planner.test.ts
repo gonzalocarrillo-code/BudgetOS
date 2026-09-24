@@ -3,7 +3,8 @@ import type { Comparator as ComparatorT, FieldRef, FilterGroupT, Predicate as Pr
 import fc from "fast-check";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { compileQuery, metricRegistry } from "./compile-query.js";
+import { compileQuery, metricRegistry, pageOf } from "./compile-query.js";
+import "./test-support/env.js";
 
 /**
  * Spec §6.3. Fixtures are SQL in this file (phase 4). Envelope commands do not exist yet.
@@ -894,7 +895,7 @@ describe.sequential("T-007 query planner", () => {
     );
   }, 60_000);
 
-  it("keeps an offset cursor stable under concurrent inserts", async () => {
+  it("keeps a keyset cursor stable under concurrent inserts", async () => {
     const names = ["page-a", "page-c", "page-e", "page-g", "page-i"];
     for (const name of names) {
       await insertLeaf({
@@ -909,7 +910,11 @@ describe.sequential("T-007 query planner", () => {
         createdAt: "2026-09-01T00:00:00.000Z",
       });
     }
-    const cursor = Buffer.from("2", "utf8").toString("base64url");
+    const first = compile({ field: statusField, op: "not_empty", workspaceId: pageWs, limit: 2, measures: ["budget"] });
+    const firstPage = pageOf(first, await queryRows<Record<string, unknown>>(first.sql, first.values), 2);
+    expect(firstPage.rows.map((row) => row["name"])).toEqual(["page-a", "page-c"]);
+    const cursor = firstPage.nextCursor;
+    if (cursor === null) throw new Error("expected a second page");
     const page = compile({
       field: statusField,
       op: "not_empty",
@@ -918,9 +923,7 @@ describe.sequential("T-007 query planner", () => {
       cursor,
       measures: ["budget"],
     });
-    expect(Number(Buffer.from(cursor, "base64url").toString())).toBe(2);
-    expect(page.values.at(-2)).toBe(3);
-    expect(page.values.at(-1)).toBe(2);
+    expect(page.values.at(-1)).toBe(3);
 
     const otherClient = new Client({ connectionString: ownerUrl });
     await otherClient.connect();

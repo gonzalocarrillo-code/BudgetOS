@@ -3,11 +3,11 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-23: T-001 through T-005, T-007, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
+Repo on 2026-09-23: T-001 through T-005, T-007, T-009, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
-Planner bench maintenance (`task/planner-bench-stable`, 2026-09-23, not a §22 task): the `compileQuery` bench warms up for 200k calls, times 31 batches, and gates the p50 ratio to a planner-shaped calibration loop at 10%. The baseline was re-recorded on an Apple M2. ADR-004 has the method and the numbers.
+Planner bench maintenance (`task/planner-bench-stable`, 2026-09-23, not a §22 task): the `compileQuery` bench warms up for 200k calls, times 31 batches, and gates the p50 ratio to a planner-shaped calibration loop at 10%. The baseline was re-recorded on an Apple M2, and again after the T-007 fixes (PR #1) merged: the fixed compiler does more work per call, so the ratio moved from 0.6406 to 1.018. ADR-006 has the method and the numbers.
 
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
@@ -23,7 +23,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-026a | 5 | T-001 | done | bench numbers in ADR-002 | DB golden at 100k leaves is T-034 |
 | T-026b | 5 | T-001 | done | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
 | T-026c | 6 | T-026a | done | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
-| T-009 | 7 | T-002, T-003, T-004 | pending | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
+| T-009 | 7 | T-002, T-003, T-004 | done | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
 | T-010 | 8 | T-004, T-009 | pending | 409 with `currentVersionId` | — |
 | T-011 | 8 | T-010 | pending | epic 1.3 acceptance; cap trigger | — |
 | T-006 | 9 | T-005, T-010, T-011 | pending | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, targets, closures added by later tasks |
@@ -103,7 +103,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - The target-value subquery binds its metric parameter only on the `exists`, `value`, and `vs_target_pct` branches. The spec builds that subquery before the switch, which leaves an unused parameter on `actual`. Postgres rejects a statement that binds a parameter it does not reference.
 - `mentions_user` for `@me` follows the spec expression. The JSON is bound before the `"__ME__"` replace, so the replace does not rewrite the parameter. The suite asserts a concrete user id.
 - The cursor is the spec's base64url offset. The stability test covers an uncommitted insert and a committed insert that sorts after the page window.
-- `pnpm bench` times `compileQuery` against `packages/query-planner/bench/baseline.json`. It fails when the p50 is more than 10% above that baseline. Since `task/planner-bench-stable` the p50 is divided by a warmed calibration loop; see ADR-004.
+- `pnpm bench` times `compileQuery` against `packages/query-planner/bench/baseline.json`. It fails when the p50 is more than 10% above that baseline. Since `task/planner-bench-stable` the p50 is divided by a warmed calibration loop; see ADR-006.
 
 ## T-026a assumptions
 
@@ -134,6 +134,11 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - `budgetGridScrollFpsP50` is 59.9. The bench fails under 55 and under 90% of that baseline. `budgetGridFirstPaintMs` is 35 and fails above 300 ms or 10% after the spike `cpuScaleMs`. `budgetGridGetCellP95Ms` is 0.005. It fails above 0.2 ms. The 10% band is too tight for that timer (0.0042 ms, then 0.005 ms), so that ratio fails above 2×, the same band T-026a used for its noisy cell sample. The spike baseline numbers were not retuned.
 - Storybook 8.6.14 is a devDependency. Glide, React, and React DOM are runtime dependencies. Glide's React peer range still stops at 18. Column titles are the column keys. `@budget/ui/i18n` does not exist yet.
 - 59.9 fps does not meet plan epic 0.7's 60 fps. The 100,000-leaf database golden is T-034.
+
+## License-check fix (no task id; ADR-004)
+
+- Until this change, `pnpm license-check` checked no packages and exited 0. The "`pnpm license-check` green" results recorded for T-026a, T-026b and T-026c therefore did not check anything.
+- The gate now checks every workspace package's production tree, including transitive dependencies. Six transitive packages with permissive licences outside the allowlist (MIT-0, Python-2.0, CC-BY-4.0, BlueOak-1.0.0) pass as exact-version entries in `scripts/license-exceptions.json`. Any other disallowed licence, and any stale entry, fails the gate.
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

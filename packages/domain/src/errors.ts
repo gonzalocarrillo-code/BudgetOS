@@ -1,4 +1,5 @@
 export type ErrorCode =
+  | "UNAUTHENTICATED"
   | "NOT_FOUND"
   | "FORBIDDEN"
   | "CONFLICT"
@@ -19,6 +20,7 @@ export class DomainError extends Error {
 }
 
 export const httpStatus: Record<ErrorCode, number> = {
+  UNAUTHENTICATED: 401,
   NOT_FOUND: 404,
   FORBIDDEN: 403,
   CONFLICT: 409,
