@@ -10,5 +10,7 @@ export { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "../seed/defaults.registry
 export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.registry.js";
 export { audit, bumpDataVersion, outbox } from "./sql.js";
 export type { Tx } from "./sql.js";
+export { lockEnvelope } from "./envelopes.js";
+export type { LockedEnvelopeRow } from "./envelopes.js";
 export { withTenant } from "./tenant.js";
 export type { TenantContext } from "./tenant.js";

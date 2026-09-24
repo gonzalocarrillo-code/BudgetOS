@@ -1,6 +1,11 @@
 import {
   AddValuesInput,
   AssignRoleInput,
+  CreateDraftVersionInput,
+  CreateEnvelopeInput,
+  RestoreVersionInput,
+  UpdateEnvelopeInput,
+  UpdatePhasingInput,
   GroupsSyncInput,
   CreateDimensionInput,
   MergeValuesInput,
@@ -38,6 +43,30 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/roles/{id}": {
         delete: { operationId: "revokeRole", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Revoked role assignment" } } },
+      },
+      "/api/v1/workspaces/{ws}/envelopes": {
+        post: { operationId: "createEnvelope", parameters: [workspaceParam], requestBody: json(CreateEnvelopeInput), responses: { "200": { description: "Created envelope (with v1 draft when an amount is given)" } } },
+      },
+      "/api/v1/envelopes/{id}": {
+        get: { operationId: "getEnvelope", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Envelope with its approved version and open draft" } } },
+        patch: { operationId: "updateEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(UpdateEnvelopeInput), responses: { "200": { description: "Updated envelope metadata" }, "409": { description: "Stale rowVersion; details carry currentRowVersion and currentVersionId" } } },
+      },
+      "/api/v1/envelopes/{id}/versions": {
+        get: { operationId: "listEnvelopeVersions", parameters: [idParam, workspaceHeader], responses: { "200": { description: "All versions, newest first" } } },
+      },
+      "/api/v1/envelopes/{id}/draft": {
+        patch: { operationId: "createDraftVersion", parameters: [idParam, workspaceHeader], requestBody: json(CreateDraftVersionInput), responses: { "200": { description: "New draft version" }, "409": { description: "Stale basedOnVersionId; details.currentVersionId" }, "423": { description: "Period closed" } } },
+      },
+      "/api/v1/envelopes/{id}/phasing": {
+        patch: { operationId: "updateEnvelopePhasing", parameters: [idParam, workspaceHeader], requestBody: json(UpdatePhasingInput), responses: { "200": { description: "New draft version with the same amount and new phasing" } } },
+      },
+      "/api/v1/envelopes/{id}/restore/{versionId}": {
+        post: {
+          operationId: "restoreEnvelopeVersion",
+          parameters: [idParam, { name: "versionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }, workspaceHeader],
+          requestBody: json(RestoreVersionInput),
+          responses: { "200": { description: "New draft version copied from the given version" } },
+        },
       },
       "/api/v1/workspaces/{ws}/groups/sync": {
         post: { operationId: "syncGroups", parameters: [workspaceParam], requestBody: json(GroupsSyncInput), responses: { "200": { description: "Group membership after sync" } } },

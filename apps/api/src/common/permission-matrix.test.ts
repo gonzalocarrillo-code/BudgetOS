@@ -1,19 +1,10 @@
-import "reflect-metadata";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { can, type Role } from "@budget/domain";
 import { withTenant } from "@budget/db";
-import { NestFactory } from "@nestjs/core";
-import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
-import { PrismaClient } from "@prisma/client";
-import { SignJWT, exportJWK, generateKeyPair, type CryptoKey, type JWK } from "jose";
+import { SignJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AppModule } from "../app.module.js";
 import { openApiDocument } from "../openapi.js";
+import { ISSUER, PROJECT, appDb as appDbClient, ownerDb, startHarness, type Harness, type Method, type MintOptions } from "../test-support/harness.js";
 import { AccessRepository } from "./auth/access.repository.js";
 import type { RoutePermission } from "./permission.decorator.js";
 import { assertInScope, envelopeScopeTarget } from "./scope.guard.js";
@@ -25,24 +16,8 @@ import type { AuthContext } from "./tenant.js";
  * No auth bypass exists; the role × action grid itself is packages/domain/src/permissions.matrix.test.ts.
  */
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
-function loadEnv(path: string): void {
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    const t = line.trim();
-    const i = t.indexOf("=");
-    if (t === "" || t.startsWith("#") || i === -1) continue;
-    const key = t.slice(0, i).trim();
-    const value = t.slice(i + 1).trim().replace(/^(['"])(.*)\1$/, "$2");
-    if (process.env[key] === undefined) process.env[key] = value;
-  }
-}
-loadEnv(join(repoRoot, "packages/db/.env"));
-
-const PROJECT = "budget-os-test";
-const ISSUER = `https://securetoken.google.com/${PROJECT}`;
-const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
-const appDb = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
+const owner = ownerDb();
+const appDb = appDbClient();
 
 const ROLES: Role[] = ["VIEWER", "PLANNER", "BUDGET_OWNER", "APPROVER", "FINANCE", "DATA_ADMIN", "WORKSPACE_ADMIN", "ORG_ADMIN"];
 
@@ -68,51 +43,12 @@ const approver2 = mkUser("approver2");
 const scoped = mkUser("scoped");
 const orgBAdmin = mkUser("orgb-admin");
 
-let app: NestFastifyApplication;
-let jwks: Server;
-let signingKey: CryptoKey;
-let foreignKey: CryptoKey;
+let h: Harness;
 const kid = "test-key-1";
-
-async function mint(u: { sub: string; email: string }, over: { key?: CryptoKey; aud?: string; iss?: string; exp?: string; emailVerified?: boolean; googleSub?: string } = {}) {
-  return new SignJWT({
-    email: u.email,
-    email_verified: over.emailVerified ?? true,
-    firebase: { sign_in_provider: "google.com", identities: { "google.com": [over.googleSub ?? `g-${u.sub}`] } },
-  })
-    .setProtectedHeader({ alg: "RS256", kid })
-    .setIssuer(over.iss ?? ISSUER)
-    .setAudience(over.aud ?? PROJECT)
-    .setSubject(u.sub)
-    .setIssuedAt()
-    .setExpirationTime(over.exp ?? "10m")
-    .sign(over.key ?? signingKey);
-}
-
-async function call(method: "GET" | "POST" | "PATCH" | "DELETE", url: string, token: string | null, opts: { headers?: Record<string, string>; body?: unknown } = {}) {
-  const res = await app.getHttpAdapter().getInstance().inject({
-    method,
-    url,
-    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(opts.headers ?? {}) },
-    ...(opts.body === undefined ? {} : { payload: opts.body as Record<string, unknown> }),
-  });
-  return { status: res.statusCode, body: res.body ? (JSON.parse(res.body) as Record<string, unknown>) : {} };
-}
+const mint = (u: { sub: string; email: string }, over: MintOptions = {}) => h.mint(u, over);
+const call = (method: Method, url: string, token: string | null, opts: { headers?: Record<string, string>; body?: unknown } = {}) => h.call(method, url, token, opts);
 
 beforeAll(async () => {
-  const pair = await generateKeyPair("RS256");
-  signingKey = pair.privateKey;
-  foreignKey = (await generateKeyPair("RS256")).privateKey;
-  const jwk: JWK = { ...(await exportJWK(pair.publicKey)), kid, alg: "RS256", use: "sig" };
-  jwks = createServer((req, res) => {
-    res.writeHead(req.url === "/jwks" ? 200 : 404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ keys: [jwk] }));
-  });
-  await new Promise<void>((resolve) => jwks.listen(0, "127.0.0.1", resolve));
-  process.env["AUTH_AUDIENCE"] = PROJECT;
-  process.env["AUTH_ISSUER"] = ISSUER;
-  process.env["AUTH_JWKS_URL"] = `http://127.0.0.1:${(jwks.address() as AddressInfo).port}/jwks`;
-
   await owner.organization.createMany({ data: [{ id: orgA, name: "t009-a" }, { id: orgB, name: "t009-b" }] });
   await owner.workspace.createMany({
     data: [
@@ -144,15 +80,11 @@ beforeAll(async () => {
     ],
   });
 
-  app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: ["error"], abortOnError: false });
-  app.setGlobalPrefix("api/v1");
-  await app.init();
-  await app.getHttpAdapter().getInstance().ready();
+  h = await startHarness();
 }, 60_000);
 
 afterAll(async () => {
-  await app?.close();
-  await new Promise<void>((resolve) => (jwks ? jwks.close(() => resolve()) : resolve()));
+  await h?.close();
   const wss = [wsA, wsB, wsC];
   const orgs = [orgA, orgB];
   await owner.$executeRawUnsafe(`DELETE FROM approval_request WHERE workspace_id = ANY($1::uuid[])`, wss);
@@ -175,7 +107,7 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------------------------
 
 interface RouteCase {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: Method;
   path: string; // openapi template
   permission: RoutePermission;
   url: () => string;
@@ -199,6 +131,13 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/workspaces/{ws}/roles", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/roles`, body: {} },
   { method: "DELETE", path: "/api/v1/roles/{id}", permission: "user.manage", url: () => `/api/v1/roles/${rid}`, headers: X() },
   { method: "POST", path: "/api/v1/workspaces/{ws}/groups/sync", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/groups/sync`, body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/envelopes", permission: "envelope.create", url: () => `/api/v1/workspaces/${wsA}/envelopes`, body: {} },
+  { method: "GET", path: "/api/v1/envelopes/{id}", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}`, headers: X() },
+  { method: "PATCH", path: "/api/v1/envelopes/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/envelopes/{id}/versions", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}/versions`, headers: X() },
+  { method: "PATCH", path: "/api/v1/envelopes/{id}/draft", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/draft`, headers: X(), body: {} },
+  { method: "PATCH", path: "/api/v1/envelopes/{id}/phasing", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/phasing`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/envelopes/{id}/restore/{versionId}", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/restore/${rid}`, headers: X(), body: {} },
 ];
 
 function allowed(role: Role | "OUTSIDER", permission: RoutePermission): boolean {
@@ -241,7 +180,7 @@ describe("token validation (no bypass)", () => {
   it("rejects a token signed by another key, expired, or for another audience / issuer", async () => {
     const u = users.WORKSPACE_ADMIN;
     for (const token of [
-      await mint(u, { key: foreignKey }),
+      await mint(u, { key: h.foreignKey }),
       await mint(u, { exp: "-1m" }),
       await mint(u, { aud: "another-project" }),
       await mint(u, { iss: "https://securetoken.google.com/another-project" }),
@@ -442,6 +381,7 @@ describe("dimension scopes", () => {
     const auth: AuthContext = {
       ctx: { workspaceId: wsA, userId: scoped.id, isOrgAdmin: false, actorType: "user", requestId: "t009-scope" },
       user: { id: scoped.id, orgId: orgA, email: scoped.email, name: scoped.email },
+      isOrgAdmin: false,
       roles: ["BUDGET_OWNER"],
       assignments: access.assignments,
     };

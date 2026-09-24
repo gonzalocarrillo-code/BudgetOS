@@ -7,7 +7,7 @@ import type { AuthContext } from "./tenant.js";
  * interceptor's job; this runs in services once the entity is loaded. Org admins are unscoped.
  */
 export function assertInScope(auth: AuthContext, action: Action, target: ScopeTarget): void {
-  if (auth.ctx.isOrgAdmin) return;
+  if (auth.isOrgAdmin) return;
   if (!canInScope(auth.assignments, action, target)) {
     throw new DomainError("FORBIDDEN", `Outside your scope for ${action}`, { action });
   }
@@ -20,6 +20,11 @@ export async function envelopeScopeTarget(tx: Tx, envelopeId: string): Promise<S
     const exists = await tx.envelope.findUnique({ where: { id: envelopeId }, select: { id: true } });
     if (exists === null) throw new DomainError("NOT_FOUND", "Envelope not found");
   }
+  return scopeTargetForValues(tx, rows);
+}
+
+/** Scope target for a set of (dimension, value) pairs, e.g. a tuple about to be written. */
+export async function scopeTargetForValues(tx: Tx, rows: Array<{ dimensionId: string; valueId: string }>): Promise<ScopeTarget> {
   const dimensionIds = [...new Set(rows.map((r) => r.dimensionId))];
   const keys = new Map((await tx.dimension.findMany({ where: { id: { in: dimensionIds } }, select: { id: true, key: true } })).map((d) => [d.id, d.key]));
   const byId = new Map((await dimensionValuePaths(tx, dimensionIds)).map((p) => [p.id, p]));

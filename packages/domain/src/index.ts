@@ -21,6 +21,16 @@ export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
 
 export { AssignRoleInput, GroupsSyncInput } from "./access.js";
 
+export {
+  CreateDraftVersionInput,
+  CreateEnvelopeInput,
+  MoneyString,
+  PhasingEntry,
+  RestoreVersionInput,
+  UpdateEnvelopeInput,
+  UpdatePhasingInput,
+} from "./envelopes.js";
+
 export { ChainStep, PolicyConditions } from "./approvals.js";
 
 export { newId } from "./ids.js";

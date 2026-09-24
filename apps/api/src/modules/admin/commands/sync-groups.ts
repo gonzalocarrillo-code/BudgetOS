@@ -19,7 +19,7 @@ export async function syncGroups(prisma: PrismaClient, auth: AuthContext, raw: u
     for (const g of input.groups) {
       const googleGroup = g.googleGroup.toLowerCase();
       const existing = await tx.group.findUnique({ where: { orgId_googleGroup: { orgId, googleGroup } } });
-      if (existing !== null && !auth.ctx.isOrgAdmin) {
+      if (existing !== null && !auth.isOrgAdmin) {
         const elsewhere = await tx.roleAssignment.findFirst({
           where: { principalType: "group", principalId: existing.id, OR: [{ workspaceId: null }, { workspaceId: { not: workspaceId } }] },
           select: { id: true },

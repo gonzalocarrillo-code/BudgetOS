@@ -68,6 +68,9 @@ importers:
       '@prisma/client':
         specifier: 6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      decimal.js:
+        specifier: 10.6.0
+        version: 10.6.0
       dompurify:
         specifier: 3.4.16
         version: 3.4.16

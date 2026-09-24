@@ -44,3 +44,11 @@ Four points were not settled by the spec:
 - Until Redis is wired, a revoked role can survive up to 60 s on instances other than the one that processed the change. Plan §7.4 asks for "removed users lose sessions immediately"; that holds per instance only.
 - Under vitest, DTO validation pipes do not run (no metadata), so commands re-validate with the domain schema. Invalid bodies return 422 in tests and 400 when metadata is emitted.
 - `ErrorCode` differs from the spec §5.1 code block by one member.
+
+## Addendum: org admins inside a workspace (T-010)
+
+T-010's cross-workspace test found that an org admin who sent `X-Workspace-Id` for workspace B could read workspace A's envelope by id. The T-002 policies are `app_is_org_admin() OR workspace_id = app_workspace_id()`, and the interceptor set `app.is_org_admin` whenever the caller held ORG_ADMIN.
+
+- **Decision:** `ctx.isOrgAdmin`, the RLS bypass, is true only for org-level calls, meaning no workspace resolved. `AuthContext.isOrgAdmin` carries the role for authorization (scope checks, groups sync).
+- **Registry exception:** the registry controller elevates explicitly with `orgAdminCtx(auth)`, because writing org-wide registry rows (`workspace_id IS NULL`) is what org admins use it for.
+- **Still open (T-002 migration follow-up):** `app_is_org_admin()` is not limited to the caller's org. Any org-level call made with the bypass could read other orgs' rows. No current route makes such a call with tenant-table reads.
