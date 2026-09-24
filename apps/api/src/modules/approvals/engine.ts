@@ -1,6 +1,7 @@
 import { ChainStep, DomainError, newId } from "@budget/domain";
 import { audit, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { z } from "zod";
+import { clock } from "../../common/clock.js";
 import { approveVersion } from "./commands/approve-version.js";
 
 /** The frozen policy copy on a request (spec §7.2). Escalation may insert synthetic steps. */
@@ -47,7 +48,7 @@ export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedReq
   const next = r.currentStep + 1;
   if (next >= snapshot.chain.length) {
     await approveVersion(tx, ctx, r.entityId, r.id, `approved via policy ${snapshot.policyName ?? r.policyId} v${r.policyVersion}`);
-    await tx.approvalRequest.update({ where: { id: r.id }, data: { status: "APPROVED", resolvedAt: new Date() } });
+    await tx.approvalRequest.update({ where: { id: r.id }, data: { status: "APPROVED", resolvedAt: clock.now() } });
     return "approved";
   }
   const nextStep = snapshot.chain[next];
