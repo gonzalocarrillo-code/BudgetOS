@@ -18,11 +18,11 @@ export interface Me {
 
 /** GET /me: the caller, their roles per workspace in their org, and the resulting permissions. */
 export async function getMe(prisma: PrismaClient, access: AccessRepository, auth: AuthContext): Promise<Me> {
-  const orgWide = await access.access(auth.user.id, null);
+  const orgWide = await access.access(auth.user, null, auth.ctx.requestId);
   const workspaces = await prisma.workspace.findMany({ where: { orgId: auth.user.orgId }, orderBy: { name: "asc" } });
   const out: MeWorkspace[] = [];
   for (const ws of workspaces) {
-    const a = await access.access(auth.user.id, ws.id);
+    const a = await access.access(auth.user, ws.id, auth.ctx.requestId);
     const roles = [...new Set(a.assignments.map((x) => x.role))].sort() as Role[];
     if (roles.length === 0) continue;
     const granted = new Set<Action>(roles.flatMap((r) => [...permissions[r]]));

@@ -48,7 +48,8 @@ export class TenantInterceptor implements NestInterceptor {
       // Same answer for "no such workspace" and "another org's workspace".
       if (orgId !== user.orgId) throw new DomainError("FORBIDDEN", "No access to this workspace");
     }
-    const access = await this.cachedAccess(user.id, workspaceId);
+    const requestId = header(request, "x-request-id") ?? randomUUID();
+    const access = await this.cachedAccess(user, workspaceId, requestId);
     const roles = [...new Set(access.assignments.map((a) => a.role))] as Role[];
 
     if (permission !== "authenticated") {
@@ -66,7 +67,7 @@ export class TenantInterceptor implements NestInterceptor {
         userId: user.id,
         isOrgAdmin: access.isOrgAdmin && workspaceId === null,
         actorType: "user",
-        requestId: header(request, "x-request-id") ?? randomUUID(),
+        requestId,
       },
       user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
       isOrgAdmin: access.isOrgAdmin,
@@ -76,11 +77,15 @@ export class TenantInterceptor implements NestInterceptor {
     request.tenant = tenant;
   }
 
-  private async cachedAccess(userId: string, workspaceId: string | null): Promise<WorkspaceAccess> {
-    const hit = this.cache.get(userId, workspaceId);
+  private async cachedAccess(
+    user: { id: string; orgId: string },
+    workspaceId: string | null,
+    requestId: string,
+  ): Promise<WorkspaceAccess> {
+    const hit = this.cache.get(user.id, workspaceId);
     if (hit) return hit;
-    const fresh = await this.access.access(userId, workspaceId);
-    this.cache.set(userId, workspaceId, fresh);
+    const fresh = await this.access.access(user, workspaceId, requestId);
+    this.cache.set(user.id, workspaceId, fresh);
     return fresh;
   }
 }

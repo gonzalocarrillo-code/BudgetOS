@@ -68,6 +68,14 @@ const orgDims = new Map<string, string>([
 ]);
 const wsDims = new Map(workspaces.map((w) => [w.id, randomUUID()]));
 const consumer = `rls-org-admin-${randomUUID()}`;
+const sources = new Map<string, string>(workspaces.map((w) => [w.id, randomUUID()]));
+const users = new Map<string, string>([
+  [orgA, randomUUID()],
+  [orgB, randomUUID()],
+]);
+// role_assignment id → workspace id, or `org:<org id>` for an org-wide ORG_ADMIN row.
+const assignments = new Map<string, string>();
+const allDims = (): string[] => [...orgDims.values(), ...wsDims.values()];
 // outbox id (bigint, as text) → workspace; filled in beforeAll.
 const outboxWorkspace = new Map<string, string>();
 
@@ -96,6 +104,14 @@ interface Visible {
   dimensionValues: string[];
   /** workspace of each visible processed_event, through its outbox id. */
   processed: string[];
+  /** org_id of each visible metric_definition. */
+  metrics: string[];
+  /** dimension_id of each visible value_constraint. */
+  valueConstraints: string[];
+  /** workspace of each visible ingest_run, through its data source. */
+  ingestRuns: string[];
+  /** workspace (or `org:<id>`) of each visible role_assignment. */
+  roles: string[];
 }
 
 async function visible(tx: Tx): Promise<Visible> {
@@ -128,6 +144,26 @@ async function visible(tx: Tx): Promise<Visible> {
         SELECT outbox_id::text AS id FROM processed_event WHERE consumer = ${consumer}`
     )
       .map((r) => outboxWorkspace.get(r.id) ?? r.id)
+      .sort(),
+    metrics: ids(
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT org_id::text AS id FROM metric_definition WHERE org_id IN (${orgA}::uuid, ${orgB}::uuid)`,
+    ),
+    valueConstraints: ids(
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT dimension_id::text AS id FROM value_constraint WHERE dimension_id = ANY(${allDims()}::uuid[])`,
+    ),
+    ingestRuns: (
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT source_id::text AS id FROM ingest_run WHERE source_id = ANY(${[...sources.values()]}::uuid[])`
+    )
+      .map((r) => [...sources].find(([, src]) => src === r.id)?.[0] ?? r.id)
+      .sort(),
+    roles: (
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id::text AS id FROM role_assignment WHERE id = ANY(${[...assignments.keys()]}::uuid[])`
+    )
+      .map((r) => assignments.get(r.id) ?? r.id)
       .sort(),
   };
 }
@@ -172,6 +208,35 @@ beforeAll(async () => {
     outboxWorkspace.set(outboxId, w.id);
     await owner.$executeRaw`
       INSERT INTO processed_event (consumer, outbox_id) VALUES (${consumer}, ${outboxId}::bigint)`;
+    await owner.$executeRaw`
+      INSERT INTO data_source (id, workspace_id, kind, name, config, mapping)
+      VALUES (${sources.get(w.id)}::uuid, ${w.id}::uuid, 'csv', 'rls', '{}'::jsonb, '{}'::jsonb)`;
+    await owner.$executeRaw`
+      INSERT INTO ingest_run (id, source_id) VALUES (${randomUUID()}::uuid, ${sources.get(w.id)}::uuid)`;
+  }
+  for (const dimensionId of allDims()) {
+    await owner.$executeRaw`
+      INSERT INTO value_constraint (id, dimension_id, when_dimension_key, when_value_code)
+      VALUES (${randomUUID()}::uuid, ${dimensionId}::uuid, 'rls', 'v')`;
+  }
+  for (const [org, userId] of users) {
+    await owner.$executeRaw`
+      INSERT INTO metric_definition (id, org_id, key, label, numerator, direction, format)
+      VALUES (${randomUUID()}::uuid, ${org}::uuid, 'rls', 'rls', 'spend', 'lower_is_better', 'money')`;
+    await owner.$executeRaw`
+      INSERT INTO app_user (id, org_id, email, name) VALUES (${userId}::uuid, ${org}::uuid, ${`${userId}@rls.test`}, 'rls')`;
+    const orgWide = randomUUID();
+    assignments.set(orgWide, `org:${org}`);
+    await owner.$executeRaw`
+      INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+      VALUES (${orgWide}::uuid, NULL, 'user', ${userId}::uuid, 'ORG_ADMIN', ${actorId}::uuid)`;
+    for (const w of workspaces.filter((x) => x.org === org)) {
+      const id = randomUUID();
+      assignments.set(id, w.id);
+      await owner.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${id}::uuid, ${w.id}::uuid, 'user', ${userId}::uuid, 'VIEWER', ${actorId}::uuid)`;
+    }
   }
 });
 
@@ -180,6 +245,12 @@ afterAll(async () => {
   const orgs = [orgA, orgB];
   await owner.$executeRaw`DELETE FROM envelope_version WHERE envelope_id = ANY(${[...envelopes.values()]}::uuid[])`;
   await owner.$executeRaw`DELETE FROM envelope WHERE workspace_id = ANY(${ws}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM role_assignment WHERE principal_id = ANY(${[...users.values()]}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM app_user WHERE id = ANY(${[...users.values()]}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM metric_definition WHERE org_id = ANY(${orgs}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM value_constraint WHERE dimension_id = ANY(${allDims()}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM ingest_run WHERE source_id = ANY(${[...sources.values()]}::uuid[])`;
+  await owner.$executeRaw`DELETE FROM data_source WHERE workspace_id = ANY(${ws}::uuid[])`;
   await owner.$executeRaw`DELETE FROM processed_event WHERE consumer = ${consumer}`;
   await owner.$executeRaw`DELETE FROM outbox WHERE workspace_id = ANY(${ws}::uuid[])`;
   await owner.$executeRaw`DELETE FROM dimension_value WHERE dimension_id = ANY(${[...orgDims.values(), ...wsDims.values()]}::uuid[])`;
@@ -201,6 +272,10 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
     );
     expect(seen.dimensionValues, "values follow their dimension").toEqual(seen.dimensions);
     expect(seen.processed, "processed events follow their outbox row").toEqual(sorted([wsA1, wsA2]));
+    expect(seen.metrics).toEqual([orgA]);
+    expect(seen.valueConstraints, "constraints follow their dimension").toEqual(seen.dimensions);
+    expect(seen.ingestRuns, "ingest runs follow their data source").toEqual(sorted([wsA1, wsA2]));
+    expect(seen.roles).toEqual(sorted([wsA1, wsA2, `org:${orgA}`]));
   });
 
   it("an org admin of org A cannot write into org B", async () => {
@@ -228,6 +303,64 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
         INSERT INTO processed_event (consumer, outbox_id) VALUES (${`${consumer}-x`}, ${outboxB ?? ""}::bigint)`,
     );
     await expect(processed).rejects.toThrow(/row-level security/);
+    const writes = [
+      (tx: Tx) => tx.$executeRaw`
+        INSERT INTO metric_definition (id, org_id, key, label, numerator, direction, format)
+        VALUES (${randomUUID()}::uuid, ${orgB}::uuid, 'rls_x', 'x', 'spend', 'lower_is_better', 'money')`,
+      (tx: Tx) => tx.$executeRaw`
+        INSERT INTO value_constraint (id, dimension_id, when_dimension_key, when_value_code)
+        VALUES (${randomUUID()}::uuid, ${orgDims.get(orgB) ?? ""}::uuid, 'x', 'x')`,
+      (tx: Tx) => tx.$executeRaw`
+        INSERT INTO ingest_run (id, source_id) VALUES (${randomUUID()}::uuid, ${sources.get(wsB1) ?? ""}::uuid)`,
+      (tx: Tx) => tx.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${randomUUID()}::uuid, ${wsB1}::uuid, 'user', ${users.get(orgB) ?? ""}::uuid, 'VIEWER', ${actorId}::uuid)`,
+      // An org-A workspace, but a principal of org B.
+      (tx: Tx) => tx.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${randomUUID()}::uuid, ${wsA1}::uuid, 'user', ${users.get(orgB) ?? ""}::uuid, 'VIEWER', ${actorId}::uuid)`,
+    ];
+    for (const write of writes) {
+      await expect(withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), write)).rejects.toThrow(/row-level security/);
+    }
+  });
+
+  it("a workspace session reads its org's role assignments but writes only its own workspace's", async () => {
+    const session = ctx({ orgId: orgA, workspaceId: wsA1 });
+    const userA = users.get(orgA) ?? "";
+    const otherWorkspace = withTenant(app, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${randomUUID()}::uuid, ${wsA2}::uuid, 'user', ${userA}::uuid, 'PLANNER', ${actorId}::uuid)`,
+    );
+    await expect(otherWorkspace).rejects.toThrow(/row-level security/);
+    const orgWide = withTenant(app, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${randomUUID()}::uuid, NULL, 'user', ${userA}::uuid, 'ORG_ADMIN', ${actorId}::uuid)`,
+    );
+    await expect(orgWide).rejects.toThrow(/row-level security/);
+    const [a2Row] = [...assignments].find(([, ws]) => ws === wsA2) ?? [];
+    const deleted = await withTenant(app, session, (tx) =>
+      tx.$executeRaw`DELETE FROM role_assignment WHERE id = ${a2Row ?? ""}::uuid`,
+    );
+    expect(deleted, "cannot revoke another workspace's grant").toBe(0);
+    const own = randomUUID();
+    await withTenant(app, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${own}::uuid, ${wsA1}::uuid, 'user', ${userA}::uuid, 'PLANNER', ${actorId}::uuid)`,
+    );
+    const revoked = await withTenant(app, session, (tx) =>
+      tx.$executeRaw`DELETE FROM role_assignment WHERE id = ${own}::uuid`,
+    );
+    expect(revoked).toBe(1);
+    const nonAdminMetric = withTenant(app, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO metric_definition (id, org_id, key, label, numerator, direction, format)
+        VALUES (${randomUUID()}::uuid, ${orgA}::uuid, 'rls_y', 'y', 'spend', 'lower_is_better', 'money')`,
+    );
+    await expect(nonAdminMetric, "org-wide rows need the org admin").rejects.toThrow(/row-level security/);
   });
 
   it("the bypass without an org reads nothing (fail closed)", async () => {
@@ -239,6 +372,10 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
       dimensions: [],
       dimensionValues: [],
       processed: [],
+      metrics: [],
+      valueConstraints: [],
+      ingestRuns: [],
+      roles: [],
     });
   });
 
@@ -250,11 +387,17 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
     expect(seen.dimensions).toEqual(sorted([orgDims.get(orgA) ?? "", wsDims.get(wsA1) ?? ""]));
     expect(seen.dimensionValues).toEqual(seen.dimensions);
     expect(seen.processed).toEqual([wsA1]);
+    expect(seen.metrics).toEqual([orgA]);
+    expect(seen.valueConstraints).toEqual(seen.dimensions);
+    expect(seen.ingestRuns).toEqual([wsA1]);
+    // role_assignment is an org identity table: readable across the org (groups sync checks
+    // other workspaces' grants), writable only in the session's workspaces.
+    expect(seen.roles).toEqual(sorted([wsA1, wsA2, `org:${orgA}`]));
   });
 });
 
 // Tables budget_app can reach without RLS. Organization-level and identity tables are read before a
-// tenant exists (ADR-005). Adding a table here needs a reason; the rest are open follow-ups.
+// tenant exists (ADR-005). Adding a table here needs a reason.
 const withoutRls = new Map<string, string>([
   ["_prisma_migrations", "migration bookkeeping"],
   ["organization", "tenant root, read before a tenant exists"],
@@ -262,11 +405,7 @@ const withoutRls = new Map<string, string>([
   ["app_user", "identity, read by the auth interceptor before a tenant exists"],
   ["app_group", "identity, read before a tenant exists"],
   ["app_group_member", "identity, read before a tenant exists"],
-  ["role_assignment", "read before a tenant exists; follow-up"],
   ["fx_rate", "global reference data"],
-  ["metric_definition", "follow-up"],
-  ["value_constraint", "follow-up"],
-  ["ingest_run", "follow-up"],
 ]);
 
 it("every other public table has RLS enabled and forced", async () => {
