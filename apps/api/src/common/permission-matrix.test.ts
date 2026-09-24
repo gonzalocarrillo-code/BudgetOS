@@ -138,6 +138,16 @@ const ROUTES: RouteCase[] = [
   { method: "PATCH", path: "/api/v1/envelopes/{id}/draft", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/draft`, headers: X(), body: {} },
   { method: "PATCH", path: "/api/v1/envelopes/{id}/phasing", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/phasing`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/envelopes/{id}/restore/{versionId}", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/restore/${rid}`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/envelopes/{id}/submit", permission: "envelope.submit", url: () => `/api/v1/envelopes/${rid}/submit`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/envelopes/{id}/withdraw", permission: "envelope.submit", url: () => `/api/v1/envelopes/${rid}/withdraw`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/approvals", permission: "workspace.member", url: () => "/api/v1/approvals?assignee=me", headers: X() },
+  { method: "GET", path: "/api/v1/approvals/{id}", permission: "envelope.read", url: () => `/api/v1/approvals/${rid}`, headers: X() },
+  { method: "POST", path: "/api/v1/approvals/{id}/decisions", permission: "approval.decide", url: () => `/api/v1/approvals/${rid}/decisions`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/approvals/{id}/external-evidence", permission: "envelope.submit", url: () => `/api/v1/approvals/${rid}/external-evidence`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/approvals/{id}/withdraw", permission: "envelope.submit", url: () => `/api/v1/approvals/${rid}/withdraw`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/policies", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/policies` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/policies", permission: "policy.manage", url: () => `/api/v1/workspaces/${wsA}/policies`, body: {} },
+  { method: "PATCH", path: "/api/v1/policies/{id}", permission: "policy.manage", url: () => `/api/v1/policies/${rid}`, headers: X(), body: {} },
 ];
 
 function allowed(role: Role | "OUTSIDER", permission: RoutePermission): boolean {

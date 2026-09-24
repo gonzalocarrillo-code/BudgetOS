@@ -182,6 +182,15 @@ const samples: Record<string, readonly unknown[]> = {
   UpdatePhasingInput: [{ phasing: [{ month: "2026-10-01", amount: "10" }], basedOnVersionId: workspaceId }],
   RestoreVersionInput: [{ basedOnVersionId: null }, { basedOnVersionId: workspaceId, rationale: "back to v1" }],
   UpdateEnvelopeInput: [{ rowVersion: 1, name: "Renamed" }, { rowVersion: 3, ownerId: null, startDate: "2026-10-01" }],
+  SubmitVersionInput: [{ versionId: workspaceId }],
+  DecideInput: [{ decision: "approve" }, { decision: "reject", comment: "too high", channel: "slack" }],
+  ExternalEvidenceInput: [{ gcsUri: "gs://evidence/po.pdf", sha256: "a".repeat(64), approverName: "Client CFO", approvedOn: "2026-10-02" }],
+  WithdrawInput: [{}, { comment: "wrong month" }],
+  CreatePolicyInput: [
+    { name: "Standard", priority: 30, conditions: { amountAbs: { lt: 250000 } }, chain: [{ role: "BUDGET_OWNER" }, { role: "APPROVER", timeoutHours: 72, escalateTo: "FINANCE" }] },
+    { name: "Auto", priority: 1, conditions: { deltaPct: { lt: 0.02 } }, chain: [], allowExternalEvidence: true },
+  ],
+  UpdatePolicyInput: [{ version: 1, priority: 5 }, { version: 2, isActive: false, chain: [{ role: "FINANCE", minApprovals: 2 }] }],
   AddValuesInput: [
     {
       values: [
