@@ -13,8 +13,17 @@
     "test": "vitest run --root . --config ../../vitest.config.mjs"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@budget/db": "workspace:^",
+    "@budget/domain": "workspace:^",
+    "@google-cloud/pubsub": "6.1.0",
+    "@prisma/client": "6.19.3",
+    "pino": "10.3.1",
+    "zod": "3.25.76"
   }
 }

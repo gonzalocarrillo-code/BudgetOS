@@ -222,6 +222,12 @@ const samples: Record<string, readonly unknown[]> = {
   SplitEnvelopeInput: [
     { basedOnVersionId: workspaceId, rationale: "by retailer", parts: [{ name: "A", amount: "1.00" }, { name: "B", amount: "2.00", dimensionValues: { retailer: "walmart" } }] },
   ],
+  OutboxId: ["1", "9223372036854775807"],
+  OutboxEventAttributes: [{ outboxId: "42", workspaceId, orgId: workspaceId, topic: "budget.changed" }],
+  PubSubPush: [
+    { message: { data: "eyJhIjoxfQ==", attributes: { outboxId: "42", workspaceId, orgId: workspaceId, topic: "budget.changed" }, messageId: "m-1" }, subscription: "projects/p/subscriptions/rollup-worker" },
+    { message: { data: "e30=", attributes: { outboxId: "7", workspaceId, orgId: workspaceId, topic: "alert.triggered" }, messageId: "m-2", publishTime: "2026-09-24T10:00:00.000Z" }, subscription: "s", deliveryAttempt: 2 },
+  ],
   TargetValue: ["18.25", "0.0125"],
   TargetComparator: ["lte", "between"],
   TargetScope: [

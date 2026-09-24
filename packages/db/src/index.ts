@@ -9,6 +9,10 @@ export type { DimensionValuePathRow, UpsertDimensionValueInput } from "./registr
 export { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "../seed/defaults.registry.js";
 export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.registry.js";
 export { audit, bumpDataVersion, outbox } from "./sql.js";
+export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
+export type { OutboxRow } from "./outbox.js";
+export { insertNotification } from "./notifications.js";
+export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
 export { eligibleApproverSql, lockApprovalRequest, lockParentCap } from "./approvals.js";
 export type { LockedRequestRow } from "./approvals.js";
