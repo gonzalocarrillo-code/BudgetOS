@@ -569,3 +569,20 @@ it("budget_app holds no privileges on fact or audit partitions, old or new", asy
   const partitions = await owner.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_class WHERE relname = 'spend_fact_203101'`;
   expect(Number(partitions[0]?.n)).toBe(1);
 });
+
+// Regression (migration 20260924100000): ingest batches and pacing evaluations call
+// ensure_fact_partitions concurrently; re-revoking existing partitions raced on pg_class
+// ("tuple concurrently updated").
+it("ensure_fact_partitions is safe to call concurrently, for existing and for new months", async () => {
+  const call = (from: string, months: number) =>
+    app.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT ensure_fact_partitions($1::date, $2::int)`, from, months);
+    });
+  await Promise.all(Array.from({ length: 8 }, () => call("2026-01-01", 11)));
+  const month = `20${40 + Math.floor(Math.random() * 50)}-0${1 + Math.floor(Math.random() * 9)}-01`;
+  await Promise.all(Array.from({ length: 8 }, () => call(month, 0)));
+  const name = `spend_fact_${month.slice(0, 4)}${month.slice(5, 7)}`;
+  const created = await owner.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT to_regclass($1) IS NOT NULL AS ok, has_table_privilege('budget_app', $1, 'SELECT') AS readable`, name);
+  expect(created[0]).toMatchObject({ ok: true, readable: false });
+  await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${name}, kpi_fact_${name.slice(11)}, projection_fact_${name.slice(11)}, audit_event_${name.slice(11)}`);
+});

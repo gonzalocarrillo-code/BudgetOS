@@ -12,6 +12,7 @@ export { audit, bumpDataVersion, outbox } from "./sql.js";
 export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
+export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { openAlert, saveRuleStates } from "./alerts.js";
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
 export { currentFilterTargets, metricLibrary, plannerOptions } from "./planner-options.js";
@@ -29,6 +30,7 @@ export type { DefaultRuleSeed } from "../seed/defaults.rules.js";
 export type { DefaultMetricSeed } from "../seed/defaults.metrics.js";
 export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
 export {
+  GOLDEN_COLLAB,
   GOLDEN_CUSTOM_DIMENSIONS,
   GOLDEN_FY,
   GOLDEN_PENDING_BULK,
@@ -43,6 +45,7 @@ export {
   GOLDEN_TREE,
   computeTotals,
   goldenPlan,
+  goldenTagLeaves,
   goldenFactRows,
   goldenFactsCsv,
   goldenTargets,

@@ -145,5 +145,18 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
       "CPA far over target": 83,
       "Implied volume gap": 0
     }
+  },
+  "collab": {
+    "tags": {
+      "q4-push": 24,
+      "brand-safety": 10
+    },
+    "threads": {
+      "open": 2,
+      "resolved": 1,
+      "blocking": 1
+    },
+    "comments": 5,
+    "envelopesWithOpenThreads": 1
   }
 };

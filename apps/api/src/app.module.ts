@@ -6,10 +6,11 @@ import { AuthModule } from "./modules/auth/auth.module.js";
 import { EnvelopesModule } from "./modules/envelopes/envelopes.module.js";
 import { RegistryModule } from "./modules/registry/registry.module.js";
 import { PacingModule } from "./modules/pacing/pacing.module.js";
+import { ThreadsModule } from "./modules/threads/threads.module.js";
 import { SourcesModule } from "./modules/sources/sources.module.js";
 import { TargetsModule } from "./modules/targets/targets.module.js";
 
 @Module({
-  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule],
+  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule],
 })
 export class AppModule {}

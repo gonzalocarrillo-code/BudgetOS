@@ -9,7 +9,7 @@ import { Decimal } from "decimal.js";
  * Scope (LOCAL_BUILD_PHASES phase 9): registry, envelope tree, approved versions, phasing. Facts,
  * threads, tags, pacing rules and closures are added by the tasks that build their commands;
  * targets arrived with T-015 (goldenTargets), facts with T-017 (goldenFactsCsv), pacing alerts with
- * T-018 (GOLDEN_PACING).
+ * T-018 (GOLDEN_PACING), threads and tags with T-019 (GOLDEN_COLLAB).
  */
 
 export const GOLDEN_SEED = 20260101;
@@ -131,6 +131,16 @@ export const GOLDEN_FACTS = {
   },
 } as const;
 
+/** Leaves a golden tag goes on, in plan order. */
+export function goldenTagLeaves(plan: PlannedEnvelope[], tagName: string): string[] {
+  const t = GOLDEN_COLLAB.tags.find((x) => x.name === tagName);
+  if (!t) return [];
+  const keys = plan
+    .filter((e) => e.level === 4 && e.key !== GOLDEN_SPLIT.sourceKey && Object.entries(t.select).every(([k, v]) => e.dimensionValues[k] === v))
+    .map((e) => e.key);
+  return t.first === null ? keys : keys.slice(0, t.first);
+}
+
 const PLATFORM_LABEL: Record<string, string> = { meta: "Meta", google_ads: "Google Ads", tiktok: "TikTok", amazon: "Amazon" };
 
 export interface GoldenFactRow {
@@ -206,6 +216,23 @@ function expectedPacing(plan: PlannedEnvelope[]): Record<string, number> {
   }
   return { "Over-pace": overPace, "Projected overrun": 0, "Projected underspend near close": 0, "CPA over target": cpaOver, "CPA far over target": cpaFar, "Implied volume gap": 0 };
 }
+
+/**
+ * T-019's rows. Tags: `q4-push` on the EMEA × amazon leaves (the pending bulk's rows),
+ * `brand-safety` on the first ten LATAM leaves. Threads: a blocking one on a GB leaf no other test
+ * submits, a resolved one with a mention, and an open cell thread with a reply.
+ */
+export const GOLDEN_COLLAB = {
+  tags: [
+    { name: "q4-push", color: "#F97316", select: { region: "EMEA", platform: "amazon" }, first: null },
+    { name: "brand-safety", color: "#0EA5E9", select: { region: "LATAM" }, first: 10 },
+  ],
+  threads: [
+    { key: "blocking", leafKey: "EMEA/GB/google_ads/consideration/retargeting", author: "approver", isBlocking: true, anchor: "envelope", title: "Hold for Q4 retail plan", comments: ["Hold this until the Q4 retail plan lands."], resolve: false },
+    { key: "resolved", leafKey: "LATAM/BR/meta/awareness/prospecting", author: "planner", isBlocking: false, anchor: "envelope", title: "Pacing check", comments: ["@budgetOwner is this pacing as planned?", "Yes, launch was moved to March."], resolve: true },
+    { key: "cell", leafKey: "EMEA/DE/tiktok/conversion/prospecting", author: "budgetOwner", isBlocking: false, anchor: "cell", title: "October", comments: ["Can October take 10% more?", "Only if November gives it back."], resolve: false },
+  ],
+} as const;
 
 export interface PlannedVersion {
   round: 1 | 2 | 3;
@@ -359,6 +386,8 @@ export interface GoldenTotals {
   };
   /** T-018: open alerts per default rule after evaluating GOLDEN_PACING.days. */
   pacing: { days: string[]; openAlertsByRule: Record<string, number> };
+  /** T-019: threads, comments and tag counts (GOLDEN_COLLAB). */
+  collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; envelopesWithOpenThreads: number };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -443,5 +472,16 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       };
     })(),
     pacing: { days: [...GOLDEN_PACING.days], openAlertsByRule: expectedPacing(plan) },
+    collab: (() => {
+      const threads = GOLDEN_COLLAB.threads;
+      const open = threads.filter((t) => !t.resolve);
+      return {
+        tags: Object.fromEntries(GOLDEN_COLLAB.tags.map((t) => [t.name, goldenTagLeaves(plan, t.name).length])),
+        threads: { open: open.length, resolved: threads.length - open.length, blocking: threads.filter((t) => t.isBlocking && !t.resolve).length },
+        comments: threads.reduce((n, t) => n + t.comments.length, 0),
+        // The planner's has_open_thread reads envelope-anchored threads only (a cell thread is on its envelope too).
+        envelopesWithOpenThreads: new Set(open.filter((t) => t.anchor === "envelope").map((t) => t.leafKey)).size,
+      };
+    })(),
   };
 }

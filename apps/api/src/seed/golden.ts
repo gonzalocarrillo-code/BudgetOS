@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { MemoryObjectStore, evaluateWorkspace, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -24,6 +24,8 @@ import { createDimension } from "../modules/registry/commands/create-dimension.j
 import { saveHierarchyTemplate } from "../modules/registry/commands/save-hierarchy-template.js";
 import { createSource, queueRun } from "../modules/sources/commands/sources.js";
 import { seedDefaultRules } from "../modules/pacing/rules.js";
+import { applyTag, createTag } from "../modules/threads/commands/tags.js";
+import { addComment, createThread, resolveThread } from "../modules/threads/commands/threads.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -270,6 +272,29 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   let opened = 0;
   for (const day of GOLDEN_PACING.days) opened += (await evaluateWorkspace(app, { workspaceId, orgId }, day, new Date(`${day}T12:00:00Z`))).opened.length;
   log(`golden: pacing evaluated for ${GOLDEN_PACING.days.length} days, ${opened} alerts open`);
+
+  // ---- T-019: tags and threads through the real commands (mentions in the canonical @[user:id] form). ----
+  for (const t of GOLDEN_COLLAB.tags) {
+    const tag = await createTag(app, auth("admin"), { name: t.name, color: t.color });
+    await applyTag(app, auth("planner"), { tagId: tag.id, entities: goldenTagLeaves(plan, t.name).map((key) => ({ type: "envelope", id: ids.get(key) as string })) }, "add");
+  }
+  const canonical = (body: string) => body.replace(/@(\w+)/g, (m, p: string) => (p in users ? `@[user:${users[p as Persona]}]` : m));
+  for (const t of GOLDEN_COLLAB.threads) {
+    const author = t.author as Persona;
+    const replier: Persona = author === "planner" ? "budgetOwner" : "planner";
+    const [first, ...rest] = t.comments.map(canonical);
+    const created = await createThread(app, auth(author), {
+      anchorType: t.anchor,
+      anchorId: ids.get(t.leafKey) as string,
+      anchorMeta: t.anchor === "cell" ? { month: "2026-10-01" } : {},
+      title: t.title,
+      isBlocking: t.isBlocking,
+      firstComment: { bodyMd: first ?? "" },
+    });
+    for (const [i, body] of rest.entries()) await addComment(app, auth(i % 2 === 0 ? replier : author), created.id, { bodyMd: body });
+    if (t.resolve) await resolveThread(app, auth(author), created.id);
+  }
+  log(`golden: ${GOLDEN_COLLAB.tags.length} tags, ${GOLDEN_COLLAB.threads.length} threads`);
 
   const elapsedMs = performance.now() - started;
   log(`golden: ${plan.length} envelopes in ${(elapsedMs / 1000).toFixed(1)} s`);

@@ -10,6 +10,10 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
   const ws = golden.workspaceId;
   const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
   for (const sql of [
+    `DELETE FROM notification WHERE workspace_id = $1::uuid`,
+    `DELETE FROM subscription WHERE workspace_id = $1::uuid`,
+    `DELETE FROM taggable WHERE workspace_id = $1::uuid`,
+    `DELETE FROM tag WHERE workspace_id = $1::uuid`,
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
     `DELETE FROM thread WHERE workspace_id = $1::uuid`,
     `DELETE FROM alert WHERE workspace_id = $1::uuid`,
