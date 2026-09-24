@@ -62,4 +62,10 @@ T-010's cross-workspace test found that an org admin who sent `X-Workspace-Id` f
 - **`role_assignment` RLS (migration `20260924020000_rls_org_tables`):** the table is scoped by the principal's org, because ORG_ADMIN rows have no workspace and principals are org-wide.
   - Reads cover the whole org. Groups sync must see a group's grants in other workspaces to stop a workspace admin escalating.
   - Writes are limited to the session's visible workspaces. Org-wide rows need the org-admin bypass.
-  - `AccessRepository.access` now takes the user's org and reads assignments inside `withTenant()`. `app_user`, `app_group` and `app_group_member` stay without RLS and are read before a tenant exists.
+  - `AccessRepository.access` now takes the user's org and reads assignments inside `withTenant()`.
+- **Identity tables RLS (migration `20260924030000_rls_identity_tables`):** `organization`, `workspace`, `app_user` and `app_group` are readable only within `app.org_id`.
+  - Writes: org admin only for `workspace` and `app_user`. A session may update its own workspace row (`bumpDataVersion`). The org admin may update its own `organization` row, and `budget_app` never inserts or deletes one. Any session of the org writes `app_group`, because groups sync runs as a workspace admin.
+  - **Pre-org user match:** `withIdentity()` sets `app.auth_subs` and `app.auth_email` from the verified token, and an `app_user` policy exposes only the matching rows. The email is set only when `email_verified` is true. A SECURITY DEFINER lookup would not bypass FORCE ROW LEVEL SECURITY, because FORCE also applies to the owner.
+  - The interceptor's workspace-to-org check and `/me`'s workspace list now run in `withTenant()`. Another org's workspace is invisible, so it still gets the same 403.
+  - `app_is_org_admin()` now treats `''` as false. After a `SET LOCAL` transaction on a pooled connection the setting reads `''`, and the old cast raised 22P02 in any later session that did not set it.
+  - `app_group_member` is the only identity table left without RLS.

@@ -40,3 +40,26 @@ export async function withTenant<T>(
     { isolationLevel: opts.isolation ?? "ReadCommitted", timeout: opts.timeoutMs ?? 15_000 },
   );
 }
+
+/** A verified token's identifiers (spec §4). `email` only when the provider verified it. */
+export interface IdentityLookup {
+  subs: string[];
+  email: string | null;
+}
+
+/**
+ * Runs fn before the caller's org is known: the only rows visible are the app_user rows whose
+ * google_sub is in `subs` or whose email is `email` (migration 20260924030000). No tenant
+ * setting is applied, so every other tenant and identity table reads empty.
+ */
+export async function withIdentity<T>(
+  prisma: PrismaClient,
+  identity: IdentityLookup,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`SELECT set_config('app.auth_subs', $1, true)`, JSON.stringify(identity.subs));
+    await tx.$executeRawUnsafe(`SELECT set_config('app.auth_email', $1, true)`, identity.email ?? "");
+    return fn(tx);
+  });
+}

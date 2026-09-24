@@ -12,5 +12,5 @@ export { audit, bumpDataVersion, outbox } from "./sql.js";
 export type { Tx } from "./sql.js";
 export { lockEnvelope } from "./envelopes.js";
 export type { LockedEnvelopeRow } from "./envelopes.js";
-export { withTenant } from "./tenant.js";
-export type { TenantContext } from "./tenant.js";
+export { withIdentity, withTenant } from "./tenant.js";
+export type { IdentityLookup, TenantContext } from "./tenant.js";

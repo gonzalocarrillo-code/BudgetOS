@@ -19,15 +19,16 @@ export async function runAsApp(
   c: CompiledQuery,
   tenant: { workspaceId: string; userId: string | null },
 ): Promise<Row[]> {
+  // The API sets app.org_id from the caller; fixtures only know the workspace, so look it up as
+  // the owner (workspace has org-scoped RLS for budget_app).
+  const org = await owner.query<{ org_id: string }>(`SELECT org_id::text AS org_id FROM workspace WHERE id = $1::uuid`, [
+    tenant.workspaceId,
+  ]);
   const client = await app.connect();
   try {
     await client.query("BEGIN");
     await client.query(`SELECT set_config('app.workspace_id', $1, true)`, [tenant.workspaceId]);
-    // The API sets app.org_id from the caller; fixtures only know the workspace, so derive it.
-    await client.query(
-      `SELECT set_config('app.org_id', coalesce((SELECT org_id::text FROM workspace WHERE id = $1::uuid), ''), true)`,
-      [tenant.workspaceId],
-    );
+    await client.query(`SELECT set_config('app.org_id', $1, true)`, [org.rows[0]?.org_id ?? ""]);
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [tenant.userId ?? ""]);
     await client.query(`SELECT set_config('app.is_org_admin', 'false', true)`);
     const result = await client.query<Row>(c.sql, c.values);

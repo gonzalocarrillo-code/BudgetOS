@@ -1,5 +1,5 @@
 import { ScopeFilter, type Role, type ScopedRole } from "@budget/domain";
-import { withTenant } from "@budget/db";
+import { withIdentity, withTenant } from "@budget/db";
 import { Inject, Injectable } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import type { VerifiedIdentity } from "./jwt-verifier.js";
@@ -14,9 +14,10 @@ export interface AppUserRef {
 }
 
 /**
- * Identity and role lookups. app_user and app_group(_member) have no RLS and are read before a
- * TenantContext exists. role_assignment has org-scoped RLS, so `access` reads it in withTenant()
- * with the user's org (migration 20260924020000_rls_org_tables).
+ * Identity and role lookups. `findUser` runs in withIdentity(), which exposes only the app_user
+ * matching the verified token. The org is known after that, so the other lookups run in
+ * withTenant() with the user's org (migrations 20260924020000 and 20260924030000).
+ * app_group_member has no RLS.
  */
 @Injectable()
 export class AccessRepository {
@@ -25,14 +26,21 @@ export class AccessRepository {
   /** Match on the Google account id or Identity Platform uid, else on a verified email. */
   async findUser(identity: VerifiedIdentity): Promise<AppUserRef | null> {
     const subs = [identity.sub, ...(identity.googleSub ? [identity.googleSub] : [])];
-    const bySub = await this.prisma.user.findFirst({ where: { googleSub: { in: subs } } });
-    if (bySub) return bySub;
-    if (!identity.emailVerified) return null;
-    return this.prisma.user.findUnique({ where: { email: identity.email } });
+    const email = identity.emailVerified ? identity.email : null;
+    return withIdentity(this.prisma, { subs, email }, async (tx) => {
+      const bySub = await tx.user.findFirst({ where: { googleSub: { in: subs } } });
+      if (bySub) return bySub;
+      if (email === null) return null;
+      return tx.user.findUnique({ where: { email } });
+    });
   }
 
-  async workspaceOrg(workspaceId: string): Promise<string | null> {
-    const ws = await this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { orgId: true } });
+  /** The workspace's org, or null when it does not exist or belongs to another org (RLS hides it). */
+  async workspaceOrg(workspaceId: string, user: { id: string; orgId: string }, requestId: string): Promise<string | null> {
+    const ctx = { workspaceId: null, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user" as const, requestId };
+    const ws = await withTenant(this.prisma, ctx, (tx) =>
+      tx.workspace.findUnique({ where: { id: workspaceId }, select: { orgId: true } }),
+    );
     return ws?.orgId ?? null;
   }
 
