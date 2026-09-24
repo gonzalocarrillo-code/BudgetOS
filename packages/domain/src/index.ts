@@ -62,6 +62,8 @@ export {
   TargetValue,
 } from "./targets.js";
 
+export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
+
 export { newId } from "./ids.js";
 
 export { largestRemainder, rephase } from "./money.js";
