@@ -4663,6 +4663,621 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/pacing": {
+      "get": {
+        "operationId": "getPacing",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "FilterGroup as JSON"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Preset name (current_year, current_quarter, …) or a PeriodSpec as JSON; default current_year"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pace measures per envelope, CPA vs target, open alerts, totals"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/rules": {
+      "get": {
+        "operationId": "listRules",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pacing rules"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRule",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "scope": {},
+                  "metric": {
+                    "type": "string",
+                    "enum": [
+                      "pace_index",
+                      "projected_close_pct",
+                      "spend_to_date_pct",
+                      "projected_variance_abs",
+                      "kpi_vs_target_pct",
+                      "implied_volume_gap",
+                      "efficiency_adjusted_pace"
+                    ]
+                  },
+                  "metricArgs": {
+                    "type": "object",
+                    "properties": {
+                      "metricKey": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                      },
+                      "period": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "fiscal"
+                                ]
+                              },
+                              "key": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "range"
+                                ]
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "start",
+                              "end"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "relative"
+                                ]
+                              },
+                              "preset": {
+                                "type": "string",
+                                "enum": [
+                                  "current_month",
+                                  "current_quarter",
+                                  "current_year",
+                                  "last_30_days",
+                                  "last_90_days",
+                                  "ytd",
+                                  "next_90_days"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "preset"
+                            ]
+                          }
+                        ]
+                      },
+                      "daysRemainingLt": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "exclusiveMinimum": false,
+                        "maximum": 3660,
+                        "exclusiveMaximum": false
+                      }
+                    },
+                    "default": {}
+                  },
+                  "comparator": {
+                    "type": "string",
+                    "enum": [
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte"
+                    ]
+                  },
+                  "threshold": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,13}(\\.\\d{1,4})?$"
+                  },
+                  "consecutiveDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 90,
+                    "exclusiveMaximum": false,
+                    "default": 1
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "info",
+                      "warning",
+                      "critical",
+                      "data"
+                    ]
+                  },
+                  "delivery": {
+                    "type": "object",
+                    "properties": {
+                      "inApp": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "slackChannel": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "emails": {
+                        "type": "array",
+                        "maxItems": 20,
+                        "items": {
+                          "type": "string",
+                          "format": "email"
+                        }
+                      }
+                    },
+                    "default": {
+                      "inApp": true
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "metric",
+                  "comparator",
+                  "threshold",
+                  "severity"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created rule (workspace-wide rule.manage role)"
+          }
+        }
+      }
+    },
+    "/api/v1/rules/{id}": {
+      "patch": {
+        "operationId": "updateRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "scope": {},
+                  "metric": {
+                    "type": "string",
+                    "enum": [
+                      "pace_index",
+                      "projected_close_pct",
+                      "spend_to_date_pct",
+                      "projected_variance_abs",
+                      "kpi_vs_target_pct",
+                      "implied_volume_gap",
+                      "efficiency_adjusted_pace"
+                    ]
+                  },
+                  "metricArgs": {
+                    "type": "object",
+                    "properties": {
+                      "metricKey": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                      },
+                      "period": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "fiscal"
+                                ]
+                              },
+                              "key": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "range"
+                                ]
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "start",
+                              "end"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "relative"
+                                ]
+                              },
+                              "preset": {
+                                "type": "string",
+                                "enum": [
+                                  "current_month",
+                                  "current_quarter",
+                                  "current_year",
+                                  "last_30_days",
+                                  "last_90_days",
+                                  "ytd",
+                                  "next_90_days"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "preset"
+                            ]
+                          }
+                        ]
+                      },
+                      "daysRemainingLt": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "exclusiveMinimum": false,
+                        "maximum": 3660,
+                        "exclusiveMaximum": false
+                      }
+                    }
+                  },
+                  "comparator": {
+                    "type": "string",
+                    "enum": [
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte"
+                    ]
+                  },
+                  "threshold": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,13}(\\.\\d{1,4})?$"
+                  },
+                  "consecutiveDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 90,
+                    "exclusiveMaximum": false
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "info",
+                      "warning",
+                      "critical",
+                      "data"
+                    ]
+                  },
+                  "delivery": {
+                    "type": "object",
+                    "properties": {
+                      "inApp": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "slackChannel": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "emails": {
+                        "type": "array",
+                        "maxItems": 20,
+                        "items": {
+                          "type": "string",
+                          "format": "email"
+                        }
+                      }
+                    }
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated rule"
+          }
+        }
+      }
+    },
+    "/api/v1/alerts": {
+      "get": {
+        "operationId": "listAlerts",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated OPEN, ACKNOWLEDGED, SNOOZED, RESOLVED; default the open ones"
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "info",
+                "warning",
+                "critical",
+                "data"
+              ]
+            }
+          },
+          {
+            "name": "ruleId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "envelopeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "FilterGroup as JSON"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alerts, newest first, within the caller's scope"
+          }
+        }
+      }
+    },
+    "/api/v1/alerts/{id}": {
+      "patch": {
+        "operationId": "updateAlert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ACKNOWLEDGED",
+                      "SNOOZED",
+                      "RESOLVED"
+                    ]
+                  },
+                  "snoozedUntil": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated alert; 409 once resolved"
+          }
+        }
+      }
+    },
     "/api/v1/assets": {
       "post": {
         "operationId": "uploadIconAsset",

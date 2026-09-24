@@ -5,7 +5,7 @@
 - `docker compose up -d` starts Postgres, Redis and the GCS emulator (`fsouza/fake-gcs-server:1.52.2` on 127.0.0.1:4443).
 - Set `GCS_EMULATOR_HOST=http://127.0.0.1:4443`; `packages/db/.env.example` has it. Don't set the library's own `STORAGE_EMULATOR_HOST` (ADR-011).
 - Without `GCS_EMULATOR_HOST` or `GOOGLE_CLOUD_PROJECT`, the API keeps uploads in memory. That's fine for one process, and it's what the golden seed uses.
-- `pnpm db:seed` loads the golden actuals CSV through the pipeline. Check the run with `GET /api/v1/sources/:id/runs`: `summary.matchCoverage` should be `0.996916`.
+- `pnpm db:seed` loads the golden actuals CSV through the pipeline. Check the run with `GET /api/v1/sources/:id/runs`: `summary.matchCoverage` should be `0.996951`.
 
 ## How a run moves
 

@@ -8,7 +8,8 @@ import { Decimal } from "decimal.js";
  *
  * Scope (LOCAL_BUILD_PHASES phase 9): registry, envelope tree, approved versions, phasing. Facts,
  * threads, tags, pacing rules and closures are added by the tasks that build their commands;
- * targets arrived with T-015 (goldenTargets), facts with T-017 (goldenFactsCsv).
+ * targets arrived with T-015 (goldenTargets), facts with T-017 (goldenFactsCsv), pacing alerts with
+ * T-018 (GOLDEN_PACING).
  */
 
 export const GOLDEN_SEED = 20260101;
@@ -141,13 +142,15 @@ export interface GoldenFactRow {
 export function goldenFactRows(plan: PlannedEnvelope[], seed = GOLDEN_SEED): GoldenFactRow[] {
   const rand = prng(seed + 17);
   const rows: GoldenFactRow[] = [];
-  for (const e of plan.filter((x) => x.level === 4 && x.key !== GOLDEN_SPLIT.sourceKey)) {
+  for (const [i, e] of plan.filter((x) => x.level === 4 && x.key !== GOLDEN_SPLIT.sourceKey).entries()) {
     const cpa = new Decimal(Math.floor(rand() * 29) + 12); // 12 … 40
     const roas = new Decimal(Math.floor(rand() * 31) + 20).div(10); // 2.0 … 5.0
     const phasing = e.versions.find((v) => v.round === 3)?.phasing ?? [];
+    const hot = i % 25 === 0; // T-018: a few leaves overspend (120 … 130 % of plan) so the over-pace rule fires
     for (const month of GOLDEN_FACTS.months) {
       const planned = new Decimal(phasing.find((p) => p.month === `${month}-01`)?.amount ?? 0);
-      const spend = planned.mul(new Decimal(Math.floor(rand() * 31) + 80).div(100)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); // 80 … 110 % of plan
+      const pct = hot ? Math.floor(rand() * 11) + 120 : Math.floor(rand() * 31) + 80; // else 80 … 110 % of plan
+      const spend = planned.mul(new Decimal(pct).div(100)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
       const d = e.dimensionValues;
       rows.push({
         leafKey: e.key,
@@ -163,6 +166,45 @@ export function goldenFactRows(plan: PlannedEnvelope[], seed = GOLDEN_SEED): Gol
 
 export function goldenFactsCsv(plan: PlannedEnvelope[]): string {
   return `${[GOLDEN_FACTS.header.join(","), ...goldenFactRows(plan).map((r) => r.cells.join(","))].join("\n")}\n`;
+}
+
+/**
+ * T-018's rows: the default pacing rules, evaluated on three consecutive days. Rules read the
+ * current fiscal year (FY2026 = calendar 2026). No projection facts exist, so the projection rules
+ * never fire; CPA does not move from day to day, so the 3-day CPA rule opens on the third day.
+ */
+export const GOLDEN_PACING = { days: ["2026-08-13", "2026-08-14", "2026-08-15"], period: { start: "2026-01-01", end: "2026-12-31" } } as const;
+
+/** Open alerts per default rule after GOLDEN_PACING.days, from the plan's budgets, facts and targets. */
+function expectedPacing(plan: PlannedEnvelope[]): Record<string, number> {
+  const facts = goldenFactRows(plan).filter((r) => r.leafKey !== null);
+  const byLeaf = new Map<string, { spend: Decimal; conversions: Decimal }>();
+  for (const r of facts) {
+    const cur = byLeaf.get(r.leafKey as string) ?? { spend: new Decimal(0), conversions: new Decimal(0) };
+    byLeaf.set(r.leafKey as string, { spend: cur.spend.plus(r.cells[6] ?? 0), conversions: cur.conversions.plus(r.cells[7] ?? 0) });
+  }
+  const targets = new Map(goldenTargets(plan).map((t) => [t.envelopeKey, new Decimal(t.value)]));
+  const countryOf = (key: string) => key.split("/").slice(0, 2).join("/");
+  const last = GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1] as string;
+  const dayMs = 86_400_000;
+  const periodDays = (Date.parse(GOLDEN_PACING.period.end) - Date.parse(GOLDEN_PACING.period.start)) / dayMs + 1;
+  const elapsed = new Decimal((Date.parse(last) - Date.parse(GOLDEN_PACING.period.start)) / dayMs + 1).div(periodDays);
+  let overPace = 0;
+  let cpaOver = 0;
+  let cpaFar = 0;
+  for (const e of plan.filter((x) => x.level === 4 && x.key !== GOLDEN_SPLIT.sourceKey)) {
+    const f = byLeaf.get(e.key);
+    const budget = new Decimal(e.versions.find((v) => v.round === 3)?.amount ?? 0);
+    if (!f || budget.isZero()) continue;
+    if (f.spend.div(budget).div(elapsed).gt("1.10")) overPace += 1;
+    const target = targets.get(e.key) ?? targets.get(countryOf(e.key));
+    if (target && !f.conversions.isZero()) {
+      const vs = f.spend.div(f.conversions).div(target);
+      if (vs.gt("1.10")) cpaOver += 1;
+      if (vs.gt("1.25")) cpaFar += 1;
+    }
+  }
+  return { "Over-pace": overPace, "Projected overrun": 0, "Projected underspend near close": 0, "CPA over target": cpaOver, "CPA far over target": cpaFar, "Implied volume gap": 0 };
 }
 
 export interface PlannedVersion {
@@ -315,6 +357,8 @@ export interface GoldenTotals {
     leafConversionsByRegion: Record<string, string>;
     unmatchedTuples: number;
   };
+  /** T-018: open alerts per default rule after evaluating GOLDEN_PACING.days. */
+  pacing: { days: string[]; openAlertsByRule: Record<string, number> };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -398,5 +442,6 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
         unmatchedTuples: 1,
       };
     })(),
+    pacing: { days: [...GOLDEN_PACING.days], openAlertsByRule: expectedPacing(plan) },
   };
 }

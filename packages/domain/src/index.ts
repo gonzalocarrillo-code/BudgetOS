@@ -15,6 +15,19 @@ export {
 export type { FilterGroupT } from "./filter-ast.js";
 
 export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow } from "./query.js";
+export { resolvePeriod } from "./period.js";
+export type { DateRange } from "./period.js";
+export {
+  CreateRuleInput,
+  ListAlertsQuery,
+  RuleComparator,
+  RuleDelivery,
+  RuleMetric,
+  RuleMetricArgs,
+  RuleSeverity,
+  UpdateAlertInput,
+  UpdateRuleInput,
+} from "./pacing.js";
 
 export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope, permissions } from "./permissions.js";
 export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";

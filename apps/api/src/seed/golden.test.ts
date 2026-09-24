@@ -230,6 +230,26 @@ describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
   });
 });
 
+describe("pacing (T-018 seed rows)", () => {
+  it("the default rules evaluated on three days leave the planned open alerts, one per rule and envelope", async () => {
+    const rules = await owner.pacingRule.findMany({ where: { workspaceId: golden.workspaceId } });
+    expect(rules.map((r) => r.name).sort()).toEqual(Object.keys(A.pacing.openAlertsByRule).sort());
+    const alerts = await owner.alert.findMany({ where: { workspaceId: golden.workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } } });
+    const byRule = Object.fromEntries(rules.map((r) => [r.name, alerts.filter((a) => a.ruleId === r.id).length]));
+    expect(byRule).toEqual(A.pacing.openAlertsByRule);
+    expect(new Set(alerts.map((a) => `${a.ruleId}|${a.envelopeId}`)).size).toBe(alerts.length);
+    for (const a of alerts) {
+      const rule = rules.find((r) => r.id === a.ruleId);
+      expect(new Decimal(a.metricValue.toString()).gt(rule?.threshold.toString() ?? "0")).toBe(true);
+    }
+    // The 3-day rules opened on the third day; the 1-day rule on the first.
+    const openedOn = (name: string) => new Set(alerts.filter((a) => a.ruleId === rules.find((r) => r.name === name)?.id).map((a) => (a.context as { evaluatedFor: string }).evaluatedFor));
+    expect([...openedOn("CPA over target")]).toEqual([A.pacing.days[2]]);
+    expect([...openedOn("Over-pace")]).toEqual([A.pacing.days[2]]);
+    expect([...openedOn("CPA far over target")]).toEqual([A.pacing.days[0]]);
+  });
+});
+
 describe("targets (T-015 seed rows)", () => {
   it("seeds the metric library and every planned target, each with one approved version", async () => {
     const T = A.targets;

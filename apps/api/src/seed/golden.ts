@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
-import { MemoryObjectStore, runIngest, uploadBucket } from "@budget/workers";
+import { GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { MemoryObjectStore, evaluateWorkspace, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -23,6 +23,7 @@ import { addValues } from "../modules/registry/commands/add-values.js";
 import { createDimension } from "../modules/registry/commands/create-dimension.js";
 import { saveHierarchyTemplate } from "../modules/registry/commands/save-hierarchy-template.js";
 import { createSource, queueRun } from "../modules/sources/commands/sources.js";
+import { seedDefaultRules } from "../modules/pacing/rules.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -263,6 +264,12 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   const { runId } = await queueRun(app, auth("admin"), source.id);
   const run = await runIngest({ prisma: app, store: objects, reportBucket: uploadBucket() }, { workspaceId, orgId }, runId);
   log(`golden: ${run.rowsRead} fact rows, ${run.rowsRejected} rejected, match coverage ${run.coverage.matchCoverage}`);
+
+  // ---- T-018: default pacing rules, evaluated on three consecutive days by the real job function. ----
+  await seedDefaultRules(app, auth("admin").ctx);
+  let opened = 0;
+  for (const day of GOLDEN_PACING.days) opened += (await evaluateWorkspace(app, { workspaceId, orgId }, day, new Date(`${day}T12:00:00Z`))).opened.length;
+  log(`golden: pacing evaluated for ${GOLDEN_PACING.days.length} days, ${opened} alerts open`);
 
   const elapsedMs = performance.now() - started;
   log(`golden: ${plan.length} envelopes in ${(elapsedMs / 1000).toFixed(1)} s`);

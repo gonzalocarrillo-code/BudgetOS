@@ -162,6 +162,9 @@ importers:
       '@budget/domain':
         specifier: workspace:^
         version: link:../../packages/domain
+      '@budget/query-planner':
+        specifier: workspace:^
+        version: link:../../packages/query-planner
       '@google-cloud/bigquery':
         specifier: 9.1.0
         version: 9.1.0
@@ -236,6 +239,9 @@ importers:
       '@budget/domain':
         specifier: workspace:^
         version: link:../domain
+      '@budget/query-planner':
+        specifier: workspace:^
+        version: link:../query-planner
       '@prisma/client':
         specifier: 6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)

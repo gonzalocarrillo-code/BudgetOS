@@ -450,6 +450,7 @@ model RuleState {
   consecutiveDays Int      @default(0) @map("consecutive_days")
   lastEvalDate    DateTime @map("last_eval_date") @db.Date
   lastValue       Decimal? @map("last_value") @db.Decimal(18, 4)
+  priorDays       Int      @default(0) @map("prior_days") // breach streak through the day before lastEvalDate (ADR-012)
 
   @@id([ruleId, envelopeId])
   @@map("rule_state")

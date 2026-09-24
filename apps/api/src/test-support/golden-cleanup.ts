@@ -13,6 +13,8 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
     `DELETE FROM thread WHERE workspace_id = $1::uuid`,
     `DELETE FROM alert WHERE workspace_id = $1::uuid`,
+    `DELETE FROM rule_state WHERE rule_id IN (SELECT id FROM pacing_rule WHERE workspace_id = $1::uuid)`,
+    `DELETE FROM pacing_rule WHERE workspace_id = $1::uuid`,
     `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM projection_fact WHERE workspace_id = $1::uuid`,

@@ -222,6 +222,18 @@ const samples: Record<string, readonly unknown[]> = {
   SplitEnvelopeInput: [
     { basedOnVersionId: workspaceId, rationale: "by retailer", parts: [{ name: "A", amount: "1.00" }, { name: "B", amount: "2.00", dimensionValues: { retailer: "walmart" } }] },
   ],
+  RuleMetric: ["pace_index", "kpi_vs_target_pct"],
+  RuleComparator: ["gt", "lte"],
+  RuleSeverity: ["warning", "data"],
+  RuleMetricArgs: [{}, { metricKey: "cpa", period: { kind: "relative", preset: "current_year" }, daysRemainingLt: 30 }],
+  RuleDelivery: [{ inApp: true }, { inApp: false, slackChannel: "#budget-alerts", emails: ["a@b.co"] }],
+  CreateRuleInput: [
+    { name: "Over-pace", metric: "pace_index", metricArgs: {}, comparator: "gt", threshold: "1.10", consecutiveDays: 3, severity: "warning", delivery: { inApp: true } },
+    { name: "CPA", scope: { logic: "and", children: [{ field: { kind: "dimension", key: "country" }, op: "eq", value: "BR" }] }, metric: "kpi_vs_target_pct", metricArgs: { metricKey: "cpa" }, comparator: "gt", threshold: "1.25", consecutiveDays: 1, severity: "critical", delivery: { inApp: true, slackChannel: "#br" } },
+  ],
+  UpdateRuleInput: [{ threshold: "1.2" }, { metric: "kpi_vs_target_pct", metricArgs: { metricKey: "cpl" }, isActive: false }],
+  UpdateAlertInput: [{ status: "ACKNOWLEDGED" }, { status: "SNOOZED", snoozedUntil: "2026-10-01T00:00:00.000Z", ownerId: null }],
+  ListAlertsQuery: [{ limit: 100 }, { status: "OPEN,ACKNOWLEDGED", severity: "critical", ruleId: workspaceId, envelopeId: workspaceId, filter: "{}", limit: 20 }],
   DimensionColumn: [{ dimension: "country" }, { dimension: "objective", transform: "lower", valueMap: { brand: "brand", "non-brand": "non_brand" } }],
   RoleColumn: [{ role: "period_date", format: "yyyy-MM-dd" }, { role: "amount", currency: "EUR" }, { role: "kpi", metric: "conversions", attributionModel: "7d_click" }, { role: "projection", metric: "spend" }, { role: "ignore" }],
   ColumnMapping: [{ dimension: "platform", transform: "lower" }, { role: "currency" }],
