@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-23: T-001 through T-005, T-007, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
+Repo on 2026-09-23: T-001 through T-005, T-007, T-009, T-026a, T-026b, and T-026c are done. Later tasks are `pending`.
 
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
@@ -19,7 +19,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-026a | 5 | T-001 | done | bench numbers in ADR-002 | DB golden at 100k leaves is T-034 |
 | T-026b | 5 | T-001 | done | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
 | T-026c | 6 | T-026a | done | ≥ 55 fps p50 at 100k in-memory rows; storybook; `pnpm license-check` | plan epic 0.7 still says 60 fps; re-measure at T-034 |
-| T-009 | 7 | T-002, T-003, T-004 | pending | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
+| T-009 | 7 | T-002, T-003, T-004 | done | permission matrix, every role × action | live Google SSO and live Google Groups (plan §16.6) |
 | T-010 | 8 | T-004, T-009 | pending | 409 with `currentVersionId` | — |
 | T-011 | 8 | T-010 | pending | epic 1.3 acceptance; cap trigger | — |
 | T-006 | 9 | T-005, T-010, T-011 | pending | `pnpm db:seed` < 60 s; assertions file committed | threads, facts, targets, closures added by later tasks |
