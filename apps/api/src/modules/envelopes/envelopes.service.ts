@@ -9,6 +9,7 @@ import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
 import { updateEnvelope } from "./commands/update-envelope.js";
 import { updatePhasing } from "./commands/update-phasing.js";
 import { getEnvelope, listVersions, versionDto } from "./queries/get-envelope.js";
+import { getTimeline, type TimelineParams } from "./queries/timeline.js";
 
 @Injectable()
 export class EnvelopesService {
@@ -17,8 +18,11 @@ export class EnvelopesService {
   create(auth: AuthContext, body: unknown) {
     return createEnvelope(this.prisma, auth, body).then((e) => getEnvelope(this.prisma, auth, e.id));
   }
-  get(auth: AuthContext, id: string) {
-    return getEnvelope(this.prisma, auth, id);
+  get(auth: AuthContext, id: string, asOf?: string) {
+    return getEnvelope(this.prisma, auth, id, asOf);
+  }
+  timeline(auth: AuthContext, id: string, params: TimelineParams) {
+    return getTimeline(this.prisma, auth, id, params);
   }
   versions(auth: AuthContext, id: string) {
     return listVersions(this.prisma, auth, id);

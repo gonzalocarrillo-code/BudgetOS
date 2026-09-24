@@ -27,6 +27,8 @@ export {
 } from "../seed/golden.plan.js";
 export type { GoldenTotals, PlannedEnvelope, PlannedVersion } from "../seed/golden.plan.js";
 export type { DefaultPolicySeed } from "../seed/defaults.policies.js";
+export { envelopeTimeline } from "./timeline.js";
+export type { TimelineQuery, TimelineRow } from "./timeline.js";
 export { lockEnvelope } from "./envelopes.js";
 export type { LockedEnvelopeRow } from "./envelopes.js";
 export { withIdentity, withTenant } from "./tenant.js";

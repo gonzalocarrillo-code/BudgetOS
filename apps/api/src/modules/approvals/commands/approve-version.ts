@@ -45,7 +45,8 @@ export async function approveVersion(tx: Tx, ctx: TenantContext, versionId: stri
     entityType: "envelope",
     entityId: env.id,
     before: { versionId: env.currentVersionId },
-    after: { versionId: v.id, amount: v.amount.toFixed(2), requestId },
+    // approvedAt, versionNo and amountReporting let the decision timeline reconstruct any as-of from audit rows alone.
+    after: { versionId: v.id, versionNo: v.versionNo, amount: v.amount.toFixed(2), amountReporting: v.amountReporting.toFixed(2), approvedAt: now.toISOString(), requestId },
     reason,
     requestId: ctx.requestId,
   });

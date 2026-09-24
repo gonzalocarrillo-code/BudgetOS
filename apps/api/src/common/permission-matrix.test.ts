@@ -135,6 +135,7 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/envelopes/{id}", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}`, headers: X() },
   { method: "PATCH", path: "/api/v1/envelopes/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/envelopes/{id}/versions", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}/versions`, headers: X() },
+  { method: "GET", path: "/api/v1/envelopes/{id}/timeline", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}/timeline`, headers: X() },
   { method: "PATCH", path: "/api/v1/envelopes/{id}/draft", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/draft`, headers: X(), body: {} },
   { method: "PATCH", path: "/api/v1/envelopes/{id}/phasing", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/phasing`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/envelopes/{id}/restore/{versionId}", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/restore/${rid}`, headers: X(), body: {} },
