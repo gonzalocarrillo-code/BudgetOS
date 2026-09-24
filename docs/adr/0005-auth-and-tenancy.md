@@ -59,3 +59,7 @@ T-010's cross-workspace test found that an org admin who sent `X-Workspace-Id` f
   - The array form uses an InitPlan and keeps `workspace_id` indexes usable. On 200k envelopes across 50 workspaces, `count(*)` takes 2.7 ms (non-admin) and 5.3 ms (admin). The old policy seq-scans at about 80 ms, and so does the OR form with `IN (SELECT …)`.
   - The API-level rule above stays: `ctx.isOrgAdmin` is set only for org-level calls and for registry elevation.
   - `packages/db/src/rls.org-admin.test.ts` asserts all of this.
+- **`role_assignment` RLS (migration `20260924020000_rls_org_tables`):** the table is scoped by the principal's org, because ORG_ADMIN rows have no workspace and principals are org-wide.
+  - Reads cover the whole org. Groups sync must see a group's grants in other workspaces to stop a workspace admin escalating.
+  - Writes are limited to the session's visible workspaces. Org-wide rows need the org-admin bypass.
+  - `AccessRepository.access` now takes the user's org and reads assignments inside `withTenant()`. `app_user`, `app_group` and `app_group_member` stay without RLS and are read before a tenant exists.

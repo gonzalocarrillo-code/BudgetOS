@@ -145,7 +145,9 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 - Migration `20260924000000_rls_org_scoped_admin` limits the org-admin RLS bypass to `app.org_id`'s workspaces. It also limits org-wide `dimension` rows to their org. `TenantContext.orgId` is now required (`string | null`), and `withTenant()` sets it.
 - The planner test helper `runAsApp` derives `app.org_id` from the fixture workspace.
 - Migration `20260924010000_rls_dimension_value_processed_event` adds RLS to `dimension_value` (through `dimension`) and `processed_event` (through `outbox`). Outbox consumers must dedupe inside `withTenant()` for the event's workspace.
-- `rls.org-admin.test.ts` fails if any public table other than a listed exception lacks enabled and forced RLS. Open follow-ups on that list: `role_assignment` (has `workspace_id`), `metric_definition`, `value_constraint`, `ingest_run`.
+- `rls.org-admin.test.ts` fails if any public table other than a listed exception lacks enabled and forced RLS.
+- Migration `20260924020000_rls_org_tables` adds RLS to `role_assignment` (org-wide read by principal org, workspace-limited write; ADR-005), `metric_definition` (org; org admin writes), `value_constraint` (through `dimension`) and `ingest_run` (through `data_source`).
+- The remaining exceptions are `organization`, `workspace`, `app_user`, `app_group`, `app_group_member` (all read before a tenant exists) and `fx_rate` (global).
 
 After phase 18, re-run the phase 17 load suite before starting phase 20. That re-run does not have a new task id.
 

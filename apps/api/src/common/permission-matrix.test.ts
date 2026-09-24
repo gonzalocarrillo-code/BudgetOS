@@ -377,7 +377,7 @@ describe("dimension scopes", () => {
     });
     expect(assign.status).toBe(201);
 
-    const access = await new AccessRepository(appDb).access(scoped.id, wsA);
+    const access = await new AccessRepository(appDb).access({ id: scoped.id, orgId: orgA }, wsA, "t009-scope");
     const auth: AuthContext = {
       ctx: { workspaceId: wsA, orgId: orgA, userId: scoped.id, isOrgAdmin: false, actorType: "user", requestId: "t009-scope" },
       user: { id: scoped.id, orgId: orgA, email: scoped.email, name: scoped.email },

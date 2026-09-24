@@ -1,4 +1,5 @@
 import { ScopeFilter, type Role, type ScopedRole } from "@budget/domain";
+import { withTenant } from "@budget/db";
 import { Inject, Injectable } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import type { VerifiedIdentity } from "./jwt-verifier.js";
@@ -13,8 +14,9 @@ export interface AppUserRef {
 }
 
 /**
- * Identity and role lookups. app_user, app_group(_member) and role_assignment are org tables
- * without RLS, so these reads run before a TenantContext exists.
+ * Identity and role lookups. app_user and app_group(_member) have no RLS and are read before a
+ * TenantContext exists. role_assignment has org-scoped RLS, so `access` reads it in withTenant()
+ * with the user's org (migration 20260924020000_rls_org_tables).
  */
 @Injectable()
 export class AccessRepository {
@@ -35,9 +37,15 @@ export class AccessRepository {
   }
 
   /** Assignments for the user in `workspaceId` (or org-wide only when null), including via groups. */
-  async access(userId: string, workspaceId: string | null): Promise<WorkspaceAccess> {
+  async access(
+    user: { id: string; orgId: string },
+    workspaceId: string | null,
+    requestId: string,
+  ): Promise<WorkspaceAccess> {
+    const userId = user.id;
     const groups = await this.prisma.groupMember.findMany({ where: { userId }, select: { groupId: true } });
-    const rows = await this.prisma.roleAssignment.findMany({
+    const ctx = { workspaceId, orgId: user.orgId, userId, isOrgAdmin: false, actorType: "user" as const, requestId };
+    const rows = await withTenant(this.prisma, ctx, (tx) => tx.roleAssignment.findMany({
       where: {
         AND: [
           {
@@ -49,7 +57,7 @@ export class AccessRepository {
           { OR: [{ workspaceId: null }, ...(workspaceId ? [{ workspaceId }] : [])] },
         ],
       },
-    });
+    }));
     const assignments: ScopedRole[] = [];
     let isOrgAdmin = false;
     for (const row of rows) {
