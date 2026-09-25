@@ -14,6 +14,8 @@ export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
+export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, upsertRollupNodes } from "./rollup.js";
+export type { RollupNode, RollupScope } from "./rollup.js";
 export type { SearchDoc } from "./search.js";
 export { openAlert, saveRuleStates } from "./alerts.js";
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";

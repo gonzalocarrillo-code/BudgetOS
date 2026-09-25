@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root . --config ../../vitest.config.mjs",
-    "reindex": "tsx src/search-indexer/main.ts reindex"
+    "reindex": "tsx src/search-indexer/main.ts reindex",
+    "rollup:rebuild": "tsx src/rollup/main.ts rebuild"
   },
   "devDependencies": {
     "@types/node": "catalog:",

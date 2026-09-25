@@ -15,7 +15,8 @@ import type { AuthContext } from "../common/tenant.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
 import { GOLDEN_COLLAB } from "@budget/db";
-import { handleSearchEvent } from "@budget/workers";
+import { LIVE_LEAVES, handleRollupEvent, handleSearchEvent } from "@budget/workers";
+import { compileTree } from "@budget/query-planner";
 import { search } from "../modules/search/search.js";
 import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
 
@@ -423,5 +424,71 @@ describe("planner over the golden workspace (phase 9: planner tests read golden.
     expect(got).toEqual(A.leafPhasingByQuarter);
     const sum = Object.values(got).reduce((s, v) => s.plus(v), new Decimal(0));
     expect(sum.toFixed(2)).toBe(A.leafBudget.current.total);
+  });
+});
+
+// Runs last: its incremental case approves a new budget, which the golden totals above do not include.
+describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)", () => {
+  const R = A.rollup;
+  const MONEY = ["budget", "actual", "projected"] as const;
+  const leavesFilter: FilterGroupT = { logic: "and", children: LIVE_LEAVES };
+  const dec = (v: unknown) => new Decimal(String(v ?? 0)).toFixed(2);
+
+  async function tree(templateId: string) {
+    const c = compileTree({ workspaceId: golden.workspaceId, templateId, period });
+    return withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<{ node_path: string; depth: number; measures: Record<string, string | null> }>>(c.sql, ...c.values));
+  }
+  /** The live pivot for one depth: planner groupBy over the same leaves, straight from the facts. */
+  async function pivot(path: string[], depth: number): Promise<Map<string, Record<string, string>>> {
+    if (depth === 0) {
+      const c = compileTotals(request({ filter: leavesFilter, measures: [...MONEY] }), period, TODAY);
+      const [t] = await withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<Record<string, unknown>>>(c.sql, ...c.values));
+      return new Map([["", Object.fromEntries(MONEY.map((m) => [m, dec(t?.[m])]))]]);
+    }
+    const keys = path.slice(0, depth);
+    const out = await rows({ filter: leavesFilter, groupBy: keys, measures: [...MONEY] });
+    return new Map(out.map((r) => [keys.map((k) => (r[`dim_${k}`] === null ? "∅" : String(r[`dim_${k}`]))).join("/"), Object.fromEntries(MONEY.map((m) => [m, dec(r[m])]))]));
+  }
+  async function assertTreeEqualsPivot() {
+    const templates = await owner.hierarchyTemplate.findMany({ where: { workspaceId: golden.workspaceId } });
+    expect(templates.map((t) => t.name).sort()).toEqual(Object.keys(R.nodesByTemplate).sort());
+    for (const t of templates) {
+      const nodes = await tree(t.id);
+      const byDepth = t.path.map((_, d) => nodes.filter((n) => Number(n.depth) === d + 1).length);
+      expect([nodes.filter((n) => Number(n.depth) === 0).length, ...byDepth], t.name).toEqual(R.nodesByTemplate[t.name]);
+      for (let d = 0; d <= t.path.length; d += 1) {
+        const live = await pivot(t.path, d);
+        const cached = new Map(nodes.filter((n) => Number(n.depth) === d).map((n) => [n.node_path, Object.fromEntries(MONEY.map((m) => [m, dec(n.measures[m])]))]));
+        expect(cached, `${t.name} depth ${d}`).toEqual(live);
+      }
+    }
+  }
+
+  it("every cached node of every template equals the live pivot; the root equals the pivot totals", async () => {
+    await assertTreeEqualsPivot();
+    const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
+    expect({ budget: dec(root?.measures["budget"]), actual: dec(root?.measures["actual"]) }).toEqual({ budget: R.rootBudget, actual: R.rootActual });
+  });
+
+  it("an approved change reaches the cache through the rollup handler, and the tree still equals the pivot", async () => {
+    const key = "LATAM/AR/meta/awareness/prospecting";
+    const id = golden.envelopeIds.get(key) as string;
+    const planner: AuthContext = { ctx: { ...ctx(), userId: golden.users.planner }, user: { id: golden.users.planner, orgId: golden.orgId, email: "planner@golden.test", name: "planner" }, isOrgAdmin: false, roles: ["PLANNER"], assignments: [{ role: "PLANNER", scope: {} }] };
+    const [{ max }] = (await owner.$queryRawUnsafe<Array<{ max: string | null }>>(`SELECT max(id)::text AS max FROM outbox WHERE workspace_id = $1::uuid`, golden.workspaceId)) as [{ max: string | null }];
+    const head = await owner.envelope.findUniqueOrThrow({ where: { id }, include: { versions: { where: { status: "APPROVED" } } } });
+    const current = new Decimal(head.versions[0]?.amount.toString() ?? 0);
+    const next = current.plus("10.00").toFixed(2); // under the auto-approve policy (< 2 %, < 1000)
+    const draft = await createDraftVersion(app, planner, id, { amount: next, basedOnVersionId: head.currentVersionId });
+    const submitted = await submitVersion(app, planner, id, { versionId: draft.id });
+    expect(submitted.autoApproved).toBe(true);
+    const events = await owner.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, golden.workspaceId, max ?? "0");
+    for (const e of events) {
+      await handleRollupEvent(app, { message: { data: Buffer.from(JSON.stringify(e.payload)).toString("base64"), attributes: { outboxId: e.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: e.topic }, messageId: e.id }, subscription: "rollup-worker" }, TODAY);
+    }
+    await assertTreeEqualsPivot();
+    const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
+    expect(dec(root?.measures["budget"])).toBe(new Decimal(R.rootBudget).plus("10.00").toFixed(2));
   });
 });

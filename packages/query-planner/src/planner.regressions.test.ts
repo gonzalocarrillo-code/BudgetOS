@@ -164,3 +164,20 @@ describe("application role", () => {
     expect(await runAsApp(compileQuery(request(fx.workspaceId), PERIOD, TODAY), { workspaceId: randomUUID(), userId: null })).toEqual([]);
   });
 });
+
+describe("is_leaf (T-022 roll-ups count live leaves only)", () => {
+  it("a parent is not a leaf; a parent whose only children are archived is", async () => {
+    const ws = await createWorkspace(org);
+    const base = { status: "APPROVED" as const, start: "2026-01-01", end: "2026-03-31" };
+    const parent = await insertEnvelope(org, ws, { ...base, name: "Parent" });
+    await insertEnvelope(org, ws, { ...base, name: "Child", parentId: parent.id });
+    const lonely = await insertEnvelope(org, ws, { ...base, name: "Lonely parent" });
+    await insertEnvelope(org, ws, { ...base, name: "Archived child", parentId: lonely.id, status: "APPROVED" });
+    await owner.query(`UPDATE envelope SET status = 'ARCHIVED' WHERE name = 'Archived child' AND workspace_id = $1`, [ws]);
+    const names = async (value: boolean) =>
+      (await run(request(ws, { filter: where({ field: { kind: "attr", key: "is_leaf" }, op: "eq", value }) }))).map((r) => String(r["name"])).sort();
+    expect(await names(true)).toEqual(["Archived child", "Child", "Lonely parent"]);
+    expect(await names(false)).toEqual(["Parent"]);
+    expect(() => compileQuery(request(ws, { filter: where({ field: { kind: "attr", key: "is_leaf" }, op: "neq", value: true }) }), PERIOD, TODAY)).toThrow(/is_leaf/);
+  });
+});

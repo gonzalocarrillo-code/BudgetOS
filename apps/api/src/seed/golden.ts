@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
 import { GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
-import { MemoryObjectStore, evaluateWorkspace, reindexWorkspace, runIngest, uploadBucket } from "@budget/workers";
+import { MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -299,6 +299,10 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   // ---- T-020: full search re-index (facets for the pacing day, so the documents are deterministic). ----
   const indexed = await reindexWorkspace(app, { workspaceId, orgId }, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);
   log(`golden: search indexed ${Object.values(indexed).reduce((n, c) => n + c, 0)} documents`);
+
+  // ---- T-022: roll-up trees for every hierarchy template, FY2026, as of the pacing day. ----
+  const trees = await rebuildWorkspace(app, { workspaceId, orgId }, { today: GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1] as string, periods: [GOLDEN_FY] });
+  log(`golden: rollup cache built (${Object.values(trees).reduce((n, c) => n + c, 0)} nodes)`);
 
   const elapsedMs = performance.now() - started;
   log(`golden: ${plan.length} envelopes in ${(elapsedMs / 1000).toFixed(1)} s`);
