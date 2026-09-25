@@ -147,7 +147,7 @@ describe("runIngest (spec §14)", () => {
     ]);
     expect(await count(`SELECT count(*) AS n FROM pg_class WHERE relname = 'spend_fact_203006'`)).toBe(1);
 
-    const report = store.objects.get(first.errorReportUri ?? "")?.body ?? "";
+    const report = String(store.objects.get(first.errorReportUri ?? "")?.body ?? "");
     expect(first.errorReportUri).toBe(`gs://t017-reports/reports/${ws}/${runId}.csv`);
     expect(report.split("\n").filter(Boolean)).toEqual([
       "COUNTRY,PLATFORM,MONTH,SPEND,CCY,CONV,_line,_reason",

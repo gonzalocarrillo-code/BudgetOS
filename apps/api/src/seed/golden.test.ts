@@ -19,6 +19,11 @@ import { LIVE_LEAVES, handleRollupEvent, handleSearchEvent } from "@budget/worke
 import { compileTree } from "@budget/query-planner";
 import { search } from "../modules/search/search.js";
 import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
+import { GOLDEN_EXPORT } from "@budget/db";
+import { MemoryObjectStore, runExport } from "@budget/workers";
+import ExcelJS from "exceljs";
+import { parseCsv } from "../modules/envelopes/bulk/csv.js";
+import { createExport } from "../modules/exports/commands/create-export.js";
 
 /**
  * T-006 done-when: the golden seed runs through the real commands in under 60 s and
@@ -181,7 +186,7 @@ describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
     expect(summary).toMatchObject({ matchCoverage: F.matchCoverage, spendRows: F.spendRows, matchedSpendRows: F.matchedSpendRows, spend: F.spend, matchedSpend: F.matchedSpend });
     expect(new Decimal(summary.matchCoverage).gte("0.99")).toBe(true);
     expect(summary.matchedSpendRows / summary.spendRows).toBeGreaterThanOrEqual(0.99);
-    const report = golden.ingest?.store.objects.get(run.errorReportUri ?? "")?.body ?? "";
+    const report = String(golden.ingest?.store.objects.get(run.errorReportUri ?? "")?.body ?? "");
     expect(report.trim().split("\n")).toHaveLength(1 + F.rowsRejected);
     expect(report).toContain('unknown platform ""myspace""');
     expect(report).toContain('MONTH ""2026-13"" is not yyyy-MM');
@@ -428,6 +433,65 @@ describe("planner over the golden workspace (phase 9: planner tests read golden.
 });
 
 // Runs last: its incremental case approves a new budget, which the golden totals above do not include.
+describe("exports (T-023 done-when: export respects filter)", () => {
+  const region = (code: string) => ({ field: { kind: "dimension" as const, key: "region" }, op: "eq" as const, value: code });
+  const live = (code: string): FilterGroupT => ({ logic: "and", children: [...LIVE_LEAVES, region(code)] });
+  const as = (role: "FINANCE" | "BUDGET_OWNER", scope: AuthContext["assignments"][number]["scope"] = {}): AuthContext => ({
+    ctx: { ...ctx(), userId: golden.users.finance1 },
+    user: { id: golden.users.finance1, orgId: golden.orgId, email: "finance1@golden.test", name: "Golden finance" },
+    isOrgAdmin: false,
+    roles: [role],
+    assignments: [{ role, scope }],
+  });
+  /** Queues through the command and runs the job as the worker does; the file as rows of cells. */
+  async function exported(auth: AuthContext, kind: "csv" | "xlsx", query: Record<string, unknown>) {
+    const store = new MemoryObjectStore();
+    const job = await createExport(app, auth, { kind, query: { workspaceId: golden.workspaceId, period: { kind: "range", ...period }, ...query } });
+    const result = await runExport(app, store, { workspaceId: golden.workspaceId, orgId: golden.orgId }, job.id, TODAY);
+    expect(result.outcome, String(result.error)).toBe("done");
+    return store.objects.get(String(result.objectUri))?.body;
+  }
+  const csvTable = (body: unknown) => parseCsv(String(body).replace(/^\u{FEFF}/u, ""));
+  const col = (table: string[][], label: string) => (table[0] ?? []).indexOf(label);
+
+  it("the seeded CSV holds exactly the planner's rows for its filter, and its totals", async () => {
+    const job = await owner.exportJob.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, filename: GOLDEN_EXPORT.filename } });
+    expect(job).toMatchObject({ status: "done", kind: "csv", rowCount: A.exports.rows });
+    const table = csvTable(golden.ingest?.store.objects.get(String(job.objectUri))?.body);
+    const data = table.slice(1, -1);
+    const totals = table.at(-1) ?? [];
+    expect(data).toHaveLength(A.exports.rows);
+    expect(totals[0]).toBe("Total");
+    expect(totals[col(table, "Budget")]).toBe(A.exports.budget);
+    expect(new Set(data.map((r) => r[col(table, "Region")]))).toEqual(new Set([GOLDEN_EXPORT.region]));
+    // By id: earlier blocks rename envelopes after the seed wrote the file (sort order: the worker test).
+    const byId = (pairs: Array<[unknown, unknown]>) => Object.fromEntries(pairs.map(([k, v]) => [String(k), new Decimal(String(v)).toFixed(2)]));
+    const planned = await rows({ filter: live(GOLDEN_EXPORT.region) });
+    expect(byId(data.map((r) => [r[col(table, "Envelope id")], r[col(table, "Budget")]]))).toEqual(byId(planned.map((r) => [r["envelope_id"], r["budget"]])));
+  });
+
+  it("a grouped XLSX equals the pivot for the same filter", async () => {
+    const body = await exported(as("FINANCE"), "xlsx", { filter: leaves, groupBy: ["country"], measures: ["budget"] });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(body as unknown as ArrayBuffer);
+    const sheet = wb.getWorksheet("Export");
+    const got: Record<string, string> = {};
+    sheet?.eachRow((row, n) => {
+      const v = row.values as unknown[];
+      if (n > 1 && v[1] !== "Total") got[String(v[1])] = new Decimal(Number(v[4])).toFixed(2);
+    });
+    expect(got).toEqual(await byDim("country"));
+    expect(new Decimal(Number((sheet?.getRow(sheet.rowCount).values as unknown[])[4])).toFixed(2)).toBe(await total({ filter: leaves }));
+  });
+
+  it("a scoped caller's export is cut to their scope, as the grid is", async () => {
+    const emea = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: "region" }, op: "eq" as const, value: "EMEA" }] };
+    const table = csvTable(await exported(as("BUDGET_OWNER", emea), "csv", { filter: leaves, groupBy: ["region"], measures: ["budget"] }));
+    expect(table.slice(1, -1).map((r) => [r[0], r[col(table, "Budget")]])).toEqual([["EMEA", (await byDim("region"))["EMEA"]]]);
+    expect(table.at(-1)?.[col(table, "Budget")]).toBe(await total({ filter: { logic: "and", children: [leaves, emea] } }));
+  });
+});
+
 describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)", () => {
   const R = A.rollup;
   const MONEY = ["budget", "actual", "projected"] as const;

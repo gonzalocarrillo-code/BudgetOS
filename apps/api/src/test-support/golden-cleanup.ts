@@ -13,6 +13,7 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM notification WHERE workspace_id = $1::uuid`,
     `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
     `DELETE FROM rollup_cache WHERE workspace_id = $1::uuid`,
+    `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
     `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
     `DELETE FROM subscription WHERE workspace_id = $1::uuid`,
     `DELETE FROM taggable WHERE workspace_id = $1::uuid`,

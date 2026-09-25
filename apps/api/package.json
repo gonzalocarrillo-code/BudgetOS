@@ -18,6 +18,7 @@
     "@google-cloud/storage": "8.2.0",
     "@types/node": "22.20.4",
     "eslint": "catalog:",
+    "exceljs": "4.4.0",
     "tsx": "4.20.6",
     "typescript": "catalog:",
     "vitest": "catalog:"

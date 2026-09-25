@@ -10,7 +10,7 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root . --config ../../vitest.config.mjs",
+    "test": "vitest run --root . --config vitest.config.mjs",
     "reindex": "tsx src/search-indexer/main.ts reindex",
     "rollup:rebuild": "tsx src/rollup/main.ts rebuild"
   },
@@ -33,6 +33,7 @@
     "@slack/web-api": "8.1.1",
     "csv-parse": "7.0.2",
     "decimal.js": "10.6.0",
+    "exceljs": "4.4.0",
     "pino": "10.3.1",
     "snowflake-sdk": "3.3.0",
     "zod": "3.25.76"

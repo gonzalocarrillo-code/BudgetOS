@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { DomainError } from "./errors.js";
+import type { FilterGroupT } from "./filter-ast.js";
 
 export const RoleEnum = z.enum(["VIEWER", "PLANNER", "BUDGET_OWNER", "APPROVER", "FINANCE", "DATA_ADMIN", "WORKSPACE_ADMIN", "ORG_ADMIN"]);
 export type Role =
@@ -157,6 +159,37 @@ function evalPredicate(p: ScopePredicateT, t: ScopeTarget): boolean {
 /** True when one assignment both grants the action and has a scope covering the target. */
 export function canInScope(assignments: ScopedRole[], action: Action, target: ScopeTarget): boolean {
   return assignments.some((a) => permissions[a.role].has(action) && matchesScope(a.scope, target));
+}
+
+function scopeAsFilter(g: ScopeGroupT): FilterGroupT {
+  return {
+    logic: g.logic,
+    ...(g.not ? { not: true } : {}),
+    children: g.children.map((c): FilterGroupT["children"][number] => {
+      if (!("field" in c)) return scopeAsFilter(c);
+      const values = Array.isArray(c.value) ? c.value : [c.value];
+      if (c.op !== "descends_from") return { field: c.field, op: "in", value: values };
+      // the planner's descends_from takes one ancestor code
+      const arms = values.map((v) => ({ field: c.field, op: "descends_from" as const, value: v }));
+      return arms.length === 1 ? (arms[0] as FilterGroupT["children"][number]) : { logic: "or", children: arms };
+    }),
+  };
+}
+
+/**
+ * The rows an action may reach, as a FilterGroup the planner can AND into a query (the same
+ * semantics as `canInScope`): null when some granting assignment covers the whole workspace, else
+ * the OR of the granting scopes. Throws FORBIDDEN when no assignment grants the action.
+ */
+export function readScopeFilter(assignments: ScopedRole[], action: Action): FilterGroupT | null {
+  const granting = assignments.filter((a) => permissions[a.role].has(action));
+  if (granting.length === 0) throw new DomainError("FORBIDDEN", `No role grants ${action}`, { action });
+  const scopes: ScopeGroupT[] = [];
+  for (const a of granting) {
+    if (!("children" in a.scope) || a.scope.children.length === 0) return null;
+    scopes.push(a.scope as ScopeGroupT);
+  }
+  return { logic: "or", children: scopes.map(scopeAsFilter) };
 }
 
 /**

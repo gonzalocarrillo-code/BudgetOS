@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
-import { MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runIngest, uploadBucket } from "@budget/workers";
+import { GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -12,6 +12,7 @@ import { decide } from "../modules/approvals/commands/decide.js";
 import { createPolicy, seedDefaultPolicies } from "../modules/approvals/commands/policies.js";
 import { PolicySnapshot } from "../modules/approvals/engine.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
+import { createExport } from "../modules/exports/commands/create-export.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
 import { splitEnvelope } from "../modules/envelopes/commands/structure.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
@@ -303,6 +304,21 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   // ---- T-022: roll-up trees for every hierarchy template, FY2026, as of the pacing day. ----
   const trees = await rebuildWorkspace(app, { workspaceId, orgId }, { today: GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1] as string, periods: [GOLDEN_FY] });
   log(`golden: rollup cache built (${Object.values(trees).reduce((n, c) => n + c, 0)} nodes)`);
+
+  // ---- T-023: Finance exports the live LATAM leaves; the worker writes the CSV to the seed's store. ----
+  const exportJob = await createExport(app, auth(GOLDEN_EXPORT.persona), {
+    kind: GOLDEN_EXPORT.kind,
+    filename: GOLDEN_EXPORT.filename,
+    query: {
+      workspaceId,
+      filter: { logic: "and", children: [...LIVE_LEAVES, { field: { kind: "dimension", key: "region" }, op: "eq", value: GOLDEN_EXPORT.region }] },
+      period: { kind: "range", ...GOLDEN_FY },
+      measures: ["budget", "actual"],
+      sort: [{ key: "name", dir: "asc" }],
+    },
+  });
+  const exported = await runExport(app, objects, { workspaceId, orgId }, exportJob.id, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);
+  log(`golden: export ${exported.outcome} (${exported.rowCount ?? 0} rows)`);
 
   const elapsedMs = performance.now() - started;
   log(`golden: ${plan.length} envelopes in ${(elapsedMs / 1000).toFixed(1)} s`);

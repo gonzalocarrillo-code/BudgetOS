@@ -4,6 +4,7 @@ import { AdminModule } from "./modules/admin/admin.module.js";
 import { ApprovalsModule } from "./modules/approvals/approvals.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { EnvelopesModule } from "./modules/envelopes/envelopes.module.js";
+import { ExportsModule } from "./modules/exports/exports.module.js";
 import { RegistryModule } from "./modules/registry/registry.module.js";
 import { PacingModule } from "./modules/pacing/pacing.module.js";
 import { SearchModule } from "./modules/search/search.module.js";
@@ -12,6 +13,6 @@ import { SourcesModule } from "./modules/sources/sources.module.js";
 import { TargetsModule } from "./modules/targets/targets.module.js";
 
 @Module({
-  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule],
+  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule],
 })
 export class AppModule {}
