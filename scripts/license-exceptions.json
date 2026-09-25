@@ -35,6 +35,13 @@
     "reason": "Blue Oak Model License: permissive, OSI-approved, no copyleft."
   },
   {
+    "package": "pako",
+    "version": "1.0.11",
+    "license": "(MIT AND Zlib)",
+    "via": "exceljs > jszip (apps/workers)",
+    "reason": "MIT for the package, zlib licence for the ported zlib code: permissive, OSI-approved, no copyleft; altered versions must be marked, which we never ship."
+  },
+  {
     "package": "sax",
     "version": "1.6.1",
     "license": "BlueOak-1.0.0",

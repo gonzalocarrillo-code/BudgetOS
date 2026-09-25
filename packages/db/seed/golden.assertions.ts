@@ -188,6 +188,10 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "rootBudget": "1107799.19",
     "rootActual": "653984.46"
   },
+  "exports": {
+    "rows": 97,
+    "budget": "565373.37"
+  },
   "search": {
     "envelope": 332,
     "target": 105,

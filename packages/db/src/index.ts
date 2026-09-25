@@ -35,6 +35,7 @@ export type { DefaultMetricSeed } from "../seed/defaults.metrics.js";
 export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
 export {
   GOLDEN_COLLAB,
+  GOLDEN_EXPORT,
   GOLDEN_CUSTOM_DIMENSIONS,
   GOLDEN_FY,
   GOLDEN_PENDING_BULK,

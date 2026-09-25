@@ -29,7 +29,7 @@ export {
   UpdateRuleInput,
 } from "./pacing.js";
 
-export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope, permissions } from "./permissions.js";
+export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope, permissions, readScopeFilter } from "./permissions.js";
 export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
 
 export { AssignRoleInput, GroupsSyncInput } from "./access.js";
@@ -76,6 +76,8 @@ export {
 } from "./targets.js";
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
+
+export { CreateExportInput, EXPORT_MAX_ROWS, ExportJobView, ExportKind, ExportRequested, ExportStatus } from "./exports.js";
 
 export {
   ColumnMapping,

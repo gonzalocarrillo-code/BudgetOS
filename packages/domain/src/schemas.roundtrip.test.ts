@@ -280,6 +280,17 @@ const samples: Record<string, readonly unknown[]> = {
   UpdateSourceInput: [{ name: "Renamed" }, { isActive: false, schedule: null }],
   MapUnmatchedInput: [{ dimensionValues: { country: "BR", platform: "meta" }, envelopeId: workspaceId }],
   CreateUploadInput: [{ filename: "spend 2026-Q1.csv" }],
+  ExportKind: ["csv", "xlsx", "sheets"],
+  ExportStatus: ["queued", "done"],
+  CreateExportInput: [
+    { kind: "csv", query: { workspaceId, period: { kind: "relative", preset: "current_year" } } },
+    { kind: "xlsx", filename: "Q3 LATAM", query: { workspaceId, groupBy: ["country"], measures: ["budget"], period: { kind: "range", start: "2026-01-01", end: "2026-12-31" } } },
+  ],
+  ExportRequested: [{ jobId: "01927a00-0000-7000-8000-0000000000e1" }],
+  ExportJobView: [
+    { id: "01927a00-0000-7000-8000-0000000000e1", workspaceId, kind: "csv", status: "queued", filename: "budget-os-export-2026-09-25", rowCount: null, error: null, createdAt: "2026-09-25T10:00:00.000Z", completedAt: null, downloadUrl: null, expiresInSeconds: null },
+    { id: "01927a00-0000-7000-8000-0000000000e2", workspaceId, kind: "xlsx", status: "done", filename: "Q3", rowCount: 97, error: null, createdAt: "2026-09-25T10:00:00.000Z", completedAt: "2026-09-25T10:00:02.000Z", downloadUrl: "https://storage.example/x", expiresInSeconds: 900 },
+  ],
   IngestRequested: [{ runId: workspaceId, sourceId: workspaceId }],
   OutboxId: ["1", "9223372036854775807"],
   OutboxEventAttributes: [{ outboxId: "42", workspaceId, orgId: workspaceId, topic: "budget.changed" }],

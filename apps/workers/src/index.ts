@@ -17,3 +17,8 @@ export type { IndexContext, IndexedType } from "./search-indexer/documents.js";
 export { SEARCH_CONSUMER, handleSearchEvent, indexEntities, reindexWorkspace, targetsFor } from "./search-indexer/indexer.js";
 export { servePush } from "./push-server.js";
 export { LIVE_LEAVES, ROLLUP_CONSUMER, buildTemplate, handleRollupEvent, rebuildWorkspace, refreshTemplate } from "./rollup/rollup.js";
+export { EXPORT_CONSUMER, exportTable, exportUri, handleExportRequested, runExport } from "./export/export.js";
+export type { ExportResult } from "./export/export.js";
+export { buildTable } from "./export/table.js";
+export type { Column, ExportTable } from "./export/table.js";
+export { toCsv, toXlsx } from "./export/writers.js";

@@ -42,6 +42,8 @@ import {
   CreateTagInput,
   UpdateTagInput,
   ApplyTagInput,
+  CreateExportInput,
+  ExportJobView,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -257,6 +259,21 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/uploads": {
         post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },
+      },
+      "/api/v1/exports": {
+        post: {
+          operationId: "createExport",
+          parameters: [workspaceHeader],
+          requestBody: json(CreateExportInput),
+          responses: { "201": { description: "Queued export job; the caller's read scope is ANDed into the filter", ...json(ExportJobView) }, "503": { description: "kind sheets: Sheets push is not configured in this environment" } },
+        },
+      },
+      "/api/v1/exports/{jobId}": {
+        get: {
+          operationId: "getExport",
+          parameters: [{ name: "jobId", in: "path", required: true, schema: { type: "string", format: "uuid" } }, workspaceHeader],
+          responses: { "200": { description: "The caller's export job; downloadUrl while done", ...json(ExportJobView) } },
+        },
       },
       "/api/v1/workspaces/{ws}/pacing": {
         get: {

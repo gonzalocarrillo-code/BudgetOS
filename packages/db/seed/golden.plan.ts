@@ -224,6 +224,12 @@ function expectedPacing(plan: PlannedEnvelope[]): Record<string, number> {
  * `brand-safety` on the first ten LATAM leaves. Threads: a blocking one on a GB leaf no other test
  * submits, a resolved one with a mention, and an open cell thread with a reply.
  */
+/**
+ * T-023's row: Finance exports the live LATAM leaves (the roll-up's population) as CSV through the
+ * export command and worker. The file's rows and totals row must match the planner (A.exports).
+ */
+export const GOLDEN_EXPORT = { persona: "finance1", kind: "csv", filename: "golden-latam-live-leaves", region: "LATAM" } as const;
+
 export const GOLDEN_COLLAB = {
   tags: [
     { name: "q4-push", color: "#F97316", select: { region: "EMEA", platform: "amazon" }, first: null },
@@ -394,6 +400,8 @@ export interface GoldenTotals {
   search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value", number>;
   /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
   rollup: { nodesByTemplate: Record<string, number[]>; rootBudget: string; rootActual: string };
+  /** T-023: the GOLDEN_EXPORT file: data rows and the totals row's budget. */
+  exports: { rows: number; budget: string };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -499,6 +507,12 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       );
       const facts = goldenFactRows(plan).filter((r) => r.leafKey !== null).reduce((s, r) => s.plus(r.cells[6] ?? 0), new Decimal(0));
       return { nodesByTemplate, rootBudget: leaves.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2), rootActual: facts.toFixed(2) };
+    })(),
+    exports: (() => {
+      // Live leaves of the region: the split source is archived and its parts are live, same total.
+      const inRegion = leaves.filter((e) => e.dimensionValues["region"] === GOLDEN_EXPORT.region);
+      const split = inRegion.some((e) => e.key === GOLDEN_SPLIT.sourceKey) ? GOLDEN_SPLIT.parts.length - 1 : 0;
+      return { rows: inRegion.length + split, budget: inRegion.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2) };
     })(),
     search: {
       envelope: plan.length + GOLDEN_SPLIT.parts.length,

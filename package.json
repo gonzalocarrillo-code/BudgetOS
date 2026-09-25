@@ -27,5 +27,10 @@
     "typescript": "catalog:",
     "typescript-eslint": "8.70.1",
     "vitest": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "exceljs>unzipper": "0.12.3"
+    }
   }
 }

@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-24: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020 and T-021 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-25: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021 and T-023 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -38,7 +38,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-020 | 12 | T-016 | blocked | index lag < 5 s on small golden; suggest API — green (`seed/golden.test.ts`, `modules/search`, ADR-014) | p95 < 150 ms at 1M docs is the T-034 load job |
 | T-021 | 12 | T-016, T-018, T-019 | blocked | Slack Block Kit snapshot tests — green (`workers/src/notify`, ADR-015) | live Slack workspace |
 | T-022 | 12 | T-007, T-016 | done | tree totals = pivot totals on golden — green (`seed/golden.test.ts` rollup, `workers/src/rollup`, ADR-016) | — |
-| T-023 | 13 | T-007 | pending | CSV/XLSX export respects filter | Sheets push; BigQuery views queryable (GCP phase) |
+| T-023 | 13 | T-007 | blocked | CSV/XLSX export respects filter — green (`seed/golden.test.ts` exports, `api/src/modules/exports`, `workers/src/export`); view SQL checked against Postgres (`db/src/bigquery-views.test.ts`), ADR-017 | Sheets push; BigQuery views queryable; `terraform fmt`/`validate` (GCP phase) |
 | T-024 | 13 | T-011, T-007 | pending | locked envelope rejects draft with 423 | BigQuery closure tables (GCP phase) |
 | T-025 | 14 | T-007, T-012, T-020 | pending | tools return golden numbers; read-only guard test | IAP and per-user OAuth on Cloud Run (GCP phase) |
 | T-026 | 15 | T-009, T-025 | pending | Playwright navigates every §18.1 route with a test JWT | design-team token file is not in the repo |

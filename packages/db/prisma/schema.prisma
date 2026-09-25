@@ -560,6 +560,26 @@ model SavedView {
   @@map("saved_view")
 }
 
+// ---------- Exports (plan §6.2, spec §17) ----------
+model ExportJob {
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  kind        String // csv | xlsx | sheets
+  status      String    @default("queued") // queued | running | done | failed
+  query       Json // QueryRequest with the requester's read scope ANDed into filter; cursor / limit dropped
+  filename    String
+  objectUri   String?   @map("object_uri")
+  rowCount    Int?      @map("row_count")
+  error       String?
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  startedAt   DateTime? @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+
+  @@index([workspaceId, createdBy, createdAt])
+  @@map("export_job")
+}
+
 // ---------- Closures & ingestion (§4.5, §6.1) ----------
 model PeriodClosure {
   id              String   @id @db.Uuid
