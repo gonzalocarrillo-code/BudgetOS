@@ -179,3 +179,29 @@ export const MergeEnvelopesInput = z.object({
   rationale: z.string().min(3).max(4000),
 });
 export type MergeEnvelopesInput = z.infer<typeof MergeEnvelopesInput>;
+
+/**
+ * POST /envelopes/:id/children (T-031b, plan 0.6): a child under this envelope in one action. It
+ * takes the parent's dates and currency and its dimensions (given keys override), gets a draft for
+ * `amount`, and that draft is submitted: it goes through the matching policy like any other.
+ */
+export const AddChildInput = z.object({
+  name: z.string().min(1).max(200),
+  amount: MoneyString,
+  dimensionValues: z.record(z.string().min(1), z.string().min(1)).default({}),
+  rationale: z.string().min(3).max(4000),
+});
+export type AddChildInput = z.infer<typeof AddChildInput>;
+
+/**
+ * POST /envelopes/structure/preview (T-031b): what an add-child, move, split or merge would do,
+ * without doing it. The server runs the real command in a transaction it rolls back, so the preview
+ * applies exactly the checks the change would (caps, cycles, locks, scope, policy routing).
+ */
+export const StructurePreviewInput = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("add_child"), envelopeId: z.string().uuid(), input: AddChildInput }),
+  z.object({ op: z.literal("move"), envelopeId: z.string().uuid(), input: MoveEnvelopeInput }),
+  z.object({ op: z.literal("split"), envelopeId: z.string().uuid(), input: SplitEnvelopeInput }),
+  z.object({ op: z.literal("merge"), input: MergeEnvelopesInput }),
+]);
+export type StructurePreviewInput = z.infer<typeof StructurePreviewInput>;

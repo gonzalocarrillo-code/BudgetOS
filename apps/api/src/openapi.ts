@@ -2,6 +2,8 @@ import {
   AddValuesInput,
   AssignRoleInput,
   MergeEnvelopesInput,
+  AddChildInput,
+  StructurePreviewInput,
   MoveEnvelopeInput,
   SplitEnvelopeInput,
   BulkRequest,
@@ -131,6 +133,12 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/envelopes/{id}/split": {
         post: { operationId: "splitEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(SplitEnvelopeInput), responses: { "200": { description: "New siblings with drafts summing to the approved amount; one approval (or auto-approved); source archived once approved" } } },
+      },
+      "/api/v1/envelopes/structure/preview": {
+        post: { operationId: "previewEnvelopeStructure", parameters: [workspaceHeader], requestBody: json(StructurePreviewInput), responses: { "200": { description: "{ ok, op, currency, amount, parent, previousParent, routing } or { ok: false, error }: the change is run and rolled back" } } },
+      },
+      "/api/v1/envelopes/{id}/children": {
+        post: { operationId: "addChildEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(AddChildInput), responses: { "201": { description: "The child, created under this envelope with its draft submitted (auto-approved or a request)" } } },
       },
       "/api/v1/envelopes/merge": {
         post: { operationId: "mergeEnvelopes", parameters: [workspaceHeader], requestBody: json(MergeEnvelopesInput), responses: { "200": { description: "New sibling holding the sources' approved total; one approval (or auto-approved); sources archived once approved" } } },

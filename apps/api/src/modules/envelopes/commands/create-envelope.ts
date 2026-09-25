@@ -65,27 +65,30 @@ export async function insertEnvelopeRow(tx: Tx, auth: AuthContext, workspaceId: 
 export async function createEnvelope(prisma: PrismaClient, auth: AuthContext, raw: unknown) {
   const input = parseInput(CreateEnvelopeInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  return withTenant(prisma, auth.ctx, async (tx) => {
-    const env = await insertEnvelopeRow(tx, auth, workspaceId, input, "envelope.create");
-    const id = env.id;
-    let versionId: string | null = null;
-    if (input.amount !== undefined) {
-      const version = await writeDraftVersion(tx, auth, env, {
-        amount: new Decimal(input.amount),
-        phasing: input.phasing,
-        rationale: input.rationale,
-        attachments: [],
-      });
-      versionId = version.id;
-    }
-    await recordEnvelopeChange(tx, auth, {
-      workspaceId,
-      envelopeId: id,
-      action: "envelope.created",
-      kind: "created",
-      after: { name: input.name, dimensionValues: input.dimensionValues, currency: input.currency, parentId: input.parentId, versionId, amount: input.amount ?? null },
-      reason: input.rationale,
+  return withTenant(prisma, auth.ctx, (tx) => createEnvelopeIn(tx, auth, workspaceId, input));
+}
+
+/** The create inside a caller's transaction. */
+export async function createEnvelopeIn(tx: Tx, auth: AuthContext, workspaceId: string, input: CreateEnvelopeInput) {
+  const env = await insertEnvelopeRow(tx, auth, workspaceId, input, "envelope.create");
+  const id = env.id;
+  let versionId: string | null = null;
+  if (input.amount !== undefined) {
+    const version = await writeDraftVersion(tx, auth, env, {
+      amount: new Decimal(input.amount),
+      phasing: input.phasing,
+      rationale: input.rationale,
+      attachments: [],
     });
-    return tx.envelope.findUniqueOrThrow({ where: { id } });
+    versionId = version.id;
+  }
+  await recordEnvelopeChange(tx, auth, {
+    workspaceId,
+    envelopeId: id,
+    action: "envelope.created",
+    kind: "created",
+    after: { name: input.name, dimensionValues: input.dimensionValues, currency: input.currency, parentId: input.parentId, versionId, amount: input.amount ?? null },
+    reason: input.rationale,
   });
+  return tx.envelope.findUniqueOrThrow({ where: { id } });
 }

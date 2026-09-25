@@ -3,7 +3,7 @@ import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { BulkRequestDto, MergeEnvelopesDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { AddChildDto, BulkRequestDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -75,6 +75,20 @@ export class EnvelopesController {
   @Permission("envelope.move")
   merge(@Tenant() auth: AuthContext, @Body() body: MergeEnvelopesDto) {
     return this.envelopes.merge(auth, body);
+  }
+
+  /** T-031b: what an add-child / move / split / merge would do, without doing it (the command runs and is rolled back). */
+  @Post("envelopes/structure/preview")
+  @Permission("envelope.read")
+  previewStructure(@Tenant() auth: AuthContext, @Body() body: StructurePreviewDto) {
+    return this.envelopes.previewStructure(auth, body);
+  }
+
+  /** T-031b: a child under this envelope in one action (created, then its draft submitted). */
+  @Post("envelopes/:id/children")
+  @Permission("envelope.create")
+  addChild(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: AddChildDto) {
+    return this.envelopes.addChild(auth, id, body);
   }
 
   @Post("envelopes/:id/move")

@@ -75,6 +75,9 @@ export const savedViewsQuery = (ws: string) =>
   });
 
 const Version = z.object({ id: z.string().uuid(), versionNo: z.number(), amount: z.string(), status: z.string() }).passthrough();
+/** A neighbour in the tree (T-031b): parent, child or sibling, with its approved amount. */
+export const StructureNode = z.object({ id: z.string().uuid(), name: z.string(), status: z.string(), currency: z.string(), approved: z.string().nullable(), dimensionValues: z.record(z.string(), z.string()).default({}) });
+export type StructureNode = z.infer<typeof StructureNode>;
 export const EnvelopeDetail = z
   .object({
     id: z.string().uuid(),
@@ -87,6 +90,13 @@ export const EnvelopeDetail = z
     current: Version.nullable(),
     draft: Version.nullable(),
     tags: z.array(z.object({ id: z.string().uuid(), name: z.string(), color: z.string().nullable() })).default([]),
+    parentId: z.string().uuid().nullable().default(null),
+    rowVersion: z.number().default(1),
+    currentVersionId: z.string().uuid().nullable().default(null),
+    draftVersionId: z.string().uuid().nullable().default(null),
+    structure: z
+      .object({ parent: StructureNode.nullable(), children: z.array(StructureNode), siblings: z.array(StructureNode) })
+      .default({ parent: null, children: [], siblings: [] }),
   })
   .passthrough();
 export type EnvelopeDetail = z.infer<typeof EnvelopeDetail>;
