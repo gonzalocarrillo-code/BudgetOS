@@ -222,7 +222,8 @@ function expectedPacing(plan: PlannedEnvelope[]): Record<string, number> {
 /**
  * T-019's rows. Tags: `q4-push` on the EMEA × amazon leaves (the pending bulk's rows),
  * `brand-safety` on the first ten LATAM leaves. Threads: a blocking one on a GB leaf no other test
- * submits, a resolved one with a mention, and an open cell thread with a reply.
+ * submits, a resolved one with a mention, and an open cell thread with a reply. T-030 adds
+ * reactions by account (plan 0.6): 👀 from two accounts on the blocking thread, ✅ on the reply.
  */
 /**
  * T-023's row: Finance exports the live LATAM leaves (the roll-up's population) as CSV through the
@@ -250,9 +251,9 @@ export const GOLDEN_COLLAB = {
     { name: "brand-safety", color: "#0EA5E9", select: { region: "LATAM" }, first: 10 },
   ],
   threads: [
-    { key: "blocking", leafKey: "EMEA/GB/google_ads/consideration/retargeting", author: "approver", isBlocking: true, anchor: "envelope", title: "Hold for Q4 retail plan", comments: ["Hold this until the Q4 retail plan lands."], resolve: false },
-    { key: "resolved", leafKey: "LATAM/BR/meta/awareness/prospecting", author: "planner", isBlocking: false, anchor: "envelope", title: "Pacing check", comments: ["@budgetOwner is this pacing as planned?", "Yes, launch was moved to March."], resolve: true },
-    { key: "cell", leafKey: "EMEA/DE/tiktok/conversion/prospecting", author: "budgetOwner", isBlocking: false, anchor: "cell", title: "October", comments: ["Can October take 10% more?", "Only if November gives it back."], resolve: false },
+    { key: "blocking", leafKey: "EMEA/GB/google_ads/consideration/retargeting", author: "approver", isBlocking: true, anchor: "envelope", title: "Hold for Q4 retail plan", comments: ["Hold this until the Q4 retail plan lands."], resolve: false, reactions: [{ comment: 0, emoji: "👀", by: ["planner", "budgetOwner"] }] },
+    { key: "resolved", leafKey: "LATAM/BR/meta/awareness/prospecting", author: "planner", isBlocking: false, anchor: "envelope", title: "Pacing check", comments: ["@budgetOwner is this pacing as planned?", "Yes, launch was moved to March."], resolve: true, reactions: [{ comment: 1, emoji: "✅", by: ["planner"] }] },
+    { key: "cell", leafKey: "EMEA/DE/tiktok/conversion/prospecting", author: "budgetOwner", isBlocking: false, anchor: "cell", title: "October", comments: ["Can October take 10% more?", "Only if November gives it back."], resolve: false, reactions: [] },
   ],
 } as const;
 
@@ -409,7 +410,7 @@ export interface GoldenTotals {
   /** T-018: open alerts per default rule after evaluating GOLDEN_PACING.days. */
   pacing: { days: string[]; openAlertsByRule: Record<string, number> };
   /** T-019: threads, comments and tag counts (GOLDEN_COLLAB). */
-  collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; envelopesWithOpenThreads: number };
+  collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; reactions: number; envelopesWithOpenThreads: number };
   /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
   search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value", number>;
   /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
@@ -511,6 +512,7 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
         tags: Object.fromEntries(GOLDEN_COLLAB.tags.map((t) => [t.name, goldenTagLeaves(plan, t.name).length])),
         threads: { open: open.length, resolved: threads.length - open.length, blocking: threads.filter((t) => t.isBlocking && !t.resolve).length },
         comments: threads.reduce((n, t) => n + t.comments.length, 0),
+        reactions: threads.reduce((n, t) => n + t.reactions.reduce((m, r) => m + r.by.length, 0), 0),
         // The planner's has_open_thread reads envelope-anchored threads only (a cell thread is on its envelope too).
         envelopesWithOpenThreads: new Set(open.filter((t) => t.anchor === "envelope").map((t) => t.leafKey)).size,
       };

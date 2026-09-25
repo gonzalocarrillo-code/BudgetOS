@@ -157,6 +157,7 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
       "blocking": 1
     },
     "comments": 5,
+    "reactions": 3,
     "envelopesWithOpenThreads": 1
   },
   "rollup": {

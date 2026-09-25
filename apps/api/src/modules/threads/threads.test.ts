@@ -97,6 +97,7 @@ afterAll(async () => {
     `DELETE FROM subscription WHERE workspace_id = $1::uuid`,
     `DELETE FROM taggable WHERE workspace_id = $1::uuid`,
     `DELETE FROM tag WHERE workspace_id = $1::uuid`,
+    `DELETE FROM comment_reaction WHERE workspace_id = $1::uuid`,
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
     `DELETE FROM thread WHERE workspace_id = $1::uuid`,
     `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
@@ -213,6 +214,62 @@ describe("mentions and subscriptions (T-019 done-when: a mention notifies)", () 
     expect((await thread(scoped, {})).status).toBe(403);
     expect((await thread(scoped, { anchorId: env["latam"] })).status).toBe(201);
     expect((await thread(viewer, { anchorId: env["latam"] })).status).toBe(201); // VIEWER comments (READ has thread.comment)
+  });
+});
+
+describe("reactions, edit history and people (plan 0.6, T-030)", () => {
+  type Listed = Array<{ id: string; comments: Array<{ id: string; editHistory: Array<{ bodyMd: string; editedAt: string }>; reactions: Array<{ emoji: string; name: string; count: number; mine: boolean; users: Array<{ id: string; name: string }> }> }> }>;
+  const listed = async (user: TestUser, commentId: string) => {
+    const threads = (await call(user, "GET", `/threads?anchorType=envelope&anchorId=${env["latam"]}`)).body as unknown as Listed;
+    return threads.flatMap((t) => t.comments).find((c) => c.id === commentId);
+  };
+
+  it("one reaction per account per emoji: idempotent add/remove, audit + outbox on change only, who reacted is named", async () => {
+    const t = await thread(planner, { anchorId: env["latam"], firstComment: { bodyMd: "Reactions please" } });
+    const commentId = String((t.body["comments"] as Array<{ id: string }> | undefined)?.[0]?.id ?? t.body["firstCommentId"]);
+    const requestId = rid();
+    const added = await call(budgetOwner, "POST", `/comments/${commentId}/reactions`, { emoji: "👍" }, requestId);
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    expect(added.body).toMatchObject({ commentId, emoji: "👍", mine: true, count: 1, changed: true });
+    expect(await actions(requestId)).toEqual(["reaction.added"]);
+    const [last] = await owner.$queryRawUnsafe<Array<{ payload: { action: string; commentId: string } }>>(`SELECT payload FROM outbox WHERE workspace_id = $1::uuid AND topic = 'thread.changed' ORDER BY id DESC LIMIT 1`, ws);
+    expect(last?.payload).toMatchObject({ commentId });
+
+    const again = rid();
+    expect((await call(budgetOwner, "POST", `/comments/${commentId}/reactions`, { emoji: "👍" }, again)).body).toMatchObject({ count: 1, changed: false });
+    expect(await actions(again)).toEqual([]);
+    await call(viewer, "POST", `/comments/${commentId}/reactions`, { emoji: "👍" });
+    expect((await call(planner, "POST", `/comments/${commentId}/reactions`, { emoji: "🙃" })).status).toBe(422);
+
+    const seen = await listed(planner, commentId);
+    expect(seen?.reactions).toEqual([{ emoji: "👍", name: expect.any(String), count: 2, mine: false, users: expect.arrayContaining([{ id: budgetOwner.id, name: `Name ${budgetOwner.sub}` }, { id: viewer.id, name: `Name ${viewer.sub}` }]) }]);
+    expect((await listed(viewer, commentId))?.reactions[0]?.mine).toBe(true);
+
+    const gone = rid();
+    expect((await call(budgetOwner, "DELETE", `/comments/${commentId}/reactions`, { emoji: "👍" }, gone)).body).toMatchObject({ mine: false, count: 1, changed: true });
+    expect(await actions(gone)).toEqual(["reaction.removed"]);
+    expect((await call(budgetOwner, "DELETE", `/comments/${commentId}/reactions`, { emoji: "👍" })).body).toMatchObject({ changed: false });
+    expect((await call(scoped, "POST", `/comments/${randomUUID()}/reactions`, { emoji: "👍" })).status).toBe(404);
+  });
+
+  it("every edit is kept and listed with the comment, oldest first", async () => {
+    const t = await thread(planner, { anchorId: env["latam"], firstComment: { bodyMd: "v1" } });
+    const commentId = String((t.body["comments"] as Array<{ id: string }> | undefined)?.[0]?.id ?? t.body["firstCommentId"]);
+    await call(planner, "PATCH", `/comments/${commentId}`, { bodyMd: "v2" });
+    await call(planner, "PATCH", `/comments/${commentId}`, { bodyMd: "v3" });
+    const c = await listed(viewer, commentId);
+    expect(c?.editHistory.map((e) => e.bodyMd)).toEqual(["v1", "v2"]);
+  });
+
+  it("people: members of the workspace (direct, org-wide or by group) and groups, matched on name or email", async () => {
+    const all = (await call(viewer, "GET", `/workspaces/${ws}/people?limit=50`)).body as unknown as Array<{ type: string; id: string }>;
+    const ids = all.map((p) => p.id);
+    expect(ids).toEqual(expect.arrayContaining([planner.id, groupMember.id, orgAdmin.id, groupId]));
+    expect(ids).not.toContain(outsider.id);
+    const found = (await call(viewer, "GET", `/workspaces/${ws}/people?q=${encodeURIComponent(budgetOwner.sub)}`)).body as unknown as Array<{ type: string; id: string; name: string }>;
+    expect(found).toEqual([{ type: "user", id: budgetOwner.id, name: `Name ${budgetOwner.sub}`, email: budgetOwner.email }]);
+    expect(((await call(viewer, "GET", `/workspaces/${ws}/people?q=latam`)).body as unknown as Array<{ type: string }>).map((p) => p.type)).toEqual(["group"]);
+    expect((await call(outsider, "GET", `/workspaces/${ws}/people`)).status).toBe(403);
   });
 });
 
