@@ -234,6 +234,8 @@ const samples: Record<string, readonly unknown[]> = {
   CreateTagInput: [{ name: "q4-push", kind: "label" }, { name: "Team LATAM", color: "#12AB34", kind: "team" }],
   UpdateTagInput: [{ name: "q4" }, { mergeIntoId: workspaceId }, { color: null }],
   TaggableType: ["envelope", "thread"],
+  ReactionInput: [{ emoji: "👍" }, { emoji: "❓" }],
+  PeopleQuery: [{ q: "bud", limit: 10 }, { q: "", limit: 50 }],
   ApplyTagInput: [{ tagId: workspaceId, entities: [{ type: "envelope", id: workspaceId }] }],
   RuleMetric: ["pace_index", "kpi_vs_target_pct"],
   RuleComparator: ["gt", "lte"],

@@ -272,6 +272,7 @@ describe("threads and tags (T-019 seed rows)", () => {
     const threads = await owner.thread.findMany({ where: { workspaceId: golden.workspaceId }, include: { comments: true } });
     expect({ open: threads.filter((t) => t.status === "open").length, resolved: threads.filter((t) => t.status === "resolved").length, blocking: threads.filter((t) => t.isBlocking && t.status === "open").length }).toEqual(C.threads);
     expect(threads.reduce((n, t) => n + t.comments.length, 0)).toBe(C.comments);
+    expect(await owner.commentReaction.count({ where: { workspaceId: golden.workspaceId } })).toBe(C.reactions);
     const mentioned = threads.flatMap((t) => t.comments.flatMap((c) => c.mentions as Array<{ id: string }>)).map((m) => m.id);
     expect(mentioned).toEqual([golden.users.budgetOwner]);
     const tags = await owner.tag.findMany({ where: { workspaceId: golden.workspaceId } });

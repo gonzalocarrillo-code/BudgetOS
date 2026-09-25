@@ -52,6 +52,7 @@ import {
   QueryResponse,
   CreateSavedViewInput,
   UpdateSavedViewInput,
+  ReactionInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -272,6 +273,13 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/uploads": {
         post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },
+      },
+      "/api/v1/comments/{id}/reactions": {
+        post: { operationId: "addReaction", parameters: [idParam, workspaceHeader], requestBody: json(ReactionInput), responses: { "201": { description: "The caller's reaction (idempotent); the emoji's count" } } },
+        delete: { operationId: "removeReaction", parameters: [idParam, workspaceHeader], requestBody: json(ReactionInput), responses: { "200": { description: "The caller's reaction removed (idempotent); the emoji's count" } } },
+      },
+      "/api/v1/workspaces/{ws}/people": {
+        get: { operationId: "listPeople", parameters: [workspaceParam, { name: "q", in: "query", required: false, schema: { type: "string" } }, { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50 } }], responses: { "200": { description: "Accounts and groups that can be @mentioned here" } } },
       },
       "/api/v1/workspaces/{ws}/query": {
         post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },

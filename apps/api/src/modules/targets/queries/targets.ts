@@ -30,8 +30,11 @@ export async function listTargets(prisma: PrismaClient, auth: AuthContext, raw: 
     const visible = rows.filter((r) => auth.isOrgAdmin || r.envelopeId === null || canInScope(auth.assignments, "target.read", scopes.get(r.envelopeId) ?? { dims: {} }));
     const versionIds = visible.flatMap((r) => [r.currentVersionId, r.draftVersionId]).filter((x): x is string => x !== null);
     const versions = new Map((await tx.targetVersion.findMany({ where: { id: { in: versionIds } } })).map((v) => [v.id, versionView(v)]));
+    const envelopeIds = [...new Set(visible.map((r) => r.envelopeId).filter((x): x is string => x !== null))];
+    const names = new Map((await tx.envelope.findMany({ where: { id: { in: envelopeIds } }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
     return visible.map((r) => ({
       ...targetView(r),
+      envelopeName: r.envelopeId ? (names.get(r.envelopeId) ?? null) : null,
       current: r.currentVersionId ? (versions.get(r.currentVersionId) ?? null) : null,
       draft: r.draftVersionId ? (versions.get(r.draftVersionId) ?? null) : null,
     }));

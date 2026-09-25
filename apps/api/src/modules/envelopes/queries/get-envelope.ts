@@ -48,6 +48,8 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
     if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
     assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
     const [current, draft] = await Promise.all([loadVersion(tx, env.currentVersionId), loadVersion(tx, env.draftVersionId)]);
+    const tagIds = (await tx.taggable.findMany({ where: { entityType: "envelope", entityId: id }, select: { tagId: true } })).map((t) => t.tagId);
+    const tags = tagIds.length ? await tx.tag.findMany({ where: { id: { in: tagIds } }, select: { id: true, name: true, color: true }, orderBy: { name: "asc" } }) : [];
     const atInstant =
       asOf === null
         ? null
@@ -70,6 +72,7 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       ownerId: env.ownerId,
       allowOverAllocation: env.allowOverAllocation,
       rowVersion: env.rowVersion,
+      tags,
       currentVersionId: env.currentVersionId,
       draftVersionId: env.draftVersionId,
       current: current ? versionDto(current) : null,

@@ -246,6 +246,9 @@ describe("effective targets: inheritance, override, filter scope, implied volume
     expect(d.body["status"]).toBe("APPROVED");
     const list = (await call(viewer, "GET", `/workspaces/${ws}/targets?scopeType=filter`)).body as unknown as Array<{ id: string; current: { value: string } | null }>;
     expect(list.map((x) => [x.id, x.current?.value])).toEqual([[t.body["id"], "30"]]);
+    const envelopeTargets = (await call(viewer, "GET", `/workspaces/${ws}/targets?scopeType=envelope`)).body as unknown as Array<{ envelopeId: string; envelopeName: string | null }>;
+    expect(envelopeTargets.find((x) => x.envelopeId === env["latam"])?.envelopeName).toBe("LATAM"); // T-030: the Targets page names the scope
+    expect(list[0]).toMatchObject({ envelopeName: null });
   });
 
   it("GET /envelopes/:id/targets: own, inherited or filter target, with implied volume = budget / CPA target", async () => {

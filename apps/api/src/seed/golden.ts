@@ -30,6 +30,7 @@ import { saveHierarchyTemplate } from "../modules/registry/commands/save-hierarc
 import { createSource, queueRun } from "../modules/sources/commands/sources.js";
 import { seedDefaultRules } from "../modules/pacing/rules.js";
 import { applyTag, createTag } from "../modules/threads/commands/tags.js";
+import { addReaction } from "../modules/threads/commands/reactions.js";
 import { addComment, createThread, resolveThread } from "../modules/threads/commands/threads.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
@@ -296,7 +297,10 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
       isBlocking: t.isBlocking,
       firstComment: { bodyMd: first ?? "" },
     });
-    for (const [i, body] of rest.entries()) await addComment(app, auth(i % 2 === 0 ? replier : author), created.id, { bodyMd: body });
+    const commentIds = [created.comments[0]?.id as string];
+    for (const [i, body] of rest.entries()) commentIds.push((await addComment(app, auth(i % 2 === 0 ? replier : author), created.id, { bodyMd: body })).id);
+    // T-030: reactions by account, through the command.
+    for (const r of t.reactions) for (const by of r.by) await addReaction(app, auth(by as Persona), commentIds[r.comment] as string, { emoji: r.emoji });
     if (t.resolve) await resolveThread(app, auth(author), created.id);
   }
   log(`golden: ${GOLDEN_COLLAB.tags.length} tags, ${GOLDEN_COLLAB.threads.length} threads`);

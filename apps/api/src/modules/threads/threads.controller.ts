@@ -4,8 +4,9 @@ import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { applyTag, createTag, updateTag } from "./commands/tags.js";
 import { addComment, createThread, deleteComment, editComment, reopenThread, resolveThread, subscribe } from "./commands/threads.js";
-import { ApplyTagDto, CommentDto, CreateTagDto, CreateThreadDto, ListThreadsQueryDto, SubscriptionDto, UpdateCommentDto, UpdateTagDto } from "./dto.js";
-import { listTags, listThreads } from "./queries.js";
+import { ApplyTagDto, CommentDto, CreateTagDto, CreateThreadDto, ListThreadsQueryDto, PeopleQueryDto, ReactionDto, SubscriptionDto, UpdateCommentDto, UpdateTagDto } from "./dto.js";
+import { listPeople, listTags, listThreads } from "./queries.js";
+import { addReaction, removeReaction } from "./commands/reactions.js";
 
 /**
  * Threads, comments, subscriptions and tags (spec §13, §17 `threads` and `tags`). Entity routes take
@@ -44,6 +45,24 @@ export class ThreadsController {
   @Permission("thread.comment")
   remove(@Tenant() auth: AuthContext, @Param("id") id: string) {
     return deleteComment(this.prisma, auth, id);
+  }
+
+  @Post("comments/:id/reactions")
+  @Permission("thread.comment")
+  react(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: ReactionDto) {
+    return addReaction(this.prisma, auth, id, body);
+  }
+
+  @Delete("comments/:id/reactions")
+  @Permission("thread.comment")
+  unreact(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: ReactionDto) {
+    return removeReaction(this.prisma, auth, id, body);
+  }
+
+  @Get("workspaces/:ws/people")
+  @Permission("workspace.member")
+  people(@Tenant() auth: AuthContext, @Query() query: PeopleQueryDto) {
+    return listPeople(this.prisma, auth, query);
   }
 
   @Post("threads/:id/resolve")

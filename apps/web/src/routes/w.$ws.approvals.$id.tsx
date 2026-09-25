@@ -9,6 +9,7 @@ import { useState, type ReactElement } from "react";
 import { Card, Page } from "../components/page.js";
 import { StatusChip } from "../features/approvals/parts.js";
 import { HistoryList } from "../features/history/history-list.js";
+import { ThreadPanel } from "../features/threads/thread-panel.js";
 import { api, unwrap } from "../lib/api.js";
 import { approvalQuery, type ApprovalDetail } from "../lib/queries.js";
 
@@ -71,6 +72,9 @@ function RequestDetail(): ReactElement {
             <DiffTable ws={ws} r={r} currency={currency} />
           </Card>
           <DecisionBar r={r} comment={comment} setComment={setComment} pending={decide.isPending} error={decide.error?.message ?? null} onDecide={(d) => decide.mutate(d)} />
+          <Card title={t("threads.title")}>
+            <ThreadPanel ws={ws} anchorType="approval_request" anchorId={r.id} />
+          </Card>
           {r.envelope ? (
             <Card title={t("drawer.tab.history")}>
               <HistoryList ws={ws} envelopeId={r.envelope.id} currency={currency} />

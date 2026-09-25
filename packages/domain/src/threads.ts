@@ -27,6 +27,15 @@ export type CreateThreadInput = z.infer<typeof CreateThreadInput>;
 export const UpdateCommentInput = z.object({ bodyMd: z.string().min(1).max(20_000) });
 export type UpdateCommentInput = z.infer<typeof UpdateCommentInput>;
 
+/** Emoji a comment can take (plan §8.6, 0.6): a small fixed set, each with a spoken name. */
+export const REACTIONS = ["👍", "✅", "👀", "🎉", "❤️", "❓"] as const;
+export const REACTION_NAMES: Record<(typeof REACTIONS)[number], string> = { "👍": "thumbs up", "✅": "done", "👀": "looking", "🎉": "celebrate", "❤️": "love", "❓": "question" };
+export const ReactionInput = z.object({ emoji: z.enum(REACTIONS) });
+export type ReactionInput = z.infer<typeof ReactionInput>;
+
+/** GET /workspaces/:ws/people?q: accounts and groups that can be @mentioned in this workspace. */
+export const PeopleQuery = z.object({ q: z.string().max(100).default(""), limit: z.coerce.number().int().min(1).max(50).default(10) });
+
 /** GET /threads?anchorType&anchorId */
 export const ListThreadsQuery = z.object({ anchorType: AnchorType, anchorId: z.string().uuid() });
 export type ListThreadsQuery = z.infer<typeof ListThreadsQuery>;

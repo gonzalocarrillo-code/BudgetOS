@@ -504,22 +504,37 @@ model Thread {
 }
 
 model Comment {
-  id              String    @id @db.Uuid
-  threadId        String    @map("thread_id") @db.Uuid
-  thread          Thread    @relation(fields: [threadId], references: [id])
-  parentCommentId String?   @map("parent_comment_id") @db.Uuid
-  authorId        String    @map("author_id") @db.Uuid
-  bodyMd          String    @map("body_md")
-  mentions        Json      @default("[]") // [{ type:'user'|'group', id }]
-  references      Json      @default("[]") // [{ type:'envelope'|'target'|'alert'|'request', id }]
-  attachments     Json      @default("[]")
-  editHistory     Json      @default("[]") @map("edit_history")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  editedAt        DateTime? @map("edited_at") @db.Timestamptz
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+  id              String            @id @db.Uuid
+  threadId        String            @map("thread_id") @db.Uuid
+  thread          Thread            @relation(fields: [threadId], references: [id])
+  reactions       CommentReaction[]
+  parentCommentId String?           @map("parent_comment_id") @db.Uuid
+  authorId        String            @map("author_id") @db.Uuid
+  bodyMd          String            @map("body_md")
+  mentions        Json              @default("[]") // [{ type:'user'|'group', id }]
+  references      Json              @default("[]") // [{ type:'envelope'|'target'|'alert'|'request', id }]
+  attachments     Json              @default("[]")
+  editHistory     Json              @default("[]") @map("edit_history")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  editedAt        DateTime?         @map("edited_at") @db.Timestamptz
+  deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz
 
   @@index([threadId, createdAt])
   @@map("comment")
+}
+
+/// An emoji reaction on a comment, by one account (plan §8.6, 0.6). One row per (comment, user, emoji).
+model CommentReaction {
+  commentId   String   @map("comment_id") @db.Uuid
+  comment     Comment  @relation(fields: [commentId], references: [id])
+  userId      String   @map("user_id") @db.Uuid
+  emoji       String
+  workspaceId String   @map("workspace_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([commentId, userId, emoji])
+  @@index([workspaceId, commentId])
+  @@map("comment_reaction")
 }
 
 model Tag {

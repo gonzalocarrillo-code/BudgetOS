@@ -58,6 +58,7 @@ export const EnvelopeDetail = z
     dimensionValues: z.record(z.string(), z.string()),
     current: Version.nullable(),
     draft: Version.nullable(),
+    tags: z.array(z.object({ id: z.string().uuid(), name: z.string(), color: z.string().nullable() })).default([]),
   })
   .passthrough();
 export type EnvelopeDetail = z.infer<typeof EnvelopeDetail>;
