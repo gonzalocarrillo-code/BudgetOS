@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -16,6 +16,7 @@ import { createExport } from "../modules/exports/commands/create-export.js";
 import { closePeriod } from "../modules/closures/commands/close-period.js";
 import { restateClosure } from "../modules/closures/commands/restate.js";
 import { RecordingClosureSink } from "../modules/closures/sink.js";
+import { createSavedView } from "../modules/views/commands/views.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
 import { splitEnvelope } from "../modules/envelopes/commands/structure.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
@@ -322,6 +323,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   });
   const exported = await runExport(app, objects, { workspaceId, orgId }, exportJob.id, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);
   log(`golden: export ${exported.outcome} (${exported.rowCount ?? 0} rows)`);
+
+  // ---- T-027: the planner's saved Explorer view. ----
+  await createSavedView(app, auth(GOLDEN_SAVED_VIEW.persona), { name: GOLDEN_SAVED_VIEW.name, screen: "explorer", definition: GOLDEN_SAVED_VIEW.definition });
 
   // ---- T-024: Finance closes 2026-Q1 (rows to a recording sink: the seed has no BigQuery), an admin restates it. ----
   const closureSink = new RecordingClosureSink();

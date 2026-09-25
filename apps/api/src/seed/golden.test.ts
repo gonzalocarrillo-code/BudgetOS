@@ -19,7 +19,7 @@ import { LIVE_LEAVES, handleRollupEvent, handleSearchEvent } from "@budget/worke
 import { compileTree } from "@budget/query-planner";
 import { search } from "../modules/search/search.js";
 import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
-import { GOLDEN_CLOSURE, GOLDEN_EXPORT } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW } from "@budget/db";
 import { MemoryObjectStore, runExport } from "@budget/workers";
 import ExcelJS from "exceljs";
 import { parseCsv } from "../modules/envelopes/bulk/csv.js";
@@ -437,6 +437,14 @@ describe("planner over the golden workspace (phase 9: planner tests read golden.
 });
 
 // Runs last: its incremental case approves a new budget, which the golden totals above do not include.
+describe("saved views (T-027 seed rows)", () => {
+  it("the planner's saved Explorer view", async () => {
+    const views = await owner.savedView.findMany({ where: { workspaceId: golden.workspaceId } });
+    expect(views).toHaveLength(A.savedViews);
+    expect(views[0]).toMatchObject({ name: GOLDEN_SAVED_VIEW.name, screen: "explorer", visibility: "private", createdBy: golden.users.planner });
+  });
+});
+
 describe("exports (T-023 done-when: export respects filter)", () => {
   const region = (code: string) => ({ field: { kind: "dimension" as const, key: "region" }, op: "eq" as const, value: code });
   const live = (code: string): FilterGroupT => ({ logic: "and", children: [...LIVE_LEAVES, region(code)] });

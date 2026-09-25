@@ -1,13 +1,15 @@
 import { DomainError, type QueryRow } from "@budget/domain";
 import {
+  CompactSelection,
   DataEditor,
   GridCellKind,
   type EditableGridCell,
   type GridCell,
+  type GridSelection,
   type Item,
 } from "@glideapps/glide-data-grid";
 import "@glideapps/glide-data-grid/dist/index.css";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { buildCell, customRenderers, type BudgetCell } from "./cells.js";
 import { bindEditorHost } from "./editor-fields.js";
 import { forwardPaste } from "./paste.js";
@@ -22,6 +24,7 @@ function rowHeight(density: GridDensity): number {
 }
 
 function columnTitle(column: ColumnSpec): string {
+  if (column.title !== undefined) return column.title;
   switch (column.kind) {
     case "path":
       return "path";
@@ -38,9 +41,9 @@ function columnTitle(column: ColumnSpec): string {
   }
 }
 
-function columnWidth(column: ColumnSpec): number {
-  if (column.kind === "path") return column.width ?? 240;
-  return 120;
+export function columnWidth(column: ColumnSpec): number {
+  if (column.width !== undefined) return column.width;
+  return column.kind === "path" ? 240 : 120;
 }
 
 function committedValue(cell: EditableGridCell): string {
@@ -94,8 +97,13 @@ export function BudgetGrid({
   currency = "USD",
   searchDimensionValues,
   searchTags,
+  theme,
+  totalsLabel = "Total",
 }: BudgetGridProps) {
   const cache = useRowCache(source, { pageSize: 200, prefetch: 2 });
+  // Glide stores the selection only when it is not given onGridSelectionChange; we need the
+  // callback, so the selection is held here (without it, nothing selects and nothing edits).
+  const [selection, setSelection] = useState<GridSelection>({ columns: CompactSelection.empty(), rows: CompactSelection.empty() });
   bindEditorHost({
     ...(searchDimensionValues === undefined ? {} : { searchDimensionValues }),
     ...(searchTags === undefined ? {} : { searchTags }),
@@ -114,7 +122,8 @@ export function BudgetGrid({
       if (record === undefined) return { kind: GridCellKind.Loading, allowOverlay: false };
       return buildCell(record, column, { currency });
     },
-    [cache, columns, currency, pinnedTotals, totals],
+    // cache.version: a new function when rows arrive, so Glide redraws the cells it has.
+    [cache, cache.version, columns, currency, pinnedTotals, totals],
   );
 
   const onCellEdited = useCallback(
@@ -134,7 +143,7 @@ export function BudgetGrid({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0 }}>
-      {pinnedTotals === "top" ? <TotalsRow columns={columns} totals={totals} currency={currency} /> : null}
+      {pinnedTotals === "top" ? <TotalsRow columns={columns} totals={totals} currency={currency} widths={columns.map(columnWidth)} label={totalsLabel} /> : null}
       <div style={{ flex: "1 1 auto", minHeight: 0 }}>
         <DataEditor
         width="100%"
@@ -154,8 +163,10 @@ export function BudgetGrid({
         rangeSelect="multi-rect"
         columnSelect="none"
         rowSelect="single"
-        onGridSelectionChange={(selection) => {
-          const current = selection.current;
+        gridSelection={selection}
+        onGridSelectionChange={(next) => {
+          setSelection(next);
+          const current = next.current;
           events.onSelect(current ? (cache.get(current.cell[1]) ?? null) : null);
         }}
         onCellClicked={([col, row]) => {
@@ -163,6 +174,8 @@ export function BudgetGrid({
           if (col === 0 && record !== undefined && treeHasChildren(record)) {
             void source.toggle(record.key).then(({ total }) => cache.setTotal(total));
             events.onExpand?.(record);
+          } else if (col === 0 && record !== undefined) {
+            events.onOpen?.(record);
           }
         }}
         onHeaderClicked={(col) => {
@@ -173,7 +186,7 @@ export function BudgetGrid({
         smoothScrollX
         smoothScrollY
         {...(pinnedTotals === "bottom" ? { trailingRowOptions: { sticky: true } } : {})}
-        theme={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
+        theme={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", ...theme }}
       />
       </div>
     </div>

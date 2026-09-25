@@ -104,3 +104,12 @@ export const FilterGroup = z.lazy(() =>
 
 export const emptyFilter: FilterGroupT = { logic: "and", children: [] };
 export const isPredicate = (n: Predicate | FilterGroupT): n is Predicate => "field" in n;
+
+/**
+ * Live leaves (ADR-016): envelopes with no non-archived child that are not archived themselves.
+ * Totals, trees and pivots sum these; a parent is a cap over its children and never counts twice.
+ */
+export const LIVE_LEAVES: Predicate[] = [
+  { field: { kind: "attr", key: "is_leaf" }, op: "eq", value: true },
+  { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" },
+];

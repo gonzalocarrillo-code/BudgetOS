@@ -14,6 +14,7 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
     `DELETE FROM rollup_cache WHERE workspace_id = $1::uuid`,
     `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
+    `DELETE FROM saved_view WHERE workspace_id = $1::uuid`,
     `DELETE FROM closure_envelope WHERE closure_id IN (SELECT id FROM period_closure WHERE workspace_id = $1::uuid)`,
     `DELETE FROM period_closure WHERE workspace_id = $1::uuid`,
     `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,

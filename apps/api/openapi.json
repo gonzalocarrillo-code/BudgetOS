@@ -4681,6 +4681,780 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/query": {
+      "post": {
+        "operationId": "query",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "filter": {
+                    "type": "object",
+                    "properties": {
+                      "logic": {
+                        "type": "string",
+                        "enum": [
+                          "and",
+                          "or"
+                        ]
+                      },
+                      "not": {
+                        "type": "boolean"
+                      },
+                      "children": {
+                        "type": "array",
+                        "maxItems": 200,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "field": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "dimension"
+                                          ]
+                                        },
+                                        "key": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "key"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "measure"
+                                          ]
+                                        },
+                                        "key": {
+                                          "type": "string",
+                                          "enum": [
+                                            "budget",
+                                            "actual",
+                                            "projected",
+                                            "remaining",
+                                            "variance_abs",
+                                            "variance_pct",
+                                            "pace_index",
+                                            "projected_close_pct",
+                                            "spend_to_date_pct"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "key"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "target"
+                                          ]
+                                        },
+                                        "metric": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "field": {
+                                          "type": "string",
+                                          "enum": [
+                                            "value",
+                                            "actual",
+                                            "vs_target_pct",
+                                            "exists"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "metric",
+                                        "field"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "attr"
+                                          ]
+                                        },
+                                        "key": {
+                                          "type": "string",
+                                          "enum": [
+                                            "status",
+                                            "owner_id",
+                                            "approver_id",
+                                            "requested_by",
+                                            "tag",
+                                            "currency",
+                                            "source_system",
+                                            "has_open_thread",
+                                            "mentions_user",
+                                            "commented_by",
+                                            "created_at",
+                                            "updated_at",
+                                            "start_date",
+                                            "end_date",
+                                            "name",
+                                            "has_attachments",
+                                            "alert_severity",
+                                            "is_leaf"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "key"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "op": {
+                                  "type": "string",
+                                  "enum": [
+                                    "eq",
+                                    "neq",
+                                    "in",
+                                    "nin",
+                                    "contains",
+                                    "starts_with",
+                                    "is_empty",
+                                    "not_empty",
+                                    "between",
+                                    "gt",
+                                    "gte",
+                                    "lt",
+                                    "lte",
+                                    "descends_from",
+                                    "within"
+                                  ]
+                                },
+                                "value": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "number"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "oneOf": [
+                                          {
+                                            "oneOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "oneOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "unit": {
+                                          "type": "string",
+                                          "enum": [
+                                            "day",
+                                            "week",
+                                            "month",
+                                            "quarter",
+                                            "year"
+                                          ]
+                                        },
+                                        "amount": {
+                                          "type": "integer"
+                                        },
+                                        "anchor": {
+                                          "type": "string",
+                                          "enum": [
+                                            "today",
+                                            "period_start",
+                                            "period_end"
+                                          ],
+                                          "default": "today"
+                                        }
+                                      },
+                                      "required": [
+                                        "unit",
+                                        "amount"
+                                      ]
+                                    },
+                                    {}
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "op"
+                              ]
+                            },
+                            {}
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "logic",
+                      "children"
+                    ]
+                  },
+                  "groupBy": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": []
+                  },
+                  "measures": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "budget",
+                        "actual",
+                        "projected",
+                        "remaining",
+                        "variance_abs",
+                        "variance_pct",
+                        "pace_index",
+                        "projected_close_pct",
+                        "spend_to_date_pct"
+                      ]
+                    },
+                    "default": [
+                      "budget",
+                      "actual",
+                      "projected",
+                      "pace_index"
+                    ]
+                  },
+                  "targets": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": []
+                  },
+                  "period": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "fiscal"
+                            ]
+                          },
+                          "key": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "key"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "range"
+                            ]
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "start",
+                          "end"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "relative"
+                            ]
+                          },
+                          "preset": {
+                            "type": "string",
+                            "enum": [
+                              "current_month",
+                              "current_quarter",
+                              "current_year",
+                              "last_30_days",
+                              "last_90_days",
+                              "ytd",
+                              "next_90_days"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "preset"
+                        ]
+                      }
+                    ]
+                  },
+                  "grain": {
+                    "type": "string",
+                    "enum": [
+                      "total",
+                      "day",
+                      "week",
+                      "month",
+                      "quarter"
+                    ],
+                    "default": "total"
+                  },
+                  "asOf": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "templateId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "sort": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "dir": {
+                          "type": "string",
+                          "enum": [
+                            "asc",
+                            "desc"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "dir"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "cursor": {
+                    "type": "string"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 1000,
+                    "exclusiveMaximum": false,
+                    "default": 200
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "period"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "versionId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "depth": {
+                            "type": "integer"
+                          },
+                          "path": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "dimensions": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "measures": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "targets": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "target": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "actual": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "vsTargetPct": {
+                                  "type": "string",
+                                  "nullable": true
+                                }
+                              },
+                              "required": [
+                                "target",
+                                "actual",
+                                "vsTargetPct"
+                              ]
+                            },
+                            "default": {}
+                          },
+                          "status": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "pendingCount": {
+                            "type": "integer",
+                            "default": 0
+                          },
+                          "openAlerts": {
+                            "type": "integer",
+                            "default": 0
+                          },
+                          "openThreads": {
+                            "type": "integer",
+                            "default": 0
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "envelopeId",
+                          "path",
+                          "dimensions",
+                          "measures",
+                          "status"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "totals": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "dataAsOf": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "dataVersion": {
+                      "type": "integer"
+                    },
+                    "elapsedMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "rows",
+                    "nextCursor",
+                    "totals",
+                    "dataAsOf",
+                    "dataVersion",
+                    "elapsedMs"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/saved-views": {
+      "get": {
+        "operationId": "listSavedViews",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "screen",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's views and the workspace's shared ones"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSavedView",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "screen": {
+                    "type": "string",
+                    "enum": [
+                      "explorer",
+                      "alerts",
+                      "approvals",
+                      "targets",
+                      "report"
+                    ],
+                    "default": "explorer"
+                  },
+                  "definition": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "workspace"
+                    ],
+                    "default": "private"
+                  }
+                },
+                "required": [
+                  "name",
+                  "definition"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved view; visibility workspace needs view.share_workspace"
+          }
+        }
+      }
+    },
+    "/api/v1/saved-views/{id}": {
+      "patch": {
+        "operationId": "updateSavedView",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "definition": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "workspace"
+                    ],
+                    "default": "private"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated view (owner, or an admin for a shared view)"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSavedView",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed; the audit row keeps what it was"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{ws}/closures": {
       "get": {
         "operationId": "listClosures",

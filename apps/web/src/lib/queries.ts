@@ -26,3 +26,44 @@ export const registryQuery = (ws: string) =>
     queryFn: async () => z.array(Dimension).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/dimensions", { params: { path: { ws } } }))),
     staleTime: 10_000,
   });
+
+export const Template = z.object({ id: z.string().uuid(), name: z.string(), path: z.array(z.string()), isDefault: z.boolean() });
+export type Template = z.infer<typeof Template>;
+
+export const templatesQuery = (ws: string) =>
+  queryOptions({
+    queryKey: ["templates", ws],
+    queryFn: async () => z.array(Template).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/hierarchy-templates", { params: { path: { ws } } }))),
+    staleTime: 60_000,
+  });
+
+export const SavedView = z.object({ id: z.string().uuid(), name: z.string(), screen: z.string(), definition: z.record(z.string(), z.unknown()), visibility: z.string(), createdBy: z.string().uuid() });
+export type SavedView = z.infer<typeof SavedView>;
+
+export const savedViewsQuery = (ws: string) =>
+  queryOptions({
+    queryKey: ["saved-views", ws],
+    queryFn: async () => z.array(SavedView).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/saved-views", { params: { path: { ws }, query: { screen: "explorer" } } }))),
+  });
+
+const Version = z.object({ id: z.string().uuid(), versionNo: z.number(), amount: z.string(), status: z.string() }).passthrough();
+export const EnvelopeDetail = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    status: z.string(),
+    currency: z.string(),
+    startDate: z.string(),
+    endDate: z.string(),
+    dimensionValues: z.record(z.string(), z.string()),
+    current: Version.nullable(),
+    draft: Version.nullable(),
+  })
+  .passthrough();
+export type EnvelopeDetail = z.infer<typeof EnvelopeDetail>;
+
+export const envelopeQuery = (ws: string, id: string) =>
+  queryOptions({
+    queryKey: ["envelope", ws, id],
+    queryFn: async () => EnvelopeDetail.parse(await unwrap(api.GET("/api/v1/envelopes/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } }))),
+  });

@@ -752,6 +752,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["query"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/saved-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSavedViews"];
+        put?: never;
+        post: operations["createSavedView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saved-views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteSavedView"];
+        options?: never;
+        head?: never;
+        patch: operations["updateSavedView"];
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/closures": {
         parameters: {
             query?: never;
@@ -3161,6 +3209,279 @@ export interface operations {
         responses: {
             /** @description gs:// URI and a URL to PUT the CSV to */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    query: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    workspaceId: string;
+                    filter?: {
+                        /** @enum {string} */
+                        logic: "and" | "or";
+                        not?: boolean;
+                        children: ({
+                            field: {
+                                /** @enum {string} */
+                                kind: "dimension";
+                                key: string;
+                            } | {
+                                /** @enum {string} */
+                                kind: "measure";
+                                /** @enum {string} */
+                                key: "budget" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct";
+                            } | {
+                                /** @enum {string} */
+                                kind: "target";
+                                metric: string;
+                                /** @enum {string} */
+                                field: "value" | "actual" | "vs_target_pct" | "exists";
+                            } | {
+                                /** @enum {string} */
+                                kind: "attr";
+                                /** @enum {string} */
+                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf";
+                            };
+                            /** @enum {string} */
+                            op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
+                            value?: string | number | boolean | (string | number)[] | ((string | number) | (string | number))[] | {
+                                /** @enum {string} */
+                                unit: "day" | "week" | "month" | "quarter" | "year";
+                                amount: number;
+                                /**
+                                 * @default today
+                                 * @enum {string}
+                                 */
+                                anchor?: "today" | "period_start" | "period_end";
+                            } | unknown;
+                        } | unknown)[];
+                    };
+                    /** @default [] */
+                    groupBy?: string[];
+                    /**
+                     * @default [
+                     *       "budget",
+                     *       "actual",
+                     *       "projected",
+                     *       "pace_index"
+                     *     ]
+                     */
+                    measures?: ("budget" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct")[];
+                    /** @default [] */
+                    targets?: string[];
+                    period: {
+                        /** @enum {string} */
+                        kind: "fiscal";
+                        key: string;
+                    } | {
+                        /** @enum {string} */
+                        kind: "range";
+                        start: string;
+                        end: string;
+                    } | {
+                        /** @enum {string} */
+                        kind: "relative";
+                        /** @enum {string} */
+                        preset: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+                    };
+                    /**
+                     * @default total
+                     * @enum {string}
+                     */
+                    grain?: "total" | "day" | "week" | "month" | "quarter";
+                    /** Format: date-time */
+                    asOf?: string;
+                    /** Format: uuid */
+                    templateId?: string;
+                    /** @default [] */
+                    sort?: {
+                        key: string;
+                        /** @enum {string} */
+                        dir: "asc" | "desc";
+                    }[];
+                    cursor?: string;
+                    /** @default 200 */
+                    limit?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rows: {
+                            key: string;
+                            /** Format: uuid */
+                            envelopeId: string | null;
+                            /** Format: uuid */
+                            versionId?: string | null;
+                            depth?: number;
+                            path: string[];
+                            dimensions: {
+                                [key: string]: string | null;
+                            };
+                            measures: {
+                                [key: string]: string | null;
+                            };
+                            /** @default {} */
+                            targets: {
+                                [key: string]: {
+                                    target: string | null;
+                                    actual: string | null;
+                                    vsTargetPct: string | null;
+                                };
+                            };
+                            status: string | null;
+                            /** @default 0 */
+                            pendingCount: number;
+                            /** @default 0 */
+                            openAlerts: number;
+                            /** @default 0 */
+                            openThreads: number;
+                        }[];
+                        nextCursor: string | null;
+                        totals: {
+                            [key: string]: string | null;
+                        };
+                        /** Format: date-time */
+                        dataAsOf: string;
+                        dataVersion: number;
+                        elapsedMs: number;
+                    };
+                };
+            };
+        };
+    };
+    listSavedViews: {
+        parameters: {
+            query?: {
+                screen?: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's views and the workspace's shared ones */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createSavedView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /**
+                     * @default explorer
+                     * @enum {string}
+                     */
+                    screen?: "explorer" | "alerts" | "approvals" | "targets" | "report";
+                    definition: {
+                        [key: string]: unknown;
+                    };
+                    /**
+                     * @default private
+                     * @enum {string}
+                     */
+                    visibility?: "private" | "workspace";
+                };
+            };
+        };
+        responses: {
+            /** @description Saved view; visibility workspace needs view.share_workspace */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteSavedView: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed; the audit row keeps what it was */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateSavedView: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    definition?: {
+                        [key: string]: unknown;
+                    };
+                    /**
+                     * @default private
+                     * @enum {string}
+                     */
+                    visibility?: "private" | "workspace";
+                };
+            };
+        };
+        responses: {
+            /** @description Updated view (owner, or an admin for a shared view) */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

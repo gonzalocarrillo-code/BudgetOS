@@ -237,6 +237,13 @@ export const GOLDEN_EXPORT = { persona: "finance1", kind: "csv", filename: "gold
  */
 export const GOLDEN_CLOSURE = { periodKey: "2026-Q1", closer: "finance1", restater: "admin", reason: "Q1 actuals restated after the late invoice run (golden)" } as const;
 
+/** T-027's row: the planner's saved Explorer view (a pivot of the LATAM leaves by country), through the command. */
+export const GOLDEN_SAVED_VIEW = {
+  persona: "planner",
+  name: "LATAM by country",
+  definition: { view: "pivot", groupBy: ["country"], period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "LATAM" }] } },
+} as const;
+
 export const GOLDEN_COLLAB = {
   tags: [
     { name: "q4-push", color: "#F97316", select: { region: "EMEA", platform: "amazon" }, first: null },
@@ -411,6 +418,8 @@ export interface GoldenTotals {
   exports: { rows: number; budget: string };
   /** T-024: the GOLDEN_CLOSURE close: envelopes locked, sink rows (every template's nodes × (quarter + 3 months)), root budget and actual. */
   closure: { lockedEnvelopes: number; rows: number; budget: string; actual: string };
+  /** T-027: saved views in the golden workspace. */
+  savedViews: number;
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -534,6 +543,7 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
         .reduce((s, r) => s.plus(r.cells[6] ?? 0), new Decimal(0));
       return { lockedEnvelopes, rows: nodes * 4, budget: leaves.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2), actual: actual.toFixed(2) };
     })(),
+    savedViews: 1,
     search: {
       envelope: plan.length + GOLDEN_SPLIT.parts.length,
       target: goldenTargets(plan).length + 1,

@@ -39,6 +39,8 @@ export type QueryRequest = z.infer<typeof QueryRequest>;
 export const QueryRow = z.object({
   key: z.string(),
   envelopeId: z.string().uuid().nullable(),
+  /** Flat rows: the version an edit is based on (draft, else current), for optimistic concurrency. */
+  versionId: z.string().uuid().nullable().optional(),
   depth: z.number().int().optional(),
   path: z.array(z.string()),
   dimensions: z.record(z.string(), z.string().nullable()),

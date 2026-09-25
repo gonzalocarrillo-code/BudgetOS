@@ -12,6 +12,8 @@ interface Page {
 export interface RowCacheController {
   get(index: number): QueryRow | undefined;
   readonly total: number;
+  /** Bumped whenever rows or the total change; renderers depend on it so the canvas redraws. */
+  readonly version: number;
   readonly dataVersion: string | undefined;
   setTotal(total: number): void;
   settled(): Promise<void>;
@@ -31,6 +33,11 @@ export function createRowCache(
   let knownTotal: number | undefined;
   let dataVersion: string | undefined;
   let disposed = false;
+  let version = 0;
+  const changed = (): void => {
+    version += 1;
+    onChange();
+  };
 
   const touch = (page: Page): void => {
     clock += 1;
@@ -68,7 +75,7 @@ export function createRowCache(
         dataVersion = result.dataVersion;
         clock += 1;
         remember(start, { rows: result.rows, dataVersion: result.dataVersion, used: clock });
-        onChange();
+        changed();
       })
       .finally(() => {
         if (inflight.get(start) === chain) inflight.delete(start);
@@ -89,7 +96,7 @@ export function createRowCache(
     pages.clear();
     inflight.clear();
     for (const start of loaded) request(start);
-    onChange();
+    changed();
   };
 
   const unsubscribe = source.subscribe(invalidate);
@@ -112,13 +119,16 @@ export function createRowCache(
     get total() {
       return total;
     },
+    get version() {
+      return version;
+    },
     get dataVersion() {
       return dataVersion;
     },
     setTotal(next) {
       total = next;
       knownTotal = next;
-      onChange();
+      changed();
     },
     async settled() {
       while (inflight.size > 0) {
@@ -142,11 +152,19 @@ export function useRowCache(
 ): RowCacheController {
   const [, setVersion] = useState(0);
   const cacheRef = useRef<RowCacheController | null>(null);
-  if (cacheRef.current === null) {
-    cacheRef.current = createRowCache(source, options, () => {
-      setVersion((version) => version + 1);
-    });
-  }
-  useEffect(() => () => cacheRef.current?.dispose(), []);
+  const make = () => createRowCache(source, options, () => setVersion((v) => v + 1));
+  if (cacheRef.current === null) cacheRef.current = make();
+  useEffect(() => {
+    // StrictMode (and a new source) runs cleanup then this again: a disposed cache ignores every
+    // page it receives, so make a fresh one instead of rendering nothing forever.
+    if (cacheRef.current === null) {
+      cacheRef.current = make();
+      setVersion((v) => v + 1);
+    }
+    return () => {
+      cacheRef.current?.dispose();
+      cacheRef.current = null;
+    };
+  }, [source]);
   return cacheRef.current;
 }

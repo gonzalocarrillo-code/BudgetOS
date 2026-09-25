@@ -1,4 +1,4 @@
-import { QueryRequest, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
+import { LIVE_LEAVES, QueryRequest, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
 import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -19,11 +19,7 @@ export const ROLLUP_CONSUMER = "rollup-worker";
 const MEASURES = ["budget", "actual", "projected", "remaining", "pace_index", "spend_to_date_pct", "projected_close_pct"] as const;
 type Row = Record<string, unknown>;
 
-/** Live leaves: no live child, not archived. Parents are caps over their children and would count twice. */
-export const LIVE_LEAVES: Predicate[] = [
-  { field: { kind: "attr", key: "is_leaf" }, op: "eq", value: true },
-  { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" },
-];
+export { LIVE_LEAVES } from "@budget/domain";
 
 interface Ctx {
   workspaceId: string;

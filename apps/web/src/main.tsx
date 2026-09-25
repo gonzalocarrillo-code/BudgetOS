@@ -4,13 +4,14 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ApiError } from "./lib/api.js";
 import { onTokenChange } from "./lib/auth.js";
+import { parseSearch, stringifySearch } from "./lib/search-params.js";
 import { routeTree } from "./routeTree.gen.js";
 import "./styles.css";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2 } },
 });
-const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent" });
+const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: "intent", parseSearch, stringifySearch });
 
 // Signing in or out: drop the previous caller's server state and re-run the route loaders.
 onTokenChange(() => {

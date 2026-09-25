@@ -29,6 +29,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "5.2.0",
+    "decimal.js": "10.6.0",
     "eslint": "catalog:",
     "jose": "6.2.12",
     "openapi-typescript": "7.13.0",
@@ -41,6 +42,7 @@
   },
   "dependencies": {
     "@budget/domain": "workspace:^",
+    "@budget/grid": "workspace:^",
     "@budget/ui": "workspace:^",
     "@tanstack/react-query": "5.103.2",
     "@tanstack/react-router": "1.170.39",
