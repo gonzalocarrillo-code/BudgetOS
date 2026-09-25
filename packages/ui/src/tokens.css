@@ -1,56 +1,51 @@
 /*
- * Design tokens. The design team's token file is not in the repo yet (T-026), so these are the
- * shadcn defaults (neutral base, Tailwind v4 oklch values) and nothing more: no visual language
- * is invented here. Replace this file with the design-team tokens; components read only these names.
+ * Budget OS design tokens (ADR-021), from the product screenshots the team chose (plan §11): a
+ * cool grey page, white rounded cards with hairline borders, one bright blue for the active state
+ * and progress, near-black text, grey chips. Values were sampled from the screenshots. Components
+ * read only these names; a design-team token file replaces this one.
+ *
+ * Type: Inter where the machine has it, else the platform UI face (SF Pro / Segoe UI), which the
+ * screenshots' Inter closely matches. No font file is bundled (the OFL-1.1 faces are outside the
+ * licence allowlist, AGENTS §4).
  */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-}
+  --radius: 0.75rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: #f0f4f8; /* the page behind the app frame */
+  --surface: #fafbfc; /* the content area */
+  --foreground: #1b2638;
+  --card: #ffffff;
+  --card-foreground: #1b2638;
+  --popover: #ffffff;
+  --popover-foreground: #1b2638;
+  --primary: #1877f2;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f7ff; /* selected sub-item, primary-tinted surfaces */
+  --secondary-foreground: #1868d8;
+  --muted: #f1f5f9; /* chips, progress tracks, table headers */
+  --muted-foreground: #6b7a90;
+  --subtle-foreground: #9facc0; /* secondary numbers ("36,662,968 / 44,530,000") */
+  --accent: #f3f6fa; /* hover */
+  --accent-foreground: #1b2638;
+  --inverse: #0b1628; /* dark buttons, tour popover actions */
+  --inverse-foreground: #ffffff;
+  --destructive: #e5484d;
+  --success: #12a37a;
+  --warning: #e8a317;
+  --border: #e6eaf0;
+  --input: #dfe4eb;
+  --ring: #1877f2;
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --font-sans: var(--font-sans);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -62,9 +57,14 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-inverse: var(--inverse);
+  --color-inverse-foreground: var(--inverse-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
