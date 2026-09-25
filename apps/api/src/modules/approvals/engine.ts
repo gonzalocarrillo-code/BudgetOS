@@ -67,6 +67,14 @@ export async function requestTargets(tx: Tx, r: { entityType: string; entityId: 
   return { versions: [{ id: v.id, envelopeId: v.envelopeId }], authorId: v.createdBy, scopes: await scopesOf([v]) };
 }
 
+/** A closed period freezes its envelopes' requests too (spec §15): no decision or withdrawal until it is restated. */
+export async function assertNotLocked(tx: Tx, r: { entityType: string; entityId: string }): Promise<void> {
+  if (r.entityType === "target_version") return;
+  const { versions } = await requestTargets(tx, r);
+  const locked = await tx.envelope.count({ where: { id: { in: [...new Set(versions.map((v) => v.envelopeId))] }, status: "LOCKED" } });
+  if (locked > 0) throw new DomainError("LOCKED", "Period is closed; restate via closure", { lockedEnvelopes: locked });
+}
+
 /**
  * Approves every version of a bulk change (plan §9.3; split / merge per spec §7.5). Sources being
  * archived go first — their version is the zero amount — so the new siblings fit the parent's cap;

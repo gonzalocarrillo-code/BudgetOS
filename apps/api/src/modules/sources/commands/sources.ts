@@ -1,4 +1,4 @@
-import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, UpdateSourceInput, newId, type SourceConfig, type SourceMapping } from "@budget/domain";
+import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, RunSourceInput, UpdateSourceInput, newId, type SourceConfig, type SourceMapping } from "@budget/domain";
 import { assignUnmatched, audit, bumpDataVersion, outbox, withTenant, type Tx } from "@budget/db";
 import { uploadBucket, type ObjectStore } from "@budget/workers";
 import type { DataSource, Prisma, PrismaClient } from "@prisma/client";
@@ -75,15 +75,25 @@ export async function updateSource(prisma: PrismaClient, auth: AuthContext, rawI
   });
 }
 
-/** POST /sources/:id/run: queues a run for the ingest worker (never runs it in the request, ADR-011). */
-export async function queueRun(prisma: PrismaClient, auth: AuthContext, rawId: string) {
+/**
+ * POST /sources/:id/run: queues a run for the ingest worker (never runs it in the request, ADR-011).
+ * `restatementOf` lets the run load facts into that closed closure's period (spec §15).
+ */
+export async function queueRun(prisma: PrismaClient, auth: AuthContext, rawId: string, raw: unknown = {}) {
+  const input = parseInput(RunSourceInput, raw ?? {});
   return withTenant(prisma, auth.ctx, async (tx) => {
     const source = await loadSource(tx, rawId);
     if (!source.isActive) throw new DomainError("CONFLICT", "Source is inactive");
     const open = await tx.ingestRun.findFirst({ where: { sourceId: source.id, status: { in: ["queued", "running"] } }, select: { id: true, status: true } });
     if (open) throw new DomainError("CONFLICT", `A run is already ${open.status}`, { runId: open.id });
-    const run = await tx.ingestRun.create({ data: { id: newId(), sourceId: source.id, status: "queued" } });
-    await audit(tx, { workspaceId: source.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "ingest.run.queued", entityType: "ingest_run", entityId: run.id, after: { sourceId: source.id }, requestId: auth.ctx.requestId });
+    if (input.restatementOf) {
+      const closure = await tx.periodClosure.findUnique({ where: { id: input.restatementOf }, select: { workspaceId: true, status: true } });
+      if (closure === null || closure.workspaceId !== source.workspaceId) throw new DomainError("NOT_FOUND", "Closure not found");
+      if (closure.status !== "closed") throw new DomainError("CONFLICT", "The closure is already restated; its period accepts facts");
+    }
+    const restatement = input.restatementOf ? { restatementOf: input.restatementOf } : {};
+    const run = await tx.ingestRun.create({ data: { id: newId(), sourceId: source.id, status: "queued", summary: restatement } });
+    await audit(tx, { workspaceId: source.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "ingest.run.queued", entityType: "ingest_run", entityId: run.id, after: { sourceId: source.id, ...restatement }, requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId: source.workspaceId, topic: "ingest.requested", payload: { runId: run.id, sourceId: source.id } });
     return { runId: run.id, sourceId: source.id, status: run.status };
   });

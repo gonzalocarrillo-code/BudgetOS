@@ -23,8 +23,8 @@ export class SourcesService {
   update(auth: AuthContext, id: string, body: unknown) {
     return updateSource(this.prisma, auth, id, body);
   }
-  run(auth: AuthContext, id: string) {
-    return queueRun(this.prisma, auth, id);
+  run(auth: AuthContext, id: string, body: unknown) {
+    return queueRun(this.prisma, auth, id, body);
   }
   runs(auth: AuthContext, id: string) {
     return listRuns(this.prisma, auth, id);

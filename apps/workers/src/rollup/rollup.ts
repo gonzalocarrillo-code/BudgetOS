@@ -105,13 +105,19 @@ const dataVersionOf = async (tx: Tx, workspaceId: string) => {
 };
 
 /** Full build of one template for one period: every depth, and nodes no longer present are removed. */
-export async function buildTemplate(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "id" | "path">, period: Period): Promise<number> {
-  const scope = { workspaceId: ctx.workspaceId, templateId: template.id, periodStart: period.start, periodEnd: period.end, dataVersion: await dataVersionOf(tx, ctx.workspaceId) };
+/** Every node of a template for a period (root first, then each depth), computed by the planner, not stored. Also used by closures (T-024). */
+export async function templateNodes(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "path">, period: Period): Promise<RollupNode[]> {
   const envelopeOf = await nodeEnvelopes(tx, ctx.workspaceId, template.path);
   const nodes: RollupNode[] = [{ nodePath: ROOT_PATH, envelopeId: null, measures: await rootNode(tx, ctx, period) }];
   for (let d = 1; d <= template.path.length; d += 1) {
     for (const n of await nodesAtDepth(tx, ctx, template.path, d, period, null)) nodes.push({ nodePath: n.nodePath, envelopeId: envelopeOf.get(n.nodePath) ?? null, measures: n.measures });
   }
+  return nodes;
+}
+
+export async function buildTemplate(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "id" | "path">, period: Period): Promise<number> {
+  const scope = { workspaceId: ctx.workspaceId, templateId: template.id, periodStart: period.start, periodEnd: period.end, dataVersion: await dataVersionOf(tx, ctx.workspaceId) };
+  const nodes = await templateNodes(tx, ctx, template, period);
   for (let i = 0; i < nodes.length; i += 1000) await upsertRollupNodes(tx, scope, nodes.slice(i, i + 1000));
   await deleteRollupNodesExcept(tx, scope, nodes.map((n) => n.nodePath));
   return nodes.length;

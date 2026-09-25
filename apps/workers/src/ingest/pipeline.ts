@@ -2,6 +2,7 @@ import { SourceConfig, SourceMapping } from "@budget/domain";
 import {
   audit,
   bumpDataVersion,
+  closedPeriods,
   ensurePartitions,
   insertProjectionFacts,
   matchRunFacts,
@@ -130,7 +131,10 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     await tx.ingestRun.update({ where: { id: runId }, data: { status: "running", startedAt: new Date() } });
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { reportingCurrency: true } });
     const previous = await tx.ingestRun.findFirst({ where: { sourceId: source.id, status: "ok" }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
-    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since: previous?.startedAt };
+    // Facts dated in a closed period are rejected unless the run is flagged as its restatement (spec §15).
+    const restatementOf = ((run.summary ?? {}) as { restatementOf?: string }).restatementOf ?? null;
+    const closed = (await closedPeriods(tx, tenant.workspaceId)).filter((c) => c.closureId !== restatementOf);
+    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since: previous?.startedAt, closed, restatementOf };
   });
 
   try {
@@ -170,6 +174,11 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
             const pending: { spend: SpendFactInput[]; kpi: KpiFactInput[]; projection: ProjectionFactInput[] } = { spend: [], kpi: [], projection: [] };
             let reason: string | null = null;
             for (const f of res.facts) {
+              const closedIn = setup.closed.find((c) => f.periodDate >= c.start && f.periodDate <= c.end);
+              if (closedIn) {
+                reason = `period ${closedIn.key} is closed (restate it, or run with restatementOf=${closedIn.closureId})`;
+                break;
+              }
               if (f.kind === "spend" && f.amount !== undefined && f.currency !== undefined) {
                 const rate = await fx.rate(tx, f.currency, f.periodDate);
                 if (rate === null) {
@@ -227,7 +236,7 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
         const envelopeIds = await matchRunFacts(tx, tenant.workspaceId, runId);
         const coverage = await runCoverage(tx, tenant.workspaceId, runId);
         const matchCoverage = new Decimal(coverage.spend).isZero() ? "1" : new Decimal(coverage.matchedSpend).div(coverage.spend).toDecimalPlaces(6).toString();
-        const summary = { ...coverage, matchCoverage, envelopes: envelopeIds.length, rejectReasons: reasons };
+        const summary = { ...coverage, matchCoverage, envelopes: envelopeIds.length, rejectReasons: reasons, ...(setup.restatementOf ? { restatementOf: setup.restatementOf } : {}) };
         await tx.ingestRun.update({
           where: { id: runId },
           data: { status: "ok", finishedAt: new Date(), rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, summary: summary as unknown as Prisma.InputJsonObject },

@@ -230,6 +230,13 @@ function expectedPacing(plan: PlannedEnvelope[]): Record<string, number> {
  */
 export const GOLDEN_EXPORT = { persona: "finance1", kind: "csv", filename: "golden-latam-live-leaves", region: "LATAM" } as const;
 
+/**
+ * T-024's rows: Finance closes 2026-Q1 through the close command (every live envelope locks, every
+ * template's tree for the quarter and its months goes to the closure sink), then a workspace admin
+ * restates it, so the golden workspace keeps one restated closure and no locked envelope.
+ */
+export const GOLDEN_CLOSURE = { periodKey: "2026-Q1", closer: "finance1", restater: "admin", reason: "Q1 actuals restated after the late invoice run (golden)" } as const;
+
 export const GOLDEN_COLLAB = {
   tags: [
     { name: "q4-push", color: "#F97316", select: { region: "EMEA", platform: "amazon" }, first: null },
@@ -402,6 +409,8 @@ export interface GoldenTotals {
   rollup: { nodesByTemplate: Record<string, number[]>; rootBudget: string; rootActual: string };
   /** T-023: the GOLDEN_EXPORT file: data rows and the totals row's budget. */
   exports: { rows: number; budget: string };
+  /** T-024: the GOLDEN_CLOSURE close: envelopes locked, sink rows (every template's nodes × (quarter + 3 months)), root budget and actual. */
+  closure: { lockedEnvelopes: number; rows: number; budget: string; actual: string };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -513,6 +522,17 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       const inRegion = leaves.filter((e) => e.dimensionValues["region"] === GOLDEN_EXPORT.region);
       const split = inRegion.some((e) => e.key === GOLDEN_SPLIT.sourceKey) ? GOLDEN_SPLIT.parts.length - 1 : 0;
       return { rows: inRegion.length + split, budget: inRegion.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2) };
+    })(),
+    closure: (() => {
+      // Every envelope spans FY2026, so all live ones overlap Q1: the plan, plus the split parts, minus the archived source.
+      const lockedEnvelopes = plan.length + GOLDEN_SPLIT.parts.length - 1;
+      const templates: Array<{ path: readonly string[] }> = [DEFAULT_HIERARCHY, ...GOLDEN_TEMPLATES];
+      // Every leaf overlaps every month, so each month has every node the quarter has.
+      const nodes = templates.reduce((n, t) => n + 1 + t.path.reduce((m, _, d) => m + new Set(leaves.map((e) => t.path.slice(0, d + 1).map((k) => e.dimensionValues[k] ?? "∅").join("/"))).size, 0), 0);
+      const actual = goldenFactRows(plan)
+        .filter((r) => r.leafKey !== null && (r.cells[5] ?? "") >= "2026-01" && (r.cells[5] ?? "") <= "2026-03")
+        .reduce((s, r) => s.plus(r.cells[6] ?? 0), new Decimal(0));
+      return { lockedEnvelopes, rows: nodes * 4, budget: leaves.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2), actual: actual.toFixed(2) };
     })(),
     search: {
       envelope: plan.length + GOLDEN_SPLIT.parts.length,

@@ -596,6 +596,17 @@ model PeriodClosure {
   @@map("period_closure")
 }
 
+/// Envelopes a closure locked, with the status each had before (restored on restatement unless another closed closure still covers it).
+model ClosureEnvelope {
+  closureId   String         @map("closure_id") @db.Uuid
+  envelopeId  String         @map("envelope_id") @db.Uuid
+  priorStatus EnvelopeStatus @map("prior_status")
+
+  @@id([closureId, envelopeId])
+  @@index([envelopeId])
+  @@map("closure_envelope")
+}
+
 model DataSource {
   id          String  @id @db.Uuid
   workspaceId String  @map("workspace_id") @db.Uuid

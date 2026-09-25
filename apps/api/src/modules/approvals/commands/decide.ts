@@ -3,7 +3,7 @@ import { eligibleApproverSql, lockApprovalRequest, withTenant } from "@budget/db
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { advanceIfComplete, assertEnvelopeRequest, assertOpen, closeRequest, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
+import { advanceIfComplete, assertEnvelopeRequest, assertNotLocked, assertOpen, closeRequest, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
 
 /**
  * POST /approvals/:id/decisions (spec §9.3). Eligibility = SQL eligible_approver() (step role,
@@ -18,6 +18,7 @@ export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequest
     if (r === null) throw new DomainError("NOT_FOUND", "Request not found");
     assertOpen(r);
     assertEnvelopeRequest(r);
+    await assertNotLocked(tx, r);
     const snapshot = snapshotOf(r);
     const step = snapshot.chain[r.currentStep];
     if (step === undefined) throw new DomainError("VALIDATION", "Request is past its last step");

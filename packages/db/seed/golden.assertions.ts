@@ -192,6 +192,12 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "rows": 97,
     "budget": "565373.37"
   },
+  "closure": {
+    "lockedEnvelopes": 331,
+    "rows": 2052,
+    "budget": "1107799.19",
+    "actual": "245158.16"
+  },
   "search": {
     "envelope": 332,
     "target": 105,

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { CreateSourceDto, CreateUploadDto, MapUnmatchedDto, UpdateSourceDto } from "./dto.js";
+import { CreateSourceDto, CreateUploadDto, MapUnmatchedDto, RunSourceDto, UpdateSourceDto } from "./dto.js";
 import { SourcesService } from "./sources.service.js";
 
 /** Ingestion sources (spec §14, §17). Entity routes take the workspace from X-Workspace-Id. */
@@ -35,8 +35,8 @@ export class SourcesController {
 
   @Post("sources/:id/run")
   @Permission("source.manage")
-  run(@Tenant() auth: AuthContext, @Param("id") id: string) {
-    return this.sources.run(auth, id);
+  run(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: RunSourceDto) {
+    return this.sources.run(auth, id, body);
   }
 
   @Get("sources/:id/runs")

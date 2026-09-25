@@ -110,6 +110,8 @@ afterAll(async () => {
     `DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)`,
     `DELETE FROM data_source WHERE workspace_id = $1::uuid`,
+    `DELETE FROM period_closure WHERE workspace_id = $1::uuid`,
+    `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,
     `UPDATE envelope SET parent_id = NULL WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
   ]) {
@@ -177,6 +179,24 @@ describe("runIngest (spec §14)", () => {
       [{ country: "DE", platform: "meta" }, "30.00", 1],
       [{ country: "US", platform: "meta" }, "10.00", 1],
     ]);
+  });
+
+  it("rejects facts dated in a closed period, unless the run is that closure's restatement (T-024)", async () => {
+    const periodId = randomUUID();
+    const closureId = randomUUID();
+    await owner.fiscalPeriod.create({ data: { id: periodId, workspaceId: ws, key: "2026-02", kind: "month", startDate: new Date("2026-02-01"), endDate: new Date("2026-02-28") } });
+    await owner.periodClosure.create({ data: { id: closureId, workspaceId: ws, periodId, status: "closed", closedBy: userId, registryVersion: {}, bqTable: "t017", varianceSummary: {} } });
+    const blocked = await runIngest(deps(), tenant, await queueRun());
+    expect(blocked).toMatchObject({ rowsRead: 9, rowsAccepted: 4, rowsRejected: 5 });
+    const report = String(store.objects.get(blocked.errorReportUri ?? "")?.body ?? "");
+    expect(report.split("\n").filter((l) => l.includes("period 2026-02 is closed"))).toHaveLength(2);
+
+    const flagged = randomUUID();
+    await owner.ingestRun.create({ data: { id: flagged, sourceId, status: "queued", summary: { restatementOf: closureId } } });
+    expect(await runIngest(deps(), tenant, flagged)).toMatchObject({ rowsAccepted: 6, rowsRejected: 3 });
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: flagged } })).summary).toMatchObject({ restatementOf: closureId });
+    await owner.periodClosure.update({ where: { id: closureId }, data: { status: "restated" } });
+    expect(await runIngest(deps(), tenant, await queueRun())).toMatchObject({ rowsAccepted: 6, rowsRejected: 3 });
   });
 
   it("fails the run, audited, when the mapping names a dimension the registry does not have", async () => {

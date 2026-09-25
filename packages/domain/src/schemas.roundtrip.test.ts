@@ -280,6 +280,23 @@ const samples: Record<string, readonly unknown[]> = {
   UpdateSourceInput: [{ name: "Renamed" }, { isActive: false, schedule: null }],
   MapUnmatchedInput: [{ dimensionValues: { country: "BR", platform: "meta" }, envelopeId: workspaceId }],
   CreateUploadInput: [{ filename: "spend 2026-Q1.csv" }],
+  FiscalPeriodKey: ["FY2026", "2026-Q1", "2026-03"],
+  CloseInput: [{ periodKey: "2026-Q1" }, { periodId: "01927a00-0000-7000-8000-0000000000c1" }],
+  RestateInput: [{ reason: "Late invoices" }],
+  ClosureStatus: ["closed", "restated"],
+  ClosureView: [
+    {
+      id: "01927a00-0000-7000-8000-0000000000c2",
+      workspaceId,
+      period: { id: "01927a00-0000-7000-8000-0000000000c1", key: "2026-Q1", kind: "quarter", start: "2026-01-01", end: "2026-03-31" },
+      status: "closed",
+      closedBy: "01927a00-0000-7000-8000-0000000000c3",
+      closedAt: "2026-04-02T09:00:00.000Z",
+      table: "closures.budget_vs_actual_x_2026_q1",
+      lockedEnvelopes: 12,
+    },
+  ],
+  RunSourceInput: [{}, { restatementOf: "01927a00-0000-7000-8000-0000000000c2" }],
   ExportKind: ["csv", "xlsx", "sheets"],
   ExportStatus: ["queued", "done"],
   CreateExportInput: [

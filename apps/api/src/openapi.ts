@@ -44,6 +44,10 @@ import {
   ApplyTagInput,
   CreateExportInput,
   ExportJobView,
+  CloseInput,
+  ClosureView,
+  RestateInput,
+  RunSourceInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -242,7 +246,12 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "suggestSourceMapping", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Suggested column mapping from @budget/ai (not applied); 503 without OPENAI_API_KEY" } } },
       },
       "/api/v1/sources/{id}/run": {
-        post: { operationId: "runSource", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running" } } },
+        post: {
+          operationId: "runSource",
+          parameters: [idParam, workspaceHeader],
+          requestBody: { required: false, ...json(RunSourceInput) },
+          responses: { "201": { description: "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period" } },
+        },
       },
       "/api/v1/sources/{id}/runs": {
         get: { operationId: "listSourceRuns", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Runs, newest first: counts, match coverage summary, rejected-rows report URI" } } },
@@ -259,6 +268,25 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/uploads": {
         post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },
+      },
+      "/api/v1/workspaces/{ws}/closures": {
+        get: { operationId: "listClosures", parameters: [workspaceParam], responses: { "200": { description: "Closures, newest first (restated ones included)" } } },
+        post: {
+          operationId: "closePeriod",
+          parameters: [workspaceParam],
+          requestBody: json(CloseInput),
+          responses: {
+            "201": { description: "Closed: overlapping envelopes are LOCKED and the rows are in the closure table", ...json(ClosureView) },
+            "409": { description: "The period is already closed, or has not ended" },
+            "503": { description: "No closure sink (BigQuery) in this environment" },
+          },
+        },
+      },
+      "/api/v1/closures/{id}/restate": {
+        post: { operationId: "restateClosure", parameters: [idParam, workspaceHeader], requestBody: json(RestateInput), responses: { "201": { description: "Restated; envelopes no other closed closure covers get their prior status back" } } },
+      },
+      "/api/v1/closures/{id}/report": {
+        get: { operationId: "getClosureReport", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The frozen report: variance summary and registry snapshot as stored at close" } } },
       },
       "/api/v1/exports": {
         post: {
