@@ -67,6 +67,7 @@ export async function recordChange(
     entityType: string;
     entityId: string;
     kind: string;
+    before?: Record<string, unknown>;
     after: Record<string, unknown>;
   },
 ): Promise<void> {
@@ -77,6 +78,7 @@ export async function recordChange(
     action: args.action,
     entityType: args.entityType,
     entityId: args.entityId,
+    ...(args.before === undefined ? {} : { before: args.before }),
     after: args.after,
     requestId: ctx.requestId,
   });

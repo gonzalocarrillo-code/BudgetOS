@@ -49,6 +49,8 @@ export type AddValuesInput = z.infer<typeof AddValuesInput>;
 
 export const UpdateValueInput = z.object({
   label: z.string().min(1).max(200).optional(),
+  /** Move under another value of the same dimension (null: to the top level). The subtree moves with it. */
+  parentCode: ValueCode.nullable().optional(),
   aliases: z.array(ValueCode).optional(),
   externalIds: z.record(z.string(), z.string()).optional(),
   isActive: z.boolean().optional(),
@@ -67,6 +69,12 @@ export const SaveHierarchyTemplateInput = z.object({
   isDefault: z.boolean().default(false),
 });
 export type SaveHierarchyTemplateInput = z.infer<typeof SaveHierarchyTemplateInput>;
+
+/** PATCH /hierarchy-templates/:id: rename, reorder the path, or make it the workspace default (T-031). */
+export const UpdateHierarchyTemplateInput = z
+  .object({ name: z.string().min(1).max(200).optional(), path: z.array(DimensionKey).min(1).max(20).optional(), isDefault: z.literal(true).optional() })
+  .refine((v) => v.name !== undefined || v.path !== undefined || v.isDefault !== undefined, { message: "Nothing to update" });
+export type UpdateHierarchyTemplateInput = z.infer<typeof UpdateHierarchyTemplateInput>;
 
 export const UploadAssetInput = z.object({
   contentType: z.literal("image/svg+xml"),

@@ -4,6 +4,7 @@ import {
   CreateMetricInput,
   MergeValuesInput,
   SaveHierarchyTemplateInput,
+  UpdateHierarchyTemplateInput,
   UpdateDimensionInput,
   UpdateValueInput,
   UploadAssetInput,
@@ -16,5 +17,6 @@ export class AddValuesDto extends createZodDto(AddValuesInput) {}
 export class UpdateValueDto extends createZodDto(UpdateValueInput) {}
 export class MergeValuesDto extends createZodDto(MergeValuesInput) {}
 export class SaveHierarchyTemplateDto extends createZodDto(SaveHierarchyTemplateInput) {}
+export class UpdateHierarchyTemplateDto extends createZodDto(UpdateHierarchyTemplateInput) {}
 export class UploadAssetDto extends createZodDto(UploadAssetInput) {}
 export class CreateMetricDto extends createZodDto(CreateMetricInput) {}

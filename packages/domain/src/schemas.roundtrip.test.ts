@@ -347,7 +347,8 @@ const samples: Record<string, readonly unknown[]> = {
       ],
     },
   ],
-  UpdateValueInput: [{ label: "Carrefour" }, { isActive: false, aliases: ["old_code"] }],
+  UpdateHierarchyTemplateInput: [{ name: "By country" }, { path: ["region", "country"], isDefault: true }],
+  UpdateValueInput: [{ label: "Carrefour" }, { isActive: false, aliases: ["old_code"] }, { parentCode: "latam" }, { parentCode: null }],
   MergeValuesInput: [{ fromCode: "old_code", intoCode: "new_code" }],
   SaveHierarchyTemplateInput: [
     { name: "Geo", path: ["region", "country"] },

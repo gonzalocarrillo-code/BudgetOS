@@ -528,6 +528,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hierarchy-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateHierarchyTemplate"];
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/metrics": {
         parameters: {
             query?: never;
@@ -1160,6 +1176,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["searchSuggest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assets/icons/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getIconAsset"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2531,6 +2563,7 @@ export interface operations {
             content: {
                 "application/json": {
                     label?: string;
+                    parentCode?: string | null;
                     aliases?: string[];
                     externalIds?: {
                         [key: string]: string;
@@ -2619,6 +2652,36 @@ export interface operations {
         };
         responses: {
             /** @description Saved hierarchy template */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateHierarchyTemplate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    path?: string[];
+                    isDefault?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated hierarchy template (rename, reorder, make default) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4588,6 +4651,28 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description { keys: [{ key, label, kind }], values: [{ value, label }] } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getIconAsset: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An uploaded icon's sanitized SVG: { icon, svg } */
             200: {
                 headers: {
                     [name: string]: unknown;

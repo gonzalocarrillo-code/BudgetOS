@@ -10,6 +10,15 @@ export interface DimensionValuePathRow {
   path: string;
 }
 
+/** A value's admin state (T-031), read only by the registry list; scope checks use the lean path rows. */
+export interface DimensionValueStateRow {
+  id: string;
+  isActive: boolean;
+  aliases: string[];
+  mergedIntoId: string | null;
+  externalIds: Record<string, string>;
+}
+
 export interface UpsertDimensionValueInput {
   id: string;
   dimensionId: string;
@@ -67,6 +76,15 @@ export async function dimensionValuePaths(tx: Tx, dimensionIds: string[]): Promi
     FROM dimension_value
     WHERE dimension_id IN (${ids})
     ORDER BY path`;
+}
+
+export async function dimensionValueStates(tx: Tx, dimensionIds: string[]): Promise<DimensionValueStateRow[]> {
+  if (dimensionIds.length === 0) return [];
+  const ids = Prisma.join(dimensionIds.map((id) => Prisma.sql`${id}::uuid`));
+  return tx.$queryRaw<DimensionValueStateRow[]>`
+    SELECT id::text AS id, is_active AS "isActive", aliases, merged_into_id::text AS "mergedIntoId", external_ids AS "externalIds"
+    FROM dimension_value
+    WHERE dimension_id IN (${ids})`;
 }
 
 /** Rewrites envelope_dimension and the jsonb mirror. Returns affected envelope ids. */
@@ -129,4 +147,29 @@ export async function insertRewriteAudits(
            ${args.requestId}
     FROM envelope e
     WHERE e.id IN (${ids})`;
+}
+
+/**
+ * Moves a value (and its subtree) under another value of the same dimension, or to the top level.
+ * The path trigger recomputes the moved row; its descendants are rewritten here in one statement
+ * (the trigger only sees the row that changed). Refuses a move under itself or its own subtree.
+ */
+export async function reparentDimensionValue(tx: Tx, args: { valueId: string; parentValueId: string | null }): Promise<{ path: string }> {
+  const [self] = await tx.$queryRaw<Array<{ path: string; dimensionId: string }>>`
+    SELECT path::text AS path, dimension_id::text AS "dimensionId" FROM dimension_value WHERE id = ${args.valueId}::uuid`;
+  if (self === undefined) throw new Error(`dimension value ${args.valueId} not found`);
+  if (args.parentValueId !== null) {
+    const [parent] = await tx.$queryRaw<Array<{ inside: boolean; dimensionId: string }>>`
+      SELECT path <@ ${self.path}::ltree AS inside, dimension_id::text AS "dimensionId" FROM dimension_value WHERE id = ${args.parentValueId}::uuid`;
+    if (parent === undefined || parent.dimensionId !== self.dimensionId) throw new RangeError("parent is not a value of the same dimension");
+    if (parent.inside) throw new RangeError("a value cannot move under itself or its own children");
+  }
+  const [moved] = await tx.$queryRaw<Array<{ path: string }>>`
+    UPDATE dimension_value SET parent_value_id = ${args.parentValueId}::uuid WHERE id = ${args.valueId}::uuid RETURNING path::text AS path`;
+  if (moved === undefined) throw new Error(`dimension value ${args.valueId} was not moved`);
+  await tx.$executeRaw`
+    UPDATE dimension_value
+       SET path = ${moved.path}::ltree || subpath(path, nlevel(${self.path}::ltree))
+     WHERE dimension_id = ${self.dimensionId}::uuid AND path <@ ${self.path}::ltree AND id <> ${args.valueId}::uuid`;
+  return moved;
 }

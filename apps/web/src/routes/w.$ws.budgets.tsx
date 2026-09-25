@@ -4,7 +4,7 @@ import { Button, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, stripSearchParams } from "@tanstack/react-router";
-import { useMemo, useState, type ReactElement } from "react";
+import { useRef, useMemo, useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { EnvelopeDrawer } from "../features/explorer/drawer.js";
@@ -102,11 +102,17 @@ function ExplorerPage(): ReactElement {
             { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
-            (s) => setLoaded({ totals: s.totals, total: s.total }),
+            // Only the current source reports: a replaced one (older filter) whose response lands
+            // late must not overwrite the totals of the query now on screen.
+            (s) => {
+              if (s === currentSource.current) setLoaded({ totals: s.totals, total: s.total });
+            },
           )
         : null,
     [sourceKey, labels],
   );
+  const currentSource = useRef<ExplorerRowSource | null>(null);
+  currentSource.current = source;
 
   const columns: ColumnSpec[] = useMemo(() => {
     const leading: ColumnSpec[] =

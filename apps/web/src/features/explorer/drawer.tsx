@@ -8,7 +8,8 @@ import { HistoryList } from "../history/history-list.js";
 import { threadsQuery } from "../threads/queries.js";
 import { TagChips } from "../threads/tag-chips.js";
 import { ThreadPanel } from "../threads/thread-panel.js";
-import { envelopeQuery } from "../../lib/queries.js";
+import { envelopeQuery, registryQuery } from "../../lib/queries.js";
+import { DimensionIcon } from "../registry/dimension-icon.js";
 
 type Tab = "details" | "history" | "comments";
 
@@ -20,6 +21,7 @@ export function EnvelopeDrawer({ ws, id, onClose }: { ws: string; id: string; on
   const client = useQueryClient();
   const { data, error } = useQuery(envelopeQuery(ws, id));
   const { data: threads } = useQuery(threadsQuery(ws, "envelope", id));
+  const { data: dims = [] } = useQuery(registryQuery(ws));
   const open = threads?.filter((x) => x.status === "open").length ?? 0;
   const [tab, setTab] = useState<Tab>("details");
   const tabs: Array<{ id: Tab; label: string }> = [
@@ -96,12 +98,18 @@ export function EnvelopeDrawer({ ws, id, onClose }: { ws: string; id: string; on
             {data.startDate} – {data.endDate}
           </dd>
           <dt className="col-span-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("drawer.dimensions")}</dt>
-          {Object.entries(data.dimensionValues).map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-muted-foreground">{k}</dt>
-              <dd className="text-right">{v}</dd>
-            </div>
-          ))}
+          {Object.entries(data.dimensionValues).map(([k, v]) => {
+            const dim = dims.find((d) => d.key === k);
+            return (
+              <div key={k} className="contents" data-testid="drawer-dimension">
+                <dt className="flex items-center gap-1.5 text-muted-foreground">
+                  {dim ? <DimensionIcon ws={ws} icon={dim.icon} className="size-3.5" /> : null}
+                  {dim?.label ?? k}
+                </dt>
+                <dd className="text-right">{dim?.values.find((x) => x.code === v)?.label ?? v}</dd>
+              </div>
+            );
+          })}
           <dt className="col-span-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("tags.title")}</dt>
           <dd className="col-span-2">
             <TagChips ws={ws} entity={{ type: "envelope", id }} tags={data.tags} onChanged={() => client.invalidateQueries({ queryKey: ["envelope", ws, id] })} />

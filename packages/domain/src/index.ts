@@ -128,6 +128,7 @@ export {
   MergeValuesInput,
   SaveHierarchyTemplateInput,
   UpdateDimensionInput,
+  UpdateHierarchyTemplateInput,
   UpdateValueInput,
   UploadAssetInput,
 } from "./registry.js";

@@ -118,8 +118,8 @@ test.describe("threads (T-030)", () => {
     await expect(page.getByTestId("target-row").first()).toBeVisible();
     await page.getByTestId("target-row").first().click();
     await expect(page.getByTestId("target-drawer")).toBeVisible();
+    await expect(page.getByTestId("target-version").first()).toBeVisible(); // loaded before counting
     const before = await page.getByTestId("target-version").count();
-    expect(before).toBeGreaterThan(0);
     await page.getByTestId("target-value").fill("42.5");
     await page.getByTestId("target-submit").click();
     await expect(page.getByTestId("target-done")).toBeVisible();

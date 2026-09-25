@@ -1,5 +1,5 @@
 import { DomainError, UpdateValueInput, type Role } from "@budget/domain";
-import type { TenantContext } from "@budget/db";
+import { reparentDimensionValue, type TenantContext } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { assertCanManage, inWorkspace, parseInput, recordChange } from "../context.js";
 import { assertCanEditDimension, requireDimension } from "../dimensions.js";
@@ -10,7 +10,7 @@ export async function updateValue(
   roles: Role[],
   valueId: string,
   raw: unknown,
-): Promise<{ id: string; label: string }> {
+): Promise<{ id: string; label: string; parentValueId: string | null }> {
   assertCanManage(roles);
   const input = parseInput(UpdateValueInput, raw);
   if (Object.values(input).every((value) => value === undefined)) {
@@ -23,6 +23,23 @@ export async function updateValue(
     }
     const dimension = await requireDimension(tx, value.dimensionId, workspace.orgId);
     assertCanEditDimension(dimension, ctx);
+    let parentValueId = value.parentValueId;
+    if (input.parentCode !== undefined) {
+      if (input.parentCode === null) parentValueId = null;
+      else {
+        const parent = await tx.dimensionValue.findUnique({ where: { dimensionId_code: { dimensionId: dimension.id, code: input.parentCode } } });
+        if (parent === null) throw new DomainError("VALIDATION", `Unknown parent value ${input.parentCode}`, { parentCode: input.parentCode });
+        parentValueId = parent.id;
+      }
+      if (parentValueId !== value.parentValueId) {
+        try {
+          await reparentDimensionValue(tx, { valueId: value.id, parentValueId });
+        } catch (e) {
+          if (e instanceof RangeError) throw new DomainError("VALIDATION", e.message, { valueId: value.id, parentCode: input.parentCode });
+          throw e;
+        }
+      }
+    }
     const updated = await tx.dimensionValue.update({
       where: { id: value.id },
       data: {
@@ -39,8 +56,9 @@ export async function updateValue(
       entityType: "dimension_value",
       entityId: value.id,
       kind: "value.updated",
-      after: { dimensionId: dimension.id, valueId: value.id },
+      before: { parentValueId: value.parentValueId },
+      after: { dimensionId: dimension.id, valueId: value.id, parentValueId },
     });
-    return { id: updated.id, label: updated.label };
+    return { id: updated.id, label: updated.label, parentValueId };
   });
 }
