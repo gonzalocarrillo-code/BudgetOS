@@ -52,8 +52,9 @@ test.describe("web shell (T-026)", () => {
     await signIn(page, await tokenFor("planner"));
     await page.goto("/");
     await expect(page).toHaveURL(new RegExp(`/w/${s.workspaceId}$`));
-    await page.getByTestId("global-search").fill("country:BR");
-    await page.getByTestId("global-search").press("Enter");
+    await page.getByTestId("global-search").click();
+    await page.getByTestId("search-input").fill("country:BR");
+    await page.getByTestId("search-all").click();
     await expect(page.getByTestId("page-title")).toHaveText("Search");
     await expect(page.getByTestId("search-query")).toHaveText("country:BR");
   });

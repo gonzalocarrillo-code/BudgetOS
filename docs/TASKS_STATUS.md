@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-25: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025 and T-026 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-25: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025 and T-026 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -43,7 +43,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-025 | 14 | T-007, T-012, T-020 | blocked | tools return golden numbers; read-only guard test — green (`mcp/src/tools.test.ts` on golden, `import-guard.test.ts` in CI, `readonly.test.ts` for the `budget_mcp` role), ADR-019 | IAP and per-user OAuth on Cloud Run (GCP phase) |
 | T-026 | 15 | T-009, T-025 | blocked | Playwright navigates every §18.1 route with a test JWT — green (`pnpm test:e2e`, 25 tests; checked in the browser), ADR-020; tokens from the product screenshots, ADR-021 | Identity Platform sign-in (GCP phase) |
 | T-027 | 16 | T-026, T-026c, T-007, T-022 | done | Playwright: filter → URL → reload; inline edit conflict; pivot = tree — green (`web/e2e/explorer.spec.ts`, plus paste → bulk preview and saved views; checked in the browser), ADR-022 | — |
-| T-028 | 16 | T-020, T-026 | pending | Playwright qualifier autocomplete | — |
+| T-028 | 16 | T-020, T-026 | done | Playwright qualifier autocomplete — green (`web/e2e/search.spec.ts`: key → value → chip → results → deep link; custom dimension qualifier; See all; ⇧Enter to the Explorer; checked in the browser), ADR-023 | — |
 | T-029 | 16 | T-011, T-012, T-026 | pending | Playwright decide flow | — |
 | T-030 | 16 | T-015, T-019, T-026 | pending | Playwright mention flow | — |
 | T-031 | 16 | T-005, T-026 | pending | Playwright add-dimension < 10 s into filters | search suggest clause waits for T-020, already required above |
