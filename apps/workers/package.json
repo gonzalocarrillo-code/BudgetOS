@@ -29,6 +29,7 @@
     "@google-cloud/storage": "8.2.0",
     "@googleapis/sheets": "18.0.1",
     "@prisma/client": "6.19.3",
+    "@slack/web-api": "8.1.1",
     "csv-parse": "7.0.2",
     "decimal.js": "10.6.0",
     "pino": "10.3.1",
