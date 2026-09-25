@@ -37,6 +37,13 @@ export async function targetsFor(tx: Tx, topic: string, payload: Record<string, 
     case "facts.loaded":
       add(t, "envelope", strs(payload["envelopeIds"]));
       break;
+    case "period.closed":
+    case "period.restated": {
+      // Closing and restating change the status of every envelope the closure locked.
+      const closureId = strs(payload["closureId"])[0];
+      if (closureId) add(t, "envelope", (await tx.closureEnvelope.findMany({ where: { closureId }, select: { envelopeId: true } })).map((c) => c.envelopeId));
+      break;
+    }
     case "target.changed":
       add(t, "target", strs(payload["targetId"]));
       break;

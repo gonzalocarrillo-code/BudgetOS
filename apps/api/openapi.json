@@ -4511,9 +4511,25 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "restatementOf": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
-            "description": "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running"
+            "description": "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period"
           }
         }
       }
@@ -4661,6 +4677,226 @@
         "responses": {
           "201": {
             "description": "gs:// URI and a URL to PUT the CSV to"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/closures": {
+      "get": {
+        "operationId": "listClosures",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closures, newest first (restated ones included)"
+          }
+        }
+      },
+      "post": {
+        "operationId": "closePeriod",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "periodId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "periodKey": {
+                    "type": "string",
+                    "pattern": "^(FY\\d{4}|\\d{4}-Q[1-4]|\\d{4}-(0[1-9]|1[0-2]))$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Closed: overlapping envelopes are LOCKED and the rows are in the closure table",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "period": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "key",
+                        "kind",
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "closed",
+                        "restated"
+                      ]
+                    },
+                    "closedBy": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "closedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "table": {
+                      "type": "string"
+                    },
+                    "lockedEnvelopes": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "workspaceId",
+                    "period",
+                    "status",
+                    "closedBy",
+                    "closedAt",
+                    "table",
+                    "lockedEnvelopes"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The period is already closed, or has not ended"
+          },
+          "503": {
+            "description": "No closure sink (BigQuery) in this environment"
+          }
+        }
+      }
+    },
+    "/api/v1/closures/{id}/restate": {
+      "post": {
+        "operationId": "restateClosure",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Restated; envelopes no other closed closure covers get their prior status back"
+          }
+        }
+      }
+    },
+    "/api/v1/closures/{id}/report": {
+      "get": {
+        "operationId": "getClosureReport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The frozen report: variance summary and registry snapshot as stored at close"
           }
         }
       }

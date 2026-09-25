@@ -77,6 +77,8 @@ export {
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
 
+export { CloseInput, ClosureStatus, ClosureView, FiscalPeriodKey, RestateInput, RunSourceInput, fiscalPeriodKind } from "./closures.js";
+
 export { CreateExportInput, EXPORT_MAX_ROWS, ExportJobView, ExportKind, ExportRequested, ExportStatus } from "./exports.js";
 
 export {

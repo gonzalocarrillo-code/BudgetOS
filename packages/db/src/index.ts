@@ -14,6 +14,8 @@ export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
+export { closedPeriods, lockPeriodEnvelopes, unlockClosureEnvelopes } from "./closures.js";
+export type { ClosedPeriod } from "./closures.js";
 export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, upsertRollupNodes } from "./rollup.js";
 export type { RollupNode, RollupScope } from "./rollup.js";
 export type { SearchDoc } from "./search.js";
@@ -35,6 +37,7 @@ export type { DefaultMetricSeed } from "../seed/defaults.metrics.js";
 export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
 export {
   GOLDEN_COLLAB,
+  GOLDEN_CLOSURE,
   GOLDEN_EXPORT,
   GOLDEN_CUSTOM_DIMENSIONS,
   GOLDEN_FY,

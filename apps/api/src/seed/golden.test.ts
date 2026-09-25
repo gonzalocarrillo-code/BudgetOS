@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { QueryRequest, type FilterGroupT } from "@budget/domain";
+import { QueryRequest, httpStatus, type FilterGroupT } from "@budget/domain";
 import { GOLDEN_ASSERTIONS, GOLDEN_FY, computeTotals, goldenFactsCsv, goldenPlan, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
 import { compileQuery, compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -19,11 +19,15 @@ import { LIVE_LEAVES, handleRollupEvent, handleSearchEvent } from "@budget/worke
 import { compileTree } from "@budget/query-planner";
 import { search } from "../modules/search/search.js";
 import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
-import { GOLDEN_EXPORT } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_EXPORT } from "@budget/db";
 import { MemoryObjectStore, runExport } from "@budget/workers";
 import ExcelJS from "exceljs";
 import { parseCsv } from "../modules/envelopes/bulk/csv.js";
 import { createExport } from "../modules/exports/commands/create-export.js";
+import { closePeriod } from "../modules/closures/commands/close-period.js";
+import { restateClosure } from "../modules/closures/commands/restate.js";
+import { RecordingClosureSink } from "../modules/closures/sink.js";
+import { decide } from "../modules/approvals/commands/decide.js";
 
 /**
  * T-006 done-when: the golden seed runs through the real commands in under 60 s and
@@ -554,5 +558,59 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
     const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
     expect(dec(root?.measures["budget"])).toBe(new Decimal(R.rootBudget).plus("10.00").toFixed(2));
+  });
+});
+
+describe("closures (T-024 done-when: locked envelope rejects draft with 423)", () => {
+  const person = (id: string, role: AuthContext["roles"][number]): AuthContext => ({
+    ctx: { ...ctx(), userId: id },
+    user: { id, orgId: golden.orgId, email: `${role.toLowerCase()}@golden.test`, name: `Golden ${role}` },
+    isOrgAdmin: false,
+    roles: [role],
+    assignments: [{ role, scope: {} }],
+  });
+  const statuses = async () => Object.fromEntries((await owner.envelope.findMany({ where: { workspaceId: golden.workspaceId }, select: { id: true, status: true } })).map((e) => [e.id, e.status]));
+
+  it("the seeded 2026-Q1 closure is restated, its report frozen with the asserted totals, and nothing is left locked", async () => {
+    const c = await owner.periodClosure.findFirstOrThrow({ where: { workspaceId: golden.workspaceId } });
+    expect(c.status).toBe("restated");
+    expect(await owner.closureEnvelope.count({ where: { closureId: c.id } })).toBe(A.closure.lockedEnvelopes);
+    expect(c.varianceSummary).toMatchObject({ period: { key: GOLDEN_CLOSURE.periodKey }, lockedEnvelopes: A.closure.lockedEnvelopes, rows: A.closure.rows, totals: { budget: A.closure.budget, actual: A.closure.actual } });
+    expect(await owner.envelope.count({ where: { workspaceId: golden.workspaceId, status: "LOCKED" } })).toBe(0);
+    const [restated] = await owner.$queryRawUnsafe<Array<{ reason: string }>>(`SELECT reason FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid AND action = 'closure.restated'`, c.id);
+    expect(restated?.reason).toBe(GOLDEN_CLOSURE.reason);
+  });
+
+  it("closing 2026-Q2 locks every live envelope, writes each template's tree equal to the pivot, and freezes drafts and approvals until restated", async () => {
+    const before = await statuses();
+    const sink = new RecordingClosureSink();
+    const closed = await closePeriod(app, sink, person(golden.users.finance1, "FINANCE"), { periodKey: "2026-Q2" });
+    const live = Object.values(before).filter((s) => s !== "ARCHIVED").length;
+    expect(closed).toMatchObject({ status: "closed", lockedEnvelopes: live, period: { start: "2026-04-01", end: "2026-06-30" } });
+    expect(Object.values(await statuses()).filter((s) => s === "LOCKED")).toHaveLength(live);
+
+    // Every template's total-grain root equals the live pivot for the quarter; months add up to it.
+    const q2 = { start: "2026-04-01", end: "2026-06-30" };
+    const pivot = compileTotals(QueryRequest.parse({ workspaceId: golden.workspaceId, filter: { logic: "and", children: LIVE_LEAVES }, period: { kind: "range", ...q2 }, measures: ["budget", "actual"], limit: 1 }), q2, TODAY);
+    const [p] = await withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<{ budget: unknown; actual: unknown }>>(pivot.sql, ...pivot.values));
+    const rows = [...sink.tables.values()][0] ?? [];
+    const templates = await owner.hierarchyTemplate.count({ where: { workspaceId: golden.workspaceId } });
+    const roots = rows.filter((r) => r.grain === "total" && r.node_path === "");
+    expect(roots).toHaveLength(templates);
+    for (const r of roots) expect([r.budget, r.actual]).toEqual([new Decimal(String(p?.budget)).toFixed(2), new Decimal(String(p?.actual)).toFixed(2)]);
+    const monthRoots = rows.filter((r) => r.grain === "month" && r.node_path === "" && r.template_id === roots[0]?.template_id);
+    expect(monthRoots.map((r) => r.month)).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
+    expect(monthRoots.reduce((s, r) => s.plus(r.actual ?? 0), new Decimal(0)).toFixed(2)).toBe(roots[0]?.actual);
+
+    // Done-when: a draft on a locked envelope is LOCKED, which the HTTP layer maps to 423.
+    const leaf = [...golden.envelopeIds.values()][golden.envelopeIds.size - 1] as string;
+    await expect(createDraftVersion(app, person(golden.users.planner, "PLANNER"), leaf, { amount: "1.00", basedOnVersionId: null })).rejects.toMatchObject({ code: "LOCKED" });
+    expect(httpStatus.LOCKED).toBe(423);
+    const bulk = await owner.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, entityType: "bulk_change", status: "PENDING" } });
+    await expect(decide(app, person(golden.users.approver, "APPROVER"), bulk.id, { decision: "approve" })).rejects.toMatchObject({ code: "LOCKED" });
+
+    const restated = await restateClosure(app, person(golden.users.admin, "WORKSPACE_ADMIN"), closed.id, { reason: "Q2 media invoices arrived late" });
+    expect(restated).toMatchObject({ status: "restated", unlockedEnvelopes: live });
+    expect(await statuses()).toEqual(before);
   });
 });

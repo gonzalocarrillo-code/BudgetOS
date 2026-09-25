@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -13,6 +13,9 @@ import { createPolicy, seedDefaultPolicies } from "../modules/approvals/commands
 import { PolicySnapshot } from "../modules/approvals/engine.js";
 import { createDraftVersion } from "../modules/envelopes/commands/create-draft-version.js";
 import { createExport } from "../modules/exports/commands/create-export.js";
+import { closePeriod } from "../modules/closures/commands/close-period.js";
+import { restateClosure } from "../modules/closures/commands/restate.js";
+import { RecordingClosureSink } from "../modules/closures/sink.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
 import { splitEnvelope } from "../modules/envelopes/commands/structure.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
@@ -319,6 +322,12 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   });
   const exported = await runExport(app, objects, { workspaceId, orgId }, exportJob.id, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);
   log(`golden: export ${exported.outcome} (${exported.rowCount ?? 0} rows)`);
+
+  // ---- T-024: Finance closes 2026-Q1 (rows to a recording sink: the seed has no BigQuery), an admin restates it. ----
+  const closureSink = new RecordingClosureSink();
+  const closure = await closePeriod(app, closureSink, auth(GOLDEN_CLOSURE.closer), { periodKey: GOLDEN_CLOSURE.periodKey });
+  const restated = await restateClosure(app, auth(GOLDEN_CLOSURE.restater), closure.id, { reason: GOLDEN_CLOSURE.reason });
+  log(`golden: closed ${GOLDEN_CLOSURE.periodKey} (${closure.lockedEnvelopes} envelopes locked, ${[...closureSink.tables.values()][0]?.length ?? 0} rows) and restated it (${restated.unlockedEnvelopes} unlocked)`);
 
   const elapsedMs = performance.now() - started;
   log(`golden: ${plan.length} envelopes in ${(elapsedMs / 1000).toFixed(1)} s`);
