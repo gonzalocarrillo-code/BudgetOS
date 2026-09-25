@@ -178,7 +178,7 @@ it("writes audit, outbox, and a bumped data version in one tenant transaction", 
     expect(versions).toEqual([1, 2]);
 
     const auditRows = await prisma.$queryRaw<Array<{ n: number }>>`
-      SELECT count(*)::int AS n FROM audit_event WHERE entity_id = ${entityId}::uuid AND action = 'envelope.version.created'`;
+      SELECT count(*)::int AS n FROM audit_event WHERE entity_type = 'envelope' AND entity_id = ${entityId}::uuid AND action = 'envelope.version.created'`;
     const outboxRows = await prisma.$queryRaw<Array<{ n: number }>>`
       SELECT count(*)::int AS n FROM outbox WHERE topic = 'budget.changed' AND payload->>'entityId' = ${entityId}`;
     expect(Number(auditRows[0]?.n)).toBe(1);

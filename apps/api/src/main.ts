@@ -9,3 +9,8 @@ export async function bootstrap(): Promise<void> {
   const port = Number(process.env["PORT"] ?? 3000);
   await app.listen(port, "0.0.0.0");
 }
+
+// `tsx src/main.ts` (pnpm dev, Playwright): start the server; importing this module does not.
+if (process.argv[1] && import.meta.url === (await import("node:url")).pathToFileURL(process.argv[1]).href) {
+  await bootstrap();
+}

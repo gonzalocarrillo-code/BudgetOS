@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root . --config vitest.config.mjs",
     "test:acceptance": "vitest run --root . --config vitest.config.mjs src/modules/registry/epic-0.4.acceptance.test.ts src/modules/approvals/epic-1.3.acceptance.test.ts src/modules/envelopes/epic-1.4.acceptance.test.ts",
-    "seed:golden": "tsx src/seed/golden.ts"
+    "seed:golden": "tsx src/seed/golden.ts",
+    "dev": "tsx src/main.ts"
   },
   "devDependencies": {
     "@google-cloud/storage": "8.2.0",

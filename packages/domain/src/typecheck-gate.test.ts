@@ -13,6 +13,7 @@ const expectedScripts = {
   typecheck: "turbo run typecheck",
   test: "turbo run test",
   "test:acceptance": "turbo run test:acceptance",
+  "test:e2e": "pnpm --filter @budget/web test:e2e",
   "db:migrate": "pnpm --filter @budget/db prisma migrate deploy",
   "db:seed": "pnpm --filter @budget/db tsx seed/golden.ts",
   "db:reset": "./scripts/dev-reset.sh",

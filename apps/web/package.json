@@ -10,11 +10,44 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root . --config ../../vitest.config.mjs"
+    "test": "vitest run --root . --config ../../vitest.config.mjs",
+    "dev": "vite",
+    "api:generate": "tsx scripts/generate-api.mts",
+    "test:e2e": "playwright test",
+    "routes:generate": "tsr generate",
+    "e2e:stack": "tsx e2e/dev-stack.mts"
   },
   "devDependencies": {
+    "@budget/api": "workspace:^",
+    "@budget/db": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@prisma/client": "6.19.3",
+    "@tailwindcss/vite": "4.3.3",
+    "@tanstack/router-cli": "1.167.38",
+    "@tanstack/router-plugin": "1.168.40",
+    "@types/node": "catalog:",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "5.2.0",
     "eslint": "catalog:",
+    "jose": "6.2.12",
+    "openapi-typescript": "7.13.0",
+    "reflect-metadata": "0.2.2",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.20.6",
     "typescript": "catalog:",
+    "vite": "6.4.3",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@budget/domain": "workspace:^",
+    "@budget/ui": "workspace:^",
+    "@tanstack/react-query": "5.103.2",
+    "@tanstack/react-router": "1.170.39",
+    "lz-string": "1.5.0",
+    "openapi-fetch": "0.17.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "3.25.76"
   }
 }
