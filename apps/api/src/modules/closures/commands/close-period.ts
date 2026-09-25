@@ -1,11 +1,12 @@
-import { CloseInput, DomainError, fiscalPeriodKind, newId, resolvePeriod, type ClosureView } from "@budget/domain";
+import { CloseInput, DomainError, fiscalPeriodKind, newId, resolvePeriod } from "@budget/domain";
 import { audit, bumpDataVersion, lockPeriodEnvelopes, outbox, withTenant, type Tx } from "@budget/db";
 import { templateNodes } from "@budget/workers";
 import { Decimal } from "decimal.js";
-import type { FiscalPeriod, PeriodClosure, Prisma, PrismaClient } from "@prisma/client";
+import type { FiscalPeriod, Prisma, PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import type { ClosureRow, ClosureSink } from "../sink.js";
+import { closureView } from "../views.js";
 
 /**
  * POST /workspaces/:ws/closures (spec §15, ADR-018), one transaction: lock the live envelopes that
@@ -35,18 +36,6 @@ export function monthsOf(period: { start: string; end: string }): Array<{ month:
   return out;
 }
 
-export function closureView(c: PeriodClosure, p: FiscalPeriod, lockedEnvelopes: number): ClosureView {
-  return {
-    id: c.id,
-    workspaceId: c.workspaceId,
-    period: { id: p.id, key: p.key, kind: p.kind, start: iso(p.startDate), end: iso(p.endDate) },
-    status: c.status as ClosureView["status"],
-    closedBy: c.closedBy,
-    closedAt: c.closedAt.toISOString(),
-    table: `closures.${c.bqTable}`,
-    lockedEnvelopes,
-  };
-}
 
 async function resolveFiscalPeriod(tx: Tx, workspaceId: string, input: CloseInput, today: string): Promise<FiscalPeriod> {
   if (input.periodId !== undefined) {

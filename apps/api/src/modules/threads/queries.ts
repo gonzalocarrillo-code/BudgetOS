@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
 import { assertCanRead, resolveAnchor } from "./anchor.js";
+import { tagView } from "./views.js";
 
 /**
  * GET /threads?anchorType&anchorId: the anchor's threads, oldest first, with their comments.
@@ -47,5 +48,15 @@ export async function listThreads(prisma: PrismaClient, auth: AuthContext, raw: 
       })),
       names: { users, groups },
     }));
+  });
+}
+
+/** GET /workspaces/:ws/tags: with how many entities carry each. */
+export function listTags(prisma: PrismaClient, auth: AuthContext) {
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const tags = await tx.tag.findMany({ where: { workspaceId }, orderBy: { name: "asc" } });
+    const counts = await tx.taggable.groupBy({ by: ["tagId"], where: { workspaceId }, _count: { _all: true } });
+    return tags.map((t) => ({ ...tagView(t), count: counts.find((c) => c.tagId === t.id)?._count._all ?? 0 }));
   });
 }

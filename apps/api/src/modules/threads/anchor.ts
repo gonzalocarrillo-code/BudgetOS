@@ -2,8 +2,8 @@ import { DomainError, canInScope, eligibleApprover, type AnchorType, type Role, 
 import { eligibleApproverSql, type Tx } from "@budget/db";
 import { envelopeScopeTarget } from "../../common/scope.guard.js";
 import type { AuthContext } from "../../common/tenant.js";
-import { OPEN_STATUSES, PolicySnapshot, requestTargets } from "../approvals/engine.js";
-import { targetScope } from "../targets/commands/target-writer.js";
+import { OPEN_STATUSES, PolicySnapshot, requestTargets } from "../approvals/read.js";
+import { targetScope } from "../targets/scope.js";
 
 /**
  * What a thread anchor means for permissions (spec §13): the dimension scopes a reader must cover

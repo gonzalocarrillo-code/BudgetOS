@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "../engine.js";
+import { PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "../read.js";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CHANGES_REQUESTED", "WITHDRAWN", "ESCALATED"] as const;
 type Status = (typeof STATUSES)[number];

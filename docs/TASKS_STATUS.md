@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-25: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023 and T-024 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-25: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024 and T-025 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -18,7 +18,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-002 | 2 | T-001 | done | `pnpm db:migrate` on fresh Postgres 16; RLS test | — |
 | T-003 | 2 | T-001 | done | zod round-trip; `parseSearch` 20 cases | — |
 | T-004 | 2 | T-002, T-003 | done | concurrent `SET LOCAL` isolation test | — |
-| T-005 | 3 | T-002, T-004 | done | registry acceptance, excluding search and MCP clauses; search qualifier covered by T-020 (suggest test) | MCP parameter (T-025) |
+| T-005 | 3 | T-002, T-004 | done | registry acceptance, excluding search and MCP clauses; search qualifier covered by T-020 (suggest test); MCP parameter covered by T-025 (`mcp/src/tools.test.ts`) | — |
 | T-007 | 4 | T-002, T-003, T-004 | done | planner suite including property tests, on SQL fixtures | — |
 | T-026a | 5 | T-001 | done | bench numbers in ADR-002 | DB golden at 100k leaves is T-034 |
 | T-026b | 5 | T-001 | done | 5k-bar bench; target lane + marker overlay; ADR-003 | same |
@@ -40,7 +40,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-022 | 12 | T-007, T-016 | done | tree totals = pivot totals on golden — green (`seed/golden.test.ts` rollup, `workers/src/rollup`, ADR-016) | — |
 | T-023 | 13 | T-007 | blocked | CSV/XLSX export respects filter — green (`seed/golden.test.ts` exports, `api/src/modules/exports`, `workers/src/export`); view SQL checked against Postgres (`db/src/bigquery-views.test.ts`), ADR-017 | Sheets push; BigQuery views queryable; `terraform fmt`/`validate` (GCP phase) |
 | T-024 | 13 | T-011, T-007 | blocked | locked envelope rejects draft with 423 — green (`api/src/modules/closures`, `seed/golden.test.ts` closures; closed-period ingest rejection in `workers/src/ingest`), `ClosureSink` ADR-018 | BigQuery closure tables written and queried (GCP phase) |
-| T-025 | 14 | T-007, T-012, T-020 | pending | tools return golden numbers; read-only guard test | IAP and per-user OAuth on Cloud Run (GCP phase) |
+| T-025 | 14 | T-007, T-012, T-020 | blocked | tools return golden numbers; read-only guard test — green (`mcp/src/tools.test.ts` on golden, `import-guard.test.ts` in CI, `readonly.test.ts` for the `budget_mcp` role), ADR-019 | IAP and per-user OAuth on Cloud Run (GCP phase) |
 | T-026 | 15 | T-009, T-025 | pending | Playwright navigates every §18.1 route with a test JWT | design-team token file is not in the repo |
 | T-027 | 16 | T-026, T-026c, T-007, T-022 | pending | Playwright: filter → URL → reload; inline edit conflict; pivot = tree | — |
 | T-028 | 16 | T-020, T-026 | pending | Playwright qualifier autocomplete | — |

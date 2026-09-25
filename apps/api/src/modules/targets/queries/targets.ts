@@ -5,8 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { targetView } from "../commands/create-target.js";
-import { versionView } from "../commands/target-writer.js";
+import { targetView, versionView } from "../views.js";
 import { currentFilterTargets } from "./planner-options.js";
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
