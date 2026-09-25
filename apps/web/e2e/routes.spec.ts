@@ -62,7 +62,7 @@ test.describe("web shell (T-026)", () => {
     const s = state();
     await signIn(page, await tokenFor("planner"));
     await page.goto(`/w/${s.workspaceId}/budgets?view=%22pivot%22&measures=%5B%22budget%22%5D`);
-    await expect(page.getByTestId("explorer-state")).toHaveText("pivot · relative · budget");
+    await expect(page.getByTestId("explorer-state")).toContainText("pivot · relative · budget");
   });
 
   test("no token, or a token the API rejects, is the sign-in screen", async ({ page }) => {

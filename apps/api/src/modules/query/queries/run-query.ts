@@ -54,6 +54,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       return {
         key: grouped ? q.groupBy.map((k) => dims[k] ?? "∅").join("/") : (id as string),
         envelopeId: id,
+        ...(grouped ? {} : { versionId: text(r["head_version_id"]) }),
         path: grouped ? q.groupBy.map((k) => dims[k] ?? "∅") : (paths.get(id as string) ?? [String(r["name"])]),
         dimensions: dims,
         measures: Object.fromEntries(measures.map((m) => [m, measure(m, r[m])])),

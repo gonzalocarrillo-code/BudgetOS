@@ -27,6 +27,7 @@ export interface ListedDimension {
 }
 
 export interface ListedTemplate {
+  id: string;
   name: string;
   path: string[];
   isDefault: boolean;
@@ -75,6 +76,7 @@ export async function listHierarchyTemplates(tx: Tx, workspaceId: string): Promi
     orderBy: { name: "asc" },
   });
   return rows.map((row) => ({
+    id: row.id,
     name: row.name,
     path: row.path,
     isDefault: row.isDefault,

@@ -198,6 +198,7 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "budget": "1107799.19",
     "actual": "245158.16"
   },
+  "savedViews": 1,
   "search": {
     "envelope": 332,
     "target": 105,

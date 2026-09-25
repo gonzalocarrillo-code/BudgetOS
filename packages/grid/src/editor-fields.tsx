@@ -27,6 +27,11 @@ interface EditorProps<T extends ValueCell> {
   readonly initialValue?: string;
 }
 
+/** Opened by double-click or Enter: the value is selected, so typing replaces it. Opened by typing: keep that character. */
+function selectUnlessTyped(event: { currentTarget: HTMLInputElement }, initialValue: string | undefined): void {
+  if (initialValue === undefined) event.currentTarget.select();
+}
+
 function applyText<T extends ValueCell>(cell: T, value: string, display: string): T {
   return {
     ...cell,
@@ -68,6 +73,7 @@ export function MoneyEditor<T extends ValueCell>(props: EditorProps<T> & { curre
     <input
       autoFocus
       value={text}
+      onFocus={(event) => selectUnlessTyped(event, props.initialValue)}
       aria-label={props.value.accessibilityString}
       onChange={(event) => {
         const next = event.target.value;
@@ -86,6 +92,7 @@ export function PercentEditor<T extends ValueCell>(props: EditorProps<T>) {
     <input
       autoFocus
       value={text}
+      onFocus={(event) => selectUnlessTyped(event, props.initialValue)}
       aria-label={props.value.accessibilityString}
       onChange={(event) => {
         const next = event.target.value;
@@ -104,6 +111,7 @@ export function DateEditor<T extends ValueCell>(props: EditorProps<T>) {
     <input
       autoFocus
       value={text}
+      onFocus={(event) => selectUnlessTyped(event, props.initialValue)}
       aria-label={props.value.accessibilityString}
       onChange={(event) => {
         const next = event.target.value;
@@ -122,6 +130,7 @@ export function TextEditor<T extends ValueCell>(props: EditorProps<T>) {
     <input
       autoFocus
       value={text}
+      onFocus={(event) => selectUnlessTyped(event, props.initialValue)}
       aria-label={props.value.accessibilityString}
       onChange={(event) => {
         const next = event.target.value;

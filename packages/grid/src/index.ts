@@ -8,7 +8,7 @@ export type {
   QueryRow,
   RowSource,
 } from "./types.js";
-export { BudgetGrid } from "./BudgetGrid.js";
+export { BudgetGrid, columnWidth } from "./BudgetGrid.js";
 export { buildCell, chipsCellRenderer, customRenderers, moneyCellRenderer, paceCellRenderer, pathCellRenderer, statusCellRenderer, targetCellRenderer } from "./cells.js";
 export type { BudgetCell } from "./cells.js";
 export { editorAction, formatMoney, parseDate, parseMoney, parsePercent } from "./editors.js";

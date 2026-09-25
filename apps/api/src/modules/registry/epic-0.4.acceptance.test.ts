@@ -224,6 +224,7 @@ it("seeds the default registry, nested countries, and the default hierarchy", as
   const templates = await withTenant(app, adminCtx, (tx) => listHierarchyTemplates(tx, workspaceId));
   expect(templates).toEqual([
     {
+      id: expect.any(String),
       name: "Default",
       path: ["client", "region", "country", "platform", "objective"],
       isDefault: true,

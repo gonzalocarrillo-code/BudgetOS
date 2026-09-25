@@ -6,6 +6,7 @@ export {
   Comparator,
   FieldRef,
   FilterGroup,
+  LIVE_LEAVES,
   MeasureKey,
   Predicate,
   RelativeDate,
@@ -109,6 +110,8 @@ export {
   extractMentions,
 } from "./threads.js";
 export type { Mention, Reference } from "./threads.js";
+
+export { CreateSavedViewInput, ListSavedViewsQuery, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput } from "./views.js";
 
 export { newId } from "./ids.js";
 

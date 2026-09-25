@@ -48,6 +48,10 @@ import {
   ClosureView,
   RestateInput,
   RunSourceInput,
+  QueryRequest,
+  QueryResponse,
+  CreateSavedViewInput,
+  UpdateSavedViewInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -268,6 +272,17 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/uploads": {
         post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },
+      },
+      "/api/v1/workspaces/{ws}/query": {
+        post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/saved-views": {
+        get: { operationId: "listSavedViews", parameters: [workspaceParam, { name: "screen", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "The caller's views and the workspace's shared ones" } } },
+        post: { operationId: "createSavedView", parameters: [workspaceParam], requestBody: json(CreateSavedViewInput), responses: { "201": { description: "Saved view; visibility workspace needs view.share_workspace" } } },
+      },
+      "/api/v1/saved-views/{id}": {
+        patch: { operationId: "updateSavedView", parameters: [idParam, workspaceHeader], requestBody: json(UpdateSavedViewInput), responses: { "200": { description: "Updated view (owner, or an admin for a shared view)" } } },
+        delete: { operationId: "deleteSavedView", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Removed; the audit row keeps what it was" } } },
       },
       "/api/v1/workspaces/{ws}/closures": {
         get: { operationId: "listClosures", parameters: [workspaceParam], responses: { "200": { description: "Closures, newest first (restated ones included)" } } },
