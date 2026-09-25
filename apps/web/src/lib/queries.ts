@@ -67,3 +67,22 @@ export const envelopeQuery = (ws: string, id: string) =>
     queryKey: ["envelope", ws, id],
     queryFn: async () => EnvelopeDetail.parse(await unwrap(api.GET("/api/v1/envelopes/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } }))),
   });
+
+export const SearchHit = z.object({ id: z.string(), title: z.string(), path: z.string().nullable(), status: z.string().nullable(), facets: z.record(z.string(), z.unknown()).nullable().optional(), deepLink: z.string() });
+export const SearchResult = z.object({ groups: z.array(z.object({ type: z.string(), count: z.number(), hits: z.array(SearchHit) })) }).passthrough();
+export type SearchResult = z.infer<typeof SearchResult>;
+export const SuggestResult = z.object({ keys: z.array(z.object({ key: z.string(), label: z.string(), kind: z.string() })), values: z.array(z.object({ value: z.string(), label: z.string() })) });
+
+export const searchQuery = (ws: string, q: string, opts: { types?: string | undefined; limit?: number } = {}) =>
+  queryOptions({
+    queryKey: ["search", ws, q, opts.types ?? "", opts.limit ?? 5],
+    queryFn: async () => SearchResult.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/search", { params: { path: { ws }, query: { q, limit: opts.limit ?? 5, ...(opts.types ? { types: opts.types } : {}) } as never } }))),
+    staleTime: 5_000,
+  });
+
+export const suggestQuery = (ws: string, prefix: string) =>
+  queryOptions({
+    queryKey: ["suggest", ws, prefix],
+    queryFn: async () => SuggestResult.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/search/suggest", { params: { path: { ws }, query: { prefix } as never } }))),
+    staleTime: 10_000,
+  });

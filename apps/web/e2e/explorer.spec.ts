@@ -27,16 +27,23 @@ const budgetsUrl = (search: Record<string, unknown>) => {
   for (const [k, v] of Object.entries(search)) q.set(k, k === "filter" || k === "expanded" ? enc(v) : typeof v === "string" ? v : JSON.stringify(v));
   return `/w/${state().workspaceId}/budgets?${q.toString()}`;
 };
+/** selectOption waits for the select, not for its options: wait until the option exists. */
+const pick = async (page: Page, testId: string, option: { label: string } | string) => {
+  const select = page.getByTestId(testId);
+  const opt = typeof option === "string" ? select.locator(`option[value="${option}"]`) : select.locator("option", { hasText: option.label });
+  await expect(opt.first()).toBeAttached();
+  await select.selectOption(option);
+};
 const totalBudget = (page: Page) => page.getByTestId("explorer-grid").getAttribute("data-budget-total");
 
 test.describe("Explorer (T-027)", () => {
   test("filter → URL → reload: the filter is in the URL and survives a reload", async ({ page }) => {
     await signIn(page);
     await page.goto(budgetsUrl({ period: FY }));
-    await page.getByTestId("template-picker").selectOption({ label: "Region first" });
+    await pick(page, "template-picker", { label: "Region first" });
     await page.getByTestId("filter-add").click();
-    await page.getByTestId("filter-dimension").selectOption("region");
-    await page.getByTestId("filter-values").selectOption("LATAM");
+    await pick(page, "filter-dimension", "region");
+    await pick(page, "filter-values", "LATAM");
     await page.getByTestId("filter-apply").click();
     await expect(page.getByTestId("filter-chip")).toHaveCount(1);
     await expect(page).toHaveURL(/[?&]filter=[A-Za-z0-9+\-$]+/);
@@ -52,7 +59,7 @@ test.describe("Explorer (T-027)", () => {
   test("pivot totals == tree totals, and the pivot's rows add up to them", async ({ page }) => {
     await signIn(page);
     await page.goto(budgetsUrl({ period: FY }));
-    await page.getByTestId("template-picker").selectOption({ label: "Region first" });
+    await pick(page, "template-picker", { label: "Region first" });
     await expect.poll(() => totalBudget(page)).not.toBe("");
     const treeTotal = await totalBudget(page);
     const treeText = await page.getByTestId("grid-totals").locator('[data-column="budget"]').textContent();

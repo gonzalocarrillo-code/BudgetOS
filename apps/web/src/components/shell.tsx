@@ -23,9 +23,11 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type FormEvent, type ReactElement, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useState, type ReactElement, type ReactNode } from "react";
+import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
 import { clearToken } from "../lib/auth.js";
-import type { Me } from "../lib/queries.js";
+import { registryQuery, type Me } from "../lib/queries.js";
 
 /**
  * The app shell (spec §18.1 __root, ADR-021): a white top bar with the workspace switcher and the
@@ -78,12 +80,11 @@ const SectionLabel = ({ children }: { children: ReactNode }) => <div className="
 
 export function Shell({ me, ws, children }: { me: Me; ws: string; children: ReactNode }): ReactElement {
   const navigate = useNavigate();
-  const [q, setQ] = useState("");
+  const [searching, setSearching] = useState(false);
+  const openSearch = useCallback(() => setSearching(true), []);
+  useSearchHotkeys(openSearch);
+  const { data: dimensions = [] } = useQuery(registryQuery(ws));
   const current = me.workspaces.find((w) => w.workspaceId === ws);
-  const search = (e: FormEvent) => {
-    e.preventDefault();
-    void navigate({ to: "/w/$ws/search", params: { ws }, search: { q } });
-  };
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-card px-4">
@@ -105,15 +106,20 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
             ))}
           </select>
         </label>
-        <form onSubmit={search} className="flex max-w-xl flex-1 items-center gap-2 rounded-full border border-border bg-muted/60 px-4 focus-within:border-ring focus-within:bg-card" role="search" data-tour="global-search">
-          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <input className="h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" placeholder={t("shell.search.placeholder")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("nav.search")} data-testid="global-search" />
-          <button type="submit" className="sr-only">
-            {t("shell.search.submit")}
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex h-10 max-w-xl flex-1 items-center gap-2 rounded-full border border-border bg-muted/60 px-4 text-left text-sm text-muted-foreground hover:border-input"
+          data-tour="global-search"
+          data-testid="global-search"
+          aria-label={t("search.palette")}
+        >
+          <Search className="size-4 shrink-0" aria-hidden />
+          <span className="flex-1 truncate">{t("shell.search.placeholder")}</span>
+          <kbd className="rounded border border-border bg-card px-1.5 text-[11px]">{t("search.shortcut")}</kbd>
+        </button>
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-muted-foreground" data-testid="user-email">
+          <span className="max-w-64 truncate whitespace-nowrap text-sm text-muted-foreground" data-testid="user-email">
             {me.user.email}
           </span>
           <Button variant="ghost" size="sm" onClick={() => clearToken()}>
@@ -137,6 +143,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
         </aside>
         <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
+      <GlobalSearch ws={ws} dimensions={dimensions} open={searching} onOpenChange={setSearching} />
       <div role="status" aria-live="polite" className="sr-only" data-testid="toasts" />
     </div>
   );
