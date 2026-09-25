@@ -7,6 +7,8 @@ Changes in 0.5.1: Appendix D (agent build kit: how the plan, the build spec and 
 
 Changes in 0.5: adopt mature MIT-licensed libraries where they exist and build only the delta — Glide Data Grid for the grid engine, SVAR React Gantt (MIT core) for the timeline, Meilisearch as the search swap target (§11.5, §11.9); roadmap re-sized again (§13).
 
+Changes in 0.6 (product owner, 2026-09-25): every budget always carries its **edit history** and its **comments**, in the envelope drawer, accessibly (§8.6); comments get **emoji reactions** attributed to each account (§8.6); setting up **parent and child envelopes** is an easy UI action, not only an API (§9.3); default granularities (e.g. `country`, `objective` = brand / non_brand / competitor) and custom granularities with an icon from the icon library stay as in §4.2, now called out in the admin UI task.
+
 Changes in 0.4: no commercial components or licences — the data grid and the timeline are built in-house on open-source foundations (§11.5, §11.9, Epics 0.7–0.8); roadmap re-sized (§13).
 
 Changes in 0.3: target and budget timelines (§4.11), naming templates and match keys (§4.10), experiments (§4.12), manual result entry (§6.1), admin/settings IA (§11.6), home and onboarding (§11.7), Camphouse product-screen analysis (§2.2).
@@ -674,6 +676,13 @@ The changelog tells you *what* changed; the conversation tells you *why*. Both l
 - **Search and filters**: comment bodies are indexed (§11.3); filters include "has open threads", "mentions me", "commented in last 7 days".
 - **Approval integration**: a "request changes" decision opens a thread automatically; the request cannot be re-submitted while it has unresolved *blocking* threads (a flag the approver sets).
 
+**History and comments are always inside each budget (0.6)**
+- The envelope drawer opens on any budget row and always has two tabs besides Details: **History** (the Decision Timeline: every version with before → after, actor and reason, approvals and decisions with their comments, alerts, closures and ingestion) and **Comments** (the envelope's threads). Nothing needs a separate screen to reconstruct what happened.
+- Accessible: tab and list semantics, full keyboard use, each history entry announced with actor, action, time and amounts, WCAG 2.2 AA contrast on the design tokens.
+
+**Reactions (0.6)**
+- Any comment takes emoji reactions (a fixed, accessible set: 👍 ✅ 👀 🎉 ❤️ ❓). Each reaction belongs to one account: the chip shows the count, and its tooltip and screen-reader label name who reacted. Toggling is one click; reactions are audited like any write and never notify.
+
 **Tags (labels)**
 - Free-form, workspace-scoped vocabulary with colour and kind (`label`, `status`, `team`, `custom`). Examples: `black-friday`, `client-requested`, `pending-po`, `test-budget`, `hold`.
 - Attach to envelopes, targets, requests, alerts, comments, saved views. Bulk tag from any grid selection.
@@ -705,6 +714,7 @@ Budgets and targets move all the time. The rule is **everything is editable, not
 | **Free drafts, gated approvals** | Drafts are visible to the author and anyone they share them with; they never affect approved numbers or pacing until approved. Policies (§8.1) decide what needs approval: below-threshold changes can auto-approve so a €500 tweak doesn't wait 48 hours. |
 | **Bulk edit** | Select any rows (or a whole filter result) → apply: absolute set, ± amount, ± %, redistribute a parent proportionally / evenly / by last period's actuals / by a pasted weight column, copy from previous period, scale to a new parent total. Always with a **preview diff** and a single commit that becomes one approval request. |
 | **Paste from spreadsheet** | Paste a range from Sheets/Excel onto a selection; columns mapped by header; validation report before commit. Round-trip: export CSV → edit → import with diff. |
+| **Parent and child envelopes (0.6)** | From the tree or the drawer: add a child under any envelope, move an envelope under a new parent, split one into children, merge siblings. Each is one action with a preview (caps, totals) and goes through the same versioning and approval (§4.3, spec §7.5). |
 | **Re-phase** | Drag month-by-month phasing bars or type amounts; total locked or unlocked per the user's choice. |
 | **Re-parent / split / merge** | Move an envelope under another parent, split one into several, merge several into one; lineage kept; caps re-validated; approvals re-routed if the policy changes. |
 | **Change dates** | Extend, shorten or shift an envelope's date range; actuals re-match automatically; pacing recomputes. |

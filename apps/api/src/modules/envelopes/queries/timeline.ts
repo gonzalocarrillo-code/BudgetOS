@@ -30,6 +30,11 @@ const TITLES: Record<string, string> = {
   "alert.opened": "Alert opened",
   "alert.resolved": "Alert resolved",
   "ingest.completed": "Actuals loaded",
+  "closure.created": "Period closed",
+  "closure.restated": "Period restated",
+  "envelope.moved": "Moved",
+  "envelope.split": "Split",
+  "envelope.merged": "Merged",
 };
 
 function toDto(r: TimelineRow) {
