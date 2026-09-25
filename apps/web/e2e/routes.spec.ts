@@ -10,11 +10,11 @@ const signIn = async (page: Page, token: string) => {
   await page.addInitScript((t) => sessionStorage.setItem("budget-os.idToken", t), token);
 };
 
-const ROUTES: Array<[path: string, title: string]> = [
+const ROUTES: Array<[path: string, title: string | RegExp]> = [
   ["", "Overview"],
   ["/budgets", "Budgets"],
   ["/approvals", "Approvals"],
-  ["/approvals/{request}", "Approval request"],
+  ["/approvals/{request}", /Q4 retail push/], // the request's summary once loaded ("Approval request" is only the loading title)
   ["/targets", "Targets"],
   ["/experiments", "Experiments"],
   ["/experiments/{uuid}", "Experiment"],

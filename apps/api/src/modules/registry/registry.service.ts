@@ -7,7 +7,7 @@ import { addValues } from "./commands/add-values.js";
 import { createDimension } from "./commands/create-dimension.js";
 import { createMetric, listMetrics } from "./commands/metrics.js";
 import { mergeValues } from "./commands/merge-values.js";
-import { saveHierarchyTemplate } from "./commands/save-hierarchy-template.js";
+import { saveHierarchyTemplate, updateHierarchyTemplate } from "./commands/save-hierarchy-template.js";
 import { updateDimension } from "./commands/update-dimension.js";
 import { updateValue } from "./commands/update-value.js";
 import { uploadAsset } from "./commands/upload-asset.js";
@@ -64,6 +64,10 @@ export class RegistryService {
     return saveHierarchyTemplate(this.prisma, ctx, roles, body);
   }
 
+  updateTemplate(ctx: TenantContext, roles: Role[], id: string, body: unknown) {
+    return updateHierarchyTemplate(this.prisma, ctx, roles, id, body);
+  }
+
   listMetrics(ctx: TenantContext, workspaceId: string) {
     return listMetrics(this.prisma, { ...ctx, workspaceId });
   }
@@ -74,5 +78,13 @@ export class RegistryService {
 
   uploadAsset(ctx: TenantContext, roles: Role[], body: unknown) {
     return uploadAsset(this.prisma, ctx, roles, body, this.assets);
+  }
+
+  /** GET /assets/icons/:file: an uploaded icon's sanitized SVG (T-031; sanitized on upload). */
+  icon(file: string): { icon: string; svg: string } {
+    if (!/^[0-9a-f-]{36}\.svg$/.test(file)) throw new DomainError("NOT_FOUND", "Icon not found");
+    const stored = this.assets.get(`icons/${file}`);
+    if (stored === undefined) throw new DomainError("NOT_FOUND", "Icon not found");
+    return { icon: `asset:icons/${file}`, svg: new TextDecoder().decode(stored.body) };
   }
 }

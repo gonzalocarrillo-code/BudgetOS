@@ -1,4 +1,4 @@
-import { dimensionValuePaths, withTenant, type Tx } from "@budget/db";
+import { dimensionValuePaths, dimensionValueStates, withTenant, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
@@ -10,12 +10,18 @@ export interface ListedValue {
   label: string;
   path: string;
   parentValueId: string | null;
+  isActive: boolean;
+  aliases: string[];
+  mergedIntoId: string | null;
+  externalIds: Record<string, string>;
 }
 
 export interface ListedDimension {
   id: string;
   key: string;
   label: string;
+  description: string | null;
+  isActive: boolean;
   dataType: "ENUM" | "TEXT" | "REFERENCE" | "DATE_BUCKET";
   icon: string;
   color: string | null;
@@ -43,8 +49,10 @@ export async function listDimensions(tx: Tx, workspaceId: string): Promise<Liste
     tx,
     dimensions.map((dimension) => dimension.id),
   );
+  const states = new Map((await dimensionValueStates(tx, dimensions.map((d) => d.id))).map((r) => [r.id, r]));
   const valuesByDimension = new Map<string, ListedValue[]>();
   for (const row of paths) {
+    const state = states.get(row.id);
     const current = valuesByDimension.get(row.dimensionId) ?? [];
     current.push({
       id: row.id,
@@ -52,6 +60,10 @@ export async function listDimensions(tx: Tx, workspaceId: string): Promise<Liste
       label: row.label,
       path: row.path,
       parentValueId: row.parentValueId,
+      isActive: state?.isActive ?? true,
+      aliases: state?.aliases ?? [],
+      mergedIntoId: state?.mergedIntoId ?? null,
+      externalIds: state?.externalIds ?? {},
     });
     valuesByDimension.set(row.dimensionId, current);
   }
@@ -59,6 +71,8 @@ export async function listDimensions(tx: Tx, workspaceId: string): Promise<Liste
     id: dimension.id,
     key: dimension.key,
     label: dimension.label,
+    description: dimension.description,
+    isActive: dimension.isActive,
     dataType: dimension.dataType,
     icon: dimension.icon,
     color: dimension.color,

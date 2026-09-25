@@ -9,6 +9,7 @@ import {
   MergeValuesDto,
   SaveHierarchyTemplateDto,
   UpdateDimensionDto,
+  UpdateHierarchyTemplateDto,
   UpdateValueDto,
   UploadAssetDto,
 } from "./dto.js";
@@ -79,6 +80,12 @@ export class RegistryController {
     return this.registry.saveTemplate(ctx, roles, body);
   }
 
+  @Patch("hierarchy-templates/:id")
+  @Permission("registry.manage")
+  updateTemplate(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateHierarchyTemplateDto) {
+    return this.registry.updateTemplate(orgAdminCtx(auth), auth.roles, id, body);
+  }
+
   @Get("workspaces/:ws/metrics")
   @Permission("workspace.member")
   listMetrics(@Tenant() auth: AuthContext, @Param("ws") workspaceId: string) {
@@ -92,6 +99,12 @@ export class RegistryController {
     const { roles } = auth;
     const ctx = orgAdminCtx(auth);
     return this.registry.createMetric(ctx, roles, body);
+  }
+
+  @Get("assets/icons/:file")
+  @Permission("workspace.member")
+  icon(@Param("file") file: string) {
+    return this.registry.icon(file);
   }
 
   @Post("assets")

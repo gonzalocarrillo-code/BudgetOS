@@ -22,6 +22,7 @@ import {
   CreateDimensionInput,
   MergeValuesInput,
   SaveHierarchyTemplateInput,
+  UpdateHierarchyTemplateInput,
   UpdateDimensionInput,
   UpdateValueInput,
   UploadAssetInput,
@@ -210,6 +211,9 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/workspaces/{ws}/hierarchy-templates": {
         get: { operationId: "listHierarchyTemplates", parameters: [workspaceParam], responses: { "200": { description: "Hierarchy templates" } } },
         post: { operationId: "saveHierarchyTemplate", parameters: [workspaceParam], requestBody: json(SaveHierarchyTemplateInput), responses: { "200": { description: "Saved hierarchy template" } } },
+      },
+      "/api/v1/hierarchy-templates/{id}": {
+        patch: { operationId: "updateHierarchyTemplate", parameters: [idParam, workspaceHeader], requestBody: json(UpdateHierarchyTemplateInput), responses: { "200": { description: "Updated hierarchy template (rename, reorder, make default)" } } },
       },
       "/api/v1/workspaces/{ws}/metrics": {
         get: { operationId: "listMetrics", parameters: [workspaceParam], responses: { "200": { description: "The org's metric library (numerator / denominator over facts, multiplier)" } } },
@@ -421,6 +425,9 @@ export function openApiDocument(): Record<string, unknown> {
           parameters: [workspaceParam, { name: "prefix", in: "query", required: false, schema: { type: "string" }, description: "A qualifier-key prefix, or key: plus a value prefix" }],
           responses: { "200": { description: "{ keys: [{ key, label, kind }], values: [{ value, label }] }" } },
         },
+      },
+      "/api/v1/assets/icons/{file}": {
+        get: { operationId: "getIconAsset", parameters: [{ name: "file", in: "path", required: true, schema: { type: "string" } }, workspaceHeader], responses: { "200": { description: "An uploaded icon's sanitized SVG: { icon, svg }" } } },
       },
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },

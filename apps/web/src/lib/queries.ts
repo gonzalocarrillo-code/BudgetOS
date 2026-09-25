@@ -11,7 +11,35 @@ export const Me = z.object({
 });
 export type Me = z.infer<typeof Me>;
 
-export const Dimension = z.object({ id: z.string(), key: z.string(), label: z.string(), icon: z.string(), values: z.array(z.object({ id: z.string(), code: z.string(), label: z.string() }).passthrough()) }).passthrough();
+export const DimensionValue = z
+  .object({
+    id: z.string(),
+    code: z.string(),
+    label: z.string(),
+    path: z.string().default(""),
+    parentValueId: z.string().nullable().default(null),
+    isActive: z.boolean().default(true),
+    aliases: z.array(z.string()).default([]),
+    mergedIntoId: z.string().nullable().default(null),
+  })
+  .passthrough();
+export type DimensionValue = z.infer<typeof DimensionValue>;
+export const Dimension = z
+  .object({
+    id: z.string(),
+    key: z.string(),
+    label: z.string(),
+    icon: z.string(),
+    description: z.string().nullable().default(null),
+    dataType: z.string().default("ENUM"),
+    color: z.string().nullable().default(null),
+    allowedParents: z.array(z.string()).default([]),
+    isRequiredForLeaf: z.boolean().default(false),
+    workspaceId: z.string().nullable().default(null),
+    isActive: z.boolean().default(true),
+    values: z.array(DimensionValue),
+  })
+  .passthrough();
 export type Dimension = z.infer<typeof Dimension>;
 
 export const meQuery = queryOptions({
