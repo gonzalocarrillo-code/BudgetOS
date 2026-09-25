@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "@budget/ui/tokens.css";
+@source "../../../packages/ui/src";
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+}
