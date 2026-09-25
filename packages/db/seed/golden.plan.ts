@@ -1,6 +1,6 @@
 import { rephase } from "@budget/domain";
 import { Decimal } from "decimal.js";
-import { DEFAULT_DIMENSIONS } from "./defaults.registry.js";
+import { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "./defaults.registry.js";
 
 /**
  * The golden dataset as a pure, deterministic plan (spec §21). `apps/api/src/seed/golden.ts` turns
@@ -10,7 +10,8 @@ import { DEFAULT_DIMENSIONS } from "./defaults.registry.js";
  * Scope (LOCAL_BUILD_PHASES phase 9): registry, envelope tree, approved versions, phasing. Facts,
  * threads, tags, pacing rules and closures are added by the tasks that build their commands;
  * targets arrived with T-015 (goldenTargets), facts with T-017 (goldenFactsCsv), pacing alerts with
- * T-018 (GOLDEN_PACING), threads and tags with T-019 (GOLDEN_COLLAB), search documents with T-020.
+ * T-018 (GOLDEN_PACING), threads and tags with T-019 (GOLDEN_COLLAB), search documents with T-020,
+ * roll-up trees with T-022.
  */
 
 export const GOLDEN_SEED = 20260101;
@@ -391,6 +392,8 @@ export interface GoldenTotals {
   collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; envelopesWithOpenThreads: number };
   /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
   search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value", number>;
+  /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
+  rollup: { nodesByTemplate: Record<string, number[]>; rootBudget: string; rootActual: string };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -485,6 +488,17 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
         // The planner's has_open_thread reads envelope-anchored threads only (a cell thread is on its envelope too).
         envelopesWithOpenThreads: new Set(open.filter((t) => t.anchor === "envelope").map((t) => t.leafKey)).size,
       };
+    })(),
+    rollup: (() => {
+      // Live leaves: the split source is archived, but its parts are live leaves with the same tuple
+      // (plus retailer) and the same total, so every plan leaf's tuple is a node.
+      const live = leaves;
+      const templates: Array<{ name: string; path: readonly string[] }> = [{ name: DEFAULT_HIERARCHY.name, path: DEFAULT_HIERARCHY.path }, ...GOLDEN_TEMPLATES];
+      const nodesByTemplate = Object.fromEntries(
+        templates.map((t) => [t.name, t.path.map((_, d) => new Set(live.map((e) => t.path.slice(0, d + 1).map((k) => e.dimensionValues[k] ?? "∅").join("/"))).size).reduce((acc, n) => [...acc, n], [1])]),
+      );
+      const facts = goldenFactRows(plan).filter((r) => r.leafKey !== null).reduce((s, r) => s.plus(r.cells[6] ?? 0), new Decimal(0));
+      return { nodesByTemplate, rootBudget: leaves.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2), rootActual: facts.toFixed(2) };
     })(),
     search: {
       envelope: plan.length + GOLDEN_SPLIT.parts.length,

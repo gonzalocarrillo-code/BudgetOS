@@ -50,6 +50,7 @@ export const AttrKey = z.enum([
   "name",
   "has_attachments",
   "alert_severity",
+  "is_leaf",
 ]);
 
 export const FieldRef = z.discriminatedUnion("kind", [

@@ -159,6 +159,35 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "comments": 5,
     "envelopesWithOpenThreads": 1
   },
+  "rollup": {
+    "nodesByTemplate": {
+      "Default": [
+        1,
+        1,
+        2,
+        8,
+        32,
+        96
+      ],
+      "Region first": [
+        1,
+        2,
+        8,
+        32,
+        96,
+        192
+      ],
+      "Channel first": [
+        1,
+        1,
+        4,
+        12,
+        24
+      ]
+    },
+    "rootBudget": "1107799.19",
+    "rootActual": "653984.46"
+  },
   "search": {
     "envelope": 332,
     "target": 105,

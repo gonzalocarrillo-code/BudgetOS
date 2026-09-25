@@ -167,6 +167,10 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
       return `EXISTS (SELECT 1 FROM approval_request r WHERE r.entity_type='envelope_version' AND r.status='PENDING'
                 AND r.entity_id IN (SELECT id FROM envelope_version WHERE envelope_id = e.id)
                 AND eligible_approver(r.id, ${p.value === "@me" ? "app_user_id()" : b.p(p.value) + "::uuid"}))`;
+    case "is_leaf":
+      // A leaf has no live child (archived children, e.g. merged-away envelopes, do not count).
+      if (p.op !== "eq" || typeof p.value !== "boolean") throw invalid(`is_leaf needs eq true or false`, p);
+      return `${p.value ? "NOT " : ""}EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED')`;
     case "alert_severity":
       return `EXISTS (SELECT 1 FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED') AND ${compileScalar("a.severity", p, b, "text")})`;
     case "created_at":

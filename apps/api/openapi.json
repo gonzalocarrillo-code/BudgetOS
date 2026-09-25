@@ -1162,7 +1162,8 @@
                                                     "end_date",
                                                     "name",
                                                     "has_attachments",
-                                                    "alert_severity"
+                                                    "alert_severity",
+                                                    "is_leaf"
                                                   ]
                                                 }
                                               },
@@ -1713,7 +1714,8 @@
                                                     "end_date",
                                                     "name",
                                                     "has_attachments",
-                                                    "alert_severity"
+                                                    "alert_severity",
+                                                    "is_leaf"
                                                   ]
                                                 }
                                               },
