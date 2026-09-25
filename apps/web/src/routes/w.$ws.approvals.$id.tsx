@@ -114,9 +114,9 @@ function DiffTable({ ws, r, currency }: { ws: string; r: ApprovalDetail; currenc
                   </Link>
                   {row.rationale ? <div className="text-xs text-muted-foreground">{row.rationale}</div> : null}
                 </td>
-                <td className="py-2 pr-3 text-right">{before === null ? "—" : formatMoney(before, currency)}</td>
-                <td className="py-2 pr-3 text-right font-medium">{formatMoney(row.amountReporting, currency)}</td>
-                <td className={cn("py-2 text-right", delta && delta.isNegative() ? "text-destructive" : "text-success")}>{delta === null ? "—" : `${delta.isNegative() ? "" : "+"}${formatMoney(delta.toFixed(2), currency)}`}</td>
+                <td className="whitespace-nowrap py-2 pr-3 text-right">{before === null ? "—" : formatMoney(before, currency)}</td>
+                <td className="whitespace-nowrap py-2 pr-3 text-right font-medium">{formatMoney(row.amountReporting, currency)}</td>
+                <td className={cn("whitespace-nowrap py-2 text-right", delta && delta.isNegative() ? "text-destructive" : "text-success")}>{delta === null ? "—" : `${delta.isNegative() ? "" : "+"}${formatMoney(delta.toFixed(2), currency)}`}</td>
               </tr>
             );
           })}
