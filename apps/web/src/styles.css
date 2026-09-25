@@ -6,4 +6,13 @@
   * {
     border-color: var(--border);
   }
+  html {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Figures line up in tables and cards. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }

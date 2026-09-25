@@ -44,6 +44,7 @@
     "@budget/ui": "workspace:^",
     "@tanstack/react-query": "5.103.2",
     "@tanstack/react-router": "1.170.39",
+    "lucide-react": "1.48.0",
     "lz-string": "1.5.0",
     "openapi-fetch": "0.17.0",
     "react": "19.2.4",

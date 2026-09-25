@@ -41,7 +41,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-023 | 13 | T-007 | blocked | CSV/XLSX export respects filter — green (`seed/golden.test.ts` exports, `api/src/modules/exports`, `workers/src/export`); view SQL checked against Postgres (`db/src/bigquery-views.test.ts`), ADR-017 | Sheets push; BigQuery views queryable; `terraform fmt`/`validate` (GCP phase) |
 | T-024 | 13 | T-011, T-007 | blocked | locked envelope rejects draft with 423 — green (`api/src/modules/closures`, `seed/golden.test.ts` closures; closed-period ingest rejection in `workers/src/ingest`), `ClosureSink` ADR-018 | BigQuery closure tables written and queried (GCP phase) |
 | T-025 | 14 | T-007, T-012, T-020 | blocked | tools return golden numbers; read-only guard test — green (`mcp/src/tools.test.ts` on golden, `import-guard.test.ts` in CI, `readonly.test.ts` for the `budget_mcp` role), ADR-019 | IAP and per-user OAuth on Cloud Run (GCP phase) |
-| T-026 | 15 | T-009, T-025 | blocked | Playwright navigates every §18.1 route with a test JWT — green (`pnpm test:e2e`, 25 tests; checked in the browser), shadcn default tokens, ADR-020 | design-team token file is not in the repo; Identity Platform sign-in (GCP phase) |
+| T-026 | 15 | T-009, T-025 | blocked | Playwright navigates every §18.1 route with a test JWT — green (`pnpm test:e2e`, 25 tests; checked in the browser), ADR-020; tokens from the product screenshots, ADR-021 | Identity Platform sign-in (GCP phase) |
 | T-027 | 16 | T-026, T-026c, T-007, T-022 | pending | Playwright: filter → URL → reload; inline edit conflict; pivot = tree | — |
 | T-028 | 16 | T-020, T-026 | pending | Playwright qualifier autocomplete | — |
 | T-029 | 16 | T-011, T-012, T-026 | pending | Playwright decide flow | — |

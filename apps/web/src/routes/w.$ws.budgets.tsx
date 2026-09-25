@@ -3,7 +3,7 @@ import { t } from "@budget/ui/i18n";
 import { createFileRoute } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { z } from "zod";
-import { Page } from "../components/page.js";
+import { Card, Page } from "../components/page.js";
 
 /** Explorer search params are the source of truth for filter / grouping state (spec §18.1). */
 const ExplorerSearch = z.object({
@@ -27,12 +27,14 @@ function ExplorerPage(): ReactElement {
   const search = Route.useSearch();
   return (
     <Page title={t("nav.budgets")}>
+      <Card>
       <p className="text-sm text-muted-foreground" data-testid="page-pending">
         {t("page.pending", { task: "T-027" })}
       </p>
       <p className="text-xs text-muted-foreground" data-testid="explorer-state">
         {search.view} · {search.period.kind} · {search.measures.join(", ")}
       </p>
+      </Card>
     </Page>
   );
 }

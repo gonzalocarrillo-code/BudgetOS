@@ -15,7 +15,8 @@ export const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        outline: "border border-input bg-card hover:bg-accent hover:text-accent-foreground",
+        inverse: "bg-inverse text-inverse-foreground hover:bg-inverse/90",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
       },
@@ -41,7 +42,7 @@ export function Button({ className, variant, size, asChild = false, disabled, re
           </span>
         </Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground" sideOffset={4}>
+          <Tooltip.Content className="rounded-md bg-inverse px-3 py-1.5 text-xs text-inverse-foreground" sideOffset={4}>
             {reason}
           </Tooltip.Content>
         </Tooltip.Portal>
