@@ -1,13 +1,14 @@
 import { ApplyTagInput, CreateTagInput, DomainError, UpdateTagInput, canInScope, newId } from "@budget/domain";
 import { audit, mergeTag, outbox, withTenant, type Tx } from "@budget/db";
-import type { PrismaClient, Tag } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import { envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
 
 /** Tags (spec §13). Every write: one audit_event + one `tag.changed` outbox row (the search indexer refreshes). */
 
-export const tagView = (t: Tag) => ({ id: t.id, name: t.name, color: t.color, kind: t.kind });
+export { tagView } from "../views.js";
+import { tagView } from "../views.js";
 
 async function record(tx: Tx, auth: AuthContext, workspaceId: string, tagId: string, action: string, after: Record<string, unknown>, before: unknown = null) {
   await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action, entityType: "tag", entityId: tagId, before, after, requestId: auth.ctx.requestId });
@@ -100,12 +101,3 @@ export async function applyTag(prisma: PrismaClient, auth: AuthContext, raw: unk
   );
 }
 
-/** GET /workspaces/:ws/tags: with how many entities carry each. */
-export function listTags(prisma: PrismaClient, auth: AuthContext) {
-  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  return withTenant(prisma, auth.ctx, async (tx) => {
-    const tags = await tx.tag.findMany({ where: { workspaceId }, orderBy: { name: "asc" } });
-    const counts = await tx.taggable.groupBy({ by: ["tagId"], where: { workspaceId }, _count: { _all: true } });
-    return tags.map((t) => ({ ...tagView(t), count: counts.find((c) => c.tagId === t.id)?._count._all ?? 0 }));
-  });
-}

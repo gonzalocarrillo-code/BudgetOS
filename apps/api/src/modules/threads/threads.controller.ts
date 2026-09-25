@@ -2,10 +2,10 @@ import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from
 import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { applyTag, createTag, listTags, updateTag } from "./commands/tags.js";
+import { applyTag, createTag, updateTag } from "./commands/tags.js";
 import { addComment, createThread, deleteComment, editComment, reopenThread, resolveThread, subscribe } from "./commands/threads.js";
 import { ApplyTagDto, CommentDto, CreateTagDto, CreateThreadDto, ListThreadsQueryDto, SubscriptionDto, UpdateCommentDto, UpdateTagDto } from "./dto.js";
-import { listThreads } from "./queries.js";
+import { listTags, listThreads } from "./queries.js";
 
 /**
  * Threads, comments, subscriptions and tags (spec §13, §17 `threads` and `tags`). Entity routes take

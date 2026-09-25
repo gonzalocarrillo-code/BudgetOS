@@ -1,23 +1,13 @@
-import { ChainStep, DomainError, newId, type ScopeTarget } from "@budget/domain";
+import { DomainError, newId } from "@budget/domain";
 import { archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
-import { z } from "zod";
 import { clock } from "../../common/clock.js";
-import { envelopeScopeTargets } from "../../common/scope.guard.js";
 import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
-import { targetScope } from "../targets/commands/target-writer.js";
 import { approveVersion } from "./commands/approve-version.js";
+import { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "./read.js";
 
-/** The frozen policy copy on a request (spec §7.2). Escalation may insert synthetic steps. */
-export const PolicySnapshot = z.object({
-  conditions: z.unknown(),
-  chain: z.array(ChainStep.extend({ escalatedFrom: z.number().int().optional() })),
-  blockSelfApproval: z.boolean(),
-  allowExternalEvidence: z.boolean(),
-  policyName: z.string().optional(),
-});
-export type PolicySnapshot = z.infer<typeof PolicySnapshot>;
+export { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "./read.js";
+export type { RequestTargets } from "./read.js";
 
-export const OPEN_STATUSES = ["PENDING", "ESCALATED"] as const;
 const HOUR_MS = 3_600_000;
 export const addHours = (d: Date, h: number) => new Date(d.getTime() + h * HOUR_MS);
 
@@ -31,40 +21,10 @@ export function assertOpen(r: LockedRequestRow): void {
   if (!(OPEN_STATUSES as readonly string[]).includes(r.status)) throw new DomainError("CONFLICT", `Request is ${r.status}`, { status: r.status });
 }
 
-export const SUPPORTED_ENTITY_TYPES = ["envelope_version", "bulk_change", "target_version"] as const;
-
 export function assertEnvelopeRequest(r: LockedRequestRow): void {
   if (!(SUPPORTED_ENTITY_TYPES as readonly string[]).includes(r.entityType)) {
     throw new DomainError("VALIDATION", `Approvals for ${r.entityType} are not supported yet`, { entityType: r.entityType });
   }
-}
-
-export interface RequestTargets {
-  /** Envelope versions the request would approve: one for an envelope version, all rows of a bulk change, none for a target. */
-  versions: Array<{ id: string; envelopeId: string }>;
-  /** Who authored the change (separation of duties). */
-  authorId: string;
-  /** Dimension scopes an approver must cover: one per envelope, or the target's scope. */
-  scopes: ScopeTarget[];
-}
-
-/** The versions, author and scopes behind a request (envelope_version, bulk_change or target_version). */
-export async function requestTargets(tx: Tx, r: { entityType: string; entityId: string }): Promise<RequestTargets> {
-  const scopesOf = async (versions: Array<{ envelopeId: string }>) => [...(await envelopeScopeTargets(tx, [...new Set(versions.map((v) => v.envelopeId))])).values()];
-  if (r.entityType === "bulk_change") {
-    const bulk = await loadBulkChange(tx, r.entityId);
-    if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
-    const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { id: true, envelopeId: true } });
-    return { versions, authorId: bulk.createdBy, scopes: await scopesOf(versions) };
-  }
-  if (r.entityType === "target_version") {
-    const tv = await tx.targetVersion.findUnique({ where: { id: r.entityId }, include: { target: true } });
-    if (tv === null) throw new DomainError("NOT_FOUND", "Target version not found");
-    return { versions: [], authorId: tv.createdBy, scopes: [await targetScope(tx, tv.target)] };
-  }
-  const v = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { id: true, envelopeId: true, createdBy: true } });
-  if (v === null) throw new DomainError("NOT_FOUND", "Version not found");
-  return { versions: [{ id: v.id, envelopeId: v.envelopeId }], authorId: v.createdBy, scopes: await scopesOf([v]) };
 }
 
 /** A closed period freezes its envelopes' requests too (spec §15): no decision or withdrawal until it is restated. */

@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { DomainError, can, type Role } from "@budget/domain";
+import { DomainError } from "@budget/domain";
 import { Inject, Injectable, type CallHandler, type ExecutionContext, type NestInterceptor } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { from, switchMap, type Observable } from "rxjs";
 import { AccessRepository } from "./auth/access.repository.js";
 import { JwtVerifier } from "./auth/jwt-verifier.js";
-import { ROLE_CACHE, type RoleCache, type WorkspaceAccess } from "./auth/role-cache.js";
+import { authenticate, authorize } from "./auth/authenticate.js";
+import { ROLE_CACHE, type RoleCache } from "./auth/role-cache.js";
 import { PERMISSION_KEY, type RoutePermission } from "./permission.decorator.js";
-import type { AuthContext, TenantRequest } from "./tenant.js";
+import type { TenantRequest } from "./tenant.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,55 +39,12 @@ export class TenantInterceptor implements NestInterceptor {
     if (permission === undefined) {
       throw new DomainError("FORBIDDEN", "Route declares no permission");
     }
-    const identity = await this.verifier.verify(header(request, "authorization"));
-    const user = await this.access.findUser(identity);
-    if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "Unknown or inactive user");
-
-    const workspaceId = resolveWorkspace(request);
-    const requestId = header(request, "x-request-id") ?? randomUUID();
-    if (workspaceId !== null) {
-      const orgId = await this.access.workspaceOrg(workspaceId, user, requestId);
-      // Same answer for "no such workspace" and "another org's workspace".
-      if (orgId !== user.orgId) throw new DomainError("FORBIDDEN", "No access to this workspace");
-    }
-    const access = await this.cachedAccess(user, workspaceId, requestId);
-    const roles = [...new Set(access.assignments.map((a) => a.role))] as Role[];
-
-    if (permission !== "authenticated") {
-      if (workspaceId === null) throw new DomainError("VALIDATION", "Workspace required (route :ws or X-Workspace-Id)");
-      if (roles.length === 0) throw new DomainError("FORBIDDEN", "No role in this workspace");
-      if (permission !== "workspace.member" && !can(roles, permission)) {
-        throw new DomainError("FORBIDDEN", `Missing permission ${permission}`, { permission });
-      }
-    }
-
-    const tenant: AuthContext = {
-      ctx: {
-        workspaceId,
-        orgId: user.orgId,
-        userId: user.id,
-        isOrgAdmin: access.isOrgAdmin && workspaceId === null,
-        actorType: "user",
-        requestId,
-      },
-      user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
-      isOrgAdmin: access.isOrgAdmin,
-      roles,
-      assignments: access.assignments,
-    };
+    const tenant = await authenticate(
+      { verifier: this.verifier, access: this.access, cache: this.cache },
+      { authorization: header(request, "authorization"), workspaceId: resolveWorkspace(request), requestId: header(request, "x-request-id") ?? randomUUID() },
+    );
+    authorize(tenant, permission);
     request.tenant = tenant;
-  }
-
-  private async cachedAccess(
-    user: { id: string; orgId: string },
-    workspaceId: string | null,
-    requestId: string,
-  ): Promise<WorkspaceAccess> {
-    const hit = this.cache.get(user.id, workspaceId);
-    if (hit) return hit;
-    const fresh = await this.access.access(user, workspaceId, requestId);
-    this.cache.set(user.id, workspaceId, fresh);
-    return fresh;
   }
 }
 

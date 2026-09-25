@@ -1,20 +1,15 @@
-import { DomainError, newId, type Action, type ScopeTarget } from "@budget/domain";
+import { DomainError, newId, type Action } from "@budget/domain";
 import { audit, bumpDataVersion, lockTarget, outbox, type LockedTargetRow, type TenantContext, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { TargetVersion } from "@prisma/client";
-import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
+import { assertInScope } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
+import { targetScope } from "../scope.js";
+
+export { targetScope } from "../scope.js";
 
 /** Shared steps of every target write (spec §10, mirrors envelopes' version-writer). */
 
-/**
- * Scope a target is checked against. Envelope targets use the envelope's dimensions. A filter
- * target spans whatever its filter selects, so only a workspace-wide role may write or approve it.
- */
-export async function targetScope(tx: Tx, t: { scopeType: string; envelopeId: string | null }): Promise<ScopeTarget> {
-  if (t.scopeType === "envelope" && t.envelopeId !== null) return envelopeScopeTarget(tx, t.envelopeId);
-  return { dims: {}, ancestors: {} };
-}
 
 export async function lockTargetForWrite(tx: Tx, auth: AuthContext, targetId: string, action: Action): Promise<LockedTargetRow> {
   const t = await lockTarget(tx, targetId);
@@ -99,21 +94,5 @@ export async function recordTargetChange(
   await bumpDataVersion(tx, args.workspaceId);
 }
 
-export function versionView(v: TargetVersion) {
-  return {
-    id: v.id,
-    targetId: v.targetId,
-    versionNo: v.versionNo,
-    value: v.value.toString(),
-    comparator: v.comparator,
-    valueUpper: v.valueUpper?.toString() ?? null,
-    currency: v.currency,
-    rationale: v.rationale,
-    source: v.source,
-    status: v.status,
-    approvalRequestId: v.approvalRequestId,
-    createdBy: v.createdBy,
-    createdAt: v.createdAt.toISOString(),
-    approvedAt: v.approvedAt?.toISOString() ?? null,
-  };
-}
+
+export { versionView } from "../views.js";

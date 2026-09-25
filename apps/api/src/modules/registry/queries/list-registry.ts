@@ -1,4 +1,7 @@
-import { dimensionValuePaths, type Tx } from "@budget/db";
+import { dimensionValuePaths, withTenant, type Tx } from "@budget/db";
+import type { PrismaClient } from "@prisma/client";
+import { requireWorkspace } from "../../../common/parse-input.js";
+import type { AuthContext } from "../../../common/tenant.js";
 import { loadDimensions } from "../dimensions.js";
 
 export interface ListedValue {
@@ -76,4 +79,10 @@ export async function listHierarchyTemplates(tx: Tx, workspaceId: string): Promi
     path: row.path,
     isDefault: row.isDefault,
   }));
+}
+
+/** The registry an MCP client (or the web) builds filters from: dimensions with values, and hierarchy templates. */
+export async function describeRegistry(prisma: PrismaClient, auth: AuthContext) {
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(prisma, auth.ctx, async (tx) => ({ dimensions: await listDimensions(tx, workspaceId), hierarchyTemplates: await listHierarchyTemplates(tx, workspaceId) }));
 }

@@ -20,3 +20,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      # T-025: the read-only MCP import guard (no database needed; ADR-019).
+      - run: pnpm --filter @budget/mcp exec vitest run --root . --config vitest.config.mjs src/import-guard.test.ts

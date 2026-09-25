@@ -1,29 +1,15 @@
 import { CreateTargetDraftInput, CreateTargetInput, DomainError, newId } from "@budget/domain";
 import { withTenant } from "@budget/db";
-import type { Prisma, PrismaClient, Target } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { activeMetric, lockTargetForWrite, recordTargetChange, targetCurrency, targetHead, versionView, writeTargetDraft } from "./target-writer.js";
+import { activeMetric, lockTargetForWrite, recordTargetChange, targetCurrency, targetHead, writeTargetDraft } from "./target-writer.js";
+import { targetView, versionView } from "../views.js";
+export { targetView } from "../views.js";
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
-export function targetView(t: Target) {
-  return {
-    id: t.id,
-    workspaceId: t.workspaceId,
-    scopeType: t.scopeType,
-    envelopeId: t.envelopeId,
-    scopeFilter: t.scopeFilter,
-    metricKey: t.metricKey,
-    startDate: isoDate(t.startDate),
-    endDate: isoDate(t.endDate),
-    ownerId: t.ownerId,
-    status: t.status,
-    currentVersionId: t.currentVersionId,
-    draftVersionId: t.draftVersionId,
-  };
-}
 
 /**
  * POST /workspaces/:ws/targets (spec §10). Creates the target and its first DRAFT version; submit

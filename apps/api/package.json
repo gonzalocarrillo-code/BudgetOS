@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/main.ts"
+    ".": "./src/main.ts",
+    "./queries": "./src/queries.ts",
+    "./auth": "./src/common/auth/index.ts"
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",

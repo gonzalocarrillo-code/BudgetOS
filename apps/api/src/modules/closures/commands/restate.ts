@@ -3,7 +3,7 @@ import { audit, bumpDataVersion, outbox, unlockClosureEnvelopes, withTenant } fr
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { closureView } from "./close-period.js";
+import { closureView } from "../views.js";
 
 /**
  * POST /closures/:id/restate (spec §15): admin + reason. The closure becomes `restated` and its
