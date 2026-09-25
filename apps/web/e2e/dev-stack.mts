@@ -23,7 +23,7 @@ run(join(E2E_DIR, "../node_modules/.bin/tsx"), ["src/main.ts"], join(E2E_DIR, ".
 run(join(E2E_DIR, "../node_modules/.bin/vite"), [], join(E2E_DIR, ".."), { WEB_PORT: String(PORTS.web), API_URL: `http://127.0.0.1:${PORTS.api}` });
 await new Promise((r) => setTimeout(r, 1500));
 const { tokenFor } = await import("./auth.js");
-process.stdout.write(`\nworkspace ${JSON.parse(seeded).workspaceId}\nadmin token (paste at http://127.0.0.1:${PORTS.web}):\n${await tokenFor("admin")}\n\n`);
+process.stdout.write(`\nworkspace ${JSON.parse(seeded).workspaceId}\nadmin token, valid 8 h while this stack runs (paste at http://127.0.0.1:${PORTS.web}):\n${await tokenFor("admin", { expiresIn: "8h" })}\n\n`);
 const stop = () => {
   children.forEach((c) => c.kill());
   execFileSync(tsx, [join(E2E_DIR, "seed.mts"), "cleanup", readFileSync(STATE_FILE, "utf8")], { stdio: "inherit" });

@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "../read.js";
+import { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "../read.js";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CHANGES_REQUESTED", "WITHDRAWN", "ESCALATED"] as const;
 type Status = (typeof STATUSES)[number];
@@ -102,6 +102,8 @@ export async function listApprovals(prisma: PrismaClient, auth: AuthContext, que
       }
       if (batch.length < q.limit * 2) break; // no more rows
     }
+    const names = await userNames(tx, out.map((r) => String(r["requestedBy"])));
+    for (const r of out) r["requestedByName"] = names.get(String(r["requestedBy"])) ?? null;
     const last = out[out.length - 1];
     const nextCursor = out.length === q.limit && last ? Buffer.from(JSON.stringify([last["requestedAt"], last["id"]])).toString("base64url") : null;
     return { rows: out, nextCursor };
@@ -131,6 +133,8 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
       rationale: v.rationale,
     }));
     const first = versions[0];
+    const people = await userNames(tx, [r.requestedBy, ...r.decisions.map((d) => d.decidedBy)]);
+    const decision = await decisionState(tx, auth, r, targets);
     return {
       id: r.id,
       entityType: r.entityType,
@@ -149,6 +153,10 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
       diff: r.entityType === "envelope_version" && rows[0] ? { ...rows[0] } : null,
       target: r.entityType === "target_version" ? await targetDiff(tx, r.entityId) : null,
       rows,
+      /** Display names of the requester and every decider (each decision is by one account). */
+      people: Object.fromEntries(people),
+      /** Whether the caller may decide the current step now, and why not (for a disabled control's reason). */
+      decision,
       decisions: r.decisions.map((d) => ({
         id: d.id,
         stepIndex: d.stepIndex,
@@ -161,6 +169,35 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
       })),
     };
   });
+}
+
+async function userNames(tx: Tx, ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  return new Map((await tx.user.findMany({ where: { id: { in: unique } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+}
+
+/** The same checks decide() makes, answered in advance: open, eligible for the step (SQL + scope + self-approval), not already decided, not frozen by a closed period. */
+async function decisionState(
+  tx: Tx,
+  auth: AuthContext,
+  r: { id: string; status: string; currentStep: number; policySnapshot: unknown; decisions: Array<{ stepIndex: number; decidedBy: string }> },
+  targets: Awaited<ReturnType<typeof requestTargets>>,
+): Promise<{ canDecide: boolean; reason: string | null; stepRole: string | null }> {
+  const snapshot = PolicySnapshot.safeParse(r.policySnapshot);
+  const step = snapshot.success ? snapshot.data.chain[r.currentStep] : undefined;
+  const stepRole = step?.role ?? null;
+  const no = (reason: string) => ({ canDecide: false, reason, stepRole });
+  if (!(OPEN_STATUSES as readonly string[]).includes(r.status)) return no(`The request is ${r.status.toLowerCase().replace(/_/g, " ")}`);
+  if (!snapshot.success || step === undefined) return no("The request is past its last step");
+  const eligible =
+    (await eligibleApproverSql(tx, r.id, auth.user.id)) &&
+    targets.scopes.every((target) => eligibleApprover({ assignments: auth.assignments, stepRole: step.role as Role, target, userId: auth.user.id, authorId: targets.authorId, blockSelfApproval: snapshot.data.blockSelfApproval }));
+  if (!eligible) return no(auth.user.id === targets.authorId && snapshot.data.blockSelfApproval ? "You made this change; someone else must approve it" : `Step ${r.currentStep + 1} needs ${/^[aeiou]/i.test(step.role) ? "an" : "a"} ${step.role.toLowerCase().replace(/_/g, " ")}`);
+  if (r.decisions.some((d) => d.stepIndex === r.currentStep && d.decidedBy === auth.user.id)) return no("You already decided this step");
+  const locked = targets.versions.length ? await tx.envelope.count({ where: { id: { in: targets.versions.map((v) => v.envelopeId) }, status: "LOCKED" } }) : 0;
+  if (locked > 0) return no("The period is closed; it must be restated first");
+  return { canDecide: true, reason: null, stepRole };
 }
 
 /** GET /workspaces/:ws/policies. */

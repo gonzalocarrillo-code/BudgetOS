@@ -86,3 +86,78 @@ export const suggestQuery = (ws: string, prefix: string) =>
     queryFn: async () => SuggestResult.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/search/suggest", { params: { path: { ws }, query: { prefix } as never } }))),
     staleTime: 10_000,
   });
+
+export const ApprovalRow = z
+  .object({
+    id: z.string().uuid(),
+    entityType: z.string(),
+    status: z.string(),
+    summary: z.string().nullable(),
+    envelopeId: z.string().uuid().nullable(),
+    amount: z.string().nullable(),
+    rows: z.number(),
+    currentStep: z.number(),
+    requestedBy: z.string().uuid(),
+    requestedByName: z.string().nullable().optional(),
+    requestedAt: z.string(),
+    dueAt: z.string().nullable(),
+  })
+  .passthrough();
+export type ApprovalRow = z.infer<typeof ApprovalRow>;
+
+export const approvalsQuery = (ws: string, tab: "mine" | "open" | "resolved") =>
+  queryOptions({
+    queryKey: ["approvals", ws, tab],
+    queryFn: async () =>
+      z.object({ rows: z.array(ApprovalRow), nextCursor: z.string().nullable() }).parse(
+        await unwrap(
+          api.GET("/api/v1/approvals", {
+            params: { header: { "X-Workspace-Id": ws }, query: { ...(tab === "mine" ? { assignee: "me" } : {}), status: tab === "resolved" ? "APPROVED,REJECTED,CHANGES_REQUESTED,WITHDRAWN" : "PENDING,ESCALATED", limit: 100 } as never },
+          }),
+        ),
+      ),
+  });
+
+const ChainStep = z.object({ role: z.string(), minApprovals: z.number().optional(), timeoutHours: z.number().optional(), escalatedFrom: z.number().optional() }).passthrough();
+export const ApprovalDetail = z
+  .object({
+    id: z.string().uuid(),
+    entityType: z.string(),
+    status: z.string(),
+    summary: z.string().nullable(),
+    currentStep: z.number(),
+    policySnapshot: z.object({ chain: z.array(ChainStep), policyName: z.string().optional(), blockSelfApproval: z.boolean().optional() }).passthrough(),
+    requestedBy: z.string().uuid(),
+    requestedAt: z.string(),
+    dueAt: z.string().nullable(),
+    resolvedAt: z.string().nullable(),
+    envelope: z.object({ id: z.string().uuid(), name: z.string(), currency: z.string(), dimensionValues: z.record(z.string(), z.string()) }).nullable(),
+    rows: z.array(z.object({ envelopeId: z.string().uuid(), envelopeName: z.string(), versionId: z.string().uuid(), amount: z.string(), amountReporting: z.string(), approvedAmountReporting: z.string().nullable(), rationale: z.string().nullable() }).passthrough()),
+    people: z.record(z.string(), z.string()),
+    decision: z.object({ canDecide: z.boolean(), reason: z.string().nullable(), stepRole: z.string().nullable() }),
+    decisions: z.array(z.object({ id: z.string().uuid(), stepIndex: z.number(), decidedBy: z.string().uuid(), decision: z.string(), comment: z.string().nullable(), decidedAt: z.string() }).passthrough()),
+  })
+  .passthrough();
+export type ApprovalDetail = z.infer<typeof ApprovalDetail>;
+
+export const approvalQuery = (ws: string, id: string) =>
+  queryOptions({
+    queryKey: ["approval", ws, id],
+    queryFn: async () => ApprovalDetail.parse(await unwrap(api.GET("/api/v1/approvals/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } }))),
+  });
+
+export const TimelineEntry = z.object({
+  at: z.string(),
+  id: z.string(),
+  source: z.string(),
+  kind: z.string(),
+  title: z.string(),
+  actor: z.object({ id: z.string().nullable(), name: z.string().nullable(), type: z.string().nullable() }).nullable(),
+  detail: z.object({ before: z.unknown(), after: z.unknown(), reason: z.string().nullable(), body: z.string().nullable() }).passthrough(),
+});
+export type TimelineEntry = z.infer<typeof TimelineEntry>;
+
+export const timelinePage = async (ws: string, id: string, cursor: string | null) =>
+  z.object({ rows: z.array(TimelineEntry), nextCursor: z.string().nullable() }).parse(
+    await unwrap(api.GET("/api/v1/envelopes/{id}/timeline", { params: { path: { id }, header: { "X-Workspace-Id": ws }, query: { limit: 50, ...(cursor ? { cursor } : {}) } as never } })),
+  );

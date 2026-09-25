@@ -327,7 +327,9 @@ Read AGENTS.md and docs/LOCAL_BUILD_PHASES.md phase 15. Do T-026. Playwright mus
 
 ## Phase 16 — Explorer and operations UI
 
-**Tasks, in order:** T-027, T-028, T-029, T-030, T-031, T-032, T-033.
+**Tasks, in order:** T-027, T-028, T-029, T-030, T-031, T-031b, T-032, T-033.
+
+Plan 0.6 additions (product owner): T-029 puts the Decision Timeline in the envelope drawer as a History tab that every budget always has; T-030 adds the Comments tab there and emoji reactions per account (new table and routes, with an ADR); T-031's icon picker is the icon library for custom granularities; T-031b is new: envelope structure from the UI (add child, move under, split, merge) on the existing T-014 API.
 **Depends on:** phase 15, plus the API task named on each row in `TASKS_STATUS.md`
 **Spec:** §18.2, §18.3, §18.4, §18.5
 
