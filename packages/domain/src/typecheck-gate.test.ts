@@ -8,6 +8,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const expectedScripts = {
   dev: "turbo run dev --parallel",
+  // The persistent localhost stack (docs/runbooks/local.md).
+  "dev:local": "pnpm --filter @budget/web local",
   build: "turbo run build",
   lint: "turbo run lint",
   typecheck: "turbo run typecheck",

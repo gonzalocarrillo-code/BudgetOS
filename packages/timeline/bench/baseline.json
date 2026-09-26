@@ -8,5 +8,7 @@
   "canvasRenderP95Ms": 16.9,
   "svarPanFpsP50": 59.9,
   "visPanFpsP50": 59.9,
-  "canvasPanFpsP50": 59.9
+  "canvasPanFpsP50": 59.9,
+  "budgetRenderP95Ms": 79.2,
+  "budgetPanFpsP50": 59.9
 }

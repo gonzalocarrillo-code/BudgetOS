@@ -12,6 +12,7 @@ import { FilterBar } from "../features/explorer/filter-bar.js";
 import { PasteDialog } from "../features/explorer/paste-dialog.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
 import { SavedViews } from "../features/explorer/saved-views.js";
+import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
 import { envelopeQuery, registryQuery, templatesQuery } from "../lib/queries.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
@@ -89,6 +90,8 @@ function ExplorerPage(): ReactElement {
 
   const setSearch = (patch: Partial<ExplorerSearchT>) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, ...patch }), replace: false });
   const template = templates.find((x) => x.id === search.templateId) ?? templates.find((x) => x.isDefault) ?? templates[0];
+  const isTimeline = search.view === "timeline";
+  // The timeline groups like the tree (hierarchy template); it has its own data source.
   const view = search.view === "timeline" ? "tree" : search.view;
   const measures = useMemo(() => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures])], [search.measures]);
 
@@ -98,10 +101,10 @@ function ExplorerPage(): ReactElement {
   }, [dimensions]);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, view, search.filter, search.period, search.asOf ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.path ?? [], search.groupBy, measures, reload]);
   const source = useMemo(
     () =>
-      template || view === "pivot"
+      !isTimeline && (template || view === "pivot")
         ? new ExplorerRowSource(
             { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
             labels,
@@ -183,9 +186,9 @@ function ExplorerPage(): ReactElement {
     <Page title={t("nav.budgets")}>
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border border-border bg-card p-0.5" role="tablist" data-testid="view-toggle">
-          {(["tree", "pivot"] as const).map((v) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} className={cn(toggle, view === v ? "bg-primary text-primary-foreground" : "text-foreground/80 hover:bg-accent")} onClick={() => setSearch({ view: v, expanded: [], select: undefined })} data-testid={`view-${v}`}>
-              {t(v === "tree" ? "explorer.view.tree" : "explorer.view.pivot")}
+          {(["tree", "pivot", "timeline"] as const).map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={search.view === v} className={cn(toggle, search.view === v ? "bg-primary text-primary-foreground" : "text-foreground/80 hover:bg-accent")} onClick={() => setSearch({ view: v, expanded: [], select: undefined })} data-testid={`view-${v}`}>
+              {t(v === "tree" ? "explorer.view.tree" : v === "pivot" ? "explorer.view.pivot" : "explorer.view.timeline")}
             </button>
           ))}
         </div>
@@ -225,21 +228,55 @@ function ExplorerPage(): ReactElement {
             ))}
           </select>
         </label>
+        {isTimeline ? (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            {t("timeline.zoom")}
+            <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={search.zoom} onChange={(e) => setSearch({ zoom: e.target.value as ExplorerSearchT["zoom"] })} data-testid="zoom-picker">
+              {(["week", "month", "quarter", "fy"] as const).map((z) => (
+                <option key={z} value={z}>
+                  {t(`timeline.zoom.${z}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="ml-auto">
           <SavedViews ws={ws} current={search} onLoad={(v) => void navigate({ search: { ...(v.definition as Partial<ExplorerSearchT>), savedViewId: v.id } as ExplorerSearchT })} onSaved={(name) => setNotice({ kind: "ok", text: t("explorer.views.saved", { name }) })} />
         </div>
       </div>
       <FilterBar filter={search.filter} dimensions={dimensions} onChange={(filter: FilterGroupT) => setSearch({ filter, expanded: [] })} />
+      {search.asOf ? (
+        <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2 text-sm" data-testid="as-of-banner">
+          <span className="flex-1">{t("timeline.asOfPast", { date: search.asOf.slice(0, 10) })}</span>
+          <Button size="sm" variant="outline" onClick={() => setSearch({ asOf: undefined })} data-testid="as-of-now">
+            {t("timeline.backToNow")}
+          </Button>
+        </div>
+      ) : null}
       {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} /> : null}
       <div className="flex min-h-0 gap-0">
         <div className="min-w-0 flex-1">
           <Card>
-            <div className="h-[calc(100vh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
-              {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} /> : <p className="text-sm text-muted-foreground">{t("explorer.loading")}</p>}
-            </div>
-            <p className="pt-3 text-xs text-muted-foreground" data-testid="explorer-state">
-              {loaded ? t("explorer.rows", { count: loaded.total }) : t("explorer.loading")} · {view} · {search.period.kind} · {search.measures.join(", ")}
-            </p>
+            {isTimeline ? (
+              <div className="h-[calc(100vh-19rem)] min-h-80">
+                <TimelineView
+                  ws={ws}
+                  search={{ filter: search.filter, templateId: template?.id, period: search.period, asOf: search.asOf, zoom: search.zoom }}
+                  currency="USD"
+                  onSelect={(id) => setSearch({ select: id })}
+                  onAsOf={(asOf) => setSearch({ asOf })}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="h-[calc(100vh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
+                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} /> : <p className="text-sm text-muted-foreground">{t("explorer.loading")}</p>}
+                </div>
+                <p className="pt-3 text-xs text-muted-foreground" data-testid="explorer-state">
+                  {loaded ? t("explorer.rows", { count: loaded.total }) : t("explorer.loading")} · {view} · {search.period.kind} · {search.measures.join(", ")}
+                </p>
+              </>
+            )}
           </Card>
         </div>
         {pasted ? (

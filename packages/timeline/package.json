@@ -14,15 +14,19 @@
     "bench": "vitest run --root . --config vitest.bench.config.mjs"
   },
   "devDependencies": {
-    "@svar-ui/react-gantt": "2.7.2",
+    "@types/node": "catalog:",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "esbuild": "0.21.5",
     "eslint": "catalog:",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
     "typescript": "catalog:",
     "vis-timeline": "8.5.4",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@budget/domain": "workspace:^",
+    "@svar-ui/react-gantt": "2.7.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
   }
 }

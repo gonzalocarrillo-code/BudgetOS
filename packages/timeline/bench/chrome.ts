@@ -10,7 +10,7 @@ import { build } from "esbuild";
 import { resolveChromePath } from "../../../scripts/chrome-path.mjs";
 import type { EngineSample } from "./session.js";
 
-export type TimelineEngine = "svar" | "vis" | "canvas";
+export type TimelineEngine = "svar" | "vis" | "canvas" | "budget";
 
 const benchDir = dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +18,7 @@ const ENTRY: Record<TimelineEngine, string> = {
   svar: "render-svar.tsx",
   vis: "render-vis.ts",
   canvas: "render-canvas.ts",
+  budget: "render-budget.tsx",
 };
 
 function freePort(): Promise<number> {

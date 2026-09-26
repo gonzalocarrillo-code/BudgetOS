@@ -11,6 +11,7 @@ export { getTimeline } from "./modules/envelopes/queries/timeline.js";
 export { EXPORT_LINK_TTL_SECONDS, exportCsvLink } from "./modules/exports/queries/export-link.js";
 export { listAlerts, pacingView } from "./modules/pacing/queries.js";
 export { runQuery, scopedQuery } from "./modules/query/queries/run-query.js";
+export { timelineQuery } from "./modules/query/queries/timeline.query.js";
 export { describeRegistry } from "./modules/registry/queries/list-registry.js";
 export { search } from "./modules/search/search.js";
 export { envelopeTargets, listTargets } from "./modules/targets/queries/targets.js";

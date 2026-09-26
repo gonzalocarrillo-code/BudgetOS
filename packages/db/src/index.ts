@@ -69,6 +69,8 @@ export type { DefaultPolicySeed } from "../seed/defaults.policies.js";
 export { actualsByEnvelope, archiveEnvelopes, auditMany, capInputs, closeBulkVersions, insertBulkChange, loadBulkChange, envelopePaths, insertBulkVersions, loadBulkHeads, lockEnvelopes, previousPeriodAmounts, setDraftPointers, supersedeDrafts } from "./bulk.js";
 export type { BulkChangeRow, BulkHeadRow, BulkVersionRow } from "./bulk.js";
 export { envelopeTimeline } from "./timeline.js";
+export { ganttKeyDates, ganttMarkers, ganttTargets } from "./gantt.js";
+export type { GanttKeyDateRow, GanttMarkerRow, GanttTargetRow } from "./gantt.js";
 export type { TimelineQuery, TimelineRow } from "./timeline.js";
 export { lockEnvelope } from "./envelopes.js";
 export { effectiveTargets, lockTarget } from "./targets.js";

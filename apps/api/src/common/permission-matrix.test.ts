@@ -147,6 +147,7 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/naming-templates/preview", permission: "registry.manage", url: () => "/api/v1/naming-templates/preview", headers: X(), body: {} },
   { method: "PATCH", path: "/api/v1/naming-templates/{id}", permission: "registry.manage", url: () => `/api/v1/naming-templates/${randomUUID()}`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/overview", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/overview` },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/timeline", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/timeline` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/pacing", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/pacing` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/rules", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/rules` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/rules", permission: "rule.manage", url: () => `/api/v1/workspaces/${wsA}/rules`, body: {} },

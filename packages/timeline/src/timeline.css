@@ -1,0 +1,150 @@
+/* @budget/timeline: SVAR's Willow theme restyled with the @budget/ui tokens (spec §23.2). */
+.bt-root {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif);
+  --bt-under: var(--primary, #1877f2);
+  --bt-on: var(--success, #12a37a);
+  --bt-over: var(--warning, #e8a317);
+  --bt-critical: var(--destructive, #e5484d);
+  --bt-none: var(--subtle-foreground, #9facc0);
+}
+.bt-root .wx-willow-theme {
+  --wx-font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif);
+  --wx-font-size: 13px;
+  --wx-color-primary: var(--primary, #1877f2);
+  --wx-color-font: var(--foreground, #1b2638);
+  --wx-color-secondary-font: var(--muted-foreground, #6b7a90);
+  --wx-background: var(--card, #fff);
+  --wx-background-alt: var(--surface, #fafbfc);
+  --wx-border: 1px solid var(--border, #e6eaf0);
+  --wx-gantt-border: 1px solid var(--border, #e6eaf0);
+  --wx-timescale-font: 600 12px var(--font-sans, Inter, sans-serif);
+  --wx-timescale-font-color: var(--muted-foreground, #6b7a90);
+  --wx-grid-header-font: 600 12px var(--font-sans, Inter, sans-serif);
+  --wx-grid-header-font-color: var(--muted-foreground, #6b7a90);
+  --wx-gantt-select-color: var(--secondary, #f0f7ff);
+  height: 100%;
+}
+.bt-root .wx-chart .wx-area { position: relative; }
+
+/* Bars: SVAR draws the box; the template fills it. No SVAR colours or progress handles. */
+.bt-root .wx-bar.wx-task,
+.bt-root .wx-bar[class*="wx-group"],
+.bt-root .wx-bar[class*="wx-envelope"],
+.bt-root .wx-bar[class*="wx-target"],
+.bt-root .wx-bar[class*="wx-experiment"] {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  overflow: visible;
+}
+.bt-root .wx-bar .wx-progress-wrapper,
+.bt-root .wx-bar .wx-progress-marker,
+.bt-root .wx-bar .wx-link { display: none !important; }
+
+.bt-bar {
+  position: relative;
+  box-sizing: border-box;
+  height: 100%;
+  width: 100%;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bt-pace) 16%, #fff);
+  border: 1px solid color-mix(in srgb, var(--bt-pace) 45%, #fff);
+  overflow: hidden;
+  --bt-pace: var(--bt-none);
+}
+.bt-bar[data-pace="under"] { --bt-pace: var(--bt-under); }
+.bt-bar[data-pace="on"] { --bt-pace: var(--bt-on); }
+.bt-bar[data-pace="over"] { --bt-pace: var(--bt-over); }
+.bt-bar[data-pace="critical"] { --bt-pace: var(--bt-critical); }
+.bt-group { border-radius: 4px; height: 60%; transform: translateY(33%); }
+.bt-fill { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--bt-pace) 55%, #fff); }
+.bt-projected { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--foreground, #1b2638); opacity: 0.7; }
+.bt-bar-label {
+  position: relative;
+  display: block;
+  text-align: left;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--foreground, #1b2638);
+}
+.bt-group .bt-bar-label { font-weight: 600; line-height: 18px; }
+.bt-experiment { background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgb(0 0 0 / 0.06) 6px 12px); }
+
+/* Target lanes: a thin dashed rail; the ranges where the target is the effective one are solid. */
+.bt-target { position: relative; height: 100%; width: 100%; }
+.bt-target::before { content: ""; position: absolute; left: 0; right: 0; top: calc(70% - 1px); border-top: 2px dashed var(--input, #dfe4eb); }
+.bt-target-effective { position: absolute; top: calc(70% - 3px); height: 6px; border-radius: 999px; background: var(--inverse, #0b1628); opacity: 0.8; }
+.bt-target[data-inherited="true"] .bt-target-effective { opacity: 0.35; }
+.bt-target .bt-bar-label {
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  padding: 0 4px;
+  line-height: 14px;
+  font-size: 11px;
+  color: var(--muted-foreground, #6b7a90);
+}
+.bt-target .bt-bar-label em { font-style: normal; }
+
+/* Grid cells. */
+.bt-cell-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-cell-group { font-weight: 600; }
+.bt-cell-target { color: var(--muted-foreground, #6b7a90); font-size: 12px; }
+.bt-cell-num { font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; width: 100%; }
+.bt-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: var(--bt-none); }
+.bt-cell-num[data-pace="under"] .bt-dot { background: var(--bt-under); }
+.bt-cell-num[data-pace="on"] .bt-dot { background: var(--bt-on); }
+.bt-cell-num[data-pace="over"] .bt-dot { background: var(--bt-over); }
+.bt-cell-num[data-pace="critical"] .bt-dot { background: var(--bt-critical); }
+
+/* Overlay: markers, key dates, today, as-of. Inside the scrolled chart area. */
+.bt-overlay { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 4; }
+.bt-marker {
+  position: absolute;
+  pointer-events: auto;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+  cursor: pointer;
+  background: var(--muted-foreground, #6b7a90);
+}
+.bt-marker > span { position: absolute; left: 9px; top: -9px; font-size: 10px; font-weight: 600; color: var(--muted-foreground, #6b7a90); }
+.bt-marker-approval { background: var(--success, #12a37a); }
+.bt-marker-alert { background: var(--destructive, #e5484d); }
+.bt-marker-version { background: var(--primary, #1877f2); }
+.bt-marker-comment { background: var(--warning, #e8a317); }
+.bt-marker-closure { background: var(--inverse, #0b1628); }
+.bt-keydate { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--inverse, #0b1628); opacity: 0.35; }
+.bt-today { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--destructive, #e5484d); opacity: 0.8; }
+.bt-asof { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid color-mix(in srgb, var(--primary, #1877f2) 25%, transparent); }
+.bt-asof-past { border-left-color: var(--primary, #1877f2); }
+.bt-asof:not(.bt-asof-past) .bt-asof-handle { background: var(--card, #fff); color: var(--primary, #1877f2); box-shadow: inset 0 0 0 1px var(--primary, #1877f2); }
+.bt-asof-handle:focus-visible { outline: 2px solid var(--ring, #1877f2); outline-offset: 2px; }
+.bt-asof-handle {
+  position: sticky;
+  top: 2px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: ew-resize;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary, #1877f2);
+  color: var(--primary-foreground, #fff);
+  width: max-content;
+  user-select: none;
+  touch-action: none;
+}

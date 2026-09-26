@@ -31,6 +31,8 @@ export interface CompileOptions {
    * projection_fact (ADR-030). Omitted means unknown, and the SQL reads them.
    */
   hasProjections?: boolean | undefined;
+  /** Grouped rows also carry `start_date` / `end_date`: the earliest start and latest end of the group's envelopes (the timeline's group bars, T-037). */
+  groupDates?: boolean | undefined;
 }
 
 export interface OrderKey {
@@ -234,7 +236,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const flatMeasures = tail ? measures.filter((mk) => !PROJECTION.has(mk)) : measures;
 
   const groupSql = grouped
-    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, count(*) AS leaf_count,
+    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, count(*) AS leaf_count,${opts.groupDates ? " min(e.start_date)::text AS start_date, max(e.end_date)::text AS end_date," : ""}
          sum(CASE WHEN e.status='PENDING' THEN 1 ELSE 0 END) AS pending_count
        FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
        WHERE ${where}

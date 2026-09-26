@@ -141,3 +141,18 @@ export type { ParsedSearch } from "./search.js";
 
 export { CreateNamingTemplateInput, NamingChip, NamingKind, NamingPreviewInput, ParsePattern, PeriodFormat, UpdateNamingTemplateInput, compileParsePattern, formatPeriod, renderTemplate } from "./naming.js";
 export type { NamingContext, NamingTemplateT } from "./naming.js";
+
+export {
+  TimelineBar,
+  TimelineMarker,
+  TimelinePeriod,
+  TimelineQuery,
+  TimelineResponse,
+  TimelineZoom,
+  effectiveSegments,
+  effectiveTargetAt,
+  fiscalPeriods,
+  paceStateOf,
+  stackLanes,
+} from "./timeline.js";
+export type { LaneTarget } from "./timeline.js";

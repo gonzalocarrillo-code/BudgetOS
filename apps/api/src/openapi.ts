@@ -57,6 +57,7 @@ import {
   RunSourceInput,
   QueryRequest,
   QueryResponse,
+  TimelineResponse,
   CreateSavedViewInput,
   UpdateSavedViewInput,
   ReactionInput,
@@ -302,6 +303,25 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/query": {
         post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/timeline": {
+        get: {
+          operationId: "getTimeline",
+          parameters: [
+            workspaceParam,
+            { name: "filter", in: "query", required: false, schema: { type: "string" }, description: "FilterGroup as lz-string (or JSON)" },
+            { name: "groupBy", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated dimension keys; default the hierarchy template's path" },
+            { name: "templateId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+            { name: "from", in: "query", required: false, schema: { type: "string", format: "date" } },
+            { name: "to", in: "query", required: false, schema: { type: "string", format: "date" } },
+            { name: "period", in: "query", required: false, schema: { type: "string" }, description: "Preset name or a PeriodSpec as JSON when from/to are not given; default current_year" },
+            { name: "asOf", in: "query", required: false, schema: { type: "string", format: "date-time" } },
+            { name: "zoom", in: "query", required: false, schema: { type: "string", enum: ["week", "month", "quarter", "fy"] } },
+            { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 5000 } },
+          ],
+          responses: { "200": { description: "Group, envelope and target bars on the fiscal calendar, with markers and key dates; X-Data-Version header", ...json(TimelineResponse) } },
+        },
       },
       "/api/v1/workspaces/{ws}/saved-views": {
         get: { operationId: "listSavedViews", parameters: [workspaceParam, { name: "screen", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "The caller's views and the workspace's shared ones" } } },

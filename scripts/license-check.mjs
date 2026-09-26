@@ -8,6 +8,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { forbiddenMatch } from './forbidden-packages.mjs';
 
 const ALLOW = new Set(['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', '0BSD', 'CC0-1.0', 'Unlicense']);
 const root = new URL('..', import.meta.url).pathname;
@@ -67,6 +68,10 @@ for (const [license, pkgs] of Object.entries(report)) {
     }
   }
 }
+
+// Commercial components are refused by name, whatever licence string they carry (spec §23.2: no SVAR PRO).
+const forbidden = [...found].map((name) => [name, forbiddenMatch(name)]).filter(([, f]) => f !== null);
+if (forbidden.length > 0) fail(`commercial packages in the production tree: ${forbidden.map(([n, f]) => `${n} (${f.name})`).join(', ')}`);
 
 if (found.size === 0 && declared.size > 0) fail('no packages found in the licence report');
 const missing = [...declared].filter((name) => !found.has(name));
