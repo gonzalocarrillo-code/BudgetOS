@@ -23,8 +23,10 @@ export default defineConfig({
       port: PORTS.api,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { ...env, PORT: String(PORTS.api), AUTH_AUDIENCE: PROJECT, AUTH_ISSUER: ISSUER, AUTH_JWKS_URL: `http://127.0.0.1:${PORTS.jwks}/jwks`, NODE_ENV: "development" },
+      env: { ...env, PORT: String(PORTS.api), AUTH_AUDIENCE: PROJECT, AUTH_ISSUER: ISSUER, AUTH_JWKS_URL: `http://127.0.0.1:${PORTS.jwks}/jwks`, NODE_ENV: "development", CLOSURE_SINK: "memory" },
     },
+    // Local stand-in for Pub/Sub + the ingest worker (T-032): runs queued ingest runs of e2e workspaces.
+    { command: "node_modules/.bin/tsx src/local-runner.ts", cwd: "../workers", port: PORTS.worker, reuseExistingServer: false, env: { ...env, PORT: String(PORTS.worker) } },
     { command: "node_modules/.bin/vite", port: PORTS.web, reuseExistingServer: false, env: { WEB_PORT: String(PORTS.web), API_URL: `http://127.0.0.1:${PORTS.api}` } },
   ],
 });

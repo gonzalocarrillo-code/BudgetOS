@@ -116,11 +116,11 @@ export async function mapUnmatched(prisma: PrismaClient, auth: AuthContext, raw:
   });
 }
 
-/** POST /uploads: where to PUT a CSV, and the gs:// URI a csv source then points at. */
+/** POST /uploads: where to send a CSV (and with which method), and the gs:// URI a csv source then points at. */
 export async function createUpload(store: ObjectStore, auth: AuthContext, raw: unknown) {
   const input = parseInput(CreateUploadInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const uri = `gs://${uploadBucket()}/uploads/${workspaceId}/${newId()}-${input.filename.replace(/\s+/g, "_")}`;
   const ttl = 15 * 60;
-  return { uri, uploadUrl: await store.uploadUrl(uri, "text/csv", ttl), contentType: "text/csv", expiresInSeconds: ttl };
+  return { uri, uploadUrl: await store.uploadUrl(uri, "text/csv", ttl), method: store.uploadMethod ?? "PUT", contentType: "text/csv", expiresInSeconds: ttl };
 }

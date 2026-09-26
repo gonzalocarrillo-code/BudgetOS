@@ -99,9 +99,13 @@ export class RecordingClosureSink implements ClosureSink {
   }
 }
 
-/** BigQuery when the process has a GCP project; the recording sink under tests; otherwise none (closing is 503). */
+/**
+ * BigQuery when the process has a GCP project; the recording sink under tests, or when a local
+ * stack opts in with CLOSURE_SINK=memory (T-032: the Playwright stack and e2e:stack, whose frozen
+ * rows then live only in that API process); otherwise none (closing is 503).
+ */
 export function closureSinkFromEnv(env: NodeJS.ProcessEnv = process.env): ClosureSink | null {
   if (env["GOOGLE_CLOUD_PROJECT"]) return new BigQueryClosureSink(new BigQuery({ projectId: env["GOOGLE_CLOUD_PROJECT"] }), env["CLOSURE_DATASET"] ?? CLOSURE_DATASET);
-  if (env["NODE_ENV"] === "test") return new RecordingClosureSink();
+  if (env["NODE_ENV"] === "test" || env["CLOSURE_SINK"] === "memory") return new RecordingClosureSink();
   return null;
 }

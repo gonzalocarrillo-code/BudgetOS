@@ -34,6 +34,7 @@ import {
   CreateSourceInput,
   UpdateSourceInput,
   MapUnmatchedInput,
+  SuggestMappingSampleInput,
   CreateUploadInput,
   CreateRuleInput,
   UpdateRuleInput,
@@ -258,6 +259,9 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/sources/{id}": {
         patch: { operationId: "updateSource", parameters: [idParam, workspaceHeader], requestBody: json(UpdateSourceInput), responses: { "200": { description: "Updated source (the kind never changes)" } } },
+      },
+      "/api/v1/workspaces/{ws}/mapping-suggestions": {
+        post: { operationId: "suggestMappingFromSample", parameters: [workspaceParam], requestBody: json(SuggestMappingSampleInput), responses: { "201": { description: "A suggested mapping for a file's header and first rows (nothing saved); 503 without OPENAI_API_KEY" } } },
       },
       "/api/v1/sources/{id}/suggest-mapping": {
         post: { operationId: "suggestSourceMapping", parameters: [idParam, workspaceHeader], responses: { "201": { description: "Suggested column mapping from @budget/ai (not applied); 503 without OPENAI_API_KEY" } } },

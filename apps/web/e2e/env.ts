@@ -9,7 +9,7 @@ export const KEY_FILE = join(AUTH_DIR, "signing-key.json");
 export const STATE_FILE = join(AUTH_DIR, "state.json");
 /** E2E_PORT_OFFSET shifts every port, so Playwright can run beside a running `e2e:stack`. */
 const OFFSET = Number(process.env["E2E_PORT_OFFSET"] ?? 0);
-export const PORTS = { jwks: 4899 + OFFSET, api: 3199 + OFFSET, web: 5199 + OFFSET };
+export const PORTS = { jwks: 4899 + OFFSET, api: 3199 + OFFSET, web: 5199 + OFFSET, worker: 4799 + OFFSET };
 export const PROJECT = "budget-os-e2e";
 export const ISSUER = `https://securetoken.google.com/${PROJECT}`;
 

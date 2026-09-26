@@ -112,6 +112,16 @@ export const MapUnmatchedInput = z.object({
 });
 export type MapUnmatchedInput = z.infer<typeof MapUnmatchedInput>;
 
+/**
+ * POST /workspaces/:ws/mapping-suggestions (T-032 mapping wizard): a file's header and first rows,
+ * sent before any source exists, for @budget/ai to suggest a mapping. Nothing is saved.
+ */
+export const SuggestMappingSampleInput = z.object({
+  header: z.array(z.string().min(1).max(200)).min(1).max(200),
+  rows: z.array(z.array(z.union([z.string().max(2000), z.number(), z.null()]))).max(20),
+});
+export type SuggestMappingSampleInput = z.infer<typeof SuggestMappingSampleInput>;
+
 /** POST /uploads: a CSV the user will upload and then point a csv source at. */
 export const CreateUploadInput = z.object({
   filename: z.string().regex(/^[\w.\- ]{1,120}\.csv$/i, "a .csv file name"),

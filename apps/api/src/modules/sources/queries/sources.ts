@@ -1,9 +1,9 @@
-import { DomainError, SourceConfig, SourceMapping } from "@budget/domain";
+import { DomainError, SourceConfig, SourceMapping, SuggestMappingSampleInput } from "@budget/domain";
 import { unmatchedSpend, withTenant } from "@budget/db";
 import { MAX_SAMPLE_ROWS, mapColumns, openAiClient } from "@budget/ai";
 import { connectorFor, type ObjectStore } from "@budget/workers";
 import type { PrismaClient } from "@prisma/client";
-import { parseId, requireWorkspace } from "../../../common/parse-input.js";
+import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { sourceView } from "../commands/sources.js";
 
@@ -67,4 +67,19 @@ export async function suggestMapping(prisma: PrismaClient, store: ObjectStore, a
   const cols = [...header];
   const suggestion = await mapColumns({ header: cols, rows: rows.map((r) => cols.map((c) => r[c] ?? null)) }, dimensionKeys, client);
   return { sourceId, mapping: SourceMapping.parse(suggestion.mapping), model: suggestion.model, applied: false };
+}
+
+/**
+ * POST /workspaces/:ws/mapping-suggestions (T-032): the mapping wizard's AI suggestion for a file
+ * that is not a source yet. The header and at most MAX_SAMPLE_ROWS rows go to @budget/ai
+ * mapColumns(); nothing is saved. 503 without OPENAI_API_KEY (the wizard then matches by name).
+ */
+export async function suggestMappingFromSample(prisma: PrismaClient, auth: AuthContext, raw: unknown) {
+  const sample = parseInput(SuggestMappingSampleInput, raw);
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  const client = openAiClient(); // 503 before anything is read
+  const dims = await withTenant(prisma, auth.ctx, (tx) => tx.dimension.findMany({ where: { orgId: auth.user.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { key: true } }));
+  const dimensionKeys = [...new Set(dims.map((d) => d.key))].sort();
+  const suggestion = await mapColumns({ header: sample.header, rows: sample.rows.slice(0, MAX_SAMPLE_ROWS) }, dimensionKeys, client);
+  return { mapping: SourceMapping.parse(suggestion.mapping), model: suggestion.model, applied: false };
 }

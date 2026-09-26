@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { CreateSourceDto, CreateUploadDto, MapUnmatchedDto, RunSourceDto, UpdateSourceDto } from "./dto.js";
+import { CreateSourceDto, CreateUploadDto, MapUnmatchedDto, RunSourceDto, SuggestMappingSampleDto, UpdateSourceDto } from "./dto.js";
 import { SourcesService } from "./sources.service.js";
 
 /** Ingestion sources (spec §14, §17). Entity routes take the workspace from X-Workspace-Id. */
@@ -25,6 +25,12 @@ export class SourcesController {
   @Permission("source.manage")
   update(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateSourceDto) {
     return this.sources.update(auth, id, body);
+  }
+
+  @Post("workspaces/:ws/mapping-suggestions")
+  @Permission("source.manage")
+  suggestFromSample(@Tenant() auth: AuthContext, @Body() body: SuggestMappingSampleDto) {
+    return this.sources.suggestFromSample(auth, body);
   }
 
   @Post("sources/:id/suggest-mapping")
