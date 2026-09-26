@@ -59,6 +59,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @budget/db exec prisma generate
       - run: pnpm db:migrate
       - name: Load test (spec scale)
         run: apps/api/node_modules/.bin/tsx --tsconfig apps/api/tsconfig.json scripts/load-test.ts
