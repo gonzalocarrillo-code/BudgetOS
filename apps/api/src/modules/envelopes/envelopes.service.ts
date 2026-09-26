@@ -9,6 +9,7 @@ import { createDraftVersion } from "./commands/create-draft-version.js";
 import { createEnvelope } from "./commands/create-envelope.js";
 import { restoreVersion } from "./commands/restore-version.js";
 import { mergeEnvelopes, moveEnvelope, splitEnvelope } from "./commands/structure.js";
+import { addChild, previewStructure } from "./commands/structure-ui.js";
 import { submitVersion } from "./commands/submit-version.js";
 import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
 import { updateEnvelope } from "./commands/update-envelope.js";
@@ -31,6 +32,12 @@ export class EnvelopesService {
   }
   merge(auth: AuthContext, body: unknown) {
     return mergeEnvelopes(this.prisma, auth, body);
+  }
+  addChild(auth: AuthContext, parentId: string, body: unknown) {
+    return addChild(this.prisma, auth, parentId, body);
+  }
+  previewStructure(auth: AuthContext, body: unknown) {
+    return previewStructure(this.prisma, auth, body);
   }
   bulkPreview(auth: AuthContext, body: unknown) {
     return buildPreview(this.prisma, auth, body, this.previews);

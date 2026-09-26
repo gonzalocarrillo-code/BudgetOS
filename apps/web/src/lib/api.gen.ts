@@ -192,6 +192,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/envelopes/structure/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewEnvelopeStructure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addChildEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/envelopes/merge": {
         parameters: {
             query?: never;
@@ -1700,6 +1732,118 @@ export interface operations {
         responses: {
             /** @description New siblings with drafts summing to the approved amount; one approval (or auto-approved); source archived once approved */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewEnvelopeStructure: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    op: "add_child";
+                    /** Format: uuid */
+                    envelopeId: string;
+                    input: {
+                        name: string;
+                        amount: string;
+                        /** @default {} */
+                        dimensionValues?: {
+                            [key: string]: string;
+                        };
+                        rationale: string;
+                    };
+                } | {
+                    /** @enum {string} */
+                    op: "move";
+                    /** Format: uuid */
+                    envelopeId: string;
+                    input: {
+                        /** Format: uuid */
+                        parentId: string | null;
+                        rowVersion: number;
+                        rationale?: string;
+                    };
+                } | {
+                    /** @enum {string} */
+                    op: "split";
+                    /** Format: uuid */
+                    envelopeId: string;
+                    input: {
+                        /** Format: uuid */
+                        basedOnVersionId: string;
+                        rationale: string;
+                        parts: {
+                            name: string;
+                            amount: string;
+                            /** @default {} */
+                            dimensionValues?: {
+                                [key: string]: string;
+                            };
+                        }[];
+                    };
+                } | {
+                    /** @enum {string} */
+                    op: "merge";
+                    input: {
+                        sourceIds: string[];
+                        name: string;
+                        dimensionValues: {
+                            [key: string]: string;
+                        };
+                        rationale: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description { ok, op, currency, amount, parent, previousParent, routing } or { ok: false, error }: the change is run and rolled back */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    addChildEnvelope: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    amount: string;
+                    /** @default {} */
+                    dimensionValues?: {
+                        [key: string]: string;
+                    };
+                    rationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The child, created under this envelope with its draft submitted (auto-approved or a request) */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

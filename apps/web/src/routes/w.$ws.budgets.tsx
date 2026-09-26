@@ -3,7 +3,7 @@ import { BudgetGrid, parseMoney, formatMoney, type ColumnSpec, type GridEvents }
 import { Button, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, stripSearchParams } from "@tanstack/react-router";
+import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
 import { useRef, useMemo, useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -14,6 +14,8 @@ import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-so
 import { SavedViews } from "../features/explorer/saved-views.js";
 import { api, unwrap } from "../lib/api.js";
 import { envelopeQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { StructureActions } from "../features/structure/structure-actions.js";
+import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
 
 /** Explorer search params are the source of truth for filter / grouping state (spec §18.1). */
 const ExplorerSearch = z.object({
@@ -69,7 +71,7 @@ const GRID_THEME = {
   fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
 };
 
-type Notice = { kind: "ok" | "error"; text: string } | { kind: "conflict"; name: string; amount: string };
+type Notice = { kind: "ok" | "error"; text: string; requestId?: string } | { kind: "conflict"; name: string; amount: string };
 
 function ExplorerPage(): ReactElement {
   const { ws } = Route.useParams();
@@ -82,6 +84,8 @@ function ExplorerPage(): ReactElement {
   const [loaded, setLoaded] = useState<{ totals: Record<string, string | null>; total: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pasted, setPasted] = useState<BulkPreview | null>(null);
+  const [structure, setStructure] = useState<StructureOp | null>(null);
+  const { data: selected } = useQuery({ ...envelopeQuery(ws, search.select ?? ""), enabled: search.select !== undefined });
 
   const setSearch = (patch: Partial<ExplorerSearchT>) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, ...patch }), replace: false });
   const template = templates.find((x) => x.id === search.templateId) ?? templates.find((x) => x.isDefault) ?? templates[0];
@@ -185,6 +189,7 @@ function ExplorerPage(): ReactElement {
             </button>
           ))}
         </div>
+        <StructureActions env={search.select ? (selected ?? null) : null} onPick={setStructure} />
         {view === "tree" ? (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("explorer.hierarchy")}
@@ -225,7 +230,7 @@ function ExplorerPage(): ReactElement {
         </div>
       </div>
       <FilterBar filter={search.filter} dimensions={dimensions} onChange={(filter: FilterGroupT) => setSearch({ filter, expanded: [] })} />
-      {notice ? <NoticeBar notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} /> : null}
+      {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} /> : null}
       <div className="flex min-h-0 gap-0">
         <div className="min-w-0 flex-1">
           <Card>
@@ -249,13 +254,30 @@ function ExplorerPage(): ReactElement {
             }}
           />
         ) : null}
-        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} /> : null}
+        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} /> : null}
+        {structure && selected && selected.id === search.select ? (
+          <StructureDialog
+            ws={ws}
+            op={structure}
+            env={selected}
+            onClose={() => setStructure(null)}
+            onDone={(r) => {
+              setStructure(null);
+              const key = r.op === "move" ? "structure.done.move" : r.requestId ? "structure.done.request" : "structure.done.auto";
+              setNotice({ kind: "ok", text: t(key, { name: selected.name }), ...(r.requestId ? { requestId: r.requestId } : {}) });
+              setReload((n) => n + 1);
+              void client.invalidateQueries({ queryKey: ["envelope", ws] });
+              void client.invalidateQueries({ queryKey: ["approvals", ws] });
+              void client.invalidateQueries({ queryKey: ["timeline", ws] });
+            }}
+          />
+        ) : null}
       </div>
     </Page>
   );
 }
 
-function NoticeBar({ notice, onDismiss, onReload }: { notice: Notice; onDismiss: () => void; onReload: () => void }): ReactElement {
+function NoticeBar({ ws, notice, onDismiss, onReload }: { ws: string; notice: Notice; onDismiss: () => void; onReload: () => void }): ReactElement {
   if (notice.kind === "conflict") {
     return (
       <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm" data-testid="edit-conflict">
@@ -274,9 +296,15 @@ function NoticeBar({ notice, onDismiss, onReload }: { notice: Notice; onDismiss:
   return (
     <div role="status" className={cn("flex items-center gap-3 rounded-lg border px-4 py-2 text-sm", notice.kind === "ok" ? "border-success/40 bg-success/10" : "border-destructive/40 bg-destructive/10")} data-testid={notice.kind === "ok" ? "notice-ok" : "notice-error"}>
       <span className="flex-1">{notice.text}</span>
+      {notice.requestId ? (
+        <Link to="/w/$ws/approvals/$id" params={{ ws, id: notice.requestId }} className="font-medium text-primary hover:underline" data-testid="notice-request">
+          {t("structure.openRequest")}
+        </Link>
+      ) : null}
       <Button size="sm" variant="ghost" onClick={onDismiss}>
         {t("explorer.dismiss")}
       </Button>
     </div>
   );
 }
+

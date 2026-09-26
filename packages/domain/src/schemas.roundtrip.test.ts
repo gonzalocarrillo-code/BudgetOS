@@ -338,6 +338,12 @@ const samples: Record<string, readonly unknown[]> = {
   ],
   CreateTargetDraftInput: [{ basedOnVersionId: workspaceId, value: "17.5", comparator: "lte" }, { basedOnVersionId: null, value: "1", comparator: "gte", rationale: "x" }],
   ListTargetsQuery: [{}, { metric: "cpa", envelopeId: workspaceId, scopeType: "envelope" }],
+  AddChildInput: [{ name: "MX meta lookalike", amount: "5.00", dimensionValues: { audience: "lookalike" }, rationale: "test a new audience" }],
+  StructurePreviewInput: [
+    { op: "add_child", envelopeId: "0190a000-0000-7000-8000-000000000001", input: { name: "Child", amount: "1.00", dimensionValues: {}, rationale: "why not" } },
+    { op: "move", envelopeId: "0190a000-0000-7000-8000-000000000001", input: { parentId: null, rowVersion: 3 } },
+    { op: "merge", input: { sourceIds: ["0190a000-0000-7000-8000-000000000001", "0190a000-0000-7000-8000-000000000002"], name: "All", dimensionValues: { region: "LATAM" }, rationale: "one line" } },
+  ],
   MergeEnvelopesInput: [{ sourceIds: [workspaceId, workspaceId], name: "Merged", dimensionValues: { country: "BR" }, rationale: "consolidate" }],
   AddValuesInput: [
     {

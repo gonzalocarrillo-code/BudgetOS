@@ -46,6 +46,8 @@ export {
   CsvImportReport,
   CreateEnvelopeInput,
   MergeEnvelopesInput,
+  AddChildInput,
+  StructurePreviewInput,
   MoneyString,
   MoveEnvelopeInput,
   PhasingEntry,

@@ -2,6 +2,7 @@ import { formatMoney } from "@budget/grid";
 import { Button } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 import { HistoryList } from "../history/history-list.js";
@@ -10,6 +11,8 @@ import { TagChips } from "../threads/tag-chips.js";
 import { ThreadPanel } from "../threads/thread-panel.js";
 import { envelopeQuery, registryQuery } from "../../lib/queries.js";
 import { DimensionIcon } from "../registry/dimension-icon.js";
+import type { StructureOp } from "../structure/structure-dialog.js";
+import { StructureActions } from "../structure/structure-actions.js";
 
 type Tab = "details" | "history" | "comments";
 
@@ -17,7 +20,7 @@ type Tab = "details" | "history" | "comments";
  * The envelope drawer (`select` search param): Details (approved budget, open draft, dimensions,
  * tags), History (every change, T-029) and Comments (threads, T-030). Every budget always has all three.
  */
-export function EnvelopeDrawer({ ws, id, onClose }: { ws: string; id: string; onClose: () => void }): ReactElement {
+export function EnvelopeDrawer({ ws, id, onClose, onStructure }: { ws: string; id: string; onClose: () => void; onStructure?: (op: StructureOp) => void }): ReactElement {
   const client = useQueryClient();
   const { data, error } = useQuery(envelopeQuery(ws, id));
   const { data: threads } = useQuery(threadsQuery(ws, "envelope", id));
@@ -110,6 +113,34 @@ export function EnvelopeDrawer({ ws, id, onClose }: { ws: string; id: string; on
               </div>
             );
           })}
+          <dt className="col-span-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("structure.title")}</dt>
+          <dd className="col-span-2 flex flex-col gap-2" data-testid="drawer-structure">
+            <p className="text-sm">
+              <span className="text-muted-foreground">{t("structure.parent")} </span>
+              {data.structure.parent ? (
+                <Link to="/w/$ws/budgets" params={{ ws }} search={(prev: Record<string, unknown>) => ({ ...prev, select: data.structure.parent?.id })} className="font-medium hover:text-primary" data-testid="drawer-parent">
+                  {data.structure.parent.name}
+                </Link>
+              ) : (
+                <span>{t("structure.topLevel")}</span>
+              )}
+            </p>
+            {data.structure.children.length ? (
+              <ul className="flex flex-col gap-0.5 text-sm" aria-label={t("structure.children")} data-testid="drawer-children">
+                {data.structure.children.map((c) => (
+                  <li key={c.id} className="flex items-center gap-2" data-testid="drawer-child">
+                    <Link to="/w/$ws/budgets" params={{ ws }} search={(prev: Record<string, unknown>) => ({ ...prev, select: c.id })} className="min-w-0 flex-1 truncate hover:text-primary">
+                      {c.name}
+                    </Link>
+                    <span className="tabular text-xs text-muted-foreground">{c.approved ? formatMoney(c.approved, c.currency) : t(`drawer.status.${c.status.toLowerCase()}` as "drawer.status.draft")}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("structure.noChildren")}</p>
+            )}
+            {onStructure ? <StructureActions env={data} onPick={onStructure} compact /> : null}
+          </dd>
           <dt className="col-span-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("tags.title")}</dt>
           <dd className="col-span-2">
             <TagChips ws={ws} entity={{ type: "envelope", id }} tags={data.tags} onChanged={() => client.invalidateQueries({ queryKey: ["envelope", ws, id] })} />

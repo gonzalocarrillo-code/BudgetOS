@@ -1,8 +1,8 @@
-import { DomainError } from "@budget/domain";
+import { DomainError, canInScope } from "@budget/domain";
 import { withTenant, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
-import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
+import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
 import { parseAsOf } from "./timeline.js";
 import type { AuthContext } from "../../../common/tenant.js";
 
@@ -31,6 +31,31 @@ export function versionDto(v: VersionRow) {
     approvedAt: v.approvedAt?.toISOString() ?? null,
     supersededAt: v.supersededAt?.toISOString() ?? null,
     phasing: v.phasing.map((p) => ({ month: p.month.toISOString().slice(0, 10), amount: p.amount.toFixed(2) })),
+  };
+}
+
+/**
+ * The envelope's place in the tree (T-031b, plan 0.6): its parent, its live children and its live
+ * siblings, each with its approved amount; the ones outside the caller's scope are left out.
+ */
+async function structureOf(tx: Tx, auth: AuthContext, env: { id: string; parentId: string | null; workspaceId: string }) {
+  const select = { id: true, name: true, status: true, currency: true, currentVersionId: true, dimensionValues: true } as const;
+  const live = { status: { not: "ARCHIVED" as const } };
+  const [parent, children, siblings] = await Promise.all([
+    env.parentId ? tx.envelope.findUnique({ where: { id: env.parentId }, select }) : null,
+    tx.envelope.findMany({ where: { parentId: env.id, ...live }, select, orderBy: { name: "asc" } }),
+    tx.envelope.findMany({ where: { workspaceId: env.workspaceId, parentId: env.parentId, id: { not: env.id }, ...live }, select, orderBy: { name: "asc" }, take: 200 }),
+  ]);
+  const all = [...(parent ? [parent] : []), ...children, ...siblings];
+  const versionIds = all.map((e) => e.currentVersionId).filter((v): v is string => v !== null);
+  const amounts = new Map((await tx.envelopeVersion.findMany({ where: { id: { in: versionIds } }, select: { id: true, amount: true } })).map((v) => [v.id, v.amount.toFixed(2)]));
+  const scopes = await envelopeScopeTargets(tx, all.map((e) => e.id));
+  const visible = (id: string) => auth.isOrgAdmin || canInScope(auth.assignments, "envelope.read", scopes.get(id) ?? { dims: {} });
+  const node = (e: (typeof all)[number]) => ({ id: e.id, name: e.name, status: e.status, currency: e.currency, dimensionValues: e.dimensionValues as Record<string, string>, approved: e.currentVersionId ? (amounts.get(e.currentVersionId) ?? null) : null });
+  return {
+    parent: parent && visible(parent.id) ? node(parent) : null,
+    children: children.filter((c) => visible(c.id)).map(node),
+    siblings: siblings.filter((c) => visible(c.id)).map(node),
   };
 }
 
@@ -73,6 +98,7 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       allowOverAllocation: env.allowOverAllocation,
       rowVersion: env.rowVersion,
       tags,
+      structure: await structureOf(tx, auth, env),
       currentVersionId: env.currentVersionId,
       draftVersionId: env.draftVersionId,
       current: current ? versionDto(current) : null,
