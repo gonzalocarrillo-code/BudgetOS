@@ -149,6 +149,9 @@ describe("alerts", () => {
     expect(ids(await call(viewer, "GET", `/alerts?filter=${filter}`))).toEqual([a2]);
     expect(ids(await call(viewer, "GET", `/alerts?status=RESOLVED`))).toEqual([]);
     expect((await call(viewer, "GET", `/alerts?filter=not-json`)).status).toBe(422);
+    // T-032: the alerts screen gets names, not only ids.
+    const listed = (await call(viewer, "GET", `/alerts`)).body as unknown as Array<{ id: string; envelopeName: string | null; ruleName: string | null; metric: string | null }>;
+    expect(listed.find((a) => a.id === a1)).toMatchObject({ envelopeName: expect.any(String), ruleName: expect.any(String), metric: expect.any(String) });
   });
 
   it("acknowledge → snooze → resolve; each change audited with one alert.changed; resolved is final", async () => {

@@ -280,6 +280,7 @@ const samples: Record<string, readonly unknown[]> = {
     },
   ],
   UpdateSourceInput: [{ name: "Renamed" }, { isActive: false, schedule: null }],
+  SuggestMappingSampleInput: [{ header: ["date", "country", "spend"], rows: [["2026-01-01", "BR", 10.5], [null, "MX", "3"]] }],
   MapUnmatchedInput: [{ dimensionValues: { country: "BR", platform: "meta" }, envelopeId: workspaceId }],
   CreateUploadInput: [{ filename: "spend 2026-Q1.csv" }],
   SavedViewScreen: ["explorer"],

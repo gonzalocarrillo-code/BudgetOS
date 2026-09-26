@@ -10,8 +10,10 @@ export interface ObjectStore {
   read(uri: string): Readable;
   write(uri: string, body: string | Buffer, contentType: string): Promise<void>;
   exists(uri: string): Promise<boolean>;
-  /** URL the browser PUTs a file to; expires after `ttlSeconds`. */
+  /** URL the browser sends a file to (with `uploadMethod`, PUT by default); expires after `ttlSeconds`. */
   uploadUrl(uri: string, contentType: string, ttlSeconds: number): Promise<string>;
+  /** A signed GCS URL takes a PUT; the emulator's media upload takes a POST. */
+  readonly uploadMethod?: "PUT" | "POST";
   /** URL the browser GETs the object from, saved as `filename`; expires after `ttlSeconds`. */
   downloadUrl(uri: string, filename: string, ttlSeconds: number): Promise<string>;
 }
@@ -53,6 +55,9 @@ export class GcsObjectStore implements ObjectStore {
   constructor(storage?: Storage, env: NodeJS.ProcessEnv = process.env) {
     this.emulator = env["GCS_EMULATOR_HOST"];
     this.storage = storage ?? (this.emulator ? new Storage({ apiEndpoint: this.emulator, projectId: "budget-os-local" }) : new Storage());
+  }
+  get uploadMethod(): "PUT" | "POST" {
+    return this.emulator ? "POST" : "PUT";
   }
   private file(uri: string) {
     const { bucket, path } = parseGsUri(uri);

@@ -70,7 +70,14 @@ export async function listAlerts(prisma: PrismaClient, auth: AuthContext, raw: u
       take: q.limit,
     });
     const scopes = await envelopeScopeTargets(tx, [...new Set(rows.map((a) => a.envelopeId))]);
-    return rows.filter((a) => auth.isOrgAdmin || canInScope(auth.assignments, "envelope.read", scopes.get(a.envelopeId) ?? { dims: {} })).map(alertView);
+    const visible = rows.filter((a) => auth.isOrgAdmin || canInScope(auth.assignments, "envelope.read", scopes.get(a.envelopeId) ?? { dims: {} }));
+    // Names for the alerts screen (T-032): which budget, which rule and what it measures.
+    const envelopes = new Map((await tx.envelope.findMany({ where: { id: { in: [...new Set(visible.map((a) => a.envelopeId))] } }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
+    const rules = new Map((await tx.pacingRule.findMany({ where: { id: { in: [...new Set(visible.map((a) => a.ruleId))] } }, select: { id: true, name: true, metric: true, comparator: true } })).map((r) => [r.id, r]));
+    return visible.map((a) => {
+      const rule = rules.get(a.ruleId);
+      return { ...alertView(a), envelopeName: envelopes.get(a.envelopeId) ?? null, ruleName: rule?.name ?? null, metric: rule?.metric ?? null, comparator: rule?.comparator ?? null };
+    });
   });
 }
 

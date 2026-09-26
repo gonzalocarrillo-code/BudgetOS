@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-25: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025 and T-026 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -48,7 +48,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-030 | 16 | T-015, T-019, T-026 | done | Playwright mention flow — green (`web/e2e/threads.spec.ts`: @bud → Golden budgetOwner, reactions by account, edit history, comments on approvals and targets, tag chips, target propose → submit); plan 0.6 Comments tab in every drawer, `comment_reaction`, ADR-025 | — |
 | T-031 | 16 | T-005, T-026 | done | Playwright add-dimension < 10 s into filters and ⌘K — green (`web/e2e/registry.spec.ts`: icon from the library, `Parent > Child` values, move under with subtree, hierarchy builder, default granularities, metric library); `PATCH /values/:id {parentCode}`, `PATCH /hierarchy-templates/:id`, `GET /assets/icons/:file`, ADR-026 | — |
 | T-031b | 16 | T-014, T-027 | done | plan 0.6: Playwright add child, move under and split from the tree / drawer, through preview and approval — green (`web/e2e/structure.spec.ts`: add child → budget owner → approver; move refused over cap then to top level; split auto-approved, source archived); `POST /envelopes/structure/preview` (real command, rolled back), `POST /envelopes/:id/children`, `structure` on `GET /envelopes/:id`, ADR-027 | — |
-| T-032 | 16 | T-017, T-018, T-024, T-026 | pending | each screen's acceptance test | live source connectors |
+| T-032 | 16 | T-017, T-018, T-024, T-026 | blocked | each screen's acceptance test — green locally (`web/e2e/alerts.spec.ts`, `rules.spec.ts`, `closures.spec.ts`, `sources.spec.ts`: CSV → mapping wizard → source → finished run with coverage; unmatched assigned); `POST /workspaces/:ws/mapping-suggestions`, local ingest runner, `CLOSURE_SINK=memory` for local stacks, ADR-028 | live source connectors (Snowflake / Sheets / BigQuery need Secret Manager); BigQuery closure sink |
 | T-033 | 16 | T-018, T-026 | pending | overview < 1.5 s on small golden | — |
 | T-034 | 17 | T-022, T-027, T-033 | pending | Appendix C targets at 100k leaves in the CI load job | not a laptop default |
 | T-036 | 18 | T-017, T-034 | pending | preview renders 5 samples; `match_method` on 100% of matched golden facts | — |

@@ -91,6 +91,7 @@ export {
   DimensionColumn,
   IngestRequested,
   MapUnmatchedInput,
+  SuggestMappingSampleInput,
   RoleColumn,
   SourceConfig,
   SourceKind,

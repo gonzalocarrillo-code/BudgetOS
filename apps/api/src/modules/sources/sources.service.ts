@@ -3,7 +3,7 @@ import type { ObjectStore } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import type { AuthContext } from "../../common/tenant.js";
 import { createSource, createUpload, mapUnmatched, queueRun, updateSource } from "./commands/sources.js";
-import { listRuns, listSources, listUnmatched, suggestMapping } from "./queries/sources.js";
+import { listRuns, listSources, listUnmatched, suggestMapping, suggestMappingFromSample } from "./queries/sources.js";
 
 export const OBJECT_STORE = Symbol("OBJECT_STORE");
 
@@ -31,6 +31,9 @@ export class SourcesService {
   }
   suggestMapping(auth: AuthContext, id: string) {
     return suggestMapping(this.prisma, this.store, auth, id);
+  }
+  suggestFromSample(auth: AuthContext, body: unknown) {
+    return suggestMappingFromSample(this.prisma, auth, body);
   }
   unmatched(auth: AuthContext, limit: string | undefined) {
     return listUnmatched(this.prisma, auth, limit);

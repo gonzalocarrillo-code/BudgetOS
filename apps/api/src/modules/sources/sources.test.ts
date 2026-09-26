@@ -129,11 +129,21 @@ describe("sources", () => {
     expect(res.body["code"]).toBe("UNAVAILABLE");
   });
 
+  it("mapping-suggestions (T-032 wizard, before a source exists): validated, 503 without OPENAI_API_KEY, source.manage only", async () => {
+    const sample = { header: ["date", "country", "spend"], rows: [["2026-01-01", "BR", 10]] };
+    const res = await call(dataAdmin, "POST", `/workspaces/${ws}/mapping-suggestions`, sample);
+    expect(res.status).toBe(503);
+    expect(res.body["code"]).toBe("UNAVAILABLE");
+    expect((await call(dataAdmin, "POST", `/workspaces/${ws}/mapping-suggestions`, { header: [], rows: [] })).status).toBe(422);
+    expect((await call(planner, "POST", `/workspaces/${ws}/mapping-suggestions`, sample)).status).toBe(403);
+  });
+
   it("uploads hands out a URI under this workspace's uploads", async () => {
     const res = await call(dataAdmin, "POST", `/uploads`, { filename: "Q1 spend.csv" });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(String(res.body["uri"])).toMatch(new RegExp(`^gs://${uploadBucket()}/uploads/${ws}/[0-9a-f-]{36}-Q1_spend\\.csv$`));
     expect(res.body["uploadUrl"]).toEqual(expect.any(String));
+    expect(["PUT", "POST"]).toContain(res.body["method"]); // T-032: the browser uses it (POST against the emulator)
     expect((await call(dataAdmin, "POST", `/uploads`, { filename: "spend.xlsx" })).status).toBe(422);
   });
 });

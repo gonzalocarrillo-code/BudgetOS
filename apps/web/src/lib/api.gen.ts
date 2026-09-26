@@ -704,6 +704,22 @@ export interface paths {
         patch: operations["updateSource"];
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/mapping-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["suggestMappingFromSample"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources/{id}/suggest-mapping": {
         parameters: {
             query?: never;
@@ -3297,6 +3313,33 @@ export interface operations {
         responses: {
             /** @description Updated source (the kind never changes) */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    suggestMappingFromSample: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    header: string[];
+                    rows: (string | number | unknown)[][];
+                };
+            };
+        };
+        responses: {
+            /** @description A suggested mapping for a file's header and first rows (nothing saved); 503 without OPENAI_API_KEY */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

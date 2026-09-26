@@ -151,6 +151,7 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/workspaces/{ws}/sources", permission: "source.manage", url: () => `/api/v1/workspaces/${wsA}/sources` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/sources", permission: "source.manage", url: () => `/api/v1/workspaces/${wsA}/sources`, body: {} },
   { method: "PATCH", path: "/api/v1/sources/{id}", permission: "source.manage", url: () => `/api/v1/sources/${rid}`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/mapping-suggestions", permission: "source.manage", url: () => `/api/v1/workspaces/${wsA}/mapping-suggestions`, body: {} },
   { method: "POST", path: "/api/v1/sources/{id}/suggest-mapping", permission: "source.manage", url: () => `/api/v1/sources/${rid}/suggest-mapping`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/sources/{id}/run", permission: "source.manage", url: () => `/api/v1/sources/${rid}/run`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/sources/{id}/runs", permission: "source.manage", url: () => `/api/v1/sources/${rid}/runs`, headers: X() },

@@ -4,7 +4,7 @@ import type { DimensionValue } from "../../lib/queries.js";
 export function toKey(label: string): string {
   const k = label
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
@@ -17,7 +17,7 @@ export function toKey(label: string): string {
 export function toCode(label: string): string {
   return label
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")

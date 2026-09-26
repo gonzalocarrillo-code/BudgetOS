@@ -4837,6 +4837,71 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/mapping-suggestions": {
+      "post": {
+        "operationId": "suggestMappingFromSample",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "header": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 2000
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {}
+                        ]
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "header",
+                  "rows"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A suggested mapping for a file's header and first rows (nothing saved); 503 without OPENAI_API_KEY"
+          }
+        }
+      }
+    },
     "/api/v1/sources/{id}/suggest-mapping": {
       "post": {
         "operationId": "suggestSourceMapping",
