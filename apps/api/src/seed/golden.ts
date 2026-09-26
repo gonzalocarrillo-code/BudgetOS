@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -32,6 +32,7 @@ import { seedDefaultRules } from "../modules/pacing/rules.js";
 import { applyTag, createTag } from "../modules/threads/commands/tags.js";
 import { addReaction } from "../modules/threads/commands/reactions.js";
 import { addComment, createThread, resolveThread } from "../modules/threads/commands/threads.js";
+import { createNamingTemplate } from "../modules/naming/naming.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -263,6 +264,10 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   } finally {
     clock.now = () => new Date();
   }
+
+  // ---- T-036: naming templates through the command (every envelope gets its match key). ----
+  for (const t of GOLDEN_NAMING) await createNamingTemplate(app, auth("admin"), t);
+  log(`golden: ${GOLDEN_NAMING.length} naming template(s)`);
 
   // ---- T-017: actuals through the real ingest pipeline (CSV connector, in-memory object store). ----
   const objects = new MemoryObjectStore();

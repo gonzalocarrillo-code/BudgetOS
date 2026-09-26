@@ -37,6 +37,10 @@ export async function targetsFor(tx: Tx, topic: string, payload: Record<string, 
     case "facts.loaded":
       add(t, "envelope", strs(payload["envelopeIds"]));
       break;
+    case "naming.changed":
+      // T-036: a display template renames every envelope, and search shows display names (RLS keeps it to this workspace).
+      if (payload["kind"] === "display") add(t, "envelope", (await tx.envelope.findMany({ select: { id: true } })).map((e) => e.id));
+      break;
     case "period.closed":
     case "period.restated": {
       // Closing and restating change the status of every envelope the closure locked.

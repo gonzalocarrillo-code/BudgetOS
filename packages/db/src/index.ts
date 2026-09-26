@@ -26,7 +26,7 @@ export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
 export { currentFilterTargets, metricLibrary, plannerOptions } from "./planner-options.js";
 export type { CurrentFilterTarget } from "./planner-options.js";
 export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
-export type { FactLoad, KpiFactInput, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
+export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
 export { eligibleApproverSql, lockApprovalRequest, lockParentCap } from "./approvals.js";
@@ -39,6 +39,7 @@ export type { DefaultMetricSeed } from "../seed/defaults.metrics.js";
 export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
 export {
   GOLDEN_COLLAB,
+  GOLDEN_NAMING,
   GOLDEN_CLOSURE,
   GOLDEN_EXPORT,
   GOLDEN_SAVED_VIEW,
@@ -75,3 +76,4 @@ export type { EffectiveTargetRow, LockedTargetRow } from "./targets.js";
 export type { LockedEnvelopeRow } from "./envelopes.js";
 export { withIdentity, withTenant } from "./tenant.js";
 export type { IdentityLookup, TenantContext } from "./tenant.js";
+export { activeNamingTemplates, dimensionLabels, fiscalLabel, recomputeNames } from "./naming.js";
