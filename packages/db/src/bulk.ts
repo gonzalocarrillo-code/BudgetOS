@@ -127,13 +127,14 @@ export async function previousPeriodAmounts(tx: Tx, ids: string[]): Promise<Map<
 }
 
 /** Envelope name path root … self for many envelopes in one recursive query. */
+/** Each envelope's path of names, root first; a display name (T-036) where a display template renders one. */
 export async function envelopePaths(tx: Tx, ids: string[]): Promise<Map<string, string[]>> {
   if (ids.length === 0) return new Map();
   const rows = await tx.$queryRaw<Array<{ id: string; path: string[] }>>`
     WITH RECURSIVE up AS (
-      SELECT e.id AS start, e.id, e.parent_id, ARRAY[e.name] AS path, 0 AS depth FROM envelope e WHERE e.id = ANY(${ids}::uuid[])
+      SELECT e.id AS start, e.id, e.parent_id, ARRAY[coalesce(e.display_name, e.name)] AS path, 0 AS depth FROM envelope e WHERE e.id = ANY(${ids}::uuid[])
       UNION ALL
-      SELECT up.start, p.id, p.parent_id, p.name || up.path, up.depth + 1 FROM envelope p JOIN up ON p.id = up.parent_id WHERE up.depth < 32
+      SELECT up.start, p.id, p.parent_id, coalesce(p.display_name, p.name) || up.path, up.depth + 1 FROM envelope p JOIN up ON p.id = up.parent_id WHERE up.depth < 32
     )
     SELECT DISTINCT ON (start) start::text AS id, path FROM up ORDER BY start, depth DESC`;
   return new Map(rows.map((r) => [r.id, r.path]));

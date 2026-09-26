@@ -95,9 +95,13 @@ describe("sources", () => {
     const res = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "Monthly spend", config: { kind: "csv", uri: uri() }, mapping }, requestId);
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     sourceId = String(res.body["id"]);
-    expect(res.body).toMatchObject({ kind: "csv", name: "Monthly spend", isActive: true });
+    expect(res.body).toMatchObject({ kind: "csv", name: "Monthly spend", isActive: true, parsePattern: null });
     expect(await actions(requestId)).toEqual(["source.created"]);
     expect(await topics("source.changed", "sourceId", sourceId)).toBe(1);
+    // T-036: a parse pattern is a regex with named groups; the PATCH sets or clears it.
+    expect((await call(dataAdmin, "PATCH", `/sources/${sourceId}`, { parsePattern: "^[A-Z]{2}_" })).status).toBe(422);
+    expect((await call(dataAdmin, "PATCH", `/sources/${sourceId}`, { parsePattern: "^(?<country>[A-Z]{2})_" })).body).toMatchObject({ parsePattern: "^(?<country>[A-Z]{2})_" });
+    expect((await call(dataAdmin, "PATCH", `/sources/${sourceId}`, { parsePattern: null })).body).toMatchObject({ parsePattern: null });
     const list = (await call(dataAdmin, "GET", `/workspaces/${ws}/sources`)).body as unknown as Array<{ id: string }>;
     expect(list.map((s) => s.id)).toEqual([sourceId]);
   });
@@ -166,6 +170,9 @@ describe("unmatched spend", () => {
     expect(mapped.status, JSON.stringify(mapped.body)).toBe(201);
     expect(mapped.body).toMatchObject({ envelopeId, spend: 2, kpi: 0, projection: 0 });
     expect(await actions(requestId)).toEqual(["facts.mapped"]);
+    // T-036 (§24.3 step 4): assigned by hand.
+    const methods = await owner.$queryRawUnsafe<Array<{ match_method: string }>>(`SELECT DISTINCT match_method FROM spend_fact WHERE workspace_id = $1::uuid AND envelope_id = $2::uuid AND dimension_values->>'country' = 'US'`, ws, envelopeId);
+    expect(methods).toEqual([{ match_method: "manual" }]);
     expect((await call(dataAdmin, "GET", `/workspaces/${ws}/unmatched-spend`)).body).toEqual([]);
     expect((await call(dataAdmin, "POST", `/workspaces/${ws}/unmatched-spend/map`, { dimensionValues: { country: "US" }, envelopeId })).status).toBe(404);
   });

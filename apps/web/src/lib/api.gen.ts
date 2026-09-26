@@ -976,6 +976,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/naming-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNamingTemplates"];
+        put?: never;
+        post: operations["createNamingTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/naming-templates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewNamingTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/naming-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateNamingTemplate"];
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/overview": {
         parameters: {
             query?: never;
@@ -3209,6 +3257,9 @@ export interface operations {
                                 role: "horizon_end";
                             } | {
                                 /** @enum {string} */
+                                role: "match_key";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -3216,6 +3267,7 @@ export interface operations {
                         kind: "spend" | "kpi" | "spend+kpi" | "projection";
                     };
                     schedule?: string;
+                    parsePattern?: string;
                 };
             };
         };
@@ -3315,6 +3367,9 @@ export interface operations {
                                 role: "horizon_end";
                             } | {
                                 /** @enum {string} */
+                                role: "match_key";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -3322,6 +3377,7 @@ export interface operations {
                         kind: "spend" | "kpi" | "spend+kpi" | "projection";
                     };
                     schedule?: string | null;
+                    parsePattern?: string | null;
                     isActive?: boolean;
                 };
             };
@@ -4187,6 +4243,204 @@ export interface operations {
                         expiresInSeconds: number | null;
                     };
                 };
+            };
+        };
+    };
+    listNamingTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Naming templates, the active one of each kind first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createNamingTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "display" | "match_key";
+                    chips: ({
+                        /** @enum {string} */
+                        type: "dimension";
+                        key: string;
+                    } | {
+                        /** @enum {string} */
+                        type: "separator";
+                        /** @enum {string} */
+                        value: "_" | "-" | ":" | "·" | " " | "/" | "|";
+                    } | {
+                        /** @enum {string} */
+                        type: "text";
+                        value: string;
+                    } | {
+                        /** @enum {string} */
+                        type: "period";
+                        /** @enum {string} */
+                        format: "yyyy" | "yyyy-QQ" | "yyyy-MM" | "MMM yyyy" | "fiscal";
+                    })[];
+                    /**
+                     * @default original
+                     * @enum {string}
+                     */
+                    casing?: "original" | "lower" | "upper";
+                    /**
+                     * @default keep
+                     * @enum {string}
+                     */
+                    whitespace?: "keep" | "underscore" | "dash" | "remove";
+                    /** @default false */
+                    stripAccents?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The new active template of its kind; envelopes renamed (or queued on a large workspace) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewNamingTemplate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    template: {
+                        /** @enum {string} */
+                        kind: "display" | "match_key";
+                        chips: ({
+                            /** @enum {string} */
+                            type: "dimension";
+                            key: string;
+                        } | {
+                            /** @enum {string} */
+                            type: "separator";
+                            /** @enum {string} */
+                            value: "_" | "-" | ":" | "·" | " " | "/" | "|";
+                        } | {
+                            /** @enum {string} */
+                            type: "text";
+                            value: string;
+                        } | {
+                            /** @enum {string} */
+                            type: "period";
+                            /** @enum {string} */
+                            format: "yyyy" | "yyyy-QQ" | "yyyy-MM" | "MMM yyyy" | "fiscal";
+                        })[];
+                        /**
+                         * @default original
+                         * @enum {string}
+                         */
+                        casing?: "original" | "lower" | "upper";
+                        /**
+                         * @default keep
+                         * @enum {string}
+                         */
+                        whitespace?: "keep" | "underscore" | "dash" | "remove";
+                        /** @default false */
+                        stripAccents?: boolean;
+                    };
+                    /** @default [] */
+                    sampleEnvelopeIds?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description { previews: [{ envelopeId, name, rendered }] } for the samples (five live leaves when none are given) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateNamingTemplate: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    chips?: ({
+                        /** @enum {string} */
+                        type: "dimension";
+                        key: string;
+                    } | {
+                        /** @enum {string} */
+                        type: "separator";
+                        /** @enum {string} */
+                        value: "_" | "-" | ":" | "·" | " " | "/" | "|";
+                    } | {
+                        /** @enum {string} */
+                        type: "text";
+                        value: string;
+                    } | {
+                        /** @enum {string} */
+                        type: "period";
+                        /** @enum {string} */
+                        format: "yyyy" | "yyyy-QQ" | "yyyy-MM" | "MMM yyyy" | "fiscal";
+                    })[];
+                    /**
+                     * @default original
+                     * @enum {string}
+                     */
+                    casing?: "original" | "lower" | "upper";
+                    /**
+                     * @default keep
+                     * @enum {string}
+                     */
+                    whitespace?: "keep" | "underscore" | "dash" | "remove";
+                    stripAccents?: boolean;
+                    isActive?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description A new version of the template */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

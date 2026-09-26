@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ParsePattern } from "./naming.js";
 
 /** Data sources and column mapping (spec §14). Every connector maps raw columns to dimensions and roles. */
 
@@ -24,6 +25,8 @@ export const RoleColumn = z.discriminatedUnion("role", [
   z.object({ role: z.literal("projection"), metric: FactMetric.default("spend") }).strict(),
   z.object({ role: z.literal("formula_version") }).strict(),
   z.object({ role: z.literal("horizon_end") }).strict(),
+  /** T-036 (§24.3): compared with envelope.match_key, or parsed with the source's parse_pattern. */
+  z.object({ role: z.literal("match_key") }).strict(),
   z.object({ role: z.literal("ignore") }).strict(),
 ]);
 
@@ -39,7 +42,8 @@ export const SourceMapping = z
     const count = (role: string) => roles.filter((r) => r.role === role).length;
     const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: ["columns"] });
     if (count("period_date") !== 1) issue("Map exactly one period_date column");
-    if (!Object.values(m.columns).some((c) => "dimension" in c)) issue("Map at least one dimension column");
+    if (count("match_key") > 1) issue("Map at most one match_key column");
+    if (!Object.values(m.columns).some((c) => "dimension" in c) && count("match_key") === 0) issue("Map at least one dimension column, or a match_key column");
     if (m.kind === "spend" || m.kind === "spend+kpi") {
       if (count("amount") !== 1) issue("A spend source maps exactly one amount column");
       const amount = roles.find((r) => r.role === "amount");
@@ -90,6 +94,8 @@ export const CreateSourceInput = z.object({
   config: SourceConfig,
   mapping: SourceMapping,
   schedule: Cron.optional(),
+  /** T-036: named groups (dimension keys) read from the match_key column. */
+  parsePattern: ParsePattern.optional(),
 });
 export type CreateSourceInput = z.infer<typeof CreateSourceInput>;
 
@@ -100,6 +106,7 @@ export const UpdateSourceInput = z
     config: SourceConfig.optional(),
     mapping: SourceMapping.optional(),
     schedule: Cron.nullable().optional(),
+    parsePattern: ParsePattern.nullable().optional(),
     isActive: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");

@@ -181,7 +181,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
        FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
        WHERE ${where}
        GROUP BY ${q.groupBy.map((_, i) => `g${i}.code, g${i}.label`).join(", ")}`
-    : `SELECT e.id AS envelope_id, e.name, e.status::text AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values, ${measures.map((mk) => `m.${mk}`).join(", ")}
+    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, e.status::text AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values, ${measures.map((mk) => `m.${mk}`).join(", ")}
          ${kpiSelect},
          (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
          (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads

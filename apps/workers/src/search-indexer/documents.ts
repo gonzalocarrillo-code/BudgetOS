@@ -95,7 +95,8 @@ export async function buildEnvelopes(tx: Tx, ctx: IndexContext, ids: string[] | 
         workspaceId: ctx.workspaceId,
         entityType: "envelope",
         entityId: e.id,
-        title: e.name,
+        // T-036: the display name when a display template renders one; the name stays searchable.
+        title: e.displayName ?? e.name,
         path: (paths.get(e.id) ?? [e.name]).join(" › "),
         body: [...rationales, ...labels, ...Object.values(e.dimensionValues as Record<string, string>)].join("\n"),
         tags: tags.get(e.id) ?? [],
