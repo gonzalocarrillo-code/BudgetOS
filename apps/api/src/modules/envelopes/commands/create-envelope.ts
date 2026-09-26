@@ -1,5 +1,5 @@
 import { CreateEnvelopeInput, DomainError, newId, type Action } from "@budget/domain";
-import { withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { recomputeNames, withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -90,5 +90,6 @@ export async function createEnvelopeIn(tx: Tx, auth: AuthContext, workspaceId: s
     after: { name: input.name, dimensionValues: input.dimensionValues, currency: input.currency, parentId: input.parentId, versionId, amount: input.amount ?? null },
     reason: input.rationale,
   });
+  await recomputeNames(tx, workspaceId, [id]); // T-036: display name and match key from the active templates
   return tx.envelope.findUniqueOrThrow({ where: { id } });
 }

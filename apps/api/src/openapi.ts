@@ -34,6 +34,9 @@ import {
   CreateSourceInput,
   UpdateSourceInput,
   MapUnmatchedInput,
+  CreateNamingTemplateInput,
+  NamingPreviewInput,
+  UpdateNamingTemplateInput,
   SuggestMappingSampleInput,
   CreateUploadInput,
   CreateRuleInput,
@@ -341,6 +344,16 @@ export function openApiDocument(): Record<string, unknown> {
           parameters: [{ name: "jobId", in: "path", required: true, schema: { type: "string", format: "uuid" } }, workspaceHeader],
           responses: { "200": { description: "The caller's export job; downloadUrl while done", ...json(ExportJobView) } },
         },
+      },
+      "/api/v1/workspaces/{ws}/naming-templates": {
+        get: { operationId: "listNamingTemplates", parameters: [workspaceParam], responses: { "200": { description: "Naming templates, the active one of each kind first" } } },
+        post: { operationId: "createNamingTemplate", parameters: [workspaceParam], requestBody: json(CreateNamingTemplateInput), responses: { "201": { description: "The new active template of its kind; envelopes renamed (or queued on a large workspace)" } } },
+      },
+      "/api/v1/naming-templates/preview": {
+        post: { operationId: "previewNamingTemplate", parameters: [workspaceHeader], requestBody: json(NamingPreviewInput), responses: { "201": { description: "{ previews: [{ envelopeId, name, rendered }] } for the samples (five live leaves when none are given)" } } },
+      },
+      "/api/v1/naming-templates/{id}": {
+        patch: { operationId: "updateNamingTemplate", parameters: [idParam, workspaceHeader], requestBody: json(UpdateNamingTemplateInput), responses: { "200": { description: "A new version of the template" } } },
       },
       "/api/v1/workspaces/{ws}/overview": {
         get: { operationId: "getOverview", parameters: [workspaceParam, { name: "period", in: "query", required: false, schema: { type: "string", enum: ["current_month", "current_quarter", "current_year", "last_30_days", "last_90_days", "ytd", "next_90_days"] } }], responses: { "200": { description: "The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness" } } },

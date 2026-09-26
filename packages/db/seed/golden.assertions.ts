@@ -207,5 +207,8 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "comment": 5,
     "tag": 2,
     "dimension_value": 302
+  },
+  "naming": {
+    "templates": 1
   }
 };

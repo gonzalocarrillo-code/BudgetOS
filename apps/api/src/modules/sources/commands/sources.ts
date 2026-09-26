@@ -10,7 +10,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 export function sourceView(s: DataSource) {
-  return { id: s.id, workspaceId: s.workspaceId, kind: s.kind, name: s.name, config: s.config, mapping: s.mapping, schedule: s.schedule, isActive: s.isActive };
+  return { id: s.id, workspaceId: s.workspaceId, kind: s.kind, name: s.name, config: s.config, mapping: s.mapping, schedule: s.schedule, parsePattern: s.parsePattern, isActive: s.isActive };
 }
 
 async function recordSourceChange(tx: Tx, auth: AuthContext, args: { workspaceId: string; action: string; sourceId: string; before?: unknown; after: Record<string, unknown> }) {
@@ -40,7 +40,7 @@ export async function createSource(prisma: PrismaClient, auth: AuthContext, raw:
   checkConfig(input.config, workspaceId);
   return withTenant(prisma, auth.ctx, async (tx) => {
     await checkMapping(tx, auth, workspaceId, input.mapping);
-    const row = await tx.dataSource.create({ data: { id: newId(), workspaceId, kind: input.config.kind, name: input.name, config: json(input.config), mapping: json(input.mapping), schedule: input.schedule ?? null } });
+    const row = await tx.dataSource.create({ data: { id: newId(), workspaceId, kind: input.config.kind, name: input.name, config: json(input.config), mapping: json(input.mapping), schedule: input.schedule ?? null, parsePattern: input.parsePattern ?? null } });
     await recordSourceChange(tx, auth, { workspaceId, action: "source.created", sourceId: row.id, after: { kind: row.kind, name: row.name } });
     return sourceView(row);
   });
@@ -67,6 +67,7 @@ export async function updateSource(prisma: PrismaClient, auth: AuthContext, rawI
         ...(input.config !== undefined ? { config: json(input.config) } : {}),
         ...(input.mapping !== undefined ? { mapping: json(input.mapping) } : {}),
         ...(input.schedule !== undefined ? { schedule: input.schedule } : {}),
+        ...(input.parsePattern !== undefined ? { parsePattern: input.parsePattern } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       },
     });

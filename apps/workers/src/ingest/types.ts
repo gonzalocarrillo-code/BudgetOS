@@ -18,6 +18,8 @@ export interface NormalizedFact {
   formulaVersion?: string;
   horizonEnd?: string;
   rowHash: string;
+  /** §24.3: the tuple came from an external id or a match key (the match confirms it). */
+  matchHint?: "external_id" | "match_key";
 }
 
 /** The fields of a data_source row a connector reads. */

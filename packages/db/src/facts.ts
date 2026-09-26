@@ -10,7 +10,12 @@ export interface SpendFactInput {
   amountReporting: string;
   fxRateId: string | null;
   rowHash: string;
+  /** T-036: provisional `external_id` / `match_key` when the normalizer resolved the tuple that way; the match confirms it. */
+  matchMethod?: MatchHint | null;
 }
+
+export type MatchHint = "external_id" | "match_key";
+export type MatchMethod = MatchHint | "tuple" | "manual";
 
 export interface KpiFactInput {
   dimensionValues: Record<string, string>;
@@ -19,6 +24,7 @@ export interface KpiFactInput {
   value: string; // NUMERIC(18,4)
   attributionModel: string | null;
   rowHash: string;
+  matchMethod?: MatchHint | null;
 }
 
 export interface ProjectionFactInput {
@@ -29,6 +35,7 @@ export interface ProjectionFactInput {
   valueReporting: string | null;
   formulaVersion: string;
   horizonEnd: string;
+  matchMethod?: MatchHint | null;
 }
 
 export interface FactLoad {
@@ -63,40 +70,42 @@ const json = (rows: Array<{ dimensionValues: Record<string, string> }>) => rows.
 export async function upsertSpendFacts(tx: Tx, load: FactLoad, rows: SpendFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO spend_fact (workspace_id, dimension_values, period_date, currency, amount, amount_reporting, fx_rate_id, source_system, source_run_id, source_row_hash)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, c, a::numeric, ar::numeric, fx::uuid, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h
+    INSERT INTO spend_fact (workspace_id, dimension_values, period_date, currency, amount, amount_reporting, fx_rate_id, source_system, source_run_id, source_row_hash, match_method)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, c, a::numeric, ar::numeric, fx::uuid, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h, mm
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.currency)}::text[],
                 ${rows.map((r) => r.amount)}::text[], ${rows.map((r) => r.amountReporting)}::text[],
-                ${rows.map((r) => r.fxRateId)}::text[], ${rows.map((r) => r.rowHash)}::text[]) AS t(d, p, c, a, ar, fx, h)
+                ${rows.map((r) => r.fxRateId)}::text[], ${rows.map((r) => r.rowHash)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, c, a, ar, fx, h, mm)
     ON CONFLICT (workspace_id, source_row_hash, period_date) DO UPDATE SET
       amount = EXCLUDED.amount, amount_reporting = EXCLUDED.amount_reporting, currency = EXCLUDED.currency,
-      fx_rate_id = EXCLUDED.fx_rate_id, source_run_id = EXCLUDED.source_run_id, loaded_at = now()`;
+      fx_rate_id = EXCLUDED.fx_rate_id, source_run_id = EXCLUDED.source_run_id, loaded_at = now(),
+      match_method = CASE WHEN spend_fact.envelope_id IS NULL THEN EXCLUDED.match_method ELSE spend_fact.match_method END`;
 }
 
 export async function upsertKpiFacts(tx: Tx, load: FactLoad, rows: KpiFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO kpi_fact (workspace_id, dimension_values, period_date, metric, value, attribution_model, source_system, source_run_id, source_row_hash)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, am, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h
+    INSERT INTO kpi_fact (workspace_id, dimension_values, period_date, metric, value, attribution_model, source_system, source_run_id, source_row_hash, match_method)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, am, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h, mm
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.metric)}::text[],
-                ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.attributionModel)}::text[], ${rows.map((r) => r.rowHash)}::text[]) AS t(d, p, m, v, am, h)
+                ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.attributionModel)}::text[], ${rows.map((r) => r.rowHash)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, m, v, am, h, mm)
     ON CONFLICT (workspace_id, source_row_hash, period_date) DO UPDATE SET
-      value = EXCLUDED.value, attribution_model = EXCLUDED.attribution_model, source_run_id = EXCLUDED.source_run_id, loaded_at = now()`;
+      value = EXCLUDED.value, attribution_model = EXCLUDED.attribution_model, source_run_id = EXCLUDED.source_run_id, loaded_at = now(),
+      match_method = CASE WHEN kpi_fact.envelope_id IS NULL THEN EXCLUDED.match_method ELSE kpi_fact.match_method END`;
 }
 
 /** Projections are snapshots: each run inserts its own rows and the planner reads the latest run (spec §6.2). */
 export async function insertProjectionFacts(tx: Tx, load: FactLoad, rows: ProjectionFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO projection_fact (workspace_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, vr::numeric, f, he::date, ${load.sourceSystem}, ${load.sourceRunId}::uuid
+    INSERT INTO projection_fact (workspace_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id, match_method)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, vr::numeric, f, he::date, ${load.sourceSystem}, ${load.sourceRunId}::uuid, mm
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.metric)}::text[],
                 ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.valueReporting)}::text[], ${rows.map((r) => r.formulaVersion)}::text[],
-                ${rows.map((r) => r.horizonEnd)}::text[]) AS t(d, p, m, v, vr, f, he)`;
+                ${rows.map((r) => r.horizonEnd)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, m, v, vr, f, he, mm)`;
 }
 
 /**
- * Spec §14 step 5, for each fact table: an unmatched fact of this run goes to the most specific
+ * Spec §24.3 (replacing §14 step 5), for each fact table: an unmatched fact of this run goes to the most specific
  * live envelope whose tuple is a subset of the fact's tuple and whose dates cover the fact's date.
  * Returns the envelopes that gained facts.
  */
@@ -104,7 +113,9 @@ export async function matchRunFacts(tx: Tx, workspaceId: string, runId: string):
   const matched = new Set<string>();
   for (const table of ["spend_fact", "kpi_fact", "projection_fact"] as const) {
     const rows = await tx.$queryRawUnsafe<Array<{ envelope_id: string }>>(
-      `UPDATE ${table} f SET envelope_id = m.envelope_id
+      // external_id / match_key resolved the fact's tuple before the upsert (the normalizer); the
+      // tuple match finds the envelope and keeps that method, else records `tuple`.
+      `UPDATE ${table} f SET envelope_id = m.envelope_id, match_method = coalesce(f.match_method, 'tuple')
        FROM (
          SELECT f2.id, f2.period_date, e.id AS envelope_id,
                 row_number() OVER (PARTITION BY f2.id, f2.period_date ORDER BY (SELECT count(*) FROM jsonb_object_keys(e.dimension_values)) DESC, e.id) AS rn
@@ -122,6 +133,8 @@ export async function matchRunFacts(tx: Tx, workspaceId: string, runId: string):
       runId,
     );
     for (const r of rows) matched.add(r.envelope_id);
+    // A provisional method on a fact that matched nothing is not a match method.
+    await tx.$executeRawUnsafe(`UPDATE ${table} SET match_method = NULL WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid AND envelope_id IS NULL AND match_method IS NOT NULL`, workspaceId, runId);
   }
   return [...matched].sort();
 }
@@ -133,6 +146,8 @@ export interface RunCoverage {
   matchedSpend: string;
   kpiRows: number;
   matchedKpiRows: number;
+  /** T-036: spend rows and amount by how they matched (external_id, match_key, tuple, manual). */
+  byMethod: Record<string, { rows: number; spend: string }>;
 }
 
 /** Match coverage of a run (spec §24.3: matched spend / total spend), in reporting currency. */
@@ -144,6 +159,10 @@ export async function runCoverage(tx: Tx, workspaceId: string, runId: string): P
     FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND source_run_id = ${runId}::uuid`;
   const [k] = await tx.$queryRaw<Array<{ rows: bigint; matched: bigint }>>`
     SELECT count(*) AS rows, count(envelope_id) AS matched FROM kpi_fact WHERE workspace_id = ${workspaceId}::uuid AND source_run_id = ${runId}::uuid`;
+  const methods = await tx.$queryRaw<Array<{ m: string; rows: bigint; spend: string }>>`
+    SELECT match_method AS m, count(*) AS rows, coalesce(sum(amount_reporting), 0)::text AS spend
+    FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND source_run_id = ${runId}::uuid AND envelope_id IS NOT NULL
+    GROUP BY match_method ORDER BY match_method`;
   return {
     spendRows: Number(s?.rows ?? 0),
     matchedSpendRows: Number(s?.matched ?? 0),
@@ -151,6 +170,7 @@ export async function runCoverage(tx: Tx, workspaceId: string, runId: string): P
     matchedSpend: s?.matched_spend ?? "0",
     kpiRows: Number(k?.rows ?? 0),
     matchedKpiRows: Number(k?.matched ?? 0),
+    byMethod: Object.fromEntries(methods.map((r) => [r.m ?? "none", { rows: Number(r.rows), spend: r.spend }])),
   };
 }
 
@@ -186,7 +206,7 @@ export async function assignUnmatched(
   const d = JSON.stringify(dimensionValues);
   for (const [key, table] of [["spend", "spend_fact"], ["kpi", "kpi_fact"], ["projection", "projection_fact"]] as const) {
     out[key] = await tx.$executeRawUnsafe(
-      `UPDATE ${table} SET envelope_id = $2::uuid
+      `UPDATE ${table} SET envelope_id = $2::uuid, match_method = 'manual'
        WHERE workspace_id = $1::uuid AND envelope_id IS NULL AND dimension_values = $3::jsonb AND period_date BETWEEN $4::date AND $5::date`,
       workspaceId,
       envelope.id,

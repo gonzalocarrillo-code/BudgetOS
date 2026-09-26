@@ -18,20 +18,23 @@ export interface RegistryValue {
   isActive: boolean;
 }
 
+type Via = "code" | "alias" | "external_id";
+
 export class RegistryIndex {
-  private readonly exact = new Map<string, Map<string, RegistryValue>>();
-  private readonly folded = new Map<string, Map<string, RegistryValue>>();
+  private readonly exact = new Map<string, Map<string, { v: RegistryValue; via: Via }>>();
+  private readonly folded = new Map<string, Map<string, { v: RegistryValue; via: Via }>>();
 
   constructor(dimensions: Map<string, RegistryValue[]>) {
     for (const [key, values] of dimensions) {
-      const exact = new Map<string, RegistryValue>();
-      const folded = new Map<string, RegistryValue>();
+      const exact = new Map<string, { v: RegistryValue; via: Via }>();
+      const folded = new Map<string, { v: RegistryValue; via: Via }>();
       // Codes win over aliases, aliases over external ids.
-      for (const pick of [(v: RegistryValue) => [v.code], (v: RegistryValue) => v.aliases, (v: RegistryValue) => v.externalIds]) {
+      const picks: Array<[Via, (v: RegistryValue) => string[]]> = [["code", (v) => [v.code]], ["alias", (v) => v.aliases], ["external_id", (v) => v.externalIds]];
+      for (const [via, pick] of picks) {
         for (const v of values) {
           for (const name of pick(v)) {
-            if (!exact.has(name)) exact.set(name, v);
-            if (!folded.has(name.toLowerCase())) folded.set(name.toLowerCase(), v);
+            if (!exact.has(name)) exact.set(name, { v, via });
+            if (!folded.has(name.toLowerCase())) folded.set(name.toLowerCase(), { v, via });
           }
         }
       }
@@ -44,14 +47,25 @@ export class RegistryIndex {
     return this.exact.has(dimension);
   }
 
-  /** The registry code for a raw value, or an error message. */
-  resolve(dimension: string, raw: string): { code: string } | { error: string } {
-    const v = this.exact.get(dimension)?.get(raw) ?? this.folded.get(dimension)?.get(raw.toLowerCase());
-    if (v === undefined) return { error: `unknown ${dimension} "${raw}"` };
-    if (v.mergedInto !== null) return { code: v.mergedInto };
+  /** The registry code for a raw value (and whether it was an external id, §24.3 step 1), or an error message. */
+  resolve(dimension: string, raw: string): { code: string; via: Via } | { error: string } {
+    const hit = this.exact.get(dimension)?.get(raw) ?? this.folded.get(dimension)?.get(raw.toLowerCase());
+    if (hit === undefined) return { error: `unknown ${dimension} "${raw}"` };
+    const { v, via } = hit;
+    if (v.mergedInto !== null) return { code: v.mergedInto, via };
     if (!v.isActive) return { error: `${dimension} "${raw}" is retired` };
-    return { code: v.code };
+    return { code: v.code, via };
   }
+}
+
+/**
+ * §24.3 step 2: the envelopes' match keys (lower-cased → the envelope's tuple) and the source's
+ * parse pattern (named groups are dimension keys). A match key resolves the fact's tuple to that
+ * envelope's; a parse pattern reads dimension values out of the key.
+ */
+export interface MatchKeys {
+  envelopes: Map<string, Record<string, string>>;
+  pattern: RegExp | null;
 }
 
 export type NormalizeResult = { facts: NormalizedFact[] } | { rejected: string };
@@ -101,8 +115,10 @@ export function rowHash(sourceId: string, row: RawRow, suffix = ""): string {
   return createHash("sha256").update(sourceId + JSON.stringify(sorted) + suffix).digest("hex");
 }
 
-export function normalize(row: RawRow, mapping: SourceMapping, registry: RegistryIndex, sourceId: string): NormalizeResult {
-  const dimensionValues: Record<string, string> = {};
+export function normalize(row: RawRow, mapping: SourceMapping, registry: RegistryIndex, sourceId: string, keys: MatchKeys = { envelopes: new Map(), pattern: null }): NormalizeResult {
+  let dimensionValues: Record<string, string> = {};
+  let viaExternalId = false;
+  let matchKey: string | null = null;
   let periodDate: string | null = null;
   let amount: string | null = null;
   let currency: string | null = null;
@@ -119,6 +135,7 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
       const resolved = registry.resolve(c.dimension, transform(v, c));
       if ("error" in resolved) return { rejected: resolved.error };
       dimensionValues[c.dimension] = resolved.code;
+      if (resolved.via === "external_id") viaExternalId = true;
       continue;
     }
     switch (c.role) {
@@ -162,15 +179,40 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
           if (horizonEnd === null) return { rejected: `${column} "${v}" is not yyyy-MM-dd` };
         }
         break;
+      case "match_key":
+        matchKey = v;
+        break;
       case "ignore":
         break;
     }
   }
   if (periodDate === null) return { rejected: "no period date" };
-  if (Object.keys(dimensionValues).length === 0) return { rejected: "no dimension values" };
+  // §24.3: 1. external ids resolved above; 2. the match key (parsed, or looked up); 3. the tuple (in the match).
+  let viaMatchKey = false;
+  if (matchKey !== null) {
+    if (keys.pattern) {
+      const groups = keys.pattern.exec(matchKey)?.groups;
+      for (const [k, raw] of Object.entries(groups ?? {})) {
+        if (raw === undefined || dimensionValues[k] !== undefined) continue;
+        const resolved = registry.resolve(k, raw);
+        if ("error" in resolved) return { rejected: `${resolved.error} (from the match key "${matchKey}")` };
+        dimensionValues[k] = resolved.code;
+        viaMatchKey = true;
+      }
+    } else {
+      const tuple = keys.envelopes.get(matchKey.toLowerCase());
+      if (tuple) {
+        dimensionValues = { ...dimensionValues, ...tuple };
+        viaMatchKey = true;
+      }
+    }
+  }
+  // A row with an unknown match key and no dimensions is unmatched, not rejected: the queue shows it.
+  if (Object.keys(dimensionValues).length === 0 && matchKey === null) return { rejected: "no dimension values" };
+  const matchHint = viaExternalId ? ("external_id" as const) : viaMatchKey ? ("match_key" as const) : undefined;
 
   const facts: NormalizedFact[] = [];
-  const base = { dimensionValues, periodDate };
+  const base = { dimensionValues, periodDate, ...(matchHint ? { matchHint } : {}) };
   if (mapping.kind === "spend" || mapping.kind === "spend+kpi") {
     if (amount !== null) {
       if (currency === null) return { rejected: "no currency for the amount" };

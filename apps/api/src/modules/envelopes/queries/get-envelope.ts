@@ -88,6 +88,8 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       workspaceId: env.workspaceId,
       parentId: env.parentId,
       name: env.name,
+      displayName: env.displayName,
+      matchKey: env.matchKey,
       dimensionValues: env.dimensionValues,
       periodId: env.periodId,
       startDate: env.startDate.toISOString().slice(0, 10),

@@ -181,6 +181,31 @@ describe("split (T-014 seed rows)", () => {
   });
 });
 
+describe("naming and match method (T-036 done-when: match_method on 100% of matched golden facts)", () => {
+  it("every envelope carries its match key; every matched fact says how it matched; the run summary counts spend by method", async () => {
+    expect(await owner.namingTemplate.count({ where: { workspaceId: golden.workspaceId, isActive: true } })).toBe(A.naming.templates);
+    const leaf = goldenPlan().find((e) => e.level === 4) as { key: string; dimensionValues: Record<string, string> };
+    const e = await owner.envelope.findUniqueOrThrow({ where: { id: golden.envelopeIds.get(leaf.key) as string }, select: { matchKey: true, displayName: true } });
+    const d = leaf.dimensionValues;
+    expect(e).toEqual({ matchKey: [d["country"], d["platform"], d["objective"], d["audience"]].join("_").toLowerCase(), displayName: null });
+    for (const table of ["spend_fact", "kpi_fact"]) {
+      const [row] = await owner.$queryRawUnsafe<Array<{ matched: bigint; with_method: bigint; unmatched_with_method: bigint }>>(
+        `SELECT count(*) FILTER (WHERE envelope_id IS NOT NULL) AS matched, count(*) FILTER (WHERE envelope_id IS NOT NULL AND match_method IS NOT NULL) AS with_method,
+                count(*) FILTER (WHERE envelope_id IS NULL AND match_method IS NOT NULL) AS unmatched_with_method
+           FROM ${table} WHERE workspace_id = $1::uuid`,
+        golden.workspaceId,
+      );
+      expect(Number(row?.matched)).toBeGreaterThan(0);
+      expect(Number(row?.with_method)).toBe(Number(row?.matched));
+      expect(Number(row?.unmatched_with_method)).toBe(0);
+    }
+    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: golden.ingest?.runId ?? "" } });
+    const summary = run.summary as { matchedSpendRows: number; byMethod: Record<string, { rows: number }> };
+    expect(Object.values(summary.byMethod).reduce((n, m) => n + m.rows, 0)).toBe(summary.matchedSpendRows);
+    expect(summary.byMethod["tuple"]?.rows).toBe(summary.matchedSpendRows); // the golden CSV matches by tuple
+  });
+});
+
 describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
   const F = A.facts;
   it("loads the golden CSV through the pipeline: counts, coverage and the rejected-rows report", async () => {

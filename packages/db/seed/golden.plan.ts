@@ -238,6 +238,28 @@ export const GOLDEN_EXPORT = { persona: "finance1", kind: "csv", filename: "gold
  */
 export const GOLDEN_CLOSURE = { periodKey: "2026-Q1", closer: "finance1", restater: "admin", reason: "Q1 actuals restated after the late invoice run (golden)" } as const;
 
+/**
+ * T-036's row: a match_key template, so every golden envelope carries a key like
+ * `br_meta_awareness_prospecting` (codes, lower case). No display template: names stay as planned.
+ */
+export const GOLDEN_NAMING = [
+  {
+    kind: "match_key",
+    chips: [
+      { type: "dimension", key: "country" },
+      { type: "separator", value: "_" },
+      { type: "dimension", key: "platform" },
+      { type: "separator", value: "_" },
+      { type: "dimension", key: "objective" },
+      { type: "separator", value: "_" },
+      { type: "dimension", key: "audience" },
+    ],
+    casing: "lower",
+    whitespace: "keep",
+    stripAccents: false,
+  },
+] as const;
+
 /** T-027's row: the planner's saved Explorer view (a pivot of the LATAM leaves by country), through the command. */
 export const GOLDEN_SAVED_VIEW = {
   persona: "planner",
@@ -413,6 +435,8 @@ export interface GoldenTotals {
   collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; reactions: number; envelopesWithOpenThreads: number };
   /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
   search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value", number>;
+  /** T-036: naming templates seeded (GOLDEN_NAMING). */
+  naming: { templates: number };
   /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
   rollup: { nodesByTemplate: Record<string, number[]>; rootBudget: string; rootActual: string };
   /** T-023: the GOLDEN_EXPORT file: data rows and the totals row's budget. */
@@ -554,5 +578,6 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       tag: GOLDEN_COLLAB.tags.length,
       dimension_value: DEFAULT_DIMENSIONS.reduce((n, d) => n + d.values.length, 0) + GOLDEN_CUSTOM_DIMENSIONS.reduce((n, d) => n + d.values.length, 0),
     },
+    naming: { templates: GOLDEN_NAMING.length },
   };
 }

@@ -23,6 +23,7 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM taggable WHERE workspace_id = $1::uuid`,
     `DELETE FROM tag WHERE workspace_id = $1::uuid`,
     `DELETE FROM comment_reaction WHERE workspace_id = $1::uuid`,
+    `DELETE FROM naming_template WHERE workspace_id = $1::uuid`,
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
     `DELETE FROM thread WHERE workspace_id = $1::uuid`,
     `DELETE FROM alert WHERE workspace_id = $1::uuid`,

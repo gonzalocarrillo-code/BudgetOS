@@ -1,4 +1,4 @@
-import { SourceConfig, SourceMapping } from "@budget/domain";
+import { SourceConfig, SourceMapping, compileParsePattern } from "@budget/domain";
 import {
   audit,
   bumpDataVersion,
@@ -23,7 +23,7 @@ import { Decimal } from "decimal.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { log } from "../log.js";
 import { connectorFor } from "./connectors/index.js";
-import { RegistryIndex, normalize, type RegistryValue } from "./normalize.js";
+import { RegistryIndex, normalize, type MatchKeys, type RegistryValue } from "./normalize.js";
 import type { ObjectStore } from "./object-store.js";
 import type { Connector, DataSourceRef, RawRow } from "./types.js";
 
@@ -134,7 +134,12 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     // Facts dated in a closed period are rejected unless the run is flagged as its restatement (spec §15).
     const restatementOf = ((run.summary ?? {}) as { restatementOf?: string }).restatementOf ?? null;
     const closed = (await closedPeriods(tx, tenant.workspaceId)).filter((c) => c.closureId !== restatementOf);
-    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since: previous?.startedAt, closed, restatementOf };
+    // §24.3 step 2: every live envelope's match key → its tuple (only when the mapping has a match_key column).
+    const parsed = SourceMapping.safeParse(source.mapping);
+    const hasKey = parsed.success && Object.values(parsed.data.columns).some((c) => "role" in c && c.role === "match_key");
+    const keyed = hasKey ? await tx.envelope.findMany({ where: { workspaceId: tenant.workspaceId, status: { not: "ARCHIVED" }, matchKey: { not: null } }, select: { matchKey: true, dimensionValues: true } }) : [];
+    const keys: MatchKeys = { envelopes: new Map(keyed.map((e) => [String(e.matchKey).toLowerCase(), e.dimensionValues as Record<string, string>])), pattern: source.parsePattern ? compileParsePattern(source.parsePattern) : null };
+    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since: previous?.startedAt, closed, restatementOf, keys };
   });
 
   try {
@@ -142,6 +147,9 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     const mapping = SourceMapping.parse(setup.source.mapping);
     const unknown = Object.values(mapping.columns).flatMap((c) => ("dimension" in c && !setup.registry.has(c.dimension) ? [c.dimension] : []));
     if (unknown.length) throw new Error(`mapping names unknown dimensions: ${[...new Set(unknown)].join(", ")}`);
+    const groups = setup.keys.pattern ? [...(setup.source.parsePattern ?? "").matchAll(/\(\?<([a-z][a-z0-9_]*)>/g)].map((m) => m[1] as string) : [];
+    const unknownGroups = groups.filter((g) => !setup.registry.has(g));
+    if (unknownGroups.length) throw new Error(`parse pattern names unknown dimensions: ${unknownGroups.join(", ")}`);
     const ref: DataSourceRef = { id: setup.source.id, workspaceId: setup.source.workspaceId, kind: setup.source.kind, config };
     const secretRef = "secretRef" in config ? config.secretRef : undefined;
     const secret = secretRef ? await (deps.secrets ?? noSecrets)(secretRef) : {};
@@ -166,7 +174,7 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
           const kpi: KpiFactInput[] = [];
           const projection: ProjectionFactInput[] = [];
           for (const { line, row } of rows) {
-            const res = normalize(row, mapping, setup.registry, setup.source.id);
+            const res = normalize(row, mapping, setup.registry, setup.source.id, setup.keys);
             if ("rejected" in res) {
               rejected.push({ line, row, reason: res.rejected });
               continue;
@@ -185,11 +193,11 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
                   reason = `no FX rate ${f.currency}→${setup.reporting} on ${f.periodDate}`;
                   break;
                 }
-                pending.spend.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, currency: f.currency, amount: f.amount, amountReporting: new Decimal(f.amount).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, rowHash: f.rowHash });
+                pending.spend.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, currency: f.currency, amount: f.amount, amountReporting: new Decimal(f.amount).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, rowHash: f.rowHash, matchMethod: f.matchHint ?? null });
               } else if (f.kind === "kpi" && f.metric !== undefined && f.value !== undefined) {
-                pending.kpi.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, attributionModel: f.attributionModel ?? null, rowHash: f.rowHash });
+                pending.kpi.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, attributionModel: f.attributionModel ?? null, rowHash: f.rowHash, matchMethod: f.matchHint ?? null });
               } else if (f.kind === "projection" && f.metric !== undefined && f.value !== undefined && f.formulaVersion !== undefined && f.horizonEnd !== undefined) {
-                pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, valueReporting: f.metric === "spend" ? f.value : null, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd });
+                pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, valueReporting: f.metric === "spend" ? f.value : null, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null });
               }
             }
             if (reason !== null) {

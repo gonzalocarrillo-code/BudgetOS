@@ -219,6 +219,9 @@ model Envelope {
   currentVersionId    String?             @map("current_version_id") @db.Uuid // latest APPROVED
   draftVersionId      String?             @map("draft_version_id") @db.Uuid // open draft, if any
   rowVersion          Int                 @default(1) @map("row_version") // optimistic concurrency for metadata edits
+  /// T-036: rendered by the active naming templates (§24.2); the tuple stays the identity.
+  displayName         String?             @map("display_name")
+  matchKey            String?             @map("match_key")
   createdBy           String              @map("created_by") @db.Uuid
   createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
@@ -227,6 +230,7 @@ model Envelope {
 
   @@index([workspaceId, parentId])
   @@index([workspaceId, startDate, endDate])
+  @@index([workspaceId, matchKey], map: "envelope_match_key_idx")
   @@map("envelope")
 }
 
@@ -623,16 +627,35 @@ model ClosureEnvelope {
 }
 
 model DataSource {
-  id          String  @id @db.Uuid
-  workspaceId String  @map("workspace_id") @db.Uuid
-  kind        String // snowflake | sheets | bigquery | csv
-  name        String
-  config      Json // non-secret config; secretRef points to Secret Manager
-  mapping     Json // column → dimension/measure mapping
-  schedule    String? // cron
-  isActive    Boolean @default(true) @map("is_active")
+  id           String  @id @db.Uuid
+  workspaceId  String  @map("workspace_id") @db.Uuid
+  kind         String // snowflake | sheets | bigquery | csv
+  name         String
+  config       Json // non-secret config; secretRef points to Secret Manager
+  mapping      Json // column → dimension/measure mapping
+  schedule     String? // cron
+  isActive     Boolean @default(true) @map("is_active")
+  /// T-036: regex with named groups applied to the column mapped as match_key.
+  parsePattern String? @map("parse_pattern")
 
   @@map("data_source")
+}
+
+/// T-036 (§24.1): how envelopes are named (`display`) and keyed for matching (`match_key`).
+model NamingTemplate {
+  id           String   @id @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  kind         String // display | match_key
+  chips        Json
+  casing       String   @default("original")
+  whitespace   String   @default("keep")
+  stripAccents Boolean  @default(false) @map("strip_accents")
+  version      Int      @default(1)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdBy    String   @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("naming_template")
 }
 
 model IngestRun {

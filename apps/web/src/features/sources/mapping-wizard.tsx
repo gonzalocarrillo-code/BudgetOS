@@ -17,7 +17,7 @@ export interface Mapping {
 
 /** What a column maps to, as one select value: `role:amount`, `dim:country`, … */
 const choiceOf = (c: ColumnMapping | undefined): string => (!c ? "role:ignore" : "dimension" in c ? `dim:${c.dimension}` : `role:${c.role}`);
-const ROLES = ["period_date", "amount", "currency", "kpi", "projection", "formula_version", "horizon_end", "ignore"] as const;
+const ROLES = ["period_date", "amount", "currency", "kpi", "match_key", "projection", "formula_version", "horizon_end", "ignore"] as const;
 
 /**
  * MappingWizard (spec §18.5, §14): 1) pick a CSV (its header and first 20 rows are read here);
@@ -35,6 +35,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
   const [name, setName] = useState(source?.name ?? "");
   const [schedule, setSchedule] = useState("");
   const [runNow, setRunNow] = useState(true);
+  const [parsePattern, setParsePattern] = useState("");
   const [aiNote, setAiNote] = useState<string | null>(null);
 
   const read = async (f: File) => {
@@ -70,7 +71,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
       const upload = z.object({ uri: z.string(), uploadUrl: z.string(), method: z.enum(["PUT", "POST"]).default("PUT"), contentType: z.string() }).parse(await unwrap(api.POST("/api/v1/uploads", { params: { header }, body: { filename: file.name.replace(/[^\w.\- ]/g, "_") } as never })));
       const res = await fetch(upload.uploadUrl, { method: upload.method, headers: { "content-type": upload.contentType }, body: file });
       if (!res.ok) throw new Error(t("sources.uploadFailed", { status: res.status }));
-      const created = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: { kind: "csv", uri: upload.uri }, mapping, ...(schedule.trim() ? { schedule: schedule.trim() } : {}) } as never })));
+      const created = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: { kind: "csv", uri: upload.uri }, mapping, ...(schedule.trim() ? { schedule: schedule.trim() } : {}), ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never })));
       if (runNow) await unwrap(api.POST("/api/v1/sources/{id}/run", { params: { path: { id: created.id }, header }, body: {} as never }));
       return created.id;
     },
@@ -216,6 +217,13 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
             <input className="h-9 rounded-lg border border-input bg-card px-2 font-mono text-sm outline-none focus:border-ring" value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="0 6 * * *" />
             <span className="text-xs font-normal text-muted-foreground">{t("sources.scheduleHelp")}</span>
           </label>
+          {mapping && Object.values(mapping.columns).some((c) => "role" in c && c.role === "match_key") ? (
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              {t("sources.parsePattern")}
+              <input className="h-9 rounded-lg border border-input bg-card px-2 font-mono text-sm outline-none focus:border-ring" value={parsePattern} onChange={(e) => setParsePattern(e.target.value)} placeholder="^(?<country>[A-Z]{2})_(?<platform>[a-z_]+)" data-testid="wizard-parse-pattern" />
+              <span className="text-xs font-normal text-muted-foreground">{t("sources.parsePatternHelp")}</span>
+            </label>
+          ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={runNow} onChange={(e) => setRunNow(e.target.checked)} />
             {t("sources.runNow")}

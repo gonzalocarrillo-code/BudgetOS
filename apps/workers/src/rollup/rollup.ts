@@ -1,5 +1,5 @@
 import { LIVE_LEAVES, QueryRequest, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx } from "@budget/db";
+import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, recomputeNames, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
@@ -172,8 +172,10 @@ export async function rebuildWorkspace(prisma: PrismaClient, tenant: { workspace
 export async function handleRollupEvent(prisma: PrismaClient, body: unknown, today = new Date().toISOString().slice(0, 10)) {
   const event = decodePush(body);
   const ctx: Ctx = { workspaceId: event.workspaceId, orgId: event.orgId, today };
-  let result: { templates: number; upserted: number; deleted: number; rebuilt: boolean } = { templates: 0, upserted: 0, deleted: 0, rebuilt: false };
+  let result: { templates: number; upserted: number; deleted: number; rebuilt: boolean; renamed?: number } = { templates: 0, upserted: 0, deleted: 0, rebuilt: false };
   const outcome = await handleOnce(prisma, ROLLUP_CONSUMER, event, async (tx) => {
+    // T-036 (§24.2): a naming or registry change renames every envelope (labels, codes, templates).
+    if (event.topic === "naming.changed" || event.topic === "registry.changed") result.renamed = await recomputeNames(tx, event.workspaceId);
     if (!["budget.changed", "facts.loaded", "registry.changed"].includes(event.topic)) return;
     const templates = await tx.hierarchyTemplate.findMany({ where: { workspaceId: event.workspaceId } });
     result.templates = templates.length;

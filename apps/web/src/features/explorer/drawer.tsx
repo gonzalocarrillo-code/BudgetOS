@@ -49,8 +49,9 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure }: { ws: string; i
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold tracking-[-0.015em]" data-testid="drawer-name">
-            {data?.name ?? (error ? t("error.title") : t("shell.loading"))}
+            {(typeof data?.["displayName"] === "string" ? data["displayName"] : null) ?? data?.name ?? (error ? t("error.title") : t("shell.loading"))}
           </h2>
+          {typeof data?.["displayName"] === "string" && data["displayName"] !== data.name ? <p className="truncate text-xs text-muted-foreground" data-testid="drawer-original-name">{data.name}</p> : null}
           {error ? <p className="text-xs text-destructive" data-testid="drawer-error">{error.message}</p> : null}
           {data ? <p className="text-xs text-muted-foreground">{data.status}</p> : null}
         </div>

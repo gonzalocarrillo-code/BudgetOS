@@ -4401,6 +4401,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "match_key"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -4432,6 +4446,11 @@
                   "schedule": {
                     "type": "string",
                     "pattern": "^(\\S+\\s){4}\\S+$"
+                  },
+                  "parsePattern": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
                   }
                 },
                 "required": [
@@ -4789,6 +4808,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "match_key"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -4820,6 +4853,12 @@
                   "schedule": {
                     "type": "string",
                     "pattern": "^(\\S+\\s){4}\\S+$",
+                    "nullable": true
+                  },
+                  "parsePattern": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500,
                     "nullable": true
                   },
                   "isActive": {
@@ -6931,6 +6970,540 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-templates": {
+      "get": {
+        "operationId": "listNamingTemplates",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Naming templates, the active one of each kind first"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createNamingTemplate",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "display",
+                      "match_key"
+                    ]
+                  },
+                  "chips": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 30,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "dimension"
+                              ]
+                            },
+                            "key": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_]{1,40}$"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "key"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "separator"
+                              ]
+                            },
+                            "value": {
+                              "type": "string",
+                              "enum": [
+                                "_",
+                                "-",
+                                ":",
+                                "·",
+                                " ",
+                                "/",
+                                "|"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "value"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "text"
+                              ]
+                            },
+                            "value": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "value"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "period"
+                              ]
+                            },
+                            "format": {
+                              "type": "string",
+                              "enum": [
+                                "yyyy",
+                                "yyyy-QQ",
+                                "yyyy-MM",
+                                "MMM yyyy",
+                                "fiscal"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "format"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "casing": {
+                    "type": "string",
+                    "enum": [
+                      "original",
+                      "lower",
+                      "upper"
+                    ],
+                    "default": "original"
+                  },
+                  "whitespace": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "underscore",
+                      "dash",
+                      "remove"
+                    ],
+                    "default": "keep"
+                  },
+                  "stripAccents": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "chips"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new active template of its kind; envelopes renamed (or queued on a large workspace)"
+          }
+        }
+      }
+    },
+    "/api/v1/naming-templates/preview": {
+      "post": {
+        "operationId": "previewNamingTemplate",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "display",
+                          "match_key"
+                        ]
+                      },
+                      "chips": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 30,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "dimension"
+                                  ]
+                                },
+                                "key": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_]{1,40}$"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "key"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "separator"
+                                  ]
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "enum": [
+                                    "_",
+                                    "-",
+                                    ":",
+                                    "·",
+                                    " ",
+                                    "/",
+                                    "|"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "value"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "text"
+                                  ]
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "value"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "period"
+                                  ]
+                                },
+                                "format": {
+                                  "type": "string",
+                                  "enum": [
+                                    "yyyy",
+                                    "yyyy-QQ",
+                                    "yyyy-MM",
+                                    "MMM yyyy",
+                                    "fiscal"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "format"
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "casing": {
+                        "type": "string",
+                        "enum": [
+                          "original",
+                          "lower",
+                          "upper"
+                        ],
+                        "default": "original"
+                      },
+                      "whitespace": {
+                        "type": "string",
+                        "enum": [
+                          "keep",
+                          "underscore",
+                          "dash",
+                          "remove"
+                        ],
+                        "default": "keep"
+                      },
+                      "stripAccents": {
+                        "type": "boolean",
+                        "default": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "chips"
+                    ]
+                  },
+                  "sampleEnvelopeIds": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "default": []
+                  }
+                },
+                "required": [
+                  "template"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ previews: [{ envelopeId, name, rendered }] } for the samples (five live leaves when none are given)"
+          }
+        }
+      }
+    },
+    "/api/v1/naming-templates/{id}": {
+      "patch": {
+        "operationId": "updateNamingTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "chips": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 30,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "dimension"
+                              ]
+                            },
+                            "key": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_]{1,40}$"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "key"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "separator"
+                              ]
+                            },
+                            "value": {
+                              "type": "string",
+                              "enum": [
+                                "_",
+                                "-",
+                                ":",
+                                "·",
+                                " ",
+                                "/",
+                                "|"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "value"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "text"
+                              ]
+                            },
+                            "value": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "value"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "period"
+                              ]
+                            },
+                            "format": {
+                              "type": "string",
+                              "enum": [
+                                "yyyy",
+                                "yyyy-QQ",
+                                "yyyy-MM",
+                                "MMM yyyy",
+                                "fiscal"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "format"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "casing": {
+                    "type": "string",
+                    "enum": [
+                      "original",
+                      "lower",
+                      "upper"
+                    ],
+                    "default": "original"
+                  },
+                  "whitespace": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "underscore",
+                      "dash",
+                      "remove"
+                    ],
+                    "default": "keep"
+                  },
+                  "stripAccents": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A new version of the template"
           }
         }
       }

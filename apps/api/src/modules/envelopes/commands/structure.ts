@@ -9,6 +9,7 @@ import {
   lockEnvelopes,
   lockParentCap,
   outbox,
+  recomputeNames,
   withTenant,
   type LockedEnvelopeRow,
   type Tx,
@@ -76,6 +77,7 @@ export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, inpu
   }
 
   await tx.envelope.update({ where: { id: envelopeId }, data: { parentId: input.parentId, rowVersion: { increment: 1 } } });
+  await recomputeNames(tx, env.workspaceId, [envelopeId]); // T-036 (§24.2): on create / move
   const lineageId = newId();
   await tx.envelopeLineage.create({
     data: { id: lineageId, workspaceId: env.workspaceId, fromEnvelopeId: envelopeId, toEnvelopeId: input.parentId ?? envelopeId, kind: "move", versionId: env.currentVersionId, actorId: auth.user.id },
