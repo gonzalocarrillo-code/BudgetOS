@@ -51,7 +51,17 @@ export async function metricLibrary(tx: Tx, orgId: string): Promise<Map<string, 
   return new Map(rows.map((m) => [m.key, { numerator: m.numerator, denominator: m.denominator, multiplier: m.multiplier.toString() }]));
 }
 
-/** CompileOptions for a query: metric library plus the filter-scoped targets of the requested metrics. */
+/** Whether the workspace has any spend projection; without one the planner skips projection_fact (ADR-030). */
+export async function hasProjections(tx: Tx, workspaceId: string): Promise<boolean> {
+  const [row] = await tx.$queryRaw<Array<{ has: boolean }>>`SELECT EXISTS (SELECT 1 FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid AND metric = 'spend') AS has`;
+  return row?.has === true;
+}
+
+/** CompileOptions for a query: metric library, the filter-scoped targets of the requested metrics, and whether projections exist. */
 export async function plannerOptions(tx: Tx, ctx: { orgId: string; workspaceId: string }, metricKeys: string[], period: { start: string; end: string }): Promise<CompileOptions> {
-  return { metrics: await metricLibrary(tx, ctx.orgId), filterTargets: await currentFilterTargets(tx, ctx.workspaceId, metricKeys, period) };
+  return {
+    metrics: await metricLibrary(tx, ctx.orgId),
+    filterTargets: await currentFilterTargets(tx, ctx.workspaceId, metricKeys, period),
+    hasProjections: await hasProjections(tx, ctx.workspaceId),
+  };
 }

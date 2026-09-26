@@ -1,11 +1,11 @@
 {
-  "compileToCalibrationP50Ratio": 1.018,
-  "compile5000P50Ms": 11.08,
-  "calibration5000P50Ms": 10.89,
+  "compileToCalibrationP50Ratio": 1.1385,
+  "compile5000P50Ms": 14.6,
+  "calibration5000P50Ms": 12.82,
   "recordedOn": {
     "cpu": "Apple M2",
     "node": "v22.23.3",
-    "date": "2026-09-24"
+    "date": "2026-09-26"
   },
   "executePageToCalibrationP50Ratio": 0.7785,
   "executePageP50Ms": 21.81,
@@ -13,5 +13,9 @@
   "executeGroupToCalibrationP50Ratio": 4.9909,
   "executeGroupP50Ms": 138.31,
   "executeTotalsToCalibrationP50Ratio": 3.9154,
-  "executeTotalsP50Ms": 106.38
+  "executeTotalsP50Ms": 106.38,
+  "executeProjectionEmptyToCalibrationP50Ratio": 4.3689,
+  "executeProjectionEmptyP50Ms": 292.58,
+  "executeProjectionToCalibrationP50Ratio": 7.9626,
+  "executeProjectionP50Ms": 242.46
 }

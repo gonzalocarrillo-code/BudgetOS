@@ -9,6 +9,8 @@ Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench
 
 Planner bench maintenance (`task/planner-bench-stable`, 2026-09-23, not a §22 task): the `compileQuery` bench warms up for 200k calls, times 31 batches, and gates the p50 ratio to a planner-shaped calibration loop at 10%. The baseline was re-recorded on an Apple M2, and again after the T-007 fixes (PR #1) merged: the fixed compiler does more work per call, so the ratio moved from 0.6406 to 1.018. ADR-006 has the method and the numbers.
 
+Planner projection performance (`task/planner-projection-perf`, 2026-09-26, not a §22 task): `projected` and the measures derived from it are read once per envelope through a lateral join instead of a scalar subquery copied into every expression that uses it. Flat pages that neither sort nor filter on them read projections after the LIMIT, for the page's rows only. `plannerOptions()` sets `hasProjections`, so a workspace without projection facts never touches `projection_fact`. Results are unchanged. The planner bench gains `executeProjection` and `executeProjectionEmpty`. ADR-030 has the plans and numbers.
+
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
 

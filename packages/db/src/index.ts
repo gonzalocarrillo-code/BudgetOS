@@ -23,7 +23,7 @@ export type { RollupNode, RollupScope } from "./rollup.js";
 export type { SearchDoc } from "./search.js";
 export { openAlert, saveRuleStates } from "./alerts.js";
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
-export { currentFilterTargets, metricLibrary, plannerOptions } from "./planner-options.js";
+export { currentFilterTargets, hasProjections, metricLibrary, plannerOptions } from "./planner-options.js";
 export type { CurrentFilterTarget } from "./planner-options.js";
 export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 export type { FactLoad, KpiFactInput, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";

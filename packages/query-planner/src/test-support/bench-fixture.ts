@@ -32,3 +32,33 @@ export async function seedBenchWorkspace(org: FixtureOrg, ws: string, envelopes:
   );
   await owner.query(`ANALYZE envelope; ANALYZE envelope_dimension; ANALYZE envelope_version; ANALYZE spend_fact`);
 }
+
+/**
+ * Projection facts for the bench: per envelope an older run over the whole of Q1 and a newer run
+ * from mid-February into April (so the period bound matters). Every 7th envelope has none; every
+ * 11th has only the newer run, entirely after the period. Plus unmatched rows (no envelope).
+ */
+export async function seedBenchProjections(ws: string): Promise<void> {
+  await owner.query(
+    `INSERT INTO projection_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id, loaded_at)
+     SELECT $1, e.id, '{}'::jsonb, r.d, 'spend', 20 + n, 20 + n, 'bench_v1', '2026-04-30', 'bench', r.run, r.loaded_at
+     FROM (SELECT e.id, substr(e.name, 2)::int AS n FROM envelope e WHERE e.workspace_id = $1) e
+     CROSS JOIN LATERAL (
+       SELECT gen_random_uuid() AS old_run, gen_random_uuid() AS new_run) u
+     CROSS JOIN LATERAL (
+       SELECT u.old_run AS run, '2026-02-01T00:00:00Z'::timestamptz AS loaded_at, d::date AS d
+       FROM generate_series('2026-01-01'::date, '2026-03-31'::date, '1 day') d WHERE e.n % 11 <> 0
+       UNION ALL
+       SELECT u.new_run, '2026-02-15T00:00:00Z'::timestamptz, d::date
+       FROM generate_series(CASE WHEN e.n % 11 = 0 THEN '2026-04-01'::date ELSE '2026-02-15'::date END, '2026-04-30'::date, '1 day') d) r
+     WHERE e.n % 7 <> 0`,
+    [ws],
+  );
+  await owner.query(
+    `INSERT INTO projection_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id, loaded_at)
+     SELECT $1, NULL, '{}'::jsonb, '2026-01-01'::date + d, 'spend', 5, 5, 'bench_v1', '2026-03-31', 'bench', gen_random_uuid(), now()
+     FROM generate_series(0, 89) d`,
+    [ws],
+  );
+  await owner.query(`ANALYZE projection_fact`);
+}
