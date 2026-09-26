@@ -60,7 +60,7 @@ export interface Harness {
   app: NestFastifyApplication;
   foreignKey: CryptoKey;
   mint(u: { sub: string; email: string }, over?: MintOptions): Promise<string>;
-  call(method: Method, url: string, token: string | null, opts?: { headers?: Record<string, string>; body?: unknown }): Promise<{ status: number; body: Record<string, unknown>; text: string }>;
+  call(method: Method, url: string, token: string | null, opts?: { headers?: Record<string, string>; body?: unknown }): Promise<{ status: number; body: Record<string, unknown>; text: string; headers: Record<string, unknown> }>;
   close(): Promise<void>;
 }
 
@@ -111,7 +111,7 @@ export async function startHarness(): Promise<Harness> {
       } catch {
         // Non-JSON responses (e.g. text/csv) are in `text`.
       }
-      return { status: res.statusCode, body, text: res.body };
+      return { status: res.statusCode, body, text: res.body, headers: res.headers as Record<string, unknown> };
     },
     close: async () => {
       await app.close();

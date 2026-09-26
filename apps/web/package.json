@@ -43,6 +43,7 @@
   "dependencies": {
     "@budget/domain": "workspace:^",
     "@budget/grid": "workspace:^",
+    "@budget/timeline": "workspace:^",
     "@budget/ui": "workspace:^",
     "@tanstack/react-query": "5.103.2",
     "@tanstack/react-router": "1.170.39",

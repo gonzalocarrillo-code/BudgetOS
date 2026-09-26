@@ -44,15 +44,16 @@ function roundFps(value: number): number {
   return Number(value.toFixed(1));
 }
 
-it("keeps the 5k-bar timeline spike within 10% of the committed baseline", async () => {
+it("keeps the 5k-bar timeline (spike engines and BudgetTimeline) within 10% of the committed baseline", async () => {
   const cpuScaleMs = cpuScale();
   const svar = await measureEngine("svar");
   const vis = await measureEngine("vis");
   const canvas = await measureEngine("canvas");
+  const budget = await measureEngine("budget");
   const measured = {
     bars: SPIKE_BAR_COUNT,
-    targetLaneProven: svar.targetLaneProven && vis.targetLaneProven && canvas.targetLaneProven,
-    markerOverlayProven: svar.markerOverlayProven && vis.markerOverlayProven && canvas.markerOverlayProven,
+    targetLaneProven: svar.targetLaneProven && vis.targetLaneProven && canvas.targetLaneProven && budget.targetLaneProven,
+    markerOverlayProven: svar.markerOverlayProven && vis.markerOverlayProven && canvas.markerOverlayProven && budget.markerOverlayProven,
     cpuScaleMs,
     svarRenderP95Ms: roundMs(svar.renderP95Ms),
     visRenderP95Ms: roundMs(vis.renderP95Ms),
@@ -60,10 +61,15 @@ it("keeps the 5k-bar timeline spike within 10% of the committed baseline", async
     svarPanFpsP50: roundFps(svar.panFpsP50),
     visPanFpsP50: roundFps(vis.panFpsP50),
     canvasPanFpsP50: roundFps(canvas.panFpsP50),
+    budgetRenderP95Ms: roundMs(budget.renderP95Ms),
+    budgetPanFpsP50: roundFps(budget.panFpsP50),
   };
   if (!measured.targetLaneProven || !measured.markerOverlayProven) {
     throw new Error(`timeline spike did not prove lanes and overlay ${JSON.stringify(measured)}`);
   }
+  process.stdout.write(`TIMELINE_BENCH ${JSON.stringify(measured)}\n`);
+  // T-037 done-when: BudgetTimeline paints 5k bars in < 500 ms p95 (absolute, not only vs the baseline).
+  expect(measured.budgetRenderP95Ms, JSON.stringify(measured)).toBeLessThan(500);
   if (!existsSync(baselinePath)) {
     throw new Error(`TIMELINE_SPIKE_MEASURED ${JSON.stringify(measured)}`);
   }
@@ -77,6 +83,10 @@ it("keeps the 5k-bar timeline spike within 10% of the committed baseline", async
   expect(measured.svarRenderP95Ms / scale, detail).toBeLessThanOrEqual((baseline.svarRenderP95Ms / baselineScale) * 1.1);
   expect(measured.visRenderP95Ms / scale, detail).toBeLessThanOrEqual((baseline.visRenderP95Ms / baselineScale) * 1.1);
   expect(measured.canvasRenderP95Ms / scale, detail).toBeLessThanOrEqual((baseline.canvasRenderP95Ms / baselineScale) * 1.1);
+  if (baseline.budgetRenderP95Ms !== undefined) {
+    expect(measured.budgetRenderP95Ms / scale, detail).toBeLessThanOrEqual((baseline.budgetRenderP95Ms / baselineScale) * 1.1);
+    expect(measured.budgetPanFpsP50, detail).toBeGreaterThanOrEqual((baseline.budgetPanFpsP50 ?? 0) * 0.9);
+  }
   expect(measured.svarPanFpsP50, detail).toBeGreaterThanOrEqual(baseline.svarPanFpsP50 * 0.9);
   expect(measured.visPanFpsP50, detail).toBeGreaterThanOrEqual(baseline.visPanFpsP50 * 0.9);
   expect(measured.canvasPanFpsP50, detail).toBeGreaterThanOrEqual(baseline.canvasPanFpsP50 * 0.9);

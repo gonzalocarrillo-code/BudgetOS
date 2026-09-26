@@ -25,7 +25,7 @@ export function parseFilterParam(raw: string | undefined): FilterGroupT | undefi
 }
 
 /** `period` query parameter: a preset name (current_quarter …) or a PeriodSpec as JSON. */
-function parsePeriodParam(raw: string | undefined): PeriodSpec {
+export function parsePeriodParam(raw: string | undefined): PeriodSpec {
   if (raw === undefined || raw === "") return { kind: "relative", preset: "current_year" };
   if (/^[a-z_0-9]+$/.test(raw)) return parseInput(PeriodSpec, { kind: "relative", preset: raw });
   try {

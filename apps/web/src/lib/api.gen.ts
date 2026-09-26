@@ -864,6 +864,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/saved-views": {
         parameters: {
             query?: never;
@@ -3800,6 +3816,118 @@ export interface operations {
                         dataAsOf: string;
                         dataVersion: number;
                         elapsedMs: number;
+                    };
+                };
+            };
+        };
+    };
+    getTimeline: {
+        parameters: {
+            query?: {
+                /** @description FilterGroup as lz-string (or JSON) */
+                filter?: string;
+                /** @description Comma-separated dimension keys; default the hierarchy template's path */
+                groupBy?: string;
+                templateId?: string;
+                from?: string;
+                to?: string;
+                /** @description Preset name or a PeriodSpec as JSON when from/to are not given; default current_year */
+                period?: string;
+                asOf?: string;
+                zoom?: "week" | "month" | "quarter" | "fy";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Group, envelope and target bars on the fiscal calendar, with markers and key dates; X-Data-Version header */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bars: {
+                            key: string;
+                            parentKey: string | null;
+                            level: number;
+                            /** @enum {string} */
+                            kind: "group" | "envelope" | "target" | "experiment";
+                            name: string;
+                            path: string[];
+                            start: string;
+                            end: string;
+                            /** Format: uuid */
+                            envelopeId?: string;
+                            /** Format: uuid */
+                            targetId?: string;
+                            /** Format: uuid */
+                            experimentId?: string;
+                            metric?: string;
+                            budget?: string;
+                            actual?: string;
+                            projected?: string;
+                            spendPct?: number;
+                            projectedPct?: number;
+                            paceIndex?: number;
+                            /**
+                             * @default none
+                             * @enum {string}
+                             */
+                            paceState: "under" | "on" | "over" | "critical" | "none";
+                            status?: string;
+                            /** @default false */
+                            hasChildren: boolean;
+                            /** @default false */
+                            expanded: boolean;
+                            /** @default 0 */
+                            lane: number;
+                            /** @default [] */
+                            markers: {
+                                /** @enum {string} */
+                                kind: "approval" | "alert" | "closure" | "comment" | "version";
+                                at: string;
+                                id: string;
+                                severity?: string;
+                            }[];
+                            value?: string;
+                            comparator?: string;
+                            /** Format: uuid */
+                            inheritedFrom?: string;
+                            effective?: {
+                                start: string;
+                                end: string;
+                            }[];
+                        }[];
+                        nextCursor: string | null;
+                        calendar: {
+                            fiscalYearStartMonth: number;
+                            periods: {
+                                id: string;
+                                /** @enum {string} */
+                                kind: "fy" | "quarter" | "month" | "week";
+                                start: string;
+                                end: string;
+                                label: string;
+                            }[];
+                            keyDates: {
+                                at: string;
+                                label: string;
+                                /** @enum {string} */
+                                kind: "holiday" | "client" | "closure";
+                            }[];
+                        };
+                        dataVersion: string;
+                        /** Format: date-time */
+                        dataAsOf: string;
+                        /** Format: date-time */
+                        asOf?: string;
                     };
                 };
             };
