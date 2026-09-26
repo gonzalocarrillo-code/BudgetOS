@@ -1,0 +1,83 @@
+name: load
+
+# T-034 (spec §21, plan Appendix C): the golden dataset at spec scale — ~100k leaves, 20 dimensions,
+# 5 templates, ~31M facts, ~1M comments — and the Appendix C p95 targets. Nightly and on demand, not
+# on every PR. The job fails when a target is missed, and when the runner cannot hold the dataset
+# (that failure is the recorded runner limit; the dataset is never shrunk to go green).
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "Golden copies (521 ≈ 100k leaves; the spec scale)"
+        default: "521"
+  push:
+    branches: ["task/T-034-*"]
+
+concurrency:
+  group: load
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      DATABASE_URL: postgresql://budget:budget@127.0.0.1:5432/budget
+      APP_DATABASE_URL: postgresql://budget_app:replace-in-secret-manager@127.0.0.1:5432/budget
+      PUBLISHER_DATABASE_URL: postgresql://budget_publisher:replace-in-secret-manager@127.0.0.1:5432/budget
+      MCP_DATABASE_URL: postgresql://budget_mcp:replace-in-secret-manager@127.0.0.1:5432/budget
+      REDIS_URL: redis://127.0.0.1:6379
+      LOAD_SHARDS: ${{ github.event.inputs.shards || '521' }}
+      LOAD_COMMENTS_PER_LEAF: "10"
+      LOAD_ITERATIONS: "20"
+      LOAD_REPORT: load-report.json
+      LOG_LEVEL: warn
+    steps:
+      - uses: actions/checkout@v4
+      - name: Runner capacity (recorded with the report)
+        run: |
+          nproc; free -g; df -h / /mnt
+      - name: Postgres 16 on /mnt, tuned for a bulk load
+        run: |
+          sudo mkdir -p /mnt/pgdata && sudo chmod 777 /mnt/pgdata
+          docker run -d --name pg -p 5432:5432 -v /mnt/pgdata:/var/lib/postgresql/data \
+            -e POSTGRES_USER=budget -e POSTGRES_PASSWORD=budget -e POSTGRES_DB=budget --shm-size=2g \
+            postgres:16 -c shared_preload_libraries=pg_stat_statements -c shared_buffers=4GB -c effective_cache_size=10GB \
+            -c work_mem=64MB -c maintenance_work_mem=1GB -c max_wal_size=16GB -c checkpoint_timeout=30min -c synchronous_commit=off \
+            -c max_connections=200
+          docker run -d --name redis -p 6379:6379 redis:7
+          for i in $(seq 1 60); do docker exec pg pg_isready -U budget && break; sleep 2; done
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @budget/db exec prisma generate
+      - run: pnpm db:migrate
+      - name: Load test (spec scale)
+        run: apps/api/node_modules/.bin/tsx --tsconfig apps/api/tsconfig.json scripts/load-test.ts
+      - name: Summary
+        if: always()
+        run: |
+          df -h /mnt || true
+          docker exec pg psql -U budget -d budget -Atc "select pg_size_pretty(pg_database_size('budget'))" || true
+          if [ -f load-report.json ]; then
+            node -e '
+              const r = require("./load-report.json");
+              const rows = Object.entries(r.results ?? {}).map(([k, v]) => `| ${k} | ${v.value ?? "—"} | < ${v.target} | ${v.value !== null && v.value < v.target ? "pass" : "FAIL"}${v.error ? " — " + v.error : ""} |`);
+              const out = [`## Load (${r.shards} shards) — ${r.pass ? "PASS" : "FAIL"}`, "", "```", JSON.stringify(r.scale ?? {}, null, 1), "```", "", "| measure | p95 / ms | target | |", "|---|---|---|---|", ...rows, "", r.error ? "**Error:** " + r.error.split("\n")[0] : "", "", "Phases (ms): " + JSON.stringify(r.phasesMs ?? {})];
+              require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");'
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-report
+          path: load-report.json
+          if-no-files-found: warn
