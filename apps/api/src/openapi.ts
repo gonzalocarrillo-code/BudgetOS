@@ -342,6 +342,9 @@ export function openApiDocument(): Record<string, unknown> {
           responses: { "200": { description: "The caller's export job; downloadUrl while done", ...json(ExportJobView) } },
         },
       },
+      "/api/v1/workspaces/{ws}/overview": {
+        get: { operationId: "getOverview", parameters: [workspaceParam, { name: "period", in: "query", required: false, schema: { type: "string", enum: ["current_month", "current_quarter", "current_year", "last_30_days", "last_90_days", "ytd", "next_90_days"] } }], responses: { "200": { description: "The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness" } } },
+      },
       "/api/v1/workspaces/{ws}/pacing": {
         get: {
           operationId: "getPacing",

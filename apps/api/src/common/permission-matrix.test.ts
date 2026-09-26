@@ -142,6 +142,7 @@ const ROUTES: RouteCase[] = [
   { method: "PATCH", path: "/api/v1/tags/{id}", permission: "tag.create", url: () => `/api/v1/tags/${rid}`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/tags/apply", permission: "tag.apply", url: () => `/api/v1/tags/apply`, headers: X(), body: {} },
   { method: "DELETE", path: "/api/v1/tags/apply", permission: "tag.apply", url: () => `/api/v1/tags/apply`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/overview", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/overview` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/pacing", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/pacing` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/rules", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/rules` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/rules", permission: "rule.manage", url: () => `/api/v1/workspaces/${wsA}/rules`, body: {} },
