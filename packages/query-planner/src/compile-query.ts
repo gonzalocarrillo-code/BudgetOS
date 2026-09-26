@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Decimal } from "decimal.js";
-import { DomainError, type FilterGroupT, type QueryRequest, type ScopeFilter } from "@budget/domain";
+import { DomainError, isPredicate, type FilterGroupT, type QueryRequest, type ScopeFilter } from "@budget/domain";
 import { SqlBuilder } from "./sql-builder.js";
 import { compileFilter, filterMetrics, sanitize, type CompileCtx } from "./compile-filter.js";
 
@@ -26,6 +26,11 @@ export interface CompileOptions {
   metrics?: ReadonlyMap<string, MetricDef> | undefined;
   /** Filter-scoped targets for the requested metrics, most specific first. */
   filterTargets?: readonly FilterTarget[] | undefined;
+  /**
+   * false when the workspace has no projection facts: `projected` is then 0 without reading
+   * projection_fact (ADR-030). Omitted means unknown, and the SQL reads them.
+   */
+  hasProjections?: boolean | undefined;
 }
 
 export interface OrderKey {
@@ -41,6 +46,22 @@ export interface CompiledQuery {
 }
 
 const RATIO = new Set(["pace_index", "variance_pct", "projected_close_pct", "spend_to_date_pct"]);
+/** Measures that read projected spend. */
+const PROJECTION = new Set(["projected", "variance_abs", "variance_pct", "projected_close_pct"]);
+
+/** The measures derived from projected spend, per envelope; m2 and a flat page's tail share them. */
+function projectionDerived(projected: string, budget: string): Record<"variance_abs" | "variance_pct" | "projected_close_pct", string> {
+  return {
+    variance_abs: `(${projected} - ${budget})`,
+    variance_pct: `CASE WHEN ${budget} > 0 THEN (${projected} - ${budget}) / ${budget} ELSE NULL END`,
+    projected_close_pct: `CASE WHEN ${budget} > 0 THEN ${projected} / ${budget} ELSE NULL END`,
+  };
+}
+
+/** Whether a filter reads any of these measures. */
+function filterReads(g: FilterGroupT, keys: ReadonlySet<string>): boolean {
+  return g.children.some((c) => (isPredicate(c) ? c.field.kind === "measure" && keys.has(c.field.key) : filterReads(c, keys)));
+}
 
 interface Base {
   b: SqlBuilder;
@@ -51,6 +72,8 @@ interface Base {
   /** Per requested metric: its KPI over a group, Σnumerator / Σdenominator (never an average of ratios). */
   kpiAgg: string;
   targetSql: (metric: string) => string;
+  /** `LEFT JOIN LATERAL … p ON TRUE`: p.projected of the envelope `envelopeId` refers to; "" without projections. */
+  projectionJoin: (envelopeId: string) => string;
 }
 
 function compileBase(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions): Base {
@@ -95,27 +118,46 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     }
   }
 
+  // Projected spend: the envelope's latest projection run (picked over all dates, so a newer run that
+  // projects only outside the period still wins and projects 0), summed over the period. One lateral
+  // per envelope reads its facts once and groups them by run (ADR-030); a scalar subquery here was
+  // copied into every expression that reads `projected`. Nothing reads `p` unless a projection
+  // measure does, and Postgres then drops the join (the lateral returns one row). The EXISTS is
+  // uncorrelated, so it runs once and a workspace without projection facts skips the per-envelope
+  // scans; with `hasProjections: false` the lateral is not emitted at all.
+  const projectionJoin = (envelopeId: string): string =>
+    opts.hasProjections === false
+      ? ""
+      : ` LEFT JOIN LATERAL (
+        SELECT (array_agg(r.projected ORDER BY r.loaded_at DESC))[1] AS projected
+        FROM (SELECT sum(x.value_reporting) FILTER (WHERE x.period_date BETWEEN ${pStart} AND ${pEnd}) AS projected, max(x.loaded_at) AS loaded_at
+              FROM projection_fact x
+              WHERE x.workspace_id = ${ws}::uuid AND x.envelope_id = ${envelopeId} AND x.metric = 'spend'
+                AND (SELECT EXISTS (SELECT 1 FROM projection_fact y WHERE y.workspace_id = ${ws}::uuid AND y.metric = 'spend'))
+              GROUP BY x.source_run_id) r
+      ) p ON TRUE`;
+
   // Budget as of a timestamp is the latest version approved by then. Versions approved earlier are
   // SUPERSEDED now (spec §7.3), so status alone cannot select them.
+  const derived = projectionDerived("projected", "budget");
   const measuresCte = `
     m AS (
       SELECT e.id AS envelope_id,
         ${budgetSql} AS budget,
         (SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${pStart} AND ${pEnd}) AS actual,
-        (SELECT coalesce(sum(pf.value_reporting),0) FROM projection_fact pf WHERE pf.workspace_id = ${ws}::uuid AND pf.envelope_id = e.id AND pf.metric='spend'
-           AND pf.period_date BETWEEN ${pStart} AND ${pEnd}
-           AND pf.source_run_id = (SELECT x.source_run_id FROM projection_fact x WHERE x.workspace_id = ${ws}::uuid AND x.envelope_id = e.id AND x.metric='spend' ORDER BY x.loaded_at DESC LIMIT 1)) AS projected
+        ${opts.hasProjections === false ? "0::numeric" : "coalesce(p.projected, 0)"} AS projected
         ${kpiCols}
-      FROM envelope e WHERE e.workspace_id = ${ws}::uuid
+      FROM envelope e${projectionJoin("e.id")}
+      WHERE e.workspace_id = ${ws}::uuid
         AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}
     ),
     m2 AS (
       SELECT *, (budget - actual) AS remaining,
-        (projected - budget) AS variance_abs,
-        CASE WHEN budget > 0 THEN (projected - budget) / budget ELSE NULL END AS variance_pct,
+        ${derived.variance_abs} AS variance_abs,
+        ${derived.variance_pct} AS variance_pct,
         CASE WHEN budget > 0 THEN actual / budget ELSE NULL END AS spend_to_date_pct,
         CASE WHEN budget > 0 AND ${elapsedFrac} > 0 THEN (actual / budget) / ${elapsedFrac} ELSE NULL END AS pace_index,
-        CASE WHEN budget > 0 THEN projected / budget ELSE NULL END AS projected_close_pct
+        ${derived.projected_close_pct} AS projected_close_pct
         ${kpiDerived}
       FROM m
     )`;
@@ -142,11 +184,11 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       return `sum(m.${mk}) AS ${mk}`;
     })
     .join(", ");
-  return { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql };
+  return { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin };
 }
 
 export function compileQuery(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
-  const { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql } = compileBase(q, period, today, opts);
+  const { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin } = compileBase(q, period, today, opts);
   const groupKeys = q.groupBy.map(sanitize);
   if (new Set(groupKeys).size !== groupKeys.length) throw new DomainError("VALIDATION", "groupBy keys must be unique");
 
@@ -175,19 +217,6 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
       targetJoins += ` LEFT JOIN LATERAL (SELECT ${targetSql(mk)} AS v) t${i} ON TRUE`;
     });
   }
-  const groupSql = grouped
-    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, count(*) AS leaf_count,
-         sum(CASE WHEN e.status='PENDING' THEN 1 ELSE 0 END) AS pending_count
-       FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
-       WHERE ${where}
-       GROUP BY ${q.groupBy.map((_, i) => `g${i}.code, g${i}.label`).join(", ")}`
-    : `SELECT e.id AS envelope_id, e.name, e.status::text AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values, ${measures.map((mk) => `m.${mk}`).join(", ")}
-         ${kpiSelect},
-         (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
-         (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads
-       FROM envelope e JOIN m2 m ON m.envelope_id = e.id${targetJoins}
-       WHERE ${where}`;
-
   const columns = new Set<string>(
     grouped
       ? [...groupKeys.flatMap((k) => [`dim_${k}`, `lbl_${k}`]), ...measures, ...targetKeys.map((s) => `kpi_${s}`), "leaf_count", "pending_count"]
@@ -196,7 +225,42 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const orderKeys = resolveOrder(q, columns, grouped ? groupKeys.map((k) => `dim_${k}`) : ["envelope_id"], grouped ? [] : ["name"]);
   const after = q.cursor === undefined ? "TRUE" : keysetAfter(orderKeys, decodeCursor(q.cursor, orderKeys.length), b);
   const order = orderKeys.map((o) => `q.${o.col} ${o.dir.toUpperCase()} NULLS LAST`).join(", ");
-  const sql = `WITH ${measuresCte} SELECT * FROM (${groupSql}) q WHERE ${after} ORDER BY ${order} LIMIT ${b.p(q.limit + 1)}`;
+  const limit = b.p(q.limit + 1);
+
+  // A flat page whose order and filter do not read projected spend gets it after the LIMIT, for
+  // its own rows only (ADR-030): a lateral over every envelope would cost more than the page.
+  const tail =
+    !grouped && opts.hasProjections !== false && measures.some((mk) => PROJECTION.has(mk)) && !orderKeys.some((o) => PROJECTION.has(o.col)) && !filterReads(q.filter ?? { logic: "and", children: [] }, PROJECTION);
+  const flatMeasures = tail ? measures.filter((mk) => !PROJECTION.has(mk)) : measures;
+
+  const groupSql = grouped
+    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, count(*) AS leaf_count,
+         sum(CASE WHEN e.status='PENDING' THEN 1 ELSE 0 END) AS pending_count
+       FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
+       WHERE ${where}
+       GROUP BY ${q.groupBy.map((_, i) => `g${i}.code, g${i}.label`).join(", ")}`
+    : `SELECT e.id AS envelope_id, e.name, e.status::text AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
+         ${kpiSelect},
+         (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
+         (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads
+       FROM envelope e JOIN m2 m ON m.envelope_id = e.id${targetJoins}
+       WHERE ${where}`;
+
+  const page = `SELECT * FROM (${groupSql}) q WHERE ${after} ORDER BY ${order} LIMIT ${limit}`;
+  if (!tail) return { sql: `WITH ${measuresCte} ${page}`, values: b.values, orderKeys };
+  const derived = projectionDerived("coalesce(p.projected, 0)", "q.tail_budget");
+  const measureCol = (mk: string) => (!PROJECTION.has(mk) ? `q.${mk}` : `${mk === "projected" ? "coalesce(p.projected, 0)" : derived[mk as keyof typeof derived]} AS ${mk}`);
+  // Same columns in the same order as a page without the tail.
+  const cols = [
+    ...["envelope_id", "name", "status", "parent_id", "head_version_id", "dimension_values"].map((c) => `q.${c}`),
+    ...measures.map(measureCol),
+    ...targetKeys.flatMap((s) => [`q.kpi_${s}`, `q.tgt_${s}`, `q.vs_${s}`]),
+    "q.open_alerts",
+    "q.open_threads",
+  ];
+  const sql = `WITH ${measuresCte} SELECT ${cols.join(", ")}
+    FROM (${page}) q${projectionJoin("q.envelope_id")}
+    ORDER BY ${order}`;
   return { sql, values: b.values, orderKeys };
 }
 

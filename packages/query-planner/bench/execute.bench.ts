@@ -1,18 +1,22 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { QueryRequest, type FilterGroupT } from "@budget/domain";
+import { LIVE_LEAVES, QueryRequest, type FilterGroupT } from "@budget/domain";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { compileQuery, compileTotals, type CompiledQuery } from "../src/compile-query.js";
 import { closePools, runAsApp } from "../src/test-support/db.js";
-import { seedBenchWorkspace } from "../src/test-support/bench-fixture.js";
+import { seedBenchProjections, seedBenchWorkspace } from "../src/test-support/bench-fixture.js";
 import { PERIOD, TODAY, cleanupOrg, createOrg, createWorkspace, type FixtureOrg } from "../src/test-support/fixtures.js";
 
-/** Executes planner SQL as budget_app over 2,000 envelopes × 30 spend days; gates p50 / DB-calibration p50 vs baseline. */
+/**
+ * Executes planner SQL as budget_app over 2,000 envelopes × 30 spend days; gates p50 / DB-calibration p50 vs baseline.
+ * `ws` has no projection facts; `projWs` is the same workspace plus two projection runs per envelope (ADR-030).
+ */
 const ENVELOPES = 2_000;
 const SPEND_DAYS = 30;
 let org: FixtureOrg;
 let ws: string;
+let projWs: string;
 
 const filter: FilterGroupT = {
   logic: "and",
@@ -27,18 +31,25 @@ const filter: FilterGroupT = {
     },
   ],
 };
-const request = (over: Record<string, unknown>) => QueryRequest.parse({ workspaceId: ws, period: { kind: "range", ...PERIOD }, ...over });
+const request = (over: Record<string, unknown>, workspaceId = ws) => QueryRequest.parse({ workspaceId, period: { kind: "range", ...PERIOD }, ...over });
+// The Overview heat map's query (T-033) with the projection measures.
+const overview = (measures: string[], workspaceId = ws) =>
+  compileQuery(request({ filter: { logic: "and", children: LIVE_LEAVES }, groupBy: ["geo", "platform"], measures, limit: 1000 }, workspaceId), PERIOD, TODAY);
+const WITH_PROJECTION = ["budget", "actual", "projected", "pace_index", "spend_to_date_pct", "projected_close_pct"];
 
 beforeAll(async () => {
   org = await createOrg();
   ws = await createWorkspace(org);
   await seedBenchWorkspace(org, ws, ENVELOPES, SPEND_DAYS);
-}, 60_000);
+  projWs = await createWorkspace(org);
+  await seedBenchWorkspace(org, projWs, ENVELOPES, SPEND_DAYS);
+  await seedBenchProjections(projWs);
+}, 120_000);
 
 afterAll(async () => {
   if (org) await cleanupOrg(org);
   await closePools();
-});
+}, 60_000);
 
 /**
  * DB-side calibration: a fixed aggregate the planner's work resembles (scan + numeric sums),
@@ -59,8 +70,8 @@ async function timed(c: CompiledQuery, tenant: { workspaceId: string; userId: st
 
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? Number.NaN;
 
-async function measure(c: CompiledQuery): Promise<{ ms: number; calibrationMs: number }> {
-  const tenant = { workspaceId: ws, userId: org.users.u1 };
+async function measure(c: CompiledQuery, workspaceId = ws): Promise<{ ms: number; calibrationMs: number }> {
+  const tenant = { workspaceId, userId: org.users.u1 };
   for (let n = 0; n < 5; n += 1) {
     await timed(c, tenant); // warm plan cache and buffers
     await timed(CALIBRATION, tenant);
@@ -89,8 +100,10 @@ it.each([
   ["executePage", () => compileQuery(request({ sort: [{ key: "budget", dir: "desc" }], limit: 200 }), PERIOD, TODAY)],
   ["executeGroup", () => compileQuery(request({ filter, groupBy: ["geo", "platform"] }), PERIOD, TODAY)],
   ["executeTotals", () => compileTotals(request({ filter }), PERIOD, TODAY)],
-] as const)("%s p50 / calibration p50 stays within 10%% of the committed baseline", async (key, build) => {
-  const { ms, calibrationMs } = await measure(build());
+  ["executeProjectionEmpty", () => overview(WITH_PROJECTION)],
+  ["executeProjection", () => overview(WITH_PROJECTION, projWs), () => projWs],
+] as const)("%s p50 / calibration p50 stays within 10%% of the committed baseline", async (key, build, workspace?: () => string) => {
+  const { ms, calibrationMs } = await measure(build(), workspace?.() ?? ws);
   const ratio = ms / calibrationMs;
   const label = `${key}ToCalibrationP50Ratio=${ratio.toFixed(4)} ${key}P50Ms=${ms.toFixed(2)} calibrationP50Ms=${calibrationMs.toFixed(2)}`;
   if (process.env["BENCH_RECORD"] === "1") {
