@@ -14,10 +14,12 @@ try {
     const state = JSON.parse(process.argv[3] ?? "{}") as { workspaceId: string };
     await cleanupGolden(owner, { workspaceId: state.workspaceId } as Parameters<typeof cleanupGolden>[1]);
   } else {
-    const slug = `e2e-${randomUUID().slice(0, 8)}`;
+    // SEED_SLUG (the persistent local stack): a fixed slug, seeded once and reused after.
+    const slug = process.env["SEED_SLUG"] ?? `e2e-${randomUUID().slice(0, 8)}`;
     const golden = await seedGolden(app, owner, { slug });
-    const request = await owner.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, status: "PENDING" }, select: { id: true } });
-    process.stdout.write(`${JSON.stringify({ workspaceId: golden.workspaceId, orgId: golden.orgId, slug, approvalRequestId: request.id })}\n`);
+    // A reused local workspace may have no pending request left (someone decided it).
+    const request = await owner.approvalRequest.findFirst({ where: { workspaceId: golden.workspaceId, status: "PENDING" }, select: { id: true }, orderBy: { requestedAt: "asc" } });
+    process.stdout.write(`${JSON.stringify({ workspaceId: golden.workspaceId, orgId: golden.orgId, slug, approvalRequestId: request?.id ?? "" })}\n`);
   }
 } finally {
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

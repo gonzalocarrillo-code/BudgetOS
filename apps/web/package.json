@@ -15,7 +15,8 @@
     "api:generate": "tsx scripts/generate-api.mts",
     "test:e2e": "playwright test",
     "routes:generate": "tsr generate",
-    "e2e:stack": "tsx e2e/dev-stack.mts"
+    "e2e:stack": "tsx e2e/dev-stack.mts",
+    "local": "tsx e2e/local-stack.mts"
   },
   "devDependencies": {
     "@budget/api": "workspace:^",
