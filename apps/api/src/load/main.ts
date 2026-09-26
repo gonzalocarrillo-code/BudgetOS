@@ -2,6 +2,7 @@
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { PrismaClient } from "@prisma/client";
 import { bulkCommit, gridQueries, indexAll, inlineEdits, lags, rebuildRollups, searches, TARGETS } from "./measure.js";
 import { scaleGolden } from "./scale.js";
 import { seedGolden } from "../seed/golden.js";
@@ -35,7 +36,26 @@ try {
   const g = golden;
   report["scale"] = await phase("scale (bulk SQL)", () => scaleGolden(owner, app, g, { shards, commentsPerLeaf, log }));
   report["searchDocuments"] = await phase("search index (document builders)", () => indexAll(app, owner, g, log));
-  report["rollup"] = await phase("roll-up rebuild (5 templates)", () => rebuildRollups(app, g));
+  // The roll-up rebuild runs on its own connections with a statement timeout: at scale one
+  // template's build can outlast the job, and a stuck query would slow every later measurement.
+  // A failure is recorded and the measurements still run.
+  const bounded = async <T,>(seconds: number, fn: (db: PrismaClient) => Promise<T>): Promise<T> => {
+    await owner.$executeRawUnsafe(`ALTER ROLE budget_app SET statement_timeout = '${seconds}s'`);
+    const db = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
+    try {
+      return await fn(db);
+    } finally {
+      await db.$disconnect();
+      await owner.$executeRawUnsafe(`ALTER ROLE budget_app RESET statement_timeout`);
+    }
+  };
+  try {
+    report["rollup"] = await phase("roll-up rebuild (5 templates)", () => bounded(900, (db) => rebuildRollups(db, g)));
+  } catch (error) {
+    failed = true;
+    report["rollup"] = { error: error instanceof Error ? error.message.split("\n").filter(Boolean).slice(-2).join(" ") : String(error) };
+    log(`FAIL roll-up rebuild: ${String((report["rollup"] as { error: string }).error)}`);
+  }
   log(`scale: ${JSON.stringify(report["scale"])}, search documents ${String(report["searchDocuments"])}`);
 
   const h = await startHarness();
@@ -71,7 +91,8 @@ try {
       return { value: bulk.commitMs, detail: bulk };
     });
     let lag: { rollupP95Ms: number; searchP95Ms: number } | null = null;
-    const lagOnce = async () => (lag ??= await lags(c, Math.max(10, Math.floor(iterations / 2))));
+    // The handlers get a 2-minute statement bound: a refresh that slow has long missed its 5 s target.
+    const lagOnce = async () => (lag ??= await bounded(120, (db) => lags({ ...c, app: db }, Math.max(10, Math.floor(iterations / 2)))));
     await measure("rollupLagP95Ms", "roll-up lag", async () => ({ value: (await lagOnce()).rollupP95Ms }));
     await measure("searchLagP95Ms", "search lag", async () => ({ value: (await lagOnce()).searchP95Ms }));
   } finally {

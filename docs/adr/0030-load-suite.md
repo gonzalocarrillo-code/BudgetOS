@@ -45,4 +45,6 @@ T-034 (spec §21, plan Appendix C, phase 17) needs `scripts/load-test.ts` to sca
 - First findings at small scale (5 shards, 1.2k leaves, 0.3M facts):
   - search p95 70 ms and inline edit p95 25 ms are well inside their targets;
   - the tree-root and pivot queries are already about 460 ms against 400. They request `projected`, the planner measure found costly in T-033 (a follow-up task speeds it up). At spec scale the grid target is expected to fail until that lands.
+  - roll-up lag p95 is 12.6 s against 5 s: `handleRollupEvent` refreshes the changed paths of all 5 templates through the planner.
+  - at 60 shards (11.8k leaves, 3.6M facts), one template's full roll-up build ran more than 1,070 s. The job therefore bounds the rebuild (15 min statement timeout on its own connections) and the lag handlers (2 min), records a failure, and keeps measuring.
 - The job is red until every Appendix C target holds at spec scale. TASKS_STATUS keeps T-034 `blocked` on it, with the numbers.
