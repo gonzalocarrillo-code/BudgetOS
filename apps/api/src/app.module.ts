@@ -9,6 +9,7 @@ import { ViewsModule } from "./modules/views/views.module.js";
 import { EnvelopesModule } from "./modules/envelopes/envelopes.module.js";
 import { ExportsModule } from "./modules/exports/exports.module.js";
 import { RegistryModule } from "./modules/registry/registry.module.js";
+import { OverviewModule } from "./modules/overview/overview.module.js";
 import { PacingModule } from "./modules/pacing/pacing.module.js";
 import { SearchModule } from "./modules/search/search.module.js";
 import { ThreadsModule } from "./modules/threads/threads.module.js";
@@ -16,6 +17,6 @@ import { SourcesModule } from "./modules/sources/sources.module.js";
 import { TargetsModule } from "./modules/targets/targets.module.js";
 
 @Module({
-  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule, ClosuresModule, QueryModule, ViewsModule],
+  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule, ClosuresModule, QueryModule, ViewsModule, OverviewModule],
 })
 export class AppModule {}

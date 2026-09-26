@@ -976,6 +976,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/pacing": {
         parameters: {
             query?: never;
@@ -4171,6 +4187,28 @@ export interface operations {
                         expiresInSeconds: number | null;
                     };
                 };
+            };
+        };
+    };
+    getOverview: {
+        parameters: {
+            query?: {
+                period?: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
