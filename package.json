@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "turbo run dev --parallel",
+    "dev:local": "pnpm --filter @budget/web local",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
