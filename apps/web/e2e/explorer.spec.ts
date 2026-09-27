@@ -92,6 +92,33 @@ test.describe("Explorer (T-027)", () => {
     await expect(page.getByTestId("explorer-grid")).toBeVisible();
   });
 
+  test("a parent budget opens in the drawer from its group row; the marker still expands it", async ({ page }) => {
+    const token = await signIn(page);
+    const ws = state().workspaceId;
+    await page.goto(budgetsUrl({ period: FY }));
+    await pick(page, "template-picker", { label: "Region first" });
+    await expect.poll(() => page.getByTestId("explorer-grid").getAttribute("data-rows")).not.toBe("");
+    const templateId = new URL(page.url()).searchParams.get("templateId")?.replace(/"/g, "") ?? "";
+    const tree = await api(token, "POST", `/workspaces/${ws}/tree`, { workspaceId: ws, templateId, period: FY, measures: ["budget"] });
+    const rows = tree.body["rows"] as Array<{ key: string; nodeEnvelopeId: string | null }>;
+    const index = rows.findIndex((r) => r.nodeEnvelopeId !== null);
+    expect(index, "a first-level group that is a parent budget").toBeGreaterThanOrEqual(0);
+    const parent = await api(token, "GET", `/envelopes/${rows[index]?.nodeEnvelopeId}`);
+    const before = Number(await page.getByTestId("explorer-grid").getAttribute("data-rows"));
+
+    const box = await page.getByTestId("explorer-grid").locator("canvas").first().boundingBox();
+    if (!box) throw new Error("grid canvas not rendered");
+    const y = box.y + 40 + index * 36 + 18; // header 40 px, row 36 px
+    await page.mouse.click(box.x + 80, y); // the name
+    await expect(page.getByTestId("drawer-name")).toHaveText(String(parent.body["displayName"] ?? parent.body["name"]));
+    await expect(page).toHaveURL(new RegExp(`select=${rows[index]?.nodeEnvelopeId}`));
+    await expect(page.getByTestId("drawer-children")).toBeVisible();
+
+    await page.getByRole("button", { name: /close/i }).first().click();
+    await page.mouse.click(box.x + 14, y); // the marker
+    await expect.poll(async () => Number(await page.getByTestId("explorer-grid").getAttribute("data-rows"))).toBeGreaterThan(before);
+  });
+
   test("inline edit conflict: a stale edit shows the current value; reload, then the edit saves", async ({ page }) => {
     const token = await signIn(page);
     const s = state();

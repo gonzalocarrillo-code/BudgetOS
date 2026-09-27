@@ -238,3 +238,18 @@ This is the Appendix C job re-run on main `10da495` (after phase 18), at the sam
 
 - The grid query and search at 1M+ documents exceed the 15 s interactive transaction. They need the planner projection speed-up and a look at search query plans at scale.
 - The roll-up and search-lag handlers need a faster, incremental refresh.
+
+## Product feedback (product owner, 2026-09-26)
+
+Not spec tasks. They are built one PR each, in this order, after phase 19. Phase 20 waits for GCP access.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Parent budgets open the right-hand drawer from their group row, on every level and hierarchy | done: `nodeEnvelopeId` on group rows; the marker expands, the name opens |
+| 2 | The "(none)" root shows the account name (e.g. Golden) | pending |
+| 3 | "Send for approval" is easy to find | pending |
+| 4 | Pace in the Budgets tree | pending |
+| 5 | Edit the budget family top-down: children as % of the parent (auto-update) or manual (flagged when they do not add up) | pending |
+| 6 | Roles that set budgets without approval | pending |
+| 7 | Dynamic quarters, partitions, views; end and reopen a quarter | pending |
+| 8 | Overview: % of budget spent, user-picked groupings, platforms from the registry | pending |

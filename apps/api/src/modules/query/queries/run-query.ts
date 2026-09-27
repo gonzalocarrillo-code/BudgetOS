@@ -1,5 +1,5 @@
 import { DomainError, QueryRequest, readScopeFilter, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
-import { envelopePaths, plannerOptions, withTenant } from "@budget/db";
+import { envelopePaths, envelopesByTuple, plannerOptions, withTenant } from "@budget/db";
 import { compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -40,7 +40,26 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
     const grouped = q.groupBy.length > 0;
     const paths = grouped ? new Map<string, string[]>() : await envelopePaths(tx, page.rows.map((r) => String(r["envelope_id"])));
     const measures = [...new Set(q.measures)];
-    const rows = page.rows.map((r) => {
+    // Group rows: the envelope whose tuple is exactly the group's (a parent), when there is one.
+    const nodeOf = new Map<number, string>();
+    if (grouped) {
+      // Only groups with a value for every key can be an envelope's exact tuple.
+      const tuples: Array<Record<string, string>> = [];
+      const rowOf: number[] = [];
+      page.rows.forEach((r, i) => {
+        const values = q.groupBy.map((k) => text(r[`dim_${sanitize(k)}`]));
+        if (values.some((v) => v === null)) return;
+        tuples.push(Object.fromEntries(q.groupBy.map((k, j) => [k, values[j] as string])));
+        rowOf.push(i);
+      });
+      const hits = new Map<number, string[]>();
+      for (const h of await envelopesByTuple(tx, q.workspaceId, tuples)) {
+        const i = rowOf[h.i] as number;
+        hits.set(i, [...(hits.get(i) ?? []), h.id]);
+      }
+      for (const [i, ids] of hits) if (ids.length === 1) nodeOf.set(i, ids[0] as string);
+    }
+    const rows = page.rows.map((r, index) => {
       const dims: Record<string, string | null> = grouped
         ? Object.fromEntries(q.groupBy.map((k) => [k, text(r[`dim_${sanitize(k)}`])]))
         : Object.fromEntries(Object.entries((r["dimension_values"] ?? {}) as Record<string, unknown>).map(([k, v]) => [k, text(v)]));
@@ -54,7 +73,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       return {
         key: grouped ? q.groupBy.map((k) => dims[k] ?? "∅").join("/") : (id as string),
         envelopeId: id,
-        ...(grouped ? {} : { versionId: text(r["head_version_id"]) }),
+        ...(grouped ? { nodeEnvelopeId: nodeOf.get(index) ?? null } : { versionId: text(r["head_version_id"]) }),
         path: grouped ? q.groupBy.map((k) => dims[k] ?? "∅") : (paths.get(id as string) ?? [String(r["name"])]),
         dimensions: dims,
         measures: Object.fromEntries(measures.map((m) => [m, measure(m, r[m])])),
