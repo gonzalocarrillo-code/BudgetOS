@@ -27,3 +27,9 @@ If the tree looks stale:
 1. Check the runner is up (`local runner up` in its log).
 2. Look for unpublished outbox rows of the workspace.
 3. Rebuild the workspace: `pnpm --filter @budget/workers exec tsx src/rollup/main.ts rebuild --workspace <id> --org <id>` with `APP_DATABASE_URL`.
+
+## Query engine (ADR-042)
+
+- `/query` answers grouped and total queries with the set-based planner. Other shapes, such as measure filters, KPI targets and flat pages, use the per-envelope planner. The response's `engine` field says which engine answered: `postgres`, `warehouse` or `cache`.
+- Results are cached for 5 minutes. The key covers the workspace, its data version, the day and the scoped query. With `REDIS_URL` set the cache is Redis; without it, memory. `QUERY_CACHE=off` disables it (the load job does this).
+- With `BIGQUERY_DATASET=project.dataset` set, a grouped query goes to BigQuery when it spans more than 13 months or Postgres estimates more than 200k rows. The dataset must hold `envelope`, `envelope_version`, `envelope_dimension`, `dimension`, `dimension_value`, `spend_fact` and `projection_fact`, with the Postgres columns. Credentials come from Application Default Credentials. The variable is unset locally.

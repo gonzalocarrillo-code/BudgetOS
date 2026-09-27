@@ -72,6 +72,8 @@ export const QueryResponse = z.object({
   totals: z.record(z.string(), z.string().nullable()),
   dataAsOf: z.string().datetime(),
   dataVersion: z.number().int(),
+  /** Where the rows came from (ADR-042): Postgres, the warehouse replica, or the query cache. */
+  engine: z.enum(["postgres", "warehouse", "cache"]).optional(),
   elapsedMs: z.number(),
 });
 export type QueryResponse = z.infer<typeof QueryResponse>;

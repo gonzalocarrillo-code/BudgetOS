@@ -289,3 +289,13 @@ No placeholder screens are left (2026-09-27):
 - **Admin › Roles:** everyone in the org and every group, with their roles here. Give a role for the whole workspace or only some values of one granularity, or revoke it. An org admin adds a person by email (`GET`/`POST /workspaces/:ws/members`).
 - **Admin › Tags:** usage counts; create, rename, recolour, merge; each tag opens its budgets.
 - The `Pending` component is removed.
+
+## Heavy queries: spec §6.2 routing rule (T-007b, 2026-09-27)
+
+Deferred from T-007 and now built (ADR-042).
+
+- **Set-based planner:** grouped and total queries are now one join and one GROUP BY instead of a subquery per envelope. The answer is the same as the per-envelope planner's, asserted by `aggregate.test.ts`.
+- **BigQuery routing:** with `BIGQUERY_DATASET` set, a heavy query goes to BigQuery (over 13 months, or more than 200k estimated rows).
+- **Query cache:** results are cached in Redis, keyed by data version.
+- **Roll-up full build:** now set-based.
+- **Blocked on client credentials:** loading the warehouse replica (T-017).

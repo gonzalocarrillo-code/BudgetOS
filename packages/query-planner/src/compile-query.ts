@@ -52,7 +52,7 @@ export interface CompiledQuery {
   orderKeys: OrderKey[];
 }
 
-const RATIO = new Set(["pace_index", "variance_pct", "projected_close_pct", "spend_to_date_pct"]);
+export const RATIO = new Set(["pace_index", "variance_pct", "projected_close_pct", "spend_to_date_pct"]);
 /** Measures that read projected spend. */
 const PROJECTION = new Set(["projected", "variance_abs", "variance_pct", "projected_close_pct"]);
 
@@ -283,7 +283,7 @@ export function compileTotals(q: QueryRequest, period: { start: string; end: str
  * Keyset order: requested sort keys, then a unique tie-break. Offsets drift when rows are inserted
  * between pages; a keyset cursor does not.
  */
-function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: string[], defaultSort: string[]): OrderKey[] {
+export function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: string[], defaultSort: string[]): OrderKey[] {
   const keys: OrderKey[] = [];
   const seen = new Set<string>();
   const push = (col: string, dir: "asc" | "desc") => {
@@ -308,7 +308,7 @@ const NUMERIC_COLS = new Set(["budget", "actual", "projected", "remaining", "var
 const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */
-function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuilder): string {
+export function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuilder): string {
   const branches: string[] = [];
   order.forEach((o, i) => {
     const v = values[i];
@@ -355,7 +355,7 @@ export function pageOf<R extends Record<string, unknown>>(
   return { rows: page, nextCursor: encodeCursor(c.orderKeys.map((o) => cursorValue(last[o.col]))) };
 }
 
-function ratioExpr(mk: string, elapsedFrac: string): string {
+export function ratioExpr(mk: string, elapsedFrac: string): string {
   switch (mk) {
     case "pace_index":
       return `(sum(m.actual)/sum(m.budget)) / NULLIF(${elapsedFrac},0)`;
