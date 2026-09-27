@@ -11,6 +11,8 @@ Planner bench maintenance (`task/planner-bench-stable`, 2026-09-23, not a §22 t
 
 Planner projection performance (`task/planner-projection-perf`, 2026-09-26, not a §22 task): `projected` and the measures derived from it are read once per envelope through a lateral join instead of a scalar subquery copied into every expression that uses it. Flat pages that neither sort nor filter on them read projections after the LIMIT, for the page's rows only. `plannerOptions()` sets `hasProjections`, so a workspace without projection facts never touches `projection_fact`. Results are unchanged. The planner bench gains `executeProjection` and `executeProjectionEmpty`. ADR-030 has the plans and numbers.
 
+Golden seed speed (`task/golden-seed-speed`, 2026-09-26, not a §22 task): the seed logs each phase's seconds. It reads each approval request's frozen chain once, walks it on `decide`'s returned status, and tracks envelope heads in memory instead of reading them back. `withTenant()` sets its four settings in one statement. The golden data and assertions are unchanged. The seed runs 23% fewer statements and 30% fewer transactions; on a fresh database it takes 15.8 s instead of 21.6 s. The rest of the local slowdown is bloated fact indexes in the developer database (REINDEX, or `pnpm db:reset`). ADR-034 has the profile.
+
 Status values: `pending` | `in_progress` | `done` | `blocked`.
 A task is `done` only when its §22 "Done when" test is green and the phase gate in `LOCAL_BUILD_PHASES.md` passed. Partial GCP clauses stay `blocked` until that gate passes; do not mark the whole task `done` on the local clause alone when the phase doc says the task is split.
 
