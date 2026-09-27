@@ -268,3 +268,18 @@ This is the spec-scale job on the speed-up branch: `8cbf40c`, actions run 363109
 - **The pivot and large filtered pages** still compute every leaf on read. They need a pre-aggregated cube or a set-based planner path.
 - **Search** at about 1M documents still exceeds 15 s.
 - **Roll-up lag:** one change's refresh (5 templates × 2 periods, run for each of the change's `budget.changed` events) exceeds the 15 s handler transaction at spec scale. It measured 8.1 s p95 at 19.5k leaves. The next steps are skipping the draft events, which change no cached measure, and coalescing events for the same envelope.
+
+## Product feedback (product owner, 2026-09-26)
+
+Not spec tasks. They are built one PR each, in this order, after phase 19. Phase 20 waits for GCP access.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Parent budgets open the right-hand drawer from their group row, on every level and hierarchy | done: `nodeEnvelopeId` on group rows; the marker expands, the name opens |
+| 2 | The "(none)" root shows the account name (e.g. Golden) | pending |
+| 3 | "Send for approval" is easy to find | pending |
+| 4 | Pace in the Budgets tree | pending |
+| 5 | Edit the budget family top-down: children as % of the parent (auto-update) or manual (flagged when they do not add up) | pending |
+| 6 | Roles that set budgets without approval | pending |
+| 7 | Dynamic quarters, partitions, views; end and reopen a quarter | pending |
+| 8 | Overview: % of budget spent, user-picked groupings, platforms from the registry | pending |

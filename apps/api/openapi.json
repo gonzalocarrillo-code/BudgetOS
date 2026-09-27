@@ -5803,6 +5803,11 @@
                           "depth": {
                             "type": "integer"
                           },
+                          "nodeEnvelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
                           "path": {
                             "type": "array",
                             "items": {
@@ -6090,6 +6095,11 @@
                           },
                           "depth": {
                             "type": "integer"
+                          },
+                          "nodeEnvelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
                           },
                           "path": {
                             "type": "array",

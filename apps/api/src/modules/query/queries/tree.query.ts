@@ -13,7 +13,7 @@ import type { AuthContext } from "../../../common/tenant.js";
  * which cuts every row to their scope. So does a period the cache does not hold.
  */
 
-type Cached = { node_path: string; measures: Record<string, string | number | null>; data_version: bigint | number };
+type Cached = { node_path: string; envelope_id: string | null; measures: Record<string, string | number | null>; data_version: bigint | number };
 
 const unavailable = (reason: "scoped" | "not_cached", dataVersion: number, now: Date, started: number): TreeResponse => ({
   available: false,
@@ -62,6 +62,7 @@ export async function treeQuery(prisma: PrismaClient, auth: AuthContext, raw: un
       return {
         key: n.node_path,
         envelopeId: null,
+        nodeEnvelopeId: n.envelope_id,
         path: segments,
         dimensions: Object.fromEntries(keys.map((k, i) => [k, segments[i] === NONE_SEGMENT ? null : (segments[i] ?? null)])),
         measures: pick(n.measures),

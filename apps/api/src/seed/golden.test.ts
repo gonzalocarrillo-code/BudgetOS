@@ -632,7 +632,9 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
         const l = live.rows.find((x) => x.key === r.key);
         expect(same(r.measures, l?.measures ?? {}), `${r.key}: ${JSON.stringify(r.measures)} vs ${JSON.stringify(l?.measures)}`).toBe(true);
         expect(r.pendingCount).toBe(l?.pendingCount);
+        expect(r.nodeEnvelopeId ?? null, `${r.key}: the envelope that is the group`).toBe(l?.nodeEnvelopeId ?? null);
       }
+      if (d === 0) expect(tree.rows.some((r) => (r.nodeEnvelopeId ?? null) !== null), "parent budgets are groups of the first level").toBe(true);
       if (d === 0) {
         expect(same(tree.totals, live.totals)).toBe(true);
         expect(tree.totals["leafCount"]).toBe(live.totals["leafCount"]);

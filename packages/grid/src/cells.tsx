@@ -173,7 +173,7 @@ export const pathCellRenderer: CustomRenderer<PathCell> = {
     const marker = cell.data.hasChildren ? (cell.data.expanded ? "▾" : "▸") : "";
     const label = marker.length > 0 ? `${marker} ${cell.data.name}` : cell.data.name;
     const pending = cell.data.chips.pending > 0 ? ` ${cell.data.chips.pending}` : "";
-    drawText(ctx, theme, rect, `${label}${pending}`, "left", cell.data.level * 16);
+    drawText(ctx, theme, rect, `${label}${pending}`, "left", cell.data.level * 16); // INDENT_PX in BudgetGrid.tsx
   },
 };
 

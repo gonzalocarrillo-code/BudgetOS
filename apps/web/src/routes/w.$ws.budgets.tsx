@@ -119,7 +119,9 @@ function ExplorerPage(): ReactElement {
   const events: GridEvents = {
     onSelect: () => undefined,
     onOpen: (row) => {
-      if (row.envelopeId && row.envelopeId !== search.select) setSearch({ select: row.envelopeId });
+      // A leaf, or a parent budget from its group row (the envelope that is the group).
+      const id = row.envelopeId ?? row.nodeEnvelopeId ?? null;
+      if (id && id !== search.select) setSearch({ select: id });
     },
     // A pasted range never writes cells: its Budget column becomes a bulk `paste` preview (T-013).
     onPaste: ({ anchor, cells }) => {

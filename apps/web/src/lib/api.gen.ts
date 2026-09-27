@@ -4089,6 +4089,8 @@ export interface operations {
                             /** Format: uuid */
                             versionId?: string | null;
                             depth?: number;
+                            /** Format: uuid */
+                            nodeEnvelopeId?: string | null;
                             path: string[];
                             dimensions: {
                                 [key: string]: string | null;
@@ -4188,6 +4190,8 @@ export interface operations {
                             /** Format: uuid */
                             versionId?: string | null;
                             depth?: number;
+                            /** Format: uuid */
+                            nodeEnvelopeId?: string | null;
                             path: string[];
                             dimensions: {
                                 [key: string]: string | null;
