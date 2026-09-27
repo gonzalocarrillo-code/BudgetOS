@@ -1,3 +1,4 @@
+import { DEFAULT_TOURS } from "./defaults.tours.js";
 import { rephase } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "./defaults.registry.js";
@@ -473,6 +474,8 @@ export interface GoldenTotals {
   search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment", number>;
   /** T-036: naming templates seeded (GOLDEN_NAMING). */
   naming: { templates: number };
+  /** T-040: the built-in tours (one per role) and their steps. */
+  tours: { roles: string[]; steps: number };
   /** T-039: GOLDEN_MANUAL_ENTRY: one DRAFT batch, its rows and its per-currency total. */
   manualEntry: { batches: number; status: string; rows: number; byCurrency: Record<string, string> };
   /** T-038: GOLDEN_EXPERIMENT's read-out: live leaves and weighted CPA (Σspend / Σconversions, 4 dp) per side. */
@@ -621,6 +624,7 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       experiment: 1,
     },
     naming: { templates: GOLDEN_NAMING.length },
+    tours: { roles: DEFAULT_TOURS.map((t) => t.role), steps: DEFAULT_TOURS.reduce((n, t) => n + t.steps.length, 0) },
     manualEntry: {
       batches: 1,
       status: "DRAFT",

@@ -58,9 +58,9 @@ function SourcesPage(): ReactElement {
     );
   }
   return (
-    <Page title={t("nav.sources")} actions={<Link to="/w/$ws/admin/sources" params={{ ws }} className="text-sm text-primary hover:underline">{t("sources.setup")}</Link>}>
+    <Page title={t("nav.sources")} actions={<Link to="/w/$ws/admin/sources" params={{ ws }} className="text-sm text-primary hover:underline" data-tour="sources-setup">{t("sources.setup")}</Link>}>
       <div className="grid gap-5 lg:grid-cols-[18rem_1fr]">
-        <Card>
+        <Card tour="sources-list">
           {isPending ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : null}
           {!isPending && sources.length === 0 ? (
             <p className="text-sm text-muted-foreground">

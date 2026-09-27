@@ -24,14 +24,14 @@ function Inbox(): ReactElement {
   const rows = data?.rows ?? [];
   return (
     <Page title={t("nav.approvals")}>
-      <div role="tablist" className="inline-flex w-fit rounded-lg border border-border bg-card p-0.5" data-testid="approvals-tabs">
+      <div role="tablist" className="inline-flex w-fit rounded-lg border border-border bg-card p-0.5" data-testid="approvals-tabs" data-tour="approvals-tabs">
         {TABS.map((x) => (
           <Link key={x.id} to="/w/$ws/approvals" params={{ ws }} search={{ tab: x.id }} role="tab" aria-selected={tab === x.id} className={cn("h-8 rounded-md px-3 text-sm leading-8", tab === x.id ? "bg-primary text-primary-foreground" : "text-foreground/80 hover:bg-accent")} data-testid={`approvals-tab-${x.id}`}>
             {t(x.label)}
           </Link>
         ))}
       </div>
-      <Card>
+      <Card tour="approvals-list">
         {isPending ? (
           <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
         ) : rows.length === 0 ? (

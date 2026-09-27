@@ -17,6 +17,7 @@ import { Route as WWsApprovalsRouteImport } from './routes/w.$ws.approvals'
 import { Route as WWsBudgetsRouteImport } from './routes/w.$ws.budgets'
 import { Route as WWsClosuresRouteImport } from './routes/w.$ws.closures'
 import { Route as WWsExperimentsRouteImport } from './routes/w.$ws.experiments'
+import { Route as WWsHomeRouteImport } from './routes/w.$ws.home'
 import { Route as WWsSearchRouteImport } from './routes/w.$ws.search'
 import { Route as WWsSourcesRouteImport } from './routes/w.$ws.sources'
 import { Route as WWsTargetsRouteImport } from './routes/w.$ws.targets'
@@ -74,6 +75,11 @@ const WWsClosuresRoute = WWsClosuresRouteImport.update({
 const WWsExperimentsRoute = WWsExperimentsRouteImport.update({
   id: '/experiments',
   path: '/experiments',
+  getParentRoute: () => WWsRoute,
+} as any)
+const WWsHomeRoute = WWsHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => WWsRoute,
 } as any)
 const WWsSearchRoute = WWsSearchRouteImport.update({
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
   '/w/$ws/experiments': typeof WWsExperimentsRouteWithChildren
+  '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
   '/w/$ws/sources': typeof WWsSourcesRouteWithChildren
   '/w/$ws/targets': typeof WWsTargetsRoute
@@ -200,6 +207,7 @@ export interface FileRoutesByTo {
   '/w/$ws/alerts': typeof WWsAlertsRoute
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
+  '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws': typeof WWsIndexRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
   '/w/$ws/experiments': typeof WWsExperimentsRouteWithChildren
+  '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
   '/w/$ws/sources': typeof WWsSourcesRouteWithChildren
   '/w/$ws/targets': typeof WWsTargetsRoute
@@ -258,6 +267,7 @@ export interface FileRouteTypes {
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
     | '/w/$ws/experiments'
+    | '/w/$ws/home'
     | '/w/$ws/search'
     | '/w/$ws/sources'
     | '/w/$ws/targets'
@@ -283,6 +293,7 @@ export interface FileRouteTypes {
     | '/w/$ws/alerts'
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
+    | '/w/$ws/home'
     | '/w/$ws/search'
     | '/w/$ws/targets'
     | '/w/$ws'
@@ -310,6 +321,7 @@ export interface FileRouteTypes {
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
     | '/w/$ws/experiments'
+    | '/w/$ws/home'
     | '/w/$ws/search'
     | '/w/$ws/sources'
     | '/w/$ws/targets'
@@ -392,6 +404,13 @@ declare module '@tanstack/react-router' {
       path: '/experiments'
       fullPath: '/w/$ws/experiments'
       preLoaderRoute: typeof WWsExperimentsRouteImport
+      parentRoute: typeof WWsRoute
+    }
+    '/w/$ws/home': {
+      id: '/w/$ws/home'
+      path: '/home'
+      fullPath: '/w/$ws/home'
+      preLoaderRoute: typeof WWsHomeRouteImport
       parentRoute: typeof WWsRoute
     }
     '/w/$ws/search': {
@@ -571,6 +590,7 @@ interface WWsRouteChildren {
   WWsBudgetsRoute: typeof WWsBudgetsRoute
   WWsClosuresRoute: typeof WWsClosuresRoute
   WWsExperimentsRoute: typeof WWsExperimentsRouteWithChildren
+  WWsHomeRoute: typeof WWsHomeRoute
   WWsSearchRoute: typeof WWsSearchRoute
   WWsSourcesRoute: typeof WWsSourcesRouteWithChildren
   WWsTargetsRoute: typeof WWsTargetsRoute
@@ -592,6 +612,7 @@ const WWsRouteChildren: WWsRouteChildren = {
   WWsBudgetsRoute: WWsBudgetsRoute,
   WWsClosuresRoute: WWsClosuresRoute,
   WWsExperimentsRoute: WWsExperimentsRouteWithChildren,
+  WWsHomeRoute: WWsHomeRoute,
   WWsSearchRoute: WWsSearchRoute,
   WWsSourcesRoute: WWsSourcesRouteWithChildren,
   WWsTargetsRoute: WWsTargetsRoute,

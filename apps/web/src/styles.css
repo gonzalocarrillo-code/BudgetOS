@@ -38,3 +38,26 @@
 .search-item[data-selected="true"] {
   background: var(--secondary);
 }
+
+/* Guided tours (driver.js, T-040) in the design tokens. */
+.driver-popover.bt-tour {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgb(11 22 40 / 0.18);
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  padding: 16px 18px;
+  max-width: 340px;
+}
+.driver-popover.bt-tour .driver-popover-title { font-size: 15px; font-weight: 600; }
+.driver-popover.bt-tour .driver-popover-description { font-size: 13px; line-height: 1.5; color: var(--muted-foreground); }
+.driver-popover.bt-tour .driver-popover-progress-text { font-size: 12px; color: var(--subtle-foreground); }
+.driver-popover.bt-tour .driver-popover-footer button {
+  border-radius: 8px;
+  font: 500 13px var(--font-sans);
+  padding: 6px 12px;
+  text-shadow: none;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.driver-popover.bt-tour .driver-popover-footer .driver-popover-next-btn { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
