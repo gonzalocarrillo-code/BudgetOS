@@ -276,10 +276,16 @@ Not spec tasks. They are built one PR each, in this order, after phase 19. Phase
 | # | Item | Status |
 |---|---|---|
 | 1 | Parent budgets open the right-hand drawer from their group row, on every level and hierarchy | done: `nodeEnvelopeId` on group rows; the marker expands, the name opens |
-| 2 | The "(none)" root shows the account name (e.g. Golden) | done: a first-level group with no value is the workspace; deeper and pivot groups read "No <granularity>" (the timeline still says "(none)") |
+| 2 | The "(none)" root shows the account name (e.g. Golden) | done: a first-level group with no value is the workspace; deeper, pivot and timeline groups read "No <granularity>" |
 | 3 | "Send for approval" is easy to find | done: there was no way to submit a budget draft from Budgets; now a card at the top of the drawer (draft → Send for approval; waiting → open the request or withdraw) and the same action in the notice after an inline edit |
 | 4 | Pace in the Budgets tree | done: the cell showed the raw ratio (`0.99032675996…`) with its bar drawn over it; now two decimals like the totals row, with the bar left of the value |
 | 5 | Edit the budget family top-down: children as % of the parent (auto-update) or manual (flagged when they do not add up) | done: family card in the drawer, the family editor (% or amount per child, live results down the tree, sum flag), one bulk change for approval; ADR-039 |
-| 6 | Roles that set budgets without approval | done: policies match "who is asking" (roles or people); the Approval policies admin page (was a placeholder); the drawer says "Apply now" when a draft needs no approval; ADR-040. The Roles admin page is still a placeholder |
+| 6 | Roles that set budgets without approval | done: policies match "who is asking" (roles or people); the Approval policies admin page (was a placeholder); the drawer says "Apply now" when a draft needs no approval; ADR-040; the Roles admin page (people and groups, scoped roles, add a person by email) |
 | 7 | Dynamic quarters, partitions, views; end and reopen a quarter | done: the fiscal calendar is the workspace's rows (calendar or 4-4-5 / 4-5-4 / 5-4-4, custom partitions) and every "this quarter" follows it; Admin › Fiscal calendar (start month, generate a year, custom periods, close / reopen); the Explorer picks any period; ADR-041 |
 | 8 | Overview: % of budget spent, user-picked groupings, platforms from the registry | done: the Spent tile (% of budget, % of the period gone) replaces the pace number; heatmap cells show % spent (colour: spend against time); rows × columns are any two granularities, in the URL; every column comes back (top 8 first, "Show all") |
+
+No placeholder screens are left (2026-09-27):
+
+- **Admin › Roles:** everyone in the org and every group, with their roles here. Give a role for the whole workspace or only some values of one granularity, or revoke it. An org admin adds a person by email (`GET`/`POST /workspaces/:ws/members`).
+- **Admin › Tags:** usage counts; create, rename, recolour, merge; each tag opens its budgets.
+- The `Pending` component is removed.

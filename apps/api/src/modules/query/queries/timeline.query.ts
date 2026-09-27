@@ -235,6 +235,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
     }
 
     return {
+      levels,
       bars,
       nextCursor: page.nextCursor,
       calendar: {

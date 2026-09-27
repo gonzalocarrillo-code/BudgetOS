@@ -62,6 +62,7 @@ describe("GET /workspaces/:ws/timeline (T-037)", () => {
   it("groups by the hierarchy template; group bars add up to /query; one envelope bar per live leaf; X-Data-Version", async () => {
     const t = await timeline("groupBy=region,country");
     expect(t.headers["x-data-version"]).toBe(t.dataVersion);
+    expect(t.levels).toEqual(["region", "country"]); // for labelling groups with no value
     const q = await query({});
     expect(envelopes(t)).toHaveLength(q.rows.length);
     const regions = t.bars.filter((b) => b.kind === "group" && b.level === 0);

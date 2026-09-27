@@ -34,6 +34,22 @@ const pick = async (page: Page, testId: string, option: { label: string } | stri
   await expect(opt.first()).toBeAttached();
   await select.selectOption(option);
 };
+/**
+ * Opens a cell's editor with a double click and types into it once it has focus. The overlay
+ * opens asynchronously (and a click during a redraw can miss), so typing blind lost keystrokes —
+ * 1240.73 became 240.73. Retries the double click until the editor is open.
+ */
+async function editCell(page: Page, x: number, y: number, value: string) {
+  const input = page.locator("#portal input");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.mouse.dblclick(x, y);
+    if (await input.isVisible().catch(() => false)) break;
+    await page.waitForTimeout(400);
+  }
+  await expect(input).toBeVisible(); // fill() focuses it: something else may hold focus after a reload
+  await input.fill(value);
+  await input.press("Enter");
+}
 const totalBudget = (page: Page) => page.getByTestId("explorer-grid").getAttribute("data-budget-total");
 
 test.describe("Explorer (T-027)", () => {
@@ -136,9 +152,7 @@ test.describe("Explorer (T-027)", () => {
       await page.waitForTimeout(300);
       const box = await page.getByTestId("explorer-grid").locator("canvas").first().boundingBox();
       if (!box) throw new Error("grid canvas not rendered");
-      await page.mouse.dblclick(box.x + 340 + 75, box.y + 40 + 18);
-      await page.keyboard.type(amount);
-      await page.keyboard.press("Enter");
+      await editCell(page, box.x + 340 + 75, box.y + 40 + 18, amount);
       await expect(page.getByTestId("notice-ok")).toBeVisible();
     };
 
@@ -228,9 +242,7 @@ test.describe("Explorer (T-027)", () => {
       const canvas = page.getByTestId("explorer-grid").locator("canvas").first();
       const box = await canvas.boundingBox();
       if (!box) throw new Error("grid canvas not rendered");
-      await page.mouse.dblclick(box.x + 340 + 75, box.y + 40 + 18); // name column is 340 px, header 40 px, row 36 px
-      await page.keyboard.type(value);
-      await page.keyboard.press("Enter");
+      await editCell(page, box.x + 340 + 75, box.y + 40 + 18, value); // name column is 340 px, header 40 px, row 36 px
     };
     await editBudget("999.99");
     await expect(page.getByTestId("edit-conflict")).toBeVisible();
