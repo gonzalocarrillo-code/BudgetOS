@@ -14,6 +14,7 @@ import { DimensionIcon } from "../registry/dimension-icon.js";
 import type { StructureOp } from "../structure/structure-dialog.js";
 import { StructureActions } from "../structure/structure-actions.js";
 import { SendForApproval } from "./send-for-approval.js";
+import { FamilySumLine, familyQuery } from "./family-editor.js";
 
 type Tab = "details" | "history" | "comments";
 
@@ -21,12 +22,14 @@ type Tab = "details" | "history" | "comments";
  * The envelope drawer (`select` search param): Details (approved budget, open draft, dimensions,
  * tags), History (every change, T-029) and Comments (threads, T-030). Every budget always has all three.
  */
-export function EnvelopeDrawer({ ws, id, onClose, onStructure }: { ws: string; id: string; onClose: () => void; onStructure?: (op: StructureOp) => void }): ReactElement {
+export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily }: { ws: string; id: string; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void }): ReactElement {
   const client = useQueryClient();
   const { data, error } = useQuery(envelopeQuery(ws, id));
   const { data: threads } = useQuery(threadsQuery(ws, "envelope", id));
   const { data: dims = [] } = useQuery(registryQuery(ws));
   const open = threads?.filter((x) => x.status === "open").length ?? 0;
+  const hasChildren = (data?.structure.children.length ?? 0) > 0;
+  const { data: family } = useQuery({ ...familyQuery(ws, id), enabled: hasChildren });
   const [tab, setTab] = useState<Tab>("details");
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "details", label: t("drawer.tab.details") },
@@ -142,6 +145,16 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure }: { ws: string; i
             ) : (
               <p className="text-xs text-muted-foreground">{t("structure.noChildren")}</p>
             )}
+            {hasChildren ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+                {family?.sums[0] ? <FamilySumLine sum={family.sums[0]} currency={data.currency} testId="drawer-family-sum" /> : <span className="text-sm text-muted-foreground">{t("shell.loading")}</span>}
+                {onFamily ? (
+                  <Button size="sm" variant="outline" onClick={() => onFamily(id)} data-testid="drawer-family-edit">
+                    {t("family.edit")}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             {onStructure ? <StructureActions env={data} onPick={onStructure} compact /> : null}
           </dd>
           <dt className="col-span-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("tags.title")}</dt>

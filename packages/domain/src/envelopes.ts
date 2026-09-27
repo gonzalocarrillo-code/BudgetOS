@@ -205,3 +205,61 @@ export const StructurePreviewInput = z.discriminatedUnion("op", [
   z.object({ op: z.literal("merge"), input: MergeEnvelopesInput }),
 ]);
 export type StructurePreviewInput = z.infer<typeof StructurePreviewInput>;
+
+/**
+ * Family editing (product feedback 5, ADR-039): a parent and its children edited together. A child
+ * is either a share of the parent (`percent`, 0–100) that follows it, or its own amount (`manual`).
+ * The plan cascades down: a child that changes carries its own percent children with it.
+ */
+export const AllocationMode = z.enum(["percent", "manual"]);
+export type AllocationMode = z.infer<typeof AllocationMode>;
+export const PercentString = z.string().regex(/^\d{1,3}(\.\d{1,6})?$/, "A percent is 0–100 with at most 6 decimals").refine((v) => Number(v) <= 100, "A percent is at most 100");
+
+export const FamilyChildInput = z
+  .object({ envelopeId: z.string().uuid(), mode: AllocationMode, pct: PercentString.optional(), amount: MoneyString.optional() })
+  .refine((c) => (c.mode === "percent" ? c.pct !== undefined : c.amount !== undefined), { message: "percent needs pct; manual needs amount" });
+export type FamilyChildInput = z.infer<typeof FamilyChildInput>;
+
+export const FamilyInput = z.object({
+  parentAmount: MoneyString,
+  children: z.array(FamilyChildInput).max(500).default([]),
+  rationale: z.string().min(3).max(4000).default("Family edit"),
+});
+export type FamilyInput = z.infer<typeof FamilyInput>;
+
+/** How a parent's children add up to it: `unallocated` = parent − children (negative when over). */
+export const FamilySum = z.object({
+  parentId: z.string().uuid(),
+  parentAmount: z.string(),
+  childrenTotal: z.string(),
+  unallocated: z.string(),
+  status: z.enum(["balanced", "under", "over"]),
+});
+export type FamilySum = z.infer<typeof FamilySum>;
+
+export const FamilyMember = z.object({
+  envelopeId: z.string().uuid(),
+  name: z.string(),
+  parentId: z.string().uuid().nullable(),
+  level: z.number().int(),
+  currency: z.string(),
+  status: z.string(),
+  mode: AllocationMode.nullable(),
+  pct: z.string().nullable(),
+  /** The amount now (the open draft, else the approved version) and after the plan. */
+  before: z.string().nullable(),
+  after: z.string().nullable(),
+  changed: z.boolean(),
+  childCount: z.number().int(),
+  /** A child in another currency than its parent follows it only manually. */
+  sameCurrency: z.boolean(),
+});
+export type FamilyMember = z.infer<typeof FamilyMember>;
+
+/** GET /envelopes/:id/family and POST …/family/preview: the family as it is, or as the plan leaves it. */
+export const FamilyPlan = z.object({
+  parent: FamilyMember,
+  members: z.array(FamilyMember),
+  sums: z.array(FamilySum),
+});
+export type FamilyPlan = z.infer<typeof FamilyPlan>;

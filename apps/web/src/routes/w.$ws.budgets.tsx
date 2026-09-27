@@ -12,6 +12,7 @@ import { FilterBar } from "../features/explorer/filter-bar.js";
 import { PasteDialog } from "../features/explorer/paste-dialog.js";
 import { useExplorerLabels } from "../features/explorer/labels.js";
 import { SendForApproval } from "../features/explorer/send-for-approval.js";
+import { FamilyEditor } from "../features/explorer/family-editor.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
 import { SavedViews } from "../features/explorer/saved-views.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
@@ -70,6 +71,7 @@ function ExplorerPage(): ReactElement {
   const [loaded, setLoaded] = useState<{ totals: Record<string, string | null>; total: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pasted, setPasted] = useState<BulkPreview | null>(null);
+  const [familyOf, setFamilyOf] = useState<string | null>(null);
   const [structure, setStructure] = useState<StructureOp | null>(null);
   const { data: selected } = useQuery({ ...envelopeQuery(ws, search.select ?? ""), enabled: search.select !== undefined });
 
@@ -271,11 +273,24 @@ function ExplorerPage(): ReactElement {
             onDone={(count) => {
               setPasted(null);
               setNotice({ kind: "ok", text: t("paste.committed", { count }) });
+              void client.invalidateQueries({ queryKey: ["family"] });
+              void client.invalidateQueries({ queryKey: ["envelope"] });
               setReload((n) => n + 1);
             }}
           />
         ) : null}
-        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} /> : null}
+        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} /> : null}
+        {familyOf ? (
+          <FamilyEditor
+            ws={ws}
+            id={familyOf}
+            onClose={() => setFamilyOf(null)}
+            onReview={(preview) => {
+              setFamilyOf(null);
+              setPasted(preview);
+            }}
+          />
+        ) : null}
         {structure && selected && selected.id === search.select ? (
           <StructureDialog
             ws={ws}

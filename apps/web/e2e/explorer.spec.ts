@@ -164,6 +164,51 @@ test.describe("Explorer (T-027)", () => {
     expect((await api(token, "GET", `/envelopes/${large?.envelopeId}`)).body["draft"]).toBeNull();
   });
 
+  test("edit a budget family top-down: the parent +10 %, a child follows by %, one approval for all", async ({ page }) => {
+    const token = await signIn(page);
+    const ws = state().workspaceId;
+    const templates = (await api(token, "GET", `/workspaces/${ws}/hierarchy-templates`)).body as unknown as Array<{ id: string; name: string }>;
+    const regionFirst = templates.find((x) => x.name === "Region first");
+    const tree = await api(token, "POST", `/workspaces/${ws}/tree`, { workspaceId: ws, templateId: regionFirst?.id, period: FY, parentPath: "EMEA", measures: ["budget"] });
+    // A country budget with no open draft of its own.
+    let parentId = "";
+    for (const r of tree.body["rows"] as Array<{ nodeEnvelopeId: string | null }>) {
+      if (!parentId && r.nodeEnvelopeId && (await api(token, "GET", `/envelopes/${r.nodeEnvelopeId}`)).body["draft"] === null) parentId = r.nodeEnvelopeId;
+    }
+    expect(parentId, "an EMEA country budget without a draft").not.toBe("");
+    const family = (await api(token, "GET", `/envelopes/${parentId}/family`)).body as { parent: { before: string }; members: Array<{ envelopeId: string; before: string }> };
+    let row = -1;
+    for (const [i, m] of family.members.entries()) if (row < 0 && (await api(token, "GET", `/envelopes/${m.envelopeId}`)).body["draft"] === null) row = i;
+    expect(row, "a child without a draft").toBeGreaterThanOrEqual(0);
+
+    await page.goto(`${budgetsUrl({ period: FY })}&select=${parentId}`);
+    await expect(page.getByTestId("drawer-family-sum")).toBeVisible();
+    await page.getByTestId("drawer-family-edit").click();
+    const editor = page.getByTestId("family-editor");
+    await expect(editor.getByTestId("family-row")).toHaveCount(family.members.length);
+    const newParent = (Number(family.parent.before) * 1.1).toFixed(2);
+    await editor.getByTestId("family-parent").fill(newParent);
+    const child = editor.getByTestId("family-row").nth(row);
+    await child.getByTestId("family-mode-percent").click();
+    await expect(child).toHaveAttribute("data-mode", "percent");
+    // The child keeps its share, so its result grows with the parent.
+    const share = Number(family.members[row]?.before) / Number(family.parent.before);
+    await expect.poll(async () => Math.abs(Number((await child.getByTestId("family-after").textContent())?.replace(/[^\d.]/g, "")) - Number(newParent) * share)).toBeLessThan(0.5); // the share is shown to 4 decimals
+    await expect(editor.getByTestId("family-sum")).toHaveAttribute("data-status", /under|balanced/);
+    await editor.getByTestId("family-rationale").fill("Top-down +10 %");
+    await editor.getByTestId("family-review").click();
+
+    const dialog = page.getByTestId("paste-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("paste-row")).toHaveCount(2);
+    await dialog.getByTestId("paste-commit").click();
+    await expect(page.getByTestId("notice-ok")).toBeVisible();
+    const parent = await api(token, "GET", `/envelopes/${parentId}`);
+    expect((parent.body["draft"] as { amount: string }).amount).toBe(newParent);
+    const after = (await api(token, "GET", `/envelopes/${parentId}/family`)).body as { members: Array<{ envelopeId: string; mode: string | null }> };
+    expect(after.members[row]?.mode).toBe("percent");
+  });
+
   test("inline edit conflict: a stale edit shows the current value; reload, then the edit saves", async ({ page }) => {
     const token = await signIn(page);
     const s = state();

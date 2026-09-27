@@ -74,6 +74,8 @@ import {
   CreateSavedViewInput,
   UpdateSavedViewInput,
   ReactionInput,
+  FamilyInput,
+  FamilyPlan,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -176,6 +178,13 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/envelopes/csv-import": {
         post: { operationId: "importEnvelopesCsv", parameters: [workspaceParam], requestBody: json(CsvImportInput), responses: { "200": { description: "CsvImportReport: line errors plus a paste preview of the valid rows" } } },
+      },
+      "/api/v1/envelopes/{id}/family": {
+        get: { operationId: "getEnvelopeFamily", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The parent, its children (each % of the parent or manual) and how they add up", ...json(FamilyPlan) } } },
+        post: { operationId: "saveEnvelopeFamily", parameters: [idParam, workspaceHeader], requestBody: json(FamilyInput), responses: { "201": { description: "Rules saved (audited); { plan, preview }: the bulk preview of every amount the plan changes, to commit (null when no amount changes)" } } },
+      },
+      "/api/v1/envelopes/{id}/family/preview": {
+        post: { operationId: "previewEnvelopeFamily", parameters: [idParam, workspaceHeader], requestBody: json(FamilyInput), responses: { "201": { description: "The family as the change leaves it, down the tree; writes nothing", ...json(FamilyPlan) } } },
       },
       "/api/v1/envelopes/{id}/submit": {
         post: { operationId: "submitEnvelopeVersion", parameters: [idParam, workspaceHeader], requestBody: json(SubmitVersionInput), responses: { "200": { description: "Approval request created, or auto-approved by policy" }, "409": { description: "Not the open draft, request already open, or blocking threads" }, "500": { description: "POLICY_NOT_FOUND" } } },

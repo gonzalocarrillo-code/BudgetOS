@@ -109,6 +109,13 @@ const samples: Record<string, readonly unknown[]> = {
     },
     { available: false, reason: "scoped", rows: [], totals: {}, dataAsOf: "2026-09-28T10:00:00.000Z", dataVersion: 7, cacheVersion: null, elapsedMs: 2 },
   ],
+  AllocationMode: ["percent", "manual"],
+  PercentString: ["60", "33.333333", "100"],
+  FamilyChildInput: [{ envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf5", mode: "percent", pct: "60" }, { envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf6", mode: "manual", amount: "300.00" }],
+  FamilyInput: [{ parentAmount: "1100.00", children: [{ envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf5", mode: "percent", pct: "60" }], rationale: "Q4 top-down" }],
+  FamilySum: [{ parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", parentAmount: "1100.00", childrenTotal: "960.00", unallocated: "140.00", status: "under" }, { parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", parentAmount: "100.00", childrenTotal: "120.00", unallocated: "-20.00", status: "over" }],
+  FamilyMember: [{ envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", name: "EMEA DE", parentId: null, level: 0, currency: "USD", status: "APPROVED", mode: null, pct: null, before: "1000.00", after: "1100.00", changed: true, childCount: 2, sameCurrency: true }, { envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf5", name: "EMEA DE meta", parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", level: 1, currency: "USD", status: "APPROVED", mode: "percent", pct: "60", before: "600.00", after: "660.00", changed: true, childCount: 0, sameCurrency: true }],
+  FamilyPlan: [{ parent: { envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", name: "EMEA DE", parentId: null, level: 0, currency: "USD", status: "APPROVED", mode: null, pct: null, before: "1000.00", after: "1100.00", changed: true, childCount: 2, sameCurrency: true }, members: [{ envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf5", name: "EMEA DE meta", parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", level: 1, currency: "USD", status: "APPROVED", mode: "percent", pct: "60", before: "600.00", after: "660.00", changed: true, childCount: 0, sameCurrency: true }], sums: [{ parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", parentAmount: "1100.00", childrenTotal: "960.00", unallocated: "140.00", status: "under" }] }],
   PolicyConditions: [
     {},
     {
