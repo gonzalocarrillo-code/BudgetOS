@@ -121,9 +121,12 @@ async function nodeEnvelopes(tx: Tx, workspaceId: string, path: string[], nodePa
   const byTuple: string[] = [];
   for (const p of nodePaths) {
     if (p === ROOT_PATH) continue;
+    // Leading ∅ levels are "no value above this" (the Default template's client): `∅/EMEA` is the
+    // EMEA budget. A ∅ below a value has no single envelope.
     const segs = p.split("/");
-    if (segs.includes(NONE_SEGMENT)) continue;
-    tuples.push(Object.fromEntries(segs.map((sg, i) => [path[i] as string, sg])));
+    const first = segs.findIndex((sg) => sg !== NONE_SEGMENT);
+    if (first < 0 || segs.slice(first).includes(NONE_SEGMENT)) continue;
+    tuples.push(Object.fromEntries(segs.slice(first).map((sg, i) => [path[first + i] as string, sg])));
     byTuple.push(p);
   }
   const hits = new Map<string, string[]>();

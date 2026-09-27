@@ -18,7 +18,7 @@ import { meQuery, periodsQuery } from "../lib/queries.js";
  */
 export const Route = createFileRoute("/w/$ws/admin/periods")({ component: PeriodsPage });
 
-const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, i, 1)).toLocaleString(undefined, { month: "long", timeZone: "UTC" }));
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, i, 1)).toLocaleString("en", { month: "long", timeZone: "UTC" }));
 const PATTERNS = ["calendar", "445", "454", "544"] as const;
 const field = "h-8 rounded-md border border-input bg-card px-2 text-sm";
 

@@ -47,9 +47,11 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       const tuples: Array<Record<string, string>> = [];
       const rowOf: number[] = [];
       page.rows.forEach((r, i) => {
+        // Leading keys with no value are "above" the group (e.g. no client): skip them, as the cache does.
         const values = q.groupBy.map((k) => text(r[`dim_${sanitize(k)}`]));
-        if (values.some((v) => v === null)) return;
-        tuples.push(Object.fromEntries(q.groupBy.map((k, j) => [k, values[j] as string])));
+        const first = values.findIndex((v) => v !== null);
+        if (first < 0 || values.slice(first).some((v) => v === null)) return;
+        tuples.push(Object.fromEntries(q.groupBy.slice(first).map((k, j) => [k, values[first + j] as string])));
         rowOf.push(i);
       });
       const hits = new Map<number, string[]>();
