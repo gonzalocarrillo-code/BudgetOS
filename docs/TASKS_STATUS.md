@@ -300,3 +300,19 @@ Deferred from T-007 and now built (ADR-042).
   - with joins it was fast on analysed data (pivot 460 ms), but took 118 s on a freshly loaded workspace;
   - with per-envelope lookups it matched the per-envelope planner (pivot about 950 ms), and the roll-up rebuild was 32–42 s against 25.5 s before.
 - **Still open:** Postgres grid p95 at scale, and loading the warehouse replica (T-017, needs client credentials).
+
+## T-034 search at scale (2026-09-27, ADR-043)
+
+**Changes:**
+
+- Exact matching (full text or substring) comes first.
+- Typos are corrected against the workspace's word list (`search_term`), only when nothing matches exactly.
+- Each type ranks and counts at most 1,000 matches, reported as "1000+".
+
+**Measured at 100 shards (227k documents):**
+
+- the load job's text searches: 2.0–2.2 s → 26–78 ms;
+- qualifier-only searches: 4–129 ms;
+- typos: about 2 s with 0–1 results → 180–265 ms with results.
+
+The spec-scale load job re-measures this on this branch.

@@ -8,6 +8,9 @@ import { SqlBuilder } from "./sql-builder.js";
  * of scoped types must match one of them; tags and registry values are workspace-wide.
  */
 
+/** Matches ranked and counted per type (T-034); a type with more reports `more`. */
+export const SEARCH_CANDIDATES = 1000;
+
 export const SEARCH_TYPES = ["envelope", "target", "approval_request", "alert", "comment", "tag", "dimension_value", "experiment", "setting"] as const;
 const TYPE_ALIASES: Record<string, string> = { approval: "approval_request", request: "approval_request", value: "dimension_value", dimension: "dimension_value", settings: "setting" };
 const WORKSPACE_WIDE = ["tag", "dimension_value", "experiment", "setting"];
@@ -132,14 +135,36 @@ export function compileSearch(parsed: ParsedSearch, ctx: SearchContext): Compile
   const hasText = parsed.text.length > 0;
   const tsq = hasText ? `websearch_to_tsquery('simple', ${b.p(parsed.text)}::text)` : null;
   const trg = hasText ? `${b.p(parsed.text.toLowerCase())}::text` : null;
-  if (hasText) conds.push(`(tsv @@ ${tsq} OR trigram % ${trg} OR trigram LIKE ${b.p(`%${parsed.text.toLowerCase()}%`)}::text)`);
   const rank = hasText ? `(ts_rank_cd(tsv, ${tsq}) * 2 + similarity(trigram, ${trg}))` : `extract(epoch from updated_at) / 1e12`;
+  const cols = `entity_type, entity_id, title, path, status, numeric_facets, dimension_values, updated_at, ${rank} AS rank`;
+  // T-034: each type ranks and counts at most SEARCH_CANDIDATES matches, so a common word (23k
+  // comments say "Black Friday" at 100 shards) reads a bounded number of rows; the count is then a
+  // lower bound (`more`). Per type, in a LATERAL: the LIMIT stops that type's scan.
+  const perType = (match: string) => `SELECT c.* FROM unnest(${b.p(types.length ? types : [...SEARCH_TYPES])}::text[]) AS t(type) CROSS JOIN LATERAL (
+        SELECT ${cols} FROM search_document WHERE entity_type = t.type AND ${conds.join(" AND ")}${match ? ` AND ${match}` : ""} LIMIT ${SEARCH_CANDIDATES + 1}
+      ) c`;
+  // The words (full text) or the typed string (substring) first. Typos are the fallback, only when
+  // neither matches anything: each word becomes the workspace's most similar known word
+  // (search_term, pg_trgm), and the corrected words go through the full-text index. Similarity
+  // straight on the documents rechecked every one sharing a trigram (88k for three short words at
+  // 227k documents, 2.5 s).
+  const corrected = () => `(SELECT plainto_tsquery('simple', string_agg(coalesce((SELECT st.term FROM search_term st WHERE st.workspace_id = ${b.p(ctx.workspaceId)}::uuid AND st.term % w ORDER BY similarity(st.term, w) DESC, st.term LIMIT 1), w), ' ')) FROM regexp_split_to_table(${trg}, '[^[:alnum:]]+') w WHERE w <> '')`;
+  const hits = hasText
+    ? `exact AS (${perType(`(tsv @@ ${tsq} OR trigram LIKE ${b.p(`%${parsed.text.toLowerCase()}%`)}::text)`)}),
+    fix AS (SELECT ${corrected()} AS q WHERE NOT EXISTS (SELECT 1 FROM exact)),
+    hits AS (
+      SELECT * FROM exact
+      UNION ALL
+      SELECT * FROM (${perType(`tsv @@ (SELECT q FROM fix)`)}) f WHERE EXISTS (SELECT 1 FROM fix)
+    )`
+    : `hits AS (${perType("")})`;
   const sql = `
+    WITH ${hits}
     SELECT * FROM (
-      SELECT entity_type, entity_id::text AS entity_id, title, path, status, numeric_facets, dimension_values, updated_at, ${rank} AS rank,
-             row_number() OVER (PARTITION BY entity_type ORDER BY ${rank} DESC, updated_at DESC, entity_id) AS rn,
+      SELECT entity_type, entity_id::text AS entity_id, title, path, status, numeric_facets, dimension_values, updated_at, rank,
+             row_number() OVER (PARTITION BY entity_type ORDER BY rank DESC, updated_at DESC, entity_id) AS rn,
              count(*) OVER (PARTITION BY entity_type) AS type_count
-      FROM search_document WHERE ${conds.join(" AND ")}
+      FROM hits
     ) x WHERE rn <= ${b.p(ctx.limitPerType)}::int ORDER BY entity_type, rank DESC, rn`;
   return { sql, values: b.values, types };
 }

@@ -6998,7 +6998,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description { groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed } */
+            /** @description { groups: [{ type, count, more (count is a lower bound), hits: [{ id, title, path, status, facets, deepLink }] }], parsed } */
             200: {
                 headers: {
                     [name: string]: unknown;
