@@ -22,8 +22,7 @@ import {
   Target,
   Type,
   Users,
-  type LucideIcon,
-} from "lucide-react";
+  type LucideIcon, CalendarRange } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState, type ReactElement, type ReactNode } from "react";
 import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
@@ -62,6 +61,7 @@ const ADMIN: NavItem[] = [
   { to: "/w/$ws/admin/tags", label: "admin.tags", icon: Tag },
   { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug },
   { to: "/w/$ws/admin/naming", label: "admin.naming", icon: Type },
+  { to: "/w/$ws/admin/periods", label: "admin.periods", icon: CalendarRange },
   { to: "/w/$ws/admin/templates", label: "admin.templates", icon: LayoutTemplate },
   { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map },
 ];

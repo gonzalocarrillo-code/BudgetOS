@@ -1,3 +1,4 @@
+import { PeriodRow } from "@budget/domain";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, unwrap } from "./api.js";
@@ -216,3 +217,11 @@ export const timelinePage = async (ws: string, id: string, cursor: string | null
   z.object({ rows: z.array(TimelineEntry), nextCursor: z.string().nullable() }).parse(
     await unwrap(api.GET("/api/v1/envelopes/{id}/timeline", { params: { path: { id }, header: { "X-Workspace-Id": ws }, query: { limit: 50, ...(cursor ? { cursor } : {}) } as never } })),
   );
+
+/** The workspace's fiscal calendar (ADR-041): years, quarters, months as defined, custom partitions. */
+export const periodsQuery = (ws: string) =>
+  queryOptions({
+    queryKey: ["periods", ws],
+    queryFn: async () => z.array(PeriodRow).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/periods", { params: { path: { ws } } }))),
+    staleTime: 60_000,
+  });

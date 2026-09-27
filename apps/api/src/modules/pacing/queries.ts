@@ -1,5 +1,5 @@
 import { DomainError, FilterGroup, ListAlertsQuery, PeriodSpec, QueryRequest, canInScope, resolvePeriod, type FilterGroupT } from "@budget/domain";
-import { plannerOptions, withTenant, type Tx } from "@budget/db";
+import { plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -94,7 +94,7 @@ export async function pacingView(prisma: PrismaClient, auth: AuthContext, query:
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
     const day = today();
-    const period = resolvePeriod(spec, day, ws.fiscalYearStartMonth);
+    const period = resolvePeriod(spec, day, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
     const q = QueryRequest.parse({
       workspaceId,
       ...(filter ? { filter } : {}),

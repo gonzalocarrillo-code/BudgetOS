@@ -1,5 +1,5 @@
 import { DomainError, QueryRequest, readScopeFilter, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
-import { envelopePaths, envelopesByTuple, plannerOptions, withTenant } from "@budget/db";
+import { envelopePaths, envelopesByTuple, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -31,7 +31,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: q.workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
     const today = now.toISOString().slice(0, 10);
-    const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth);
+    const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period);
     const c = compileQuery(q, period, today, opts);
     const page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);

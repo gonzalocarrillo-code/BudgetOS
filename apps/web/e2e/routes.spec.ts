@@ -30,6 +30,7 @@ const ROUTES: Array<[path: string, title: string | RegExp]> = [
   ["/admin/tags", "Tags"],
   ["/admin/sources", "Data sources"],
   ["/admin/naming", "Naming templates"],
+  ["/admin/periods", "Fiscal calendar"],
   ["/admin/templates", "Workspace templates"],
   ["/admin/tours", "Tours"],
 ];

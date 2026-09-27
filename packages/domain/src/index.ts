@@ -16,8 +16,8 @@ export {
 export type { FilterGroupT } from "./filter-ast.js";
 
 export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow, TreeRequest, TreeResponse } from "./query.js";
-export { resolvePeriod } from "./period.js";
-export type { DateRange } from "./period.js";
+export { fiscalYearPeriods, resolvePeriod } from "./period.js";
+export type { CalendarPeriod, DateRange, PeriodPattern } from "./period.js";
 export {
   CreateRuleInput,
   ListAlertsQuery,
@@ -87,7 +87,7 @@ export {
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
 
-export { CloseInput, ClosureStatus, ClosureView, FiscalPeriodKey, RestateInput, RunSourceInput, fiscalPeriodKind } from "./closures.js";
+export { CloseInput, ClosureStatus, ClosureView, CreatePeriodInput, FiscalPeriodKey, GeneratePeriodsInput, PeriodKind, PeriodRow, RestateInput, RunSourceInput, UpdatePeriodInput, fiscalPeriodKind } from "./closures.js";
 
 export { CreateExportInput, EXPORT_MAX_ROWS, ExportJobView, ExportKind, ExportRequested, ExportStatus } from "./exports.js";
 

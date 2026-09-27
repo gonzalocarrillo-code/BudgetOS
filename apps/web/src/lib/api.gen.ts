@@ -1248,6 +1248,70 @@ export interface paths {
         patch: operations["updateSavedView"];
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listPeriods"];
+        put?: never;
+        post: operations["createPeriod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/periods/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["generatePeriods"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/fiscal-year": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getFiscalYearStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["setFiscalYearStart"];
+        trace?: never;
+    };
+    "/api/v1/periods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deletePeriod"];
+        options?: never;
+        head?: never;
+        patch: operations["updatePeriod"];
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/closures": {
         parameters: {
             query?: never;
@@ -5434,6 +5498,206 @@ export interface operations {
         };
         responses: {
             /** @description Updated view (owner, or an admin for a shared view) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPeriods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fiscal calendar: years, quarters, months as defined and custom partitions, each with its closure */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        key: string;
+                        kind: string;
+                        start: string;
+                        end: string;
+                        closure: {
+                            /** Format: uuid */
+                            id: string;
+                            status: string;
+                        } | null;
+                    }[];
+                };
+            };
+        };
+    };
+    createPeriod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    key: string;
+                    /**
+                     * @default custom
+                     * @enum {string}
+                     */
+                    kind?: "year" | "quarter" | "month" | "custom";
+                    start: string;
+                    end: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created; 409 when the key exists or it overlaps another period of its kind */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    generatePeriods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    fiscalYear: number;
+                    /**
+                     * @default calendar
+                     * @enum {string}
+                     */
+                    pattern?: "calendar" | "445" | "454" | "544";
+                };
+            };
+        };
+        responses: {
+            /** @description { created, kept }: a fiscal year's periods in a pattern (calendar, 4-4-5, 4-5-4, 5-4-4); existing keys are kept */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getFiscalYearStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { startMonth }: the month the fiscal year starts in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        startMonth: number;
+                    };
+                };
+            };
+        };
+    };
+    setFiscalYearStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    startMonth: number;
+                };
+            };
+        };
+        responses: {
+            /** @description The month the fiscal year starts in; computed periods follow, rows stay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deletePeriod: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted; 409 when it has a closure or budgets aligned to it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updatePeriod: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    key?: string;
+                    start?: string;
+                    end?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated; 409 when it has a closure (its dates are frozen in the report) */
             200: {
                 headers: {
                     [name: string]: unknown;

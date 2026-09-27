@@ -65,3 +65,12 @@ export async function plannerOptions(tx: Tx, ctx: { orgId: string; workspaceId: 
     hasProjections: await hasProjections(tx, ctx.workspaceId),
   };
 }
+
+/**
+ * The workspace's own periods (`fiscal_period`), for `resolvePeriod(…, calendar)` (ADR-041): its
+ * quarters and months as defined (4-4-5 or any boundaries), years, and custom partitions.
+ */
+export async function fiscalCalendar(tx: Tx, workspaceId: string): Promise<Array<{ key: string; kind: string; start: string; end: string }>> {
+  const rows = await tx.fiscalPeriod.findMany({ where: { workspaceId }, select: { key: true, kind: true, startDate: true, endDate: true }, orderBy: [{ startDate: "asc" }, { key: "asc" }] });
+  return rows.map((r) => ({ key: r.key, kind: r.kind, start: r.startDate.toISOString().slice(0, 10), end: r.endDate.toISOString().slice(0, 10) }));
+}

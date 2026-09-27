@@ -251,5 +251,5 @@ Not spec tasks. They are built one PR each, in this order, after phase 19. Phase
 | 4 | Pace in the Budgets tree | done: the cell showed the raw ratio (`0.99032675996…`) with its bar drawn over it; now two decimals like the totals row, with the bar left of the value |
 | 5 | Edit the budget family top-down: children as % of the parent (auto-update) or manual (flagged when they do not add up) | done: family card in the drawer, the family editor (% or amount per child, live results down the tree, sum flag), one bulk change for approval; ADR-039 |
 | 6 | Roles that set budgets without approval | done: policies match "who is asking" (roles or people); the Approval policies admin page (was a placeholder); the drawer says "Apply now" when a draft needs no approval; ADR-040. The Roles admin page is still a placeholder |
-| 7 | Dynamic quarters, partitions, views; end and reopen a quarter | pending |
+| 7 | Dynamic quarters, partitions, views; end and reopen a quarter | done: the fiscal calendar is the workspace's rows (calendar or 4-4-5 / 4-5-4 / 5-4-4, custom partitions) and every "this quarter" follows it; Admin › Fiscal calendar (start month, generate a year, custom periods, close / reopen); the Explorer picks any period; ADR-041 |
 | 8 | Overview: % of budget spent, user-picked groupings, platforms from the registry | pending |

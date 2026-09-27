@@ -1,5 +1,5 @@
 import { QueryRequest, SETTINGS, resolvePeriod, type FilterGroupT } from "@budget/domain";
-import { envelopePaths, plannerOptions, type SearchDoc, type Tx } from "@budget/db";
+import { envelopePaths, plannerOptions, type SearchDoc, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 
@@ -53,7 +53,7 @@ async function tagsOf(tx: Tx, entityType: string, ids: string[]): Promise<Map<st
 
 /** Budget, actual, pace and CPA vs target for the current fiscal year, from the planner (never stored elsewhere). */
 async function envelopeFacets(tx: Tx, ctx: IndexContext, fiscalStart: number, names: string[] | null): Promise<Map<string, Record<string, string | null>>> {
-  const period = resolvePeriod({ kind: "relative", preset: "current_year" }, ctx.today, fiscalStart);
+  const period = resolvePeriod({ kind: "relative", preset: "current_year" }, ctx.today, fiscalStart, await fiscalCalendar(tx, ctx.workspaceId));
   const opts = await plannerOptions(tx, ctx, ["cpa"], period);
   const targets = opts.metrics?.has("cpa") ? ["cpa"] : [];
   const filter: FilterGroupT | undefined = names === null ? undefined : { logic: "and", children: [{ field: { kind: "attr", key: "name" }, op: "in", value: names }] };

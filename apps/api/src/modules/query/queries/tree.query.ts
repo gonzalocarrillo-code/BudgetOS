@@ -1,6 +1,6 @@
 import { DomainError, TreeRequest, elapsedFraction, groupRatios, readScopeFilter, resolvePeriod, type QueryRow, type TreeResponse } from "@budget/domain";
 import { Decimal } from "decimal.js";
-import { withTenant } from "@budget/db";
+import { withTenant, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileTree } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -40,7 +40,7 @@ export async function treeQuery(prisma: PrismaClient, auth: AuthContext, raw: un
     if (!template) throw new DomainError("NOT_FOUND", "hierarchy template not found", { templateId: q.templateId });
     const parentDepth = q.parentPath === ROOT_PATH ? 0 : q.parentPath.split("/").length;
     if (parentDepth >= template.path.length) throw new DomainError("VALIDATION", "parentPath is at or below the template's last level; its envelopes come from /query", { parentPath: q.parentPath });
-    const period = resolvePeriod(q.period, now.toISOString().slice(0, 10), ws.fiscalYearStartMonth);
+    const period = resolvePeriod(q.period, now.toISOString().slice(0, 10), ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
     const read = async (parentPath: string | undefined, maxDepth: number | undefined) => {
       const c = compileTree({ workspaceId: q.workspaceId, templateId: q.templateId, period, ...(parentPath === undefined ? {} : { parentPath }), ...(maxDepth === undefined ? {} : { maxDepth }) });
       return tx.$queryRawUnsafe<Cached[]>(c.sql, ...c.values);

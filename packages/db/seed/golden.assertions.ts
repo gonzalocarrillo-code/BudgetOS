@@ -209,7 +209,7 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "tag": 3,
     "dimension_value": 308,
     "experiment": 1,
-    "setting": 19
+    "setting": 20
   },
   "naming": {
     "templates": 1

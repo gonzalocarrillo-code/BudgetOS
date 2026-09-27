@@ -1,5 +1,5 @@
 import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx } from "@budget/db";
+import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
@@ -231,8 +231,9 @@ const system = (tenant: { workspaceId: string; orgId: string }, requestId: strin
 async function periodsFor(tx: Tx, ctx: Ctx, templateId: string, extra: Period[]): Promise<Period[]> {
   const ws = await tx.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId }, select: { fiscalYearStartMonth: true } });
   // The fiscal year and quarter the Explorer opens on (ADR-038); other periods are cached once built.
-  const year = resolvePeriod({ kind: "relative", preset: "current_year" }, ctx.today, ws.fiscalYearStartMonth);
-  const quarter = resolvePeriod({ kind: "relative", preset: "current_quarter" }, ctx.today, ws.fiscalYearStartMonth);
+  const calendar = await fiscalCalendar(tx, ctx.workspaceId);
+  const year = resolvePeriod({ kind: "relative", preset: "current_year" }, ctx.today, ws.fiscalYearStartMonth, calendar);
+  const quarter = resolvePeriod({ kind: "relative", preset: "current_quarter" }, ctx.today, ws.fiscalYearStartMonth, calendar);
   const all = [year, quarter, ...extra, ...(await cachedPeriods(tx, ctx.workspaceId, templateId))];
   return [...new Map(all.map((p) => [`${p.start}|${p.end}`, p])).values()];
 }
