@@ -1,10 +1,10 @@
 import { formatMoney } from "@budget/grid";
-import { cn } from "@budget/ui";
+import { cn, Button } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock, Database, XCircle } from "lucide-react";
-import type { ReactElement, ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { SeverityChip } from "./w.$ws.alerts.js";
@@ -17,7 +17,8 @@ import { api, unwrap } from "../lib/api.js";
  * server. Colours always come with their legend and the number they stand for.
  */
 const PRESETS = ["current_month", "current_quarter", "current_year", "ytd", "last_90_days"] as const;
-const OverviewSearch = z.object({ period: z.enum(PRESETS).default("current_year") });
+// Heatmap axes: any two granularities of the registry (product feedback 8), kept in the URL.
+const OverviewSearch = z.object({ period: z.enum(PRESETS).default("current_year"), rows: z.string().optional(), cols: z.string().optional() });
 type OverviewSearch = z.infer<typeof OverviewSearch>;
 export const Route = createFileRoute("/w/$ws/")({ validateSearch: OverviewSearch, search: { middlewares: [stripSearchParams({ period: "current_year" })] }, component: OverviewPage });
 
@@ -25,6 +26,7 @@ const Num = z.string().nullable().optional();
 const Leaf = z.object({ envelopeId: z.string().uuid().nullable(), name: z.string(), path: z.array(z.string()), budget: Num, actual: Num, pace_index: Num, spend_to_date_pct: Num }).passthrough();
 const Overview = z.object({
   currency: z.string(),
+  period: z.object({ preset: z.string(), start: z.string().optional(), end: z.string().optional(), elapsed: z.string().optional() }).passthrough(),
   dataAsOf: z.string(),
   totals: z.record(z.string(), z.string().nullable()),
   heatmap: z
@@ -34,7 +36,8 @@ const Overview = z.object({
       rows: z.array(z.string()),
       cols: z.array(z.string()),
       labels: z.object({ rows: z.record(z.string(), z.string()), cols: z.record(z.string(), z.string()) }),
-      cells: z.array(z.object({ row: z.string().nullable(), col: z.string().nullable(), budget: Num, actual: Num, pace_index: Num }).passthrough()),
+      cells: z.array(z.object({ row: z.string().nullable(), col: z.string().nullable(), budget: Num, actual: Num, pace_index: Num, spend_to_date_pct: Num }).passthrough()),
+      dimensions: z.array(z.object({ key: z.string(), label: z.string() })).default([]),
     })
     .nullable(),
   variances: z.object({ over: z.array(Leaf), under: z.array(Leaf) }),
@@ -46,10 +49,10 @@ const Overview = z.object({
 });
 type Overview = z.infer<typeof Overview>;
 
-const overviewQuery = (ws: string, period: string) =>
+const overviewQuery = (ws: string, period: string, rows?: string, cols?: string) =>
   queryOptions({
-    queryKey: ["overview", ws, period],
-    queryFn: async () => Overview.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/overview", { params: { path: { ws }, query: { period } as never } }))),
+    queryKey: ["overview", ws, period, rows ?? "", cols ?? ""],
+    queryFn: async () => Overview.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/overview", { params: { path: { ws }, query: { period, ...(rows ? { rows } : {}), ...(cols ? { cols } : {}) } as never } }))),
     staleTime: 30_000,
   });
 
@@ -67,9 +70,9 @@ const pace = (v: string | null | undefined) => (v === null || v === undefined ? 
 
 function OverviewPage(): ReactElement {
   const { ws } = Route.useParams();
-  const { period } = Route.useSearch();
+  const { period, rows, cols } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const { data: o, error, isPending } = useQuery(overviewQuery(ws, period));
+  const { data: o, error, isPending } = useQuery(overviewQuery(ws, period, rows, cols));
   const money = (v: string | null | undefined) => (v === null || v === undefined ? "—" : formatMoney(v, o?.currency ?? "USD"));
 
   return (
@@ -96,14 +99,15 @@ function OverviewPage(): ReactElement {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-testid="overview-tiles">
             <Tile label={t("overview.budget")} value={money(o.totals["budget"])} />
             <Tile label={t("overview.actual")} value={money(o.totals["actual"])} hint={t("overview.spendToDate", { pct: pct(o.totals["spend_to_date_pct"] ?? null) })} />
-            <Tile label={t("overview.pace")} value={pace(o.totals["pace_index"])} hint={t("overview.paceHint")} />
+            {/* % of the budget spent (product feedback 8), against how much of the period has gone. */}
+            <Tile label={t("overview.spent")} value={pct(o.totals["spend_to_date_pct"] ?? null)} hint={o.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" />
             {/* A projection needs projection facts; without them it would read 0%. */}
             <Tile label={t("overview.projectedClose")} value={Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])} hint={Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} />
             <Tile label={t("overview.openAlerts")} value={String(o.alerts.open)} to="alerts" ws={ws} testId="tile-alerts" />
             <Tile label={t("overview.approvalsMine")} value={String(o.approvals.mine)} hint={o.approvals.overdue ? t("overview.overdue", { n: o.approvals.overdue }) : undefined} to="approvals" ws={ws} testId="tile-approvals" />
           </div>
 
-          {o.heatmap ? <Heatmap ws={ws} h={o.heatmap} money={money} /> : null}
+          {o.heatmap ? <Heatmap ws={ws} h={o.heatmap} money={money} onAxes={(axes) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, ...axes }) })} /> : null}
 
           <div className="grid gap-5 lg:grid-cols-2">
             <Card title={t("overview.overPace")}>
@@ -248,12 +252,35 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
   );
 }
 
-function Heatmap({ ws, h, money }: { ws: string; h: NonNullable<Overview["heatmap"]>; money: (v: string | null | undefined) => string }): ReactElement {
+const COLS_SHOWN = 8;
+const ROWS_SHOWN = 12;
+
+function Heatmap({ ws, h, money, onAxes }: { ws: string; h: NonNullable<Overview["heatmap"]>; money: (v: string | null | undefined) => string; onAxes: (axes: { rows?: string; cols?: string }) => void }): ReactElement {
   const cell = (row: string, col: string) => h.cells.find((c) => c.row === row && c.col === col);
   const label = (kind: "rows" | "cols", code: string) => h.labels[kind][code] ?? code;
+  const [allCols, setAllCols] = useState(false);
+  const [allRows, setAllRows] = useState(false);
+  const cols = allCols ? h.cols : h.cols.slice(0, COLS_SHOWN);
+  const rows = allRows ? h.rows : h.rows.slice(0, ROWS_SHOWN);
+  const axis = (which: "rows" | "cols", value: string, other: string) => (
+    <label className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
+      {t(which === "rows" ? "overview.axis.rows" : "overview.axis.cols")}
+      <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={value} onChange={(e) => onAxes({ [which]: e.target.value })} data-testid={`heatmap-${which}`}>
+        {h.dimensions.filter((d) => d.key !== other).map((d) => (
+          <option key={d.key} value={d.key}>{d.label}</option>
+        ))}
+      </select>
+    </label>
+  );
   return (
     <Card title={t("overview.heatmap", { rows: h.rowDimension.label, cols: h.colDimension.label })}>
       <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {axis("rows", h.rowDimension.key, h.colDimension.key)}
+          <span className="text-muted-foreground" aria-hidden>×</span>
+          {axis("cols", h.colDimension.key, h.rowDimension.key)}
+          <span className="ml-auto text-xs text-muted-foreground">{t("overview.cellHint")}</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="tabular w-full border-separate border-spacing-1 text-sm" data-testid="heatmap">
             <caption className="sr-only">{t("overview.heatmapCaption")}</caption>
@@ -262,22 +289,23 @@ function Heatmap({ ws, h, money }: { ws: string; h: NonNullable<Overview["heatma
                 <th scope="col" className="px-2 text-left text-xs font-medium text-muted-foreground">
                   {h.rowDimension.label}
                 </th>
-                {h.cols.map((c) => (
-                  <th key={c} scope="col" className="px-2 text-left text-xs font-medium text-muted-foreground">
+                {cols.map((c) => (
+                  <th key={c} scope="col" className="px-2 text-left text-xs font-medium text-muted-foreground" data-testid="heatmap-col" data-code={c}>
                     {label("cols", c)}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {h.rows.map((r) => (
+              {rows.map((r) => (
                 <tr key={r} data-testid="heatmap-row" data-code={r}>
                   <th scope="row" className="max-w-48 truncate whitespace-nowrap px-2 text-left font-medium" title={label("rows", r)}>
                     {label("rows", r)}
                   </th>
-                  {h.cols.map((c) => {
+                  {cols.map((c) => {
                     const x = cell(r, c);
                     const p = x?.pace_index === null || x?.pace_index === undefined ? null : Number(x.pace_index);
+                    const spent = x?.spend_to_date_pct ?? null;
                     const b = band(p);
                     const filter = { logic: "and", children: [{ field: { kind: "dimension", key: h.rowDimension.key }, op: "eq", value: r }, { field: { kind: "dimension", key: h.colDimension.key }, op: "eq", value: c }] };
                     return (
@@ -288,10 +316,10 @@ function Heatmap({ ws, h, money }: { ws: string; h: NonNullable<Overview["heatma
                             params={{ ws }}
                             search={{ view: "pivot", groupBy: [h.rowDimension.key, h.colDimension.key], filter } as never}
                             className={cn("flex min-w-24 flex-col rounded-md px-2 py-1.5 text-foreground hover:ring-2 hover:ring-primary", b?.cls ?? "bg-surface")}
-                            aria-label={t("overview.cellLabel", { row: label("rows", r), col: label("cols", c), pace: p === null ? "—" : p.toFixed(2), budget: money(x.budget), actual: money(x.actual) })}
+                            aria-label={t("overview.cellLabel", { row: label("rows", r), col: label("cols", c), spent: pct(spent), budget: money(x.budget), actual: money(x.actual) })}
                             data-testid="heatmap-cell"
                           >
-                            <span className="font-semibold">{p === null ? "—" : p.toFixed(2)}</span>
+                            <span className="font-semibold" data-testid="heatmap-spent">{pct(spent)}</span>
                             <span className="text-xs text-muted-foreground">{money(x.budget)}</span>
                           </Link>
                         ) : (
@@ -304,6 +332,18 @@ function Heatmap({ ws, h, money }: { ws: string; h: NonNullable<Overview["heatma
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {h.cols.length > COLS_SHOWN ? (
+            <Button size="sm" variant="ghost" onClick={() => setAllCols((v) => !v)} data-testid="heatmap-all-cols">
+              {allCols ? t("overview.fewerCols") : t("overview.allCols", { count: h.cols.length, dimension: h.colDimension.label })}
+            </Button>
+          ) : null}
+          {h.rows.length > ROWS_SHOWN ? (
+            <Button size="sm" variant="ghost" onClick={() => setAllRows((v) => !v)} data-testid="heatmap-all-rows">
+              {allRows ? t("overview.fewerRows") : t("overview.allRows", { count: h.rows.length, dimension: h.rowDimension.label })}
+            </Button>
+          ) : null}
         </div>
         <ul className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground" aria-label={t("overview.legend")} data-testid="heatmap-legend">
           <li className="font-medium">{t("overview.legendTitle")}</li>
@@ -331,7 +371,7 @@ function LeafList({ ws, rows, icon, money, testId }: { ws: string; rows: z.infer
             <span className="ml-2 text-xs text-muted-foreground">{r.path.slice(0, -1).at(-1)}</span>
           </Link>
           <span className="tabular whitespace-nowrap text-xs text-muted-foreground">{t("overview.leafLine", { actual: money(r.actual), budget: money(r.budget) })}</span>
-          <span className="tabular w-12 text-right font-semibold">{pace(r.pace_index)}</span>
+          <span className="tabular w-12 text-right font-semibold" title={t("overview.paceTitle", { pace: pace(r.pace_index) })}>{pct(r.spend_to_date_pct ?? null)}</span>
         </li>
       ))}
     </ol>

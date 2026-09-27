@@ -6230,6 +6230,10 @@ export interface operations {
         parameters: {
             query?: {
                 period?: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+                /** @description Heatmap rows: a registry granularity key (default country) */
+                rows?: string;
+                /** @description Heatmap columns: another granularity key (default platform) */
+                cols?: string;
             };
             header?: never;
             path: {
@@ -6239,7 +6243,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness */
+            /** @description The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness */
             200: {
                 headers: {
                     [name: string]: unknown;
