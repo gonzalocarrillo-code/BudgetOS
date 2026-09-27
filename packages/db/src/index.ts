@@ -25,7 +25,7 @@ export { openAlert, saveRuleStates } from "./alerts.js";
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
 export { currentFilterTargets, hasProjections, metricLibrary, plannerOptions } from "./planner-options.js";
 export type { CurrentFilterTarget } from "./planner-options.js";
-export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
+export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, tuplesWithEnvelope, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
@@ -41,6 +41,7 @@ export {
   GOLDEN_COLLAB,
   GOLDEN_NAMING,
   GOLDEN_EXPERIMENT,
+  GOLDEN_MANUAL_ENTRY,
   GOLDEN_CLOSURE,
   GOLDEN_EXPORT,
   GOLDEN_SAVED_VIEW,

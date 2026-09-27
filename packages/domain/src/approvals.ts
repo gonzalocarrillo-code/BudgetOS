@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export interface PolicyConditions {
-  entityType?: "envelope_version" | "target_version" | "bulk_change" | undefined;
+  entityType?: "envelope_version" | "target_version" | "bulk_change" | "manual_entry" | undefined;
   amountAbs?: { gte?: number | undefined; lt?: number | undefined } | undefined;
   deltaAbs?: { gte?: number | undefined; lt?: number | undefined } | undefined;
   deltaPct?: { gte?: number | undefined; lt?: number | undefined } | undefined;
@@ -15,7 +15,7 @@ export interface PolicyConditions {
 
 export const PolicyConditions: z.ZodType<PolicyConditions> = z.lazy(() =>
   z.object({
-    entityType: z.enum(["envelope_version", "target_version", "bulk_change"]).optional(),
+    entityType: z.enum(["envelope_version", "target_version", "bulk_change", "manual_entry"]).optional(),
     amountAbs: z.object({ gte: z.number().optional(), lt: z.number().optional() }).optional(),
     deltaAbs: z.object({ gte: z.number().optional(), lt: z.number().optional() }).optional(),
     deltaPct: z.object({ gte: z.number().optional(), lt: z.number().optional() }).optional(),

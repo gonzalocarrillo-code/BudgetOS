@@ -69,7 +69,7 @@ function RequestDetail(): ReactElement {
       <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
         <div className="flex flex-col gap-5">
           <Card title={t("approvals.diff")}>
-            <DiffTable ws={ws} r={r} currency={currency} />
+            {r.manualEntry ? <ManualEntryDiff ws={ws} batch={r.manualEntry} /> : <DiffTable ws={ws} r={r} currency={currency} />}
           </Card>
           <DecisionBar r={r} comment={comment} setComment={setComment} pending={decide.isPending} error={decide.error?.message ?? null} onDecide={(d) => decide.mutate(d)} />
           <Card title={t("threads.title")}>
@@ -192,5 +192,65 @@ function DecisionBar({ r, comment, setComment, pending, error, onDecide }: { r: 
         </div>
       </div>
     </Card>
+  );
+}
+
+/** T-039: a manual result batch — the facts it would load, row by row, and the totals. */
+function ManualEntryDiff({ ws, batch }: { ws: string; batch: NonNullable<ApprovalDetail["manualEntry"]> }): ReactElement {
+  const kpis = [...new Set(batch.rows.flatMap((row) => Object.keys(row.kpis)))].sort();
+  return (
+    <div className="flex flex-col gap-3" data-testid="manual-entry-diff">
+      <p className="text-sm text-muted-foreground">
+        {t("manual.approval.summary", { channel: batch.channel, start: batch.periodStart, end: batch.periodEnd, rows: batch.totals.rows })}{" "}
+        <Link to="/w/$ws/sources/manual" params={{ ws }} search={{ channel: batch.channel, batch: batch.id } as never} className="text-primary hover:underline">
+          {t("manual.approval.open")}
+        </Link>
+      </p>
+      <div className="overflow-x-auto">
+        <table className="tabular w-full text-sm">
+          <thead className="text-left text-muted-foreground">
+            <tr>
+              <th className="py-2 pr-3 font-medium">#</th>
+              <th className="py-2 pr-3 font-medium">{t("manual.col.scope")}</th>
+              <th className="py-2 pr-3 font-medium">{t("manual.col.date")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("manual.col.amount")}</th>
+              {kpis.map((k) => (
+                <th key={k} className="py-2 pr-3 text-right font-medium">
+                  {k}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {batch.rows.map((row) => (
+              <tr key={row.rowNo} className="border-t border-border" data-testid="manual-diff-row">
+                <td className="py-2 pr-3 text-muted-foreground">{row.rowNo}</td>
+                <td className="py-2 pr-3">{Object.entries(row.dimensionValues).map(([k, v]) => `${k}: ${v}`).join(" · ")}</td>
+                <td className="py-2 pr-3">{row.periodDate}</td>
+                <td className="py-2 pr-3 text-right">{formatMoney(row.amount, row.currency)}</td>
+                {kpis.map((k) => (
+                  <td key={k} className="py-2 pr-3 text-right">
+                    {row.kpis[k] ?? "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border font-semibold">
+              <td className="py-2 pr-3" colSpan={3}>
+                {t("explorer.totals")}
+              </td>
+              <td className="py-2 pr-3 text-right" data-testid="manual-diff-total">
+                {Object.entries(batch.totals.byCurrency).map(([c, v]) => formatMoney(v, c)).join(" + ")}
+              </td>
+              {kpis.map((k) => (
+                <td key={k} />
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
   );
 }

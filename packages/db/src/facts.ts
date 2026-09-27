@@ -217,3 +217,20 @@ export async function assignUnmatched(
   }
   return out;
 }
+
+/**
+ * T-039: for each (tuple, date), whether a live envelope would take a fact with that tuple on that
+ * date (the same rule as matchRunFacts). Manual entry warns on rows that would land unmatched.
+ */
+export async function tuplesWithEnvelope(tx: Tx, workspaceId: string, rows: Array<{ dimensionValues: Record<string, string>; periodDate: string }>): Promise<boolean[]> {
+  if (rows.length === 0) return [];
+  const hits = await tx.$queryRaw<Array<{ i: bigint; hit: boolean }>>`
+    SELECT t.i, EXISTS (
+      SELECT 1 FROM envelope e
+      WHERE e.workspace_id = ${workspaceId}::uuid AND e.status <> 'ARCHIVED' AND e.dimension_values <> '{}'::jsonb
+        AND e.dimension_values <@ t.d::jsonb AND t.p::date BETWEEN e.start_date AND e.end_date
+    ) AS hit
+    FROM unnest(${rows.map((r) => JSON.stringify(r.dimensionValues))}::text[], ${rows.map((r) => r.periodDate)}::text[]) WITH ORDINALITY AS t(d, p, i)
+    ORDER BY t.i`;
+  return hits.map((h) => h.hit);
+}

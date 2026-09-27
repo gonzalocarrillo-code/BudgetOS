@@ -207,11 +207,19 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "alert": 193,
     "comment": 5,
     "tag": 3,
-    "dimension_value": 302,
+    "dimension_value": 308,
     "experiment": 1
   },
   "naming": {
     "templates": 1
+  },
+  "manualEntry": {
+    "batches": 1,
+    "status": "DRAFT",
+    "rows": 3,
+    "byCurrency": {
+      "USD": "24800.50"
+    }
   },
   "experiments": {
     "count": 1,

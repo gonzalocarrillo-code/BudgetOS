@@ -864,6 +864,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/manual-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listManualEntries"];
+        put?: never;
+        post: operations["createManualEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manual-entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getManualEntry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateManualEntry"];
+        trace?: never;
+    };
+    "/api/v1/manual-entries/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitManualEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/experiments": {
         parameters: {
             query?: never;
@@ -2599,7 +2647,7 @@ export interface operations {
                     priority: number;
                     conditions: {
                         /** @enum {string} */
-                        entityType?: "envelope_version" | "target_version" | "bulk_change";
+                        entityType?: "envelope_version" | "target_version" | "bulk_change" | "manual_entry";
                         amountAbs?: {
                             gte?: number;
                             lt?: number;
@@ -2674,7 +2722,7 @@ export interface operations {
                     priority?: number;
                     conditions?: {
                         /** @enum {string} */
-                        entityType?: "envelope_version" | "target_version" | "bulk_change";
+                        entityType?: "envelope_version" | "target_version" | "bulk_change" | "manual_entry";
                         amountAbs?: {
                             gte?: number;
                             lt?: number;
@@ -3930,6 +3978,169 @@ export interface operations {
                         elapsedMs: number;
                     };
                 };
+            };
+        };
+    };
+    listManualEntries: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED */
+                status?: string;
+                channel?: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Batches, newest first (rows omitted, rowCount) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createManualEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    channel: string;
+                    periodStart: string;
+                    periodEnd: string;
+                    /** @default [] */
+                    rows?: {
+                        rowNo?: number;
+                        /** @default {} */
+                        dimensionValues?: {
+                            [key: string]: string;
+                        };
+                        /** @default  */
+                        periodDate?: string;
+                        /** @default  */
+                        currency?: string;
+                        /** @default  */
+                        amount?: string;
+                        /** @default {} */
+                        kpis?: {
+                            [key: string]: string;
+                        };
+                        note?: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description A DRAFT batch, its rows' issues (validated like ingestion) and warnings (rows no budget would take) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getManualEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batch, its issues and warnings, the latest approval decision and, once approved, the lineage of its facts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateManualEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    channel?: string;
+                    periodStart?: string;
+                    periodEnd?: string;
+                    rows?: {
+                        rowNo?: number;
+                        /** @default {} */
+                        dimensionValues?: {
+                            [key: string]: string;
+                        };
+                        /** @default  */
+                        periodDate?: string;
+                        /** @default  */
+                        currency?: string;
+                        /** @default  */
+                        amount?: string;
+                        /** @default {} */
+                        kpis?: {
+                            [key: string]: string;
+                        };
+                        note?: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Rows saved as typed, with their issues; only while DRAFT */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    submitManualEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

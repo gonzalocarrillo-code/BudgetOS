@@ -62,7 +62,7 @@ function systemCtx(workspaceId: string, orgId: string, runId: string): TenantCon
   return { workspaceId, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `ingest-${runId}` };
 }
 
-async function loadRegistry(tx: Tx, orgId: string, workspaceId: string): Promise<RegistryIndex> {
+export async function loadRegistry(tx: Tx, orgId: string, workspaceId: string): Promise<RegistryIndex> {
   const dims = await tx.dimension.findMany({ where: { orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, workspaceId: true } });
   // A workspace dimension shadows an org-wide one with the same key.
   const byKey = new Map<string, { id: string; workspaceId: string | null }>();
@@ -91,7 +91,7 @@ async function loadRegistry(tx: Tx, orgId: string, workspaceId: string): Promise
 }
 
 /** FX into the reporting currency: the latest rate on or before the fact's date (cached per currency and date). */
-class FxCache {
+export class FxCache {
   private readonly cache = new Map<string, { id: string | null; rate: Decimal } | null>();
   constructor(private readonly reporting: string) {}
   async rate(tx: Tx, currency: string, date: string): Promise<{ id: string | null; rate: Decimal } | null> {

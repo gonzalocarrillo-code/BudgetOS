@@ -733,3 +733,49 @@ enum ExperimentRole {
   TEST
   CONTROL
 }
+
+/// T-039 (spec §26.1, plan §6.1): offline / non-integrated actuals entered by hand, one batch per channel and period.
+model ManualEntryBatch {
+  id                String            @id @db.Uuid
+  workspaceId       String            @map("workspace_id") @db.Uuid
+  channel           String // dimension_value.code of `channel` (tv, ooh, dooh, print, radio, sponsorship, other)
+  periodStart       DateTime          @map("period_start") @db.Date
+  periodEnd         DateTime          @map("period_end") @db.Date
+  status            ManualEntryStatus @default(DRAFT)
+  rows              Json              @default("[]") // [{ rowNo, dimensionValues, periodDate, currency, amount, kpis, note? }]
+  totals            Json              @default("{}") // { amount, byCurrency, rows }
+  approvalRequestId String?           @map("approval_request_id") @db.Uuid
+  createdBy         String            @map("created_by") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  submittedAt       DateTime?         @map("submitted_at") @db.Timestamptz
+  facts             ManualEntryFact[]
+
+  @@index([workspaceId, status])
+  @@map("manual_entry_batch")
+}
+
+/// Lineage of the facts an approved batch wrote: who entered and who approved each (spec §26.2).
+model ManualEntryFact {
+  workspaceId   String           @map("workspace_id") @db.Uuid
+  batchId       String           @map("batch_id") @db.Uuid
+  batch         ManualEntryBatch @relation(fields: [batchId], references: [id])
+  rowNo         Int              @map("row_no")
+  factTable     String           @map("fact_table") // spend_fact | kpi_fact
+  metric        String?
+  sourceRowHash String           @map("source_row_hash")
+  periodDate    DateTime         @map("period_date") @db.Date
+  enteredBy     String           @map("entered_by") @db.Uuid
+  approvedBy    String           @map("approved_by") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([batchId, sourceRowHash, periodDate])
+  @@index([workspaceId, sourceRowHash, periodDate], map: "manual_entry_fact_hash_idx")
+  @@map("manual_entry_fact")
+}
+
+enum ManualEntryStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}

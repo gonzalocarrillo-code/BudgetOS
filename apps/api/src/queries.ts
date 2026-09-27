@@ -17,3 +17,4 @@ export { search } from "./modules/search/search.js";
 export { envelopeTargets, listTargets } from "./modules/targets/queries/targets.js";
 export { listTags, listThreads } from "./modules/threads/queries.js";
 export { getExperiment, listExperiments } from "./modules/experiments/queries/experiments.js";
+export { getManualEntry, listManualEntries } from "./modules/manual-entry/queries/manual-entry.js";

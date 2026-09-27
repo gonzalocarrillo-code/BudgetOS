@@ -2663,7 +2663,8 @@
                         "enum": [
                           "envelope_version",
                           "target_version",
-                          "bulk_change"
+                          "bulk_change",
+                          "manual_entry"
                         ]
                       },
                       "amountAbs": {
@@ -2865,7 +2866,8 @@
                         "enum": [
                           "envelope_version",
                           "target_version",
-                          "bulk_change"
+                          "bulk_change",
+                          "manual_entry"
                         ]
                       },
                       "amountAbs": {
@@ -5907,6 +5909,299 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/manual-entries": {
+      "get": {
+        "operationId": "listManualEntries",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED"
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batches, newest first (rows omitted, rowCount)"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createManualEntry",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "periodStart": {
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 2000,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "rowNo": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false
+                        },
+                        "dimensionValues": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "default": {}
+                        },
+                        "periodDate": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "default": ""
+                        },
+                        "currency": {
+                          "type": "string",
+                          "maxLength": 10,
+                          "default": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "default": ""
+                        },
+                        "kpis": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "default": {}
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      }
+                    },
+                    "default": []
+                  }
+                },
+                "required": [
+                  "channel",
+                  "periodStart",
+                  "periodEnd"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A DRAFT batch, its rows' issues (validated like ingestion) and warnings (rows no budget would take)"
+          }
+        }
+      }
+    },
+    "/api/v1/manual-entries/{id}": {
+      "get": {
+        "operationId": "getManualEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The batch, its issues and warnings, the latest approval decision and, once approved, the lineage of its facts"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateManualEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "periodStart": {
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 2000,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "rowNo": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false
+                        },
+                        "dimensionValues": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "default": {}
+                        },
+                        "periodDate": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "default": ""
+                        },
+                        "currency": {
+                          "type": "string",
+                          "maxLength": 10,
+                          "default": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "default": ""
+                        },
+                        "kpis": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "default": {}
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows saved as typed, with their issues; only while DRAFT"
+          }
+        }
+      }
+    },
+    "/api/v1/manual-entries/{id}/submit": {
+      "post": {
+        "operationId": "submitManualEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue"
           }
         }
       }
