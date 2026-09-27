@@ -1,6 +1,5 @@
 import { LIVE_LEAVES, type FilterGroupT, type Predicate, type QueryResponse, type QueryRow, type TreeResponse } from "@budget/domain";
 import type { RowSource } from "@budget/grid";
-import { t } from "@budget/ui/i18n";
 import { api, unwrap } from "../../lib/api.js";
 
 /**
@@ -35,7 +34,11 @@ export interface ExplorerQuery {
   sort: Array<{ key: string; dir: "asc" | "desc" }>;
 }
 
-type Labels = (dimension: string, code: string) => string;
+/** A value's label, and the label of a group with no value for `dimension` at tree `level` (0 = first). */
+export interface Labels {
+  value(dimension: string, code: string): string;
+  none(dimension: string, level: number): string;
+}
 
 const PAGE = 1000;
 const prefix = (keys: string[], segments: string[]): Predicate[] =>
@@ -103,7 +106,7 @@ export class ExplorerRowSource implements RowSource {
       const segment = r.dimensions[key] ?? NONE;
       const segments = [...parentSegments, segment];
       const nodeKey = segments.join("/");
-      return { ...r, key: nodeKey, path: segments, level: depth - 1, name: segment === NONE ? t("explorer.none") : this.labels(key, segment), hasChildren: true, expanded: this.expanded.has(nodeKey) };
+      return { ...r, key: nodeKey, path: segments, level: depth - 1, name: segment === NONE ? this.labels.none(key, depth - 1) : this.labels.value(key, segment), hasChildren: true, expanded: this.expanded.has(nodeKey) };
     });
   }
 
@@ -126,7 +129,7 @@ export class ExplorerRowSource implements RowSource {
       this.totals = res.totals;
       this.dataVersion = String(res.dataVersion);
       this.roots = this.q.groupBy.length
-        ? res.rows.map((r) => ({ ...r, level: 0, name: this.q.groupBy.map((k) => (r.dimensions[k] ?? NONE) === NONE ? t("explorer.none") : this.labels(k, r.dimensions[k] as string)).join(" · "), hasChildren: false, expanded: false }))
+        ? res.rows.map((r) => ({ ...r, level: 0, name: this.q.groupBy.map((k) => ((r.dimensions[k] ?? NONE) === NONE ? this.labels.none(k, 1) : this.labels.value(k, r.dimensions[k] as string))).join(" · "), hasChildren: false, expanded: false }))
         : this.envelopeRows(res.rows, 0);
     } else if (this.q.levels.length === 0) {
       const res = await this.all([], [], [{ key: "name", dir: "asc" }]);

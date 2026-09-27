@@ -309,6 +309,7 @@ const en = {
   "explorer.filter.chipEmpty": "{dimension} is empty",
   "explorer.filter.custom": "Custom filter",
   "explorer.none": "(none)",
+  "explorer.noneOf": "No {dimension}",
   "explorer.col.name": "Name",
   "explorer.col.budget": "Budget",
   "explorer.col.actual": "Actual",

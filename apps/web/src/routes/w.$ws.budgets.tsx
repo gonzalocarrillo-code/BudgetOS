@@ -10,6 +10,7 @@ import { Card, Page } from "../components/page.js";
 import { EnvelopeDrawer } from "../features/explorer/drawer.js";
 import { FilterBar } from "../features/explorer/filter-bar.js";
 import { PasteDialog } from "../features/explorer/paste-dialog.js";
+import { useExplorerLabels } from "../features/explorer/labels.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
 import { SavedViews } from "../features/explorer/saved-views.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
@@ -78,10 +79,7 @@ function ExplorerPage(): ReactElement {
   const view = search.view === "timeline" ? "tree" : search.view;
   const measures = useMemo(() => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures])], [search.measures]);
 
-  const labels = useMemo(() => {
-    const m = new Map(dimensions.map((d) => [d.key, new Map(d.values.map((v) => [v.code, v.label]))]));
-    return (dim: string, code: string) => m.get(dim)?.get(code) ?? code;
-  }, [dimensions]);
+  const labels = useExplorerLabels(ws);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
   const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);

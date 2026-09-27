@@ -246,7 +246,7 @@ Not spec tasks. They are built one PR each, in this order, after phase 19. Phase
 | # | Item | Status |
 |---|---|---|
 | 1 | Parent budgets open the right-hand drawer from their group row, on every level and hierarchy | done: `nodeEnvelopeId` on group rows; the marker expands, the name opens |
-| 2 | The "(none)" root shows the account name (e.g. Golden) | pending |
+| 2 | The "(none)" root shows the account name (e.g. Golden) | done: a first-level group with no value is the workspace; deeper and pivot groups read "No <granularity>" (the timeline still says "(none)") |
 | 3 | "Send for approval" is easy to find | pending |
 | 4 | Pace in the Budgets tree | pending |
 | 5 | Edit the budget family top-down: children as % of the parent (auto-update) or manual (flagged when they do not add up) | pending |
