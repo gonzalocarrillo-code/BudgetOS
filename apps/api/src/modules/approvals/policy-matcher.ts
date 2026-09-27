@@ -18,7 +18,12 @@ export interface DiffFacts {
   dimensionValues: Record<string, string>;
   daysRemaining: number;
   metricKey?: string;
+  /** Who submits: their roles in the workspace (groups included) and id. Needed by `requester` conditions. */
+  requester?: { userId: string; roles: readonly string[] };
 }
+
+/** The requester facts of the caller. */
+export const requesterOf = (auth: { user: { id: string }; roles: readonly string[] }): NonNullable<DiffFacts["requester"]> => ({ userId: auth.user.id, roles: auth.roles });
 
 type Range = { gte?: number | undefined; lt?: number | undefined; lte?: number | undefined } | undefined;
 
@@ -37,6 +42,13 @@ export function conditionsMatch(c: PolicyConditionsT, f: DiffFacts): boolean {
   if (!inRange(c.level, new Decimal(f.level))) return false;
   if (c.daysRemaining?.lt !== undefined && !(f.daysRemaining < c.daysRemaining.lt)) return false;
   if (c.metricKey && (!f.metricKey || !c.metricKey.includes(f.metricKey))) return false;
+  if (c.requester) {
+    const r = f.requester;
+    if (!r) return false;
+    const byRole = c.requester.roles?.some((role) => r.roles.includes(role)) ?? false;
+    const byUser = c.requester.userIds?.includes(r.userId) ?? false;
+    if (!byRole && !byUser) return false;
+  }
   if (c.dimension) {
     for (const [k, allowed] of Object.entries(c.dimension)) {
       if (!allowed.includes(f.dimensionValues[k] ?? "")) return false;
@@ -48,7 +60,8 @@ export function conditionsMatch(c: PolicyConditionsT, f: DiffFacts): boolean {
 export type MatchedPolicy = Omit<ApprovalPolicy, "chain"> & { chain: ChainStep[]; conditionsParsed: PolicyConditionsT };
 
 /** First active policy by priority whose conditions match. A policy with unreadable JSON is skipped, never matched. */
-export async function matchPolicy(tx: Tx, workspaceId: string, f: DiffFacts): Promise<MatchedPolicy | null> {
+export async function matchPolicy(tx: Tx, workspaceId: string, facts: DiffFacts, requester?: DiffFacts["requester"]): Promise<MatchedPolicy | null> {
+  const f: DiffFacts = requester === undefined ? facts : { ...facts, requester };
   const policies = await tx.approvalPolicy.findMany({ where: { workspaceId, isActive: true }, orderBy: [{ priority: "asc" }, { name: "asc" }] });
   for (const p of policies) {
     const conditions = PolicyConditions.safeParse(p.conditions);

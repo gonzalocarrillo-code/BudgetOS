@@ -96,6 +96,8 @@ export const EnvelopeDetail = z
     draftVersionId: z.string().uuid().nullable().default(null),
     /** The draft's pending approval request, when it has been sent. */
     openRequest: z.object({ id: z.string().uuid(), status: z.string(), summary: z.string() }).nullable().default(null),
+    /** The policy the open draft would match if sent now: no steps = set at once. */
+    draftPolicy: z.object({ name: z.string(), autoApprove: z.boolean(), firstRole: z.string().nullable(), steps: z.number() }).nullable().default(null),
     structure: z
       .object({ parent: StructureNode.nullable(), children: z.array(StructureNode), siblings: z.array(StructureNode) })
       .default({ parent: null, children: [], siblings: [] }),

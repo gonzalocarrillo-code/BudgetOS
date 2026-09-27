@@ -21,7 +21,7 @@ import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.
 import type { AuthContext } from "../../../common/tenant.js";
 import { computeDiff } from "../../approvals/diff.js";
 import { addHours, closeRequest, finalizeBulk, openBlockingThread, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
-import { matchPolicy } from "../../approvals/policy-matcher.js";
+import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { rephase } from "../bulk/allocate.js";
 import { insertEnvelopeRow } from "./create-envelope.js";
 import { assertBasedOnHead, assertDraftNotPending, lockForWrite, recordEnvelopeChange, resolveFx, writeDraftVersion } from "./version-writer.js";
@@ -102,6 +102,7 @@ async function rerouteOpenRequest(tx: Tx, auth: AuthContext, envelopeId: string,
   const open = await tx.approvalRequest.findFirst({ where: { entityType: "envelope_version", entityId: { in: versionIds }, status: { in: ["PENDING", "ESCALATED"] } } });
   if (open === null) return null;
   const diff = await computeDiff(tx, open.entityId);
+  // Re-matched without a requester: the mover is not who asked, so rules on who asks do not apply here (ADR-040).
   const policy = await matchPolicy(tx, open.workspaceId, diff.facts);
   if (policy !== null && policy.id === open.policyId && policy.version === open.policyVersion) return null;
   const locked = await lockApprovalRequest(tx, open.id);
@@ -140,7 +141,7 @@ async function routeStructural(tx: Tx, auth: AuthContext, s: Structural): Promis
     level: 0,
     dimensionValues: {},
     daysRemaining: 0,
-  });
+  }, requesterOf(auth));
   if (policy === null) throw new DomainError("POLICY_NOT_FOUND", "No approval policy matched");
   if (policy.chain.length === 0) {
     await finalizeBulk(tx, auth.ctx, bulkChangeId, null, `auto-approved by policy ${policy.name} v${policy.version}`);

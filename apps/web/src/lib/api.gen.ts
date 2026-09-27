@@ -3044,6 +3044,10 @@ export interface operations {
                             lt?: number;
                         };
                         metricKey?: string[];
+                        requester?: {
+                            roles?: ("VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN" | "ORG_ADMIN")[];
+                            userIds?: string[];
+                        };
                         any?: unknown[];
                     };
                     chain: {
@@ -3119,6 +3123,10 @@ export interface operations {
                             lt?: number;
                         };
                         metricKey?: string[];
+                        requester?: {
+                            roles?: ("VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN" | "ORG_ADMIN")[];
+                            userIds?: string[];
+                        };
                         any?: unknown[];
                     };
                     chain?: {

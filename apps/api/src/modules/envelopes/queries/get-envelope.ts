@@ -3,6 +3,8 @@ import { withTenant, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
+import { computeDiff } from "../../approvals/diff.js";
+import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { parseAsOf } from "./timeline.js";
 import type { AuthContext } from "../../../common/tenant.js";
 
@@ -77,6 +79,15 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
     const openRequest = env.draftVersionId
       ? await tx.approvalRequest.findFirst({ where: { entityType: "envelope_version", entityId: env.draftVersionId, status: { in: ["PENDING", "ESCALATED", "CHANGES_REQUESTED"] } }, select: { id: true, status: true, summary: true } })
       : null;
+    // Where the open draft would go if this caller sent it now (product feedback 6): a policy
+    // with no steps sets it at once ("Apply now"); otherwise, who approves it first.
+    const draftPolicy =
+      draft && draft.status === "DRAFT" && openRequest === null
+        ? await (async () => {
+            const policy = await matchPolicy(tx, env.workspaceId, (await computeDiff(tx, draft.id)).facts, requesterOf(auth));
+            return policy ? { name: policy.name, autoApprove: policy.chain.length === 0, firstRole: policy.chain[0]?.role ?? null, steps: policy.chain.length } : null;
+          })()
+        : null;
     const tagIds = (await tx.taggable.findMany({ where: { entityType: "envelope", entityId: id }, select: { tagId: true } })).map((t) => t.tagId);
     const tags = tagIds.length ? await tx.tag.findMany({ where: { id: { in: tagIds } }, select: { id: true, name: true, color: true }, orderBy: { name: "asc" } }) : [];
     const atInstant =
@@ -110,6 +121,7 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       current: current ? versionDto(current) : null,
       draft: draft ? versionDto(draft) : null,
       openRequest,
+      draftPolicy,
       ...(asOf === null ? {} : { asOf: { at: asOf.toISOString(), approved: atInstant ? versionDto(atInstant) : null } }),
     };
   });

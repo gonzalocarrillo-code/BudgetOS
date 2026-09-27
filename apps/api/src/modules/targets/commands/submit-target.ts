@@ -5,7 +5,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { addHours, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
-import { matchPolicy, type DiffFacts } from "../../approvals/policy-matcher.js";
+import { matchPolicy, type DiffFacts, requesterOf } from "../../approvals/policy-matcher.js";
 import { approveTargetVersion } from "./approve-target-version.js";
 import { lockTargetForWrite } from "./target-writer.js";
 
@@ -65,7 +65,7 @@ export async function submitTarget(prisma: PrismaClient, auth: AuthContext, rawI
 
     const value = new Decimal(v.value.toString());
     const { facts, before, name } = await targetFacts(tx, t, value);
-    const policy = await matchPolicy(tx, t.workspaceId, facts);
+    const policy = await matchPolicy(tx, t.workspaceId, facts, requesterOf(auth));
     if (policy === null) throw new DomainError("POLICY_NOT_FOUND", "No approval policy matched");
     const policyRef = { id: policy.id, name: policy.name, version: policy.version };
     if (policy.chain.length === 0) {
