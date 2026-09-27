@@ -294,8 +294,9 @@ No placeholder screens are left (2026-09-27):
 
 Deferred from T-007 and now built (ADR-042).
 
-- **Set-based planner:** grouped and total queries are now one join and one GROUP BY instead of a subquery per envelope. The answer is the same as the per-envelope planner's, asserted by `aggregate.test.ts`.
-- **BigQuery routing:** with `BIGQUERY_DATASET` set, a heavy query goes to BigQuery (over 13 months, or more than 200k estimated rows).
-- **Query cache:** results are cached in Redis, keyed by data version.
-- **Roll-up full build:** now set-based.
-- **Blocked on client credentials:** loading the warehouse replica (T-017).
+- **BigQuery routing:** with `BIGQUERY_DATASET` set, heavy grouped queries (over 13 months, or more than 200k estimated rows) run in BigQuery SQL on the warehouse replica. Everything else stays on Postgres.
+- **Query cache:** `/query` results are cached in Redis, keyed by data version. Every response names its `engine`.
+- **Tried and dropped: a set-based Postgres planner.** It returned the same answer as the per-envelope planner. Measured at 100 shards, it was either fragile or no faster:
+  - with joins it was fast on analysed data (pivot 460 ms), but took 118 s on a freshly loaded workspace;
+  - with per-envelope lookups it matched the per-envelope planner (pivot about 950 ms), and the roll-up rebuild was 32–42 s against 25.5 s before.
+- **Still open:** Postgres grid p95 at scale, and loading the warehouse replica (T-017, needs client credentials).

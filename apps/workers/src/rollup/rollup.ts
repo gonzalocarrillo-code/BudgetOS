@@ -1,6 +1,6 @@
 import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
 import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
-import { NONE_SEGMENT, ROOT_PATH, aggregateSupported, compileAggregate, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
+import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce } from "../consumer.js";
@@ -97,8 +97,7 @@ async function nodesAtDepth(tx: Tx, ctx: Ctx, path: string[], depth: number, per
   let cursor: string | null = null;
   do {
     const q = QueryRequest.parse({ workspaceId: ctx.workspaceId, filter: { logic: "and", children }, groupBy: keys, measures: [...SUMS], period: { kind: "range", ...period }, limit: 1000, ...(cursor ? { cursor } : {}) });
-    // A full build reads every leaf: set-based (ADR-042). A refresh restricts to its envelopes.
-    const c = only === null && aggregateSupported(q, opts) ? compileAggregate(q, period, ctx.today, opts) : compileQuery(q, period, ctx.today, opts);
+    const c = compileQuery(q, period, ctx.today, opts);
     const page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
     for (const r of page.rows) out.push({ nodePath: keys.map((k) => segment(r[`dim_${k.replace(/[^a-z0-9_]/gi, "_").toLowerCase()}`])).join("/"), sums: sumsOfRow(r) });
     cursor = page.nextCursor;

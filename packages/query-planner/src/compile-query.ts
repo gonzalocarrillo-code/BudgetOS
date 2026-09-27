@@ -308,7 +308,7 @@ const NUMERIC_COLS = new Set(["budget", "actual", "projected", "remaining", "var
 const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */
-export function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuilder): string {
+function keysetAfter(order: OrderKey[], values: Array<string | null>, b: SqlBuilder): string {
   const branches: string[] = [];
   order.forEach((o, i) => {
     const v = values[i];
@@ -355,7 +355,7 @@ export function pageOf<R extends Record<string, unknown>>(
   return { rows: page, nextCursor: encodeCursor(c.orderKeys.map((o) => cursorValue(last[o.col]))) };
 }
 
-export function ratioExpr(mk: string, elapsedFrac: string): string {
+function ratioExpr(mk: string, elapsedFrac: string): string {
   switch (mk) {
     case "pace_index":
       return `(sum(m.actual)/sum(m.budget)) / NULLIF(${elapsedFrac},0)`;

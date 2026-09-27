@@ -1,6 +1,6 @@
 import { DomainError, QueryRequest, readScopeFilter, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
 import { envelopePaths, envelopesByTuple, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
-import { aggregateSupported, bigQuerySupported, compileAggregate, compileAggregateBq, compileAggregateTotals, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
+import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { HEAVY_MONTHS, HEAVY_ROWS, QUERY_CACHE_TTL_SECONDS, cacheKey, engineFromEnv, maxPlanRows, monthsSpanned, type QueryEngine } from "./engine.js";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -41,11 +41,9 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       if (hit) return { ...(JSON.parse(hit) as QueryResponse), engine: "cache" as const, elapsedMs: Math.round(performance.now() - started) };
     }
     const grouped = q.groupBy.length > 0;
-    // Heavy shapes (grouped rows, totals) run set-based when the filter allows it (ADR-042): the
-    // same answer, one pass over the facts instead of one subquery per envelope — on the warehouse
-    // replica when one is configured and the query is heavy (spec §6.2), else on Postgres.
-    const setBased = aggregateSupported(q, opts);
-    const c = setBased && grouped ? compileAggregate(q, period, today, opts) : compileQuery(q, period, today, opts);
+    // Heavy grouped queries run on the warehouse replica when one is configured (spec §6.2, ADR-042);
+    // everything else on Postgres.
+    const c = compileQuery(q, period, today, opts);
     const heavy = async () => {
       if (monthsSpanned(period) > HEAVY_MONTHS) return true;
       const [plan] = await tx.$queryRawUnsafe<Array<{ "QUERY PLAN": unknown }>>(`EXPLAIN (FORMAT JSON) ${c.sql}`, ...c.values);
@@ -61,7 +59,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       [totals] = await warehouse.query(wt.sql, wt.params, wt.types);
     } else {
       page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
-      const t = setBased ? compileAggregateTotals(q, period, today, opts) : compileTotals(q, period, today, opts);
+      const t = compileTotals(q, period, today, opts);
       [totals] = await tx.$queryRawUnsafe<Row[]>(t.sql, ...t.values);
     }
     const paths = grouped ? new Map<string, string[]>() : await envelopePaths(tx, page.rows.map((r) => String(r["envelope_id"])));

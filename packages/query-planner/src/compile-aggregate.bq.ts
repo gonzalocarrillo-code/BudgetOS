@@ -1,12 +1,20 @@
 import { Buffer } from "node:buffer";
 import { DomainError, elapsedFraction, isPredicate, type FilterGroupT, type Predicate, type QueryRequest } from "@budget/domain";
-import { aggregateSupported } from "./compile-aggregate.js";
 import { sanitize } from "./compile-filter.js";
 import { RATIO, resolveOrder, type CompileOptions, type OrderKey } from "./compile-query.js";
 
+const SUPPORTED_MEASURES = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct"]);
+
+/** Grouped or total rows over the base measures: no KPI targets, template, date split or envelope scope. */
+function aggregateShape(q: QueryRequest, opts: CompileOptions): boolean {
+  if (q.grain !== "total" || q.templateId !== undefined || q.targets.length > 0 || opts.groupDates || opts.envelopeIds !== undefined) return false;
+  return q.measures.every((m) => SUPPORTED_MEASURES.has(m));
+}
+
 /**
- * The set-based planner in BigQuery SQL (spec §6.2 routing rule, ADR-042): the same shape as
- * `compile-aggregate.ts`, run against the warehouse replica of the app's tables (Datastream:
+ * Grouped rows and totals in BigQuery SQL (spec §6.2 routing rule, ADR-042): the same columns,
+ * order keys and cursor as `compileQuery` / `compileTotals`, computed as sets (budget, spend and
+ * projected spend per envelope, joined, grouped) against the warehouse replica (Datastream:
  * `<dataset>.envelope`, `envelope_version`, `spend_fact`, …). UUIDs are STRING there, `ltree`
  * paths are dot-joined STRINGs, and there is no RLS: every table is cut to the workspace here.
  * Spend is summed from `spend_fact` (BigQuery scans it; no monthly table needed). Filters are the
@@ -44,9 +52,9 @@ function filterSupported(g: FilterGroupT): boolean {
   return g.children.every((c) => (isPredicate(c) ? predicateSupported(c) : filterSupported(c)));
 }
 
-/** Whether BigQuery can answer this query: the set-based shapes, with the filters above. */
+/** Whether BigQuery can answer this query: grouped rows or totals over the base measures, with the filters above. */
 export function bigQuerySupported(q: QueryRequest, opts: CompileOptions = {}): boolean {
-  return aggregateSupported(q, opts) && q.asOf === undefined && filterSupported(q.filter ?? { logic: "and", children: [] });
+  return aggregateShape(q, opts) && q.asOf === undefined && filterSupported(q.filter ?? { logic: "and", children: [] });
 }
 
 const TABLE = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){0,2}$/;

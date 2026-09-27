@@ -10,7 +10,7 @@ import { isPredicate, type FilterGroupT, type QueryRequest } from "@budget/domai
  *   the scoped query (the caller's read scope is part of its filter). Only queries whose filter
  *   reads dimensions, status and is_leaf are kept: tags, threads and mentions change without a
  *   data-version bump.
- * - **Warehouse:** with BIGQUERY_DATASET set, the set-based shapes BigQuery supports run there when
+ * - **Warehouse:** with BIGQUERY_DATASET set, the grouped shapes the BigQuery dialect supports run there when
  *   the period spans more than 13 months or Postgres estimates more than 200k rows.
  */
 
@@ -58,7 +58,7 @@ export class RedisQueryCache implements QueryCache {
 
 export type Row = Record<string, unknown>;
 
-/** A read-only warehouse the set-based SQL runs on (BigQuery in every deployed environment). */
+/** A read-only warehouse the BigQuery dialect runs on (BigQuery in every deployed environment). */
 export interface Warehouse {
   dataset: string;
   query(sql: string, params: Record<string, unknown>, types: Record<string, string | string[]>): Promise<Row[]>;

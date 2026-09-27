@@ -15,6 +15,5 @@ export { SEARCH_TYPES, compileSearch, parseRelative, searchTypes } from "./compi
 export type { CompiledSearch, SearchContext } from "./compile-search.js";
 export { NONE_SEGMENT, ROOT_PATH, compileTree, nodeDepth } from "./compile-tree.js";
 export type { CompiledTree, TreeRequest } from "./compile-tree.js";
-export { aggregateSupported, compileAggregate, compileAggregateTotals } from "./compile-aggregate.js";
 export { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq } from "./compile-aggregate.bq.js";
 export type { CompiledBqQuery } from "./compile-aggregate.bq.js";

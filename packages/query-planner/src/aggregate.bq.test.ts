@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, encodeCursor } from "./index.js";
 
 /**
- * ADR-042: the set-based planner in BigQuery SQL. No BigQuery here: the SQL is checked for the
+ * ADR-042: grouped rows and totals in BigQuery SQL. No BigQuery here: the SQL is checked for the
  * dialect (no Postgres syntax), the workspace cut on every table, and complete parameters; the
- * shape is the one aggregate.test.ts proves equal to the per-envelope planner on Postgres.
+ * shape mirrors the per-envelope planner (same columns, order keys and cursor).
  */
 
 const ws = "01a0e0da-e7e9-7f9a-9212-1c166382caf2";
