@@ -55,6 +55,13 @@ export {
   SplitEnvelopeInput,
   UpdateEnvelopeInput,
   UpdatePhasingInput,
+  AllocationMode,
+  FamilyChildInput,
+  FamilyInput,
+  FamilyMember,
+  FamilyPlan,
+  FamilySum,
+  PercentString,
 } from "./envelopes.js";
 
 export {

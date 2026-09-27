@@ -2233,6 +2233,594 @@
         }
       }
     },
+    "/api/v1/envelopes/{id}/family": {
+      "get": {
+        "operationId": "getEnvelopeFamily",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The parent, its children (each % of the parent or manual) and how they add up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "level": {
+                          "type": "integer"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ],
+                          "nullable": true
+                        },
+                        "pct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "before": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "after": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        },
+                        "childCount": {
+                          "type": "integer"
+                        },
+                        "sameCurrency": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "name",
+                        "parentId",
+                        "level",
+                        "currency",
+                        "status",
+                        "mode",
+                        "pct",
+                        "before",
+                        "after",
+                        "changed",
+                        "childCount",
+                        "sameCurrency"
+                      ]
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "level": {
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "percent",
+                              "manual"
+                            ],
+                            "nullable": true
+                          },
+                          "pct": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "before": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changed": {
+                            "type": "boolean"
+                          },
+                          "childCount": {
+                            "type": "integer"
+                          },
+                          "sameCurrency": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "name",
+                          "parentId",
+                          "level",
+                          "currency",
+                          "status",
+                          "mode",
+                          "pct",
+                          "before",
+                          "after",
+                          "changed",
+                          "childCount",
+                          "sameCurrency"
+                        ]
+                      }
+                    },
+                    "sums": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "parentAmount": {
+                            "type": "string"
+                          },
+                          "childrenTotal": {
+                            "type": "string"
+                          },
+                          "unallocated": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "balanced",
+                              "under",
+                              "over"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "parentId",
+                          "parentAmount",
+                          "childrenTotal",
+                          "unallocated",
+                          "status"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "parent",
+                    "members",
+                    "sums"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveEnvelopeFamily",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parentAmount": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                  },
+                  "children": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ]
+                        },
+                        "pct": {
+                          "type": "string",
+                          "pattern": "^\\d{1,3}(\\.\\d{1,6})?$"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "mode"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000,
+                    "default": "Family edit"
+                  }
+                },
+                "required": [
+                  "parentAmount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rules saved (audited); { plan, preview }: the bulk preview of every amount the plan changes, to commit (null when no amount changes)"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/family/preview": {
+      "post": {
+        "operationId": "previewEnvelopeFamily",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parentAmount": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                  },
+                  "children": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ]
+                        },
+                        "pct": {
+                          "type": "string",
+                          "pattern": "^\\d{1,3}(\\.\\d{1,6})?$"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "mode"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000,
+                    "default": "Family edit"
+                  }
+                },
+                "required": [
+                  "parentAmount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The family as the change leaves it, down the tree; writes nothing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "level": {
+                          "type": "integer"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ],
+                          "nullable": true
+                        },
+                        "pct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "before": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "after": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        },
+                        "childCount": {
+                          "type": "integer"
+                        },
+                        "sameCurrency": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "name",
+                        "parentId",
+                        "level",
+                        "currency",
+                        "status",
+                        "mode",
+                        "pct",
+                        "before",
+                        "after",
+                        "changed",
+                        "childCount",
+                        "sameCurrency"
+                      ]
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "level": {
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "percent",
+                              "manual"
+                            ],
+                            "nullable": true
+                          },
+                          "pct": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "before": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changed": {
+                            "type": "boolean"
+                          },
+                          "childCount": {
+                            "type": "integer"
+                          },
+                          "sameCurrency": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "name",
+                          "parentId",
+                          "level",
+                          "currency",
+                          "status",
+                          "mode",
+                          "pct",
+                          "before",
+                          "after",
+                          "changed",
+                          "childCount",
+                          "sameCurrency"
+                        ]
+                      }
+                    },
+                    "sums": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "parentAmount": {
+                            "type": "string"
+                          },
+                          "childrenTotal": {
+                            "type": "string"
+                          },
+                          "unallocated": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "balanced",
+                              "under",
+                              "over"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "parentId",
+                          "parentAmount",
+                          "childrenTotal",
+                          "unallocated",
+                          "status"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "parent",
+                    "members",
+                    "sums"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/envelopes/{id}/submit": {
       "post": {
         "operationId": "submitEnvelopeVersion",

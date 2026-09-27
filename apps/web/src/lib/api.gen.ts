@@ -304,6 +304,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/envelopes/{id}/family": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEnvelopeFamily"];
+        put?: never;
+        post: operations["saveEnvelopeFamily"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/family/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewEnvelopeFamily"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/envelopes/{id}/submit": {
         parameters: {
             query?: never;
@@ -2524,6 +2556,202 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getEnvelopeFamily: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The parent, its children (each % of the parent or manual) and how they add up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        parent: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        };
+                        members: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        }[];
+                        sums: {
+                            /** Format: uuid */
+                            parentId: string;
+                            parentAmount: string;
+                            childrenTotal: string;
+                            unallocated: string;
+                            /** @enum {string} */
+                            status: "balanced" | "under" | "over";
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    saveEnvelopeFamily: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    parentAmount: string;
+                    /** @default [] */
+                    children?: {
+                        /** Format: uuid */
+                        envelopeId: string;
+                        /** @enum {string} */
+                        mode: "percent" | "manual";
+                        pct?: string;
+                        amount?: string;
+                    }[];
+                    /** @default Family edit */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Rules saved (audited); { plan, preview }: the bulk preview of every amount the plan changes, to commit (null when no amount changes) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewEnvelopeFamily: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    parentAmount: string;
+                    /** @default [] */
+                    children?: {
+                        /** Format: uuid */
+                        envelopeId: string;
+                        /** @enum {string} */
+                        mode: "percent" | "manual";
+                        pct?: string;
+                        amount?: string;
+                    }[];
+                    /** @default Family edit */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The family as the change leaves it, down the tree; writes nothing */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        parent: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        };
+                        members: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        }[];
+                        sums: {
+                            /** Format: uuid */
+                            parentId: string;
+                            parentAmount: string;
+                            childrenTotal: string;
+                            unallocated: string;
+                            /** @enum {string} */
+                            status: "balanced" | "under" | "over";
+                        }[];
+                    };
+                };
             };
         };
     };

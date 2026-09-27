@@ -73,6 +73,7 @@ export async function cleanupWorkspace(owner: PrismaClient, ws: string): Promise
     `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_phasing WHERE version_id IN (SELECT id FROM envelope_version WHERE envelope_id IN ${envs})`,
     `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
+    `DELETE FROM envelope_allocation WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
     `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
     `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
