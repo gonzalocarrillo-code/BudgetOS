@@ -864,6 +864,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["tree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/manual-entries": {
         parameters: {
             query?: never;
@@ -4103,6 +4119,105 @@ export interface operations {
                         /** Format: date-time */
                         dataAsOf: string;
                         dataVersion: number;
+                        elapsedMs: number;
+                    };
+                };
+            };
+        };
+    };
+    tree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    workspaceId: string;
+                    /** Format: uuid */
+                    templateId: string;
+                    period: {
+                        /** @enum {string} */
+                        kind: "fiscal";
+                        key: string;
+                    } | {
+                        /** @enum {string} */
+                        kind: "range";
+                        start: string;
+                        end: string;
+                    } | {
+                        /** @enum {string} */
+                        kind: "relative";
+                        /** @enum {string} */
+                        preset: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+                    };
+                    /** @default  */
+                    parentPath?: string;
+                    /**
+                     * @default [
+                     *       "budget",
+                     *       "actual",
+                     *       "projected",
+                     *       "pace_index"
+                     *     ]
+                     */
+                    measures?: ("budget" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct")[];
+                };
+            };
+        };
+        responses: {
+            /** @description One level of a hierarchy template's tree from rollup_cache, with the root as totals; available: false (scoped caller or period not cached) means ask /query; X-Data-Version header */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        /** @enum {string|null} */
+                        reason: "scoped" | "not_cached" | null;
+                        rows: {
+                            key: string;
+                            /** Format: uuid */
+                            envelopeId: string | null;
+                            /** Format: uuid */
+                            versionId?: string | null;
+                            depth?: number;
+                            path: string[];
+                            dimensions: {
+                                [key: string]: string | null;
+                            };
+                            measures: {
+                                [key: string]: string | null;
+                            };
+                            /** @default {} */
+                            targets: {
+                                [key: string]: {
+                                    target: string | null;
+                                    actual: string | null;
+                                    vsTargetPct: string | null;
+                                };
+                            };
+                            status: string | null;
+                            /** @default 0 */
+                            pendingCount: number;
+                            /** @default 0 */
+                            openAlerts: number;
+                            /** @default 0 */
+                            openThreads: number;
+                        }[];
+                        totals: {
+                            [key: string]: string | null;
+                        };
+                        /** Format: date-time */
+                        dataAsOf: string;
+                        dataVersion: number;
+                        cacheVersion: number | null;
                         elapsedMs: number;
                     };
                 };

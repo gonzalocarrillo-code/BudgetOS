@@ -33,6 +33,11 @@ export interface CompileOptions {
   hasProjections?: boolean | undefined;
   /** Grouped rows also carry `start_date` / `end_date`: the earliest start and latest end of the group's envelopes (the timeline's group bars, T-037). */
   groupDates?: boolean | undefined;
+  /**
+   * Internal (not part of the FilterGroup AST): only these envelopes. The roll-up refresh resolves a
+   * node's envelopes first and passes them here, so Postgres plans from a known set (ADR-038).
+   */
+  envelopeIds?: readonly string[] | undefined;
 }
 
 export interface OrderKey {
@@ -107,9 +112,9 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     if (!def) throw new DomainError("VALIDATION", `unknown metric ${mk}`);
     const s = sanitize(mk);
     const mult = def.multiplier === undefined || new Decimal(def.multiplier).equals(1) ? "" : ` * ${b.p(def.multiplier)}::numeric`;
-    const num = def.numerator === "budget" ? budgetSql : factSql(mk, def.numerator, b, pStart, pEnd, ws);
+    const num = def.numerator === "budget" ? budgetSql : factSql(mk, def.numerator, b, pStart, pEnd, ws, period);
     if (def.denominator) {
-      const den = def.denominator === "budget" ? budgetSql : factSql(mk, def.denominator, b, pStart, pEnd, ws);
+      const den = def.denominator === "budget" ? budgetSql : factSql(mk, def.denominator, b, pStart, pEnd, ws, period);
       kpiCols += `, ${num} AS num_${s}, ${den} AS den_${s}`;
       kpiDerived += `, (num_${s}${mult} / NULLIF(den_${s},0)) AS kpi_${s}`;
       if (requested.has(mk)) kpiAgg += `, (sum(m.num_${s})${mult} / NULLIF(sum(m.den_${s}),0)) AS kpi_${s}`;
@@ -142,16 +147,17 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   // Budget as of a timestamp is the latest version approved by then. Versions approved earlier are
   // SUPERSEDED now (spec §7.3), so status alone cannot select them.
   const derived = projectionDerived("projected", "budget");
+  const onlyIds = opts.envelopeIds === undefined ? "" : ` AND e.id = ANY(${b.p([...opts.envelopeIds])}::uuid[])`;
   const measuresCte = `
     m AS (
       SELECT e.id AS envelope_id,
         ${budgetSql} AS budget,
-        (SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${pStart} AND ${pEnd}) AS actual,
+        ${spendSql(b, period, ws)} AS actual,
         ${opts.hasProjections === false ? "0::numeric" : "coalesce(p.projected, 0)"} AS projected
         ${kpiCols}
       FROM envelope e${projectionJoin("e.id")}
       WHERE e.workspace_id = ${ws}::uuid
-        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}
+        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${onlyIds}
     ),
     m2 AS (
       SELECT *, (budget - actual) AS remaining,
@@ -175,7 +181,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   };
   ctx.targetSql = targetSql;
 
-  const where = compileFilter(filter, b, ctx);
+  const where = onlyIds ? `(${compileFilter(filter, b, ctx)})${onlyIds}` : compileFilter(filter, b, ctx);
   const measures = [...new Set(q.measures)];
   const measureAgg = measures
     .map((mk) => {
@@ -365,8 +371,9 @@ function ratioExpr(mk: string, elapsedFrac: string): string {
 }
 
 /** One source of a metric over facts for envelope alias e. `ws` is the workspace placeholder so the fact indexes apply. */
-function factSql(metricKey: string, ref: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string): string {
+function factSql(metricKey: string, ref: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, period?: { start: string; end: string }): string {
   if (ref === "spend") {
+    if (period) return spendSql(b, period, ws);
     return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd})`;
   }
   if (!ref.startsWith("kpi:")) throw new DomainError("VALIDATION", `metric ${metricKey} references unknown source ${ref}`);
@@ -381,6 +388,39 @@ export function derivedMetricSql(metricKey: string, b: SqlBuilder, pStart: strin
   const mult = def.multiplier === undefined || new Decimal(def.multiplier).equals(1) ? "" : ` * ${b.p(def.multiplier)}::numeric`;
   const num = factSql(metricKey, def.numerator, b, pStart, pEnd, ws);
   return def.denominator ? `${num}${mult} / NULLIF(${factSql(metricKey, def.denominator, b, pStart, pEnd, ws)},0)` : `${num}${mult}`;
+}
+
+/**
+ * The months of [start, end] split into whole months ([fullStart, fullEnd) as first-of-month dates)
+ * and the partial days at either edge. Pure date arithmetic on ISO strings.
+ */
+export function monthSplit(start: string, end: string): { full: [string, string] | null; edges: Array<[string, string]> } {
+  const first = (d: string) => `${d.slice(0, 7)}-01`;
+  const addMonth = (m: string) => {
+    const [y, mo] = [Number(m.slice(0, 4)), Number(m.slice(5, 7))];
+    return mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, "0")}-01`;
+  };
+  const addDay = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  const fullStart = start === first(start) ? start : addMonth(first(start));
+  const fullEnd = first(addDay(end, 1)); // exclusive: the month after the last whole month
+  if (fullStart >= fullEnd) return { full: null, edges: [[start, end]] };
+  const edges: Array<[string, string]> = [];
+  if (start < fullStart) edges.push([start, addDay(fullStart, -1)]);
+  if (addDay(end, 1) > fullEnd) edges.push([fullEnd, end]);
+  return { full: [fullStart, fullEnd], edges };
+}
+
+/**
+ * Spend of envelope alias e over the period (ADR-037): whole months from spend_month, the partial
+ * months at the edges from spend_fact. Same total as summing spend_fact over the period.
+ */
+function spendSql(b: SqlBuilder, period: { start: string; end: string }, ws: string): string {
+  const split = monthSplit(period.start, period.end);
+  const parts = split.edges.map(
+    ([from, to]) => `(SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${b.p(from)}::date AND ${b.p(to)}::date)`,
+  );
+  if (split.full) parts.unshift(`(SELECT coalesce(sum(sm.amount_reporting),0) FROM spend_month sm WHERE sm.workspace_id = ${ws}::uuid AND sm.envelope_id = e.id AND sm.month >= ${b.p(split.full[0])}::date AND sm.month < ${b.p(split.full[1])}::date)`);
+  return parts.length === 1 ? (parts[0] as string) : `(${parts.join(" + ")})`;
 }
 
 /** Process-wide metric library for callers that do not pass `CompileOptions.metrics` (tests, benches). */

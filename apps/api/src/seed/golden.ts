@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -337,6 +337,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   // ---- T-022: roll-up trees for every hierarchy template, FY2026, as of the pacing day. ----
   const trees = await rebuildWorkspace(app, { workspaceId, orgId }, { today: GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1] as string, periods: [GOLDEN_FY] });
   log(`golden: rollup cache built (${Object.values(trees).reduce((n, c) => n + c, 0)} nodes)`);
+  // Every event so far is applied by the re-index and the rebuild above: mark it delivered, so a
+  // local runner does not replay it (ADR-038). What follows is delivered as usual.
+  await markOutboxDelivered(owner, workspaceId);
 
   // ---- T-023: Finance exports the live LATAM leaves; the worker writes the CSV to the seed's store. ----
   const exportJob = await createExport(app, auth(GOLDEN_EXPORT.persona), {

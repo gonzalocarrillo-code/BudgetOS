@@ -238,3 +238,33 @@ This is the Appendix C job re-run on main `10da495` (after phase 18), at the sam
 
 - The grid query and search at 1M+ documents exceed the 15 s interactive transaction. They need the planner projection speed-up and a look at search query plans at scale.
 - The roll-up and search-lag handlers need a faster, incremental refresh.
+
+## T-034 speed-up run (2026-09-27, PR #51)
+
+This is the spec-scale job on the speed-up branch: `8cbf40c`, actions run 36310988660. The dataset is the same as phase 19: 100,746 leaves and 24.4M spend facts. Every measurement completed. The job then hung in its final cleanup (deleting 24M facts ran into the `spend_month` delete trigger) and was cancelled. That is fixed in `32e3f83`: a 4.7M-row delete now takes 25 s instead of more than 85 minutes. Run 36330340457 re-runs the job on the fix.
+
+| measure | phase 19 (36292069357) | speed-up (36310988660) | target | |
+|---|---|---|---|---|
+| tree levels via `/tree` (root, country, deep) | 500 (timeout) | 32, 20, 14 ms | < 400 | pass |
+| leaf page (`/query`) | 500 | 985 ms | < 400 | FAIL |
+| pivot country × platform (`/query`) | 500 | 9,463 ms | < 400 | FAIL |
+| gridQueryP95Ms (all scenarios) | — | 9,195 | < 400 | FAIL (the pivot) |
+| searchP95Ms | 500 | 500 (timeout) | < 150 | FAIL |
+| inlineEditP95Ms | 27 | 30 | < 300 | pass |
+| bulkCommit10kMs | 5,791 | 5,944 | < 10,000 | pass |
+| rollupLagP95Ms | expired | expired | < 5,000 | FAIL |
+| searchLagP95Ms | expired | expired | < 5,000 | FAIL |
+
+**Phases:**
+
+| phase | this run |
+|---|---|
+| scale | 21.3 min |
+| search index | 33.7 min |
+| full roll-up rebuild, 5 templates × 2 periods | **5.9 min** (phase 19: did not finish within its 15 min bound) |
+
+**Still to do:**
+
+- **The pivot and large filtered pages** still compute every leaf on read. They need a pre-aggregated cube or a set-based planner path.
+- **Search** at about 1M documents still exceeds 15 s.
+- **Roll-up lag:** one change's refresh (5 templates × 2 periods, run for each of the change's `budget.changed` events) exceeds the 15 s handler transaction at spec scale. It measured 8.1 s p95 at 19.5k leaves. The next steps are skipping the draft events, which change no cached measure, and coalescing events for the same envelope.

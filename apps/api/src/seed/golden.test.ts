@@ -18,6 +18,8 @@ import { GOLDEN_COLLAB } from "@budget/db";
 import { LIVE_LEAVES, handleRollupEvent, handleSearchEvent } from "@budget/workers";
 import { compileTree } from "@budget/query-planner";
 import { search } from "../modules/search/search.js";
+import { runQuery } from "../modules/query/queries/run-query.js";
+import { treeQuery } from "../modules/query/queries/tree.query.js";
 import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
 import { GOLDEN_CLOSURE, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW } from "@budget/db";
 import { MemoryObjectStore, runExport } from "@budget/workers";
@@ -592,6 +594,61 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
     const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
     expect(dec(root?.measures["budget"])).toBe(new Decimal(R.rootBudget).plus("10.00").toFixed(2));
+  });
+});
+
+describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree from rollup_cache)", () => {
+  const ALL = ["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "spend_to_date_pct", "projected_close_pct"] as const;
+  const EXACT = new Set(["budget", "actual", "projected", "remaining", "variance_abs"]);
+  const who = (scope: AuthContext["assignments"][number]["scope"] = {}): AuthContext => ({
+    ctx: { ...ctx(), userId: golden.users.planner },
+    user: { id: golden.users.planner, orgId: golden.orgId, email: "planner@golden.test", name: "planner" },
+    isOrgAdmin: false,
+    roles: [Object.keys(scope).length ? "BUDGET_OWNER" : "PLANNER"],
+    assignments: [{ role: Object.keys(scope).length ? "BUDGET_OWNER" : "PLANNER", scope }],
+  });
+  const now = new Date(`${TODAY}T12:00:00Z`);
+  const range = { kind: "range" as const, ...period };
+  /** Money and counts exactly; ratios to 10 places (Decimal and Postgres numeric round the last digits differently). */
+  const same = (a: Record<string, string | null>, b: Record<string, string | null>) =>
+    ALL.every((m) => {
+      const x = a[m] ?? null;
+      const y = b[m] ?? null;
+      if (x === null || y === null) return x === y;
+      return EXACT.has(m) ? new Decimal(x).equals(new Decimal(y)) : new Decimal(x).toDecimalPlaces(10).equals(new Decimal(y).toDecimalPlaces(10));
+    });
+
+  it("each level equals /query's groups for the same leaves, and the root equals its totals", async () => {
+    const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    let parent = "";
+    for (let d = 0; d < t.path.length; d += 1) {
+      const tree = await treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: range, parentPath: parent, measures: [...ALL] }, now);
+      expect(tree.available).toBe(true);
+      const segs = parent === "" ? [] : parent.split("/");
+      const prefix = segs.map((code, i) => (code === "∅" ? { field: { kind: "dimension" as const, key: t.path[i] as string }, op: "is_empty" as const } : { field: { kind: "dimension" as const, key: t.path[i] as string }, op: "eq" as const, value: code }));
+      const live = await runQuery(app, who(), { workspaceId: golden.workspaceId, filter: { logic: "and", children: [...LIVE_LEAVES, ...prefix] }, groupBy: t.path.slice(0, d + 1), measures: [...ALL], period: range, limit: 1000 }, now);
+      expect(tree.rows.map((r) => r.key).sort(), `depth ${d + 1} under '${parent}'`).toEqual(live.rows.map((r) => r.key).sort());
+      for (const r of tree.rows) {
+        const l = live.rows.find((x) => x.key === r.key);
+        expect(same(r.measures, l?.measures ?? {}), `${r.key}: ${JSON.stringify(r.measures)} vs ${JSON.stringify(l?.measures)}`).toBe(true);
+        expect(r.pendingCount).toBe(l?.pendingCount);
+      }
+      if (d === 0) {
+        expect(same(tree.totals, live.totals)).toBe(true);
+        expect(tree.totals["leafCount"]).toBe(live.totals["leafCount"]);
+      }
+      parent = tree.rows.find((r) => !r.key.endsWith("∅"))?.key ?? "";
+      expect(parent).not.toBe("");
+    }
+  });
+
+  it("a scoped caller, a period the cache does not hold, and a template of another workspace are refused or sent to /query", async () => {
+    const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const emea = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: "region" }, op: "eq" as const, value: "EMEA" }] };
+    expect(await treeQuery(app, who(emea), { workspaceId: golden.workspaceId, templateId: t.id, period: range }, now)).toMatchObject({ available: false, reason: "scoped", rows: [] });
+    expect(await treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: { kind: "range", start: "2026-02-03", end: "2026-02-20" } }, now)).toMatchObject({ available: false, reason: "not_cached" });
+    await expect(treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: randomUUID(), period: range }, now)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: range, parentPath: "LATAM/AR/meta/awareness/prospecting" }, now)).rejects.toMatchObject({ code: "VALIDATION" });
   });
 });
 

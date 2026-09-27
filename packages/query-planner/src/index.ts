@@ -7,6 +7,7 @@ export {
   derivedMetricSql,
   encodeCursor,
   metricRegistry,
+  monthSplit,
   pageOf,
 } from "./compile-query.js";
 export type { CompiledQuery, CompileOptions, FilterTarget, MetricDef, OrderKey } from "./compile-query.js";

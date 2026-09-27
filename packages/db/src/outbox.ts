@@ -36,3 +36,12 @@ export async function markProcessed(tx: Tx, consumer: string, outboxId: string):
     ON CONFLICT (consumer, outbox_id) DO NOTHING RETURNING 1 AS ok`;
   return rows.length === 1;
 }
+
+/**
+ * Seeds only: marks a workspace's outbox rows published, as delivered. The golden seed calls it
+ * after its own full search re-index and roll-up rebuild, which already applied every row up to
+ * then, so a local runner does not replay thousands of superseded events (ADR-038).
+ */
+export async function markOutboxDelivered(db: { $executeRawUnsafe(sql: string, ...values: unknown[]): Promise<number> }, workspaceId: string): Promise<number> {
+  return db.$executeRawUnsafe(`UPDATE outbox SET published_at = now() WHERE workspace_id = $1::uuid AND published_at IS NULL`, workspaceId);
+}

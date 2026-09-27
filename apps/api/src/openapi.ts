@@ -69,6 +69,8 @@ import {
   ConcludeExperimentInput,
   ExperimentReadout,
   TimelineResponse,
+  TreeRequest,
+  TreeResponse,
   CreateSavedViewInput,
   UpdateSavedViewInput,
   ReactionInput,
@@ -314,6 +316,9 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/query": {
         post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/tree": {
+        post: { operationId: "tree", parameters: [workspaceParam], requestBody: json(TreeRequest), responses: { "201": { description: "One level of a hierarchy template's tree from rollup_cache, with the root as totals; available: false (scoped caller or period not cached) means ask /query; X-Data-Version header", ...json(TreeResponse) } } },
       },
       "/api/v1/workspaces/{ws}/manual-entries": {
         get: { operationId: "listManualEntries", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED" }, { name: "channel", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "Batches, newest first (rows omitted, rowCount)" } } },

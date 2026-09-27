@@ -53,27 +53,32 @@ function list(p: Predicate): Array<string | number> {
 function compileDimension(key: string, p: Predicate, b: SqlBuilder): string {
   // Joined through envelope_dimension.dimension_id, so an org-wide dimension of another org with
   // the same key can never be picked (RLS lets every tenant read workspace_id IS NULL rows).
-  const base = `EXISTS (SELECT 1 FROM envelope_dimension ed JOIN dimension d ON d.id = ed.dimension_id JOIN dimension_value dv ON dv.id = ed.value_id WHERE ed.envelope_id = e.id AND d.key = ${b.p(key)}::text`;
+  // `e.id [NOT] IN (the value's envelopes)` rather than a correlated EXISTS: inside an OR, Postgres
+  // hashes each set once instead of probing it per row (ADR-038). envelope_id is never null, so
+  // NOT IN is the NOT EXISTS it replaces.
+  const set = (cond: string) => `SELECT ed.envelope_id FROM envelope_dimension ed JOIN dimension d ON d.id = ed.dimension_id JOIN dimension_value dv ON dv.id = ed.value_id WHERE d.key = ${b.p(key)}::text${cond}`;
+  const inSet = (cond: string) => `e.id IN (${set(cond)})`;
+  const notInSet = (cond: string) => `e.id NOT IN (${set(cond)})`;
   switch (p.op) {
     case "eq":
-      return `${base} AND dv.code = ${b.p(String(p.value))}::text)`;
+      return inSet(` AND dv.code = ${b.p(String(p.value))}::text`);
     case "neq":
-      return `NOT (${base} AND dv.code = ${b.p(String(p.value))}::text))`;
+      return notInSet(` AND dv.code = ${b.p(String(p.value))}::text`);
     case "in":
-      return `${base} AND dv.code = ANY(${b.p(list(p).map(String))}::text[]))`;
+      return inSet(` AND dv.code = ANY(${b.p(list(p).map(String))}::text[])`);
     case "nin":
-      return `NOT (${base} AND dv.code = ANY(${b.p(list(p).map(String))}::text[])))`;
+      return notInSet(` AND dv.code = ANY(${b.p(list(p).map(String))}::text[])`);
     case "contains":
-      return `${base} AND dv.label ILIKE ${b.p("%" + String(p.value) + "%")}::text)`;
+      return inSet(` AND dv.label ILIKE ${b.p("%" + String(p.value) + "%")}::text`);
     case "starts_with":
-      return `${base} AND dv.label ILIKE ${b.p(String(p.value) + "%")}::text)`;
+      return inSet(` AND dv.label ILIKE ${b.p(String(p.value) + "%")}::text`);
     case "is_empty":
-      return `NOT (${base}))`;
+      return notInSet("");
     case "not_empty":
-      return `${base})`;
+      return inSet("");
     case "descends_from":
       // ancestor code → all values whose ltree path is under it
-      return `${base} AND dv.path <@ (SELECT x.path FROM dimension_value x WHERE x.dimension_id = dv.dimension_id AND x.code = ${b.p(String(p.value))}::text))`;
+      return inSet(` AND dv.path <@ (SELECT x.path FROM dimension_value x WHERE x.dimension_id = dv.dimension_id AND x.code = ${b.p(String(p.value))}::text)`);
     default:
       throw invalid(`op ${p.op} not valid for dimension`, p);
   }
