@@ -18,7 +18,7 @@ import { SavedViews } from "../features/explorer/saved-views.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
 import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
-import { envelopeQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { envelopeQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
 
@@ -67,6 +67,7 @@ function ExplorerPage(): ReactElement {
   const client = useQueryClient();
   const { data: dimensions = [] } = useQuery(registryQuery(ws));
   const { data: templates = [] } = useQuery(templatesQuery(ws));
+  const { data: periods = [] } = useQuery(periodsQuery(ws));
   const [reload, setReload] = useState(0);
   const [loaded, setLoaded] = useState<{ totals: Record<string, string | null>; total: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -205,13 +206,34 @@ function ExplorerPage(): ReactElement {
         )}
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           {t("explorer.period")}
-          <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={search.period.kind === "relative" ? search.period.preset : ""} onChange={(e) => setSearch({ period: { kind: "relative", preset: e.target.value as (typeof PRESETS)[number] } })} data-testid="period-picker">
+          <select
+            className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+            value={search.period.kind === "relative" ? search.period.preset : search.period.kind === "fiscal" ? `fiscal:${search.period.key}` : ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              // The workspace's own periods (quarters as defined, custom partitions) next to the relative ones.
+              setSearch({ period: v.startsWith("fiscal:") ? { kind: "fiscal", key: v.slice(7) } : { kind: "relative", preset: v as (typeof PRESETS)[number] } });
+            }}
+            data-testid="period-picker"
+          >
             {search.period.kind === "relative" ? null : <option value="">{search.period.kind === "range" ? `${search.period.start} – ${search.period.end}` : search.period.key}</option>}
             {PRESETS.map((p) => (
               <option key={p} value={p}>
                 {t(`explorer.period.${p}` as MessageKey)}
               </option>
             ))}
+          
+            {periods.length ? (
+              <optgroup label={t("explorer.period.calendar")}>
+                {periods
+                  .filter((p) => p.kind !== "month")
+                  .map((p) => (
+                    <option key={p.id} value={`fiscal:${p.key}`}>
+                      {p.key} · {p.start} – {p.end}
+                    </option>
+                  ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
         {isTimeline ? (

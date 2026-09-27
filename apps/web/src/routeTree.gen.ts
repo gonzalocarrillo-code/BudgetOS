@@ -22,6 +22,7 @@ import { Route as WWsSearchRouteImport } from './routes/w.$ws.search'
 import { Route as WWsSourcesRouteImport } from './routes/w.$ws.sources'
 import { Route as WWsTargetsRouteImport } from './routes/w.$ws.targets'
 import { Route as WWsAdminNamingRouteImport } from './routes/w.$ws.admin.naming'
+import { Route as WWsAdminPeriodsRouteImport } from './routes/w.$ws.admin.periods'
 import { Route as WWsAdminPoliciesRouteImport } from './routes/w.$ws.admin.policies'
 import { Route as WWsAdminRegistryRouteImport } from './routes/w.$ws.admin.registry'
 import { Route as WWsAdminRolesRouteImport } from './routes/w.$ws.admin.roles'
@@ -100,6 +101,11 @@ const WWsTargetsRoute = WWsTargetsRouteImport.update({
 const WWsAdminNamingRoute = WWsAdminNamingRouteImport.update({
   id: '/admin/naming',
   path: '/admin/naming',
+  getParentRoute: () => WWsRoute,
+} as any)
+const WWsAdminPeriodsRoute = WWsAdminPeriodsRouteImport.update({
+  id: '/admin/periods',
+  path: '/admin/periods',
   getParentRoute: () => WWsRoute,
 } as any)
 const WWsAdminPoliciesRoute = WWsAdminPoliciesRouteImport.update({
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws/': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
+  '/w/$ws/admin/periods': typeof WWsAdminPeriodsRoute
   '/w/$ws/admin/policies': typeof WWsAdminPoliciesRoute
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
@@ -212,6 +219,7 @@ export interface FileRoutesByTo {
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
+  '/w/$ws/admin/periods': typeof WWsAdminPeriodsRoute
   '/w/$ws/admin/policies': typeof WWsAdminPoliciesRoute
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
@@ -242,6 +250,7 @@ export interface FileRoutesById {
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws/': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
+  '/w/$ws/admin/periods': typeof WWsAdminPeriodsRoute
   '/w/$ws/admin/policies': typeof WWsAdminPoliciesRoute
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
@@ -273,6 +282,7 @@ export interface FileRouteTypes {
     | '/w/$ws/targets'
     | '/w/$ws/'
     | '/w/$ws/admin/naming'
+    | '/w/$ws/admin/periods'
     | '/w/$ws/admin/policies'
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/w/$ws/targets'
     | '/w/$ws'
     | '/w/$ws/admin/naming'
+    | '/w/$ws/admin/periods'
     | '/w/$ws/admin/policies'
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
@@ -327,6 +338,7 @@ export interface FileRouteTypes {
     | '/w/$ws/targets'
     | '/w/$ws/'
     | '/w/$ws/admin/naming'
+    | '/w/$ws/admin/periods'
     | '/w/$ws/admin/policies'
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
@@ -439,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/naming'
       fullPath: '/w/$ws/admin/naming'
       preLoaderRoute: typeof WWsAdminNamingRouteImport
+      parentRoute: typeof WWsRoute
+    }
+    '/w/$ws/admin/periods': {
+      id: '/w/$ws/admin/periods'
+      path: '/admin/periods'
+      fullPath: '/w/$ws/admin/periods'
+      preLoaderRoute: typeof WWsAdminPeriodsRouteImport
       parentRoute: typeof WWsRoute
     }
     '/w/$ws/admin/policies': {
@@ -596,6 +615,7 @@ interface WWsRouteChildren {
   WWsTargetsRoute: typeof WWsTargetsRoute
   WWsIndexRoute: typeof WWsIndexRoute
   WWsAdminNamingRoute: typeof WWsAdminNamingRoute
+  WWsAdminPeriodsRoute: typeof WWsAdminPeriodsRoute
   WWsAdminPoliciesRoute: typeof WWsAdminPoliciesRoute
   WWsAdminRegistryRoute: typeof WWsAdminRegistryRoute
   WWsAdminRolesRoute: typeof WWsAdminRolesRoute
@@ -618,6 +638,7 @@ const WWsRouteChildren: WWsRouteChildren = {
   WWsTargetsRoute: WWsTargetsRoute,
   WWsIndexRoute: WWsIndexRoute,
   WWsAdminNamingRoute: WWsAdminNamingRoute,
+  WWsAdminPeriodsRoute: WWsAdminPeriodsRoute,
   WWsAdminPoliciesRoute: WWsAdminPoliciesRoute,
   WWsAdminRegistryRoute: WWsAdminRegistryRoute,
   WWsAdminRolesRoute: WWsAdminRolesRoute,

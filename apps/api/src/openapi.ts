@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   AddValuesInput,
   AssignRoleInput,
@@ -76,6 +77,10 @@ import {
   ReactionInput,
   FamilyInput,
   FamilyPlan,
+  CreatePeriodInput,
+  GeneratePeriodsInput,
+  PeriodRow,
+  UpdatePeriodInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -407,6 +412,21 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/saved-views/{id}": {
         patch: { operationId: "updateSavedView", parameters: [idParam, workspaceHeader], requestBody: json(UpdateSavedViewInput), responses: { "200": { description: "Updated view (owner, or an admin for a shared view)" } } },
         delete: { operationId: "deleteSavedView", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Removed; the audit row keeps what it was" } } },
+      },
+      "/api/v1/workspaces/{ws}/periods": {
+        get: { operationId: "listPeriods", parameters: [workspaceParam], responses: { "200": { description: "The fiscal calendar: years, quarters, months as defined and custom partitions, each with its closure", ...json(z.array(PeriodRow)) } } },
+        post: { operationId: "createPeriod", parameters: [workspaceParam], requestBody: json(CreatePeriodInput), responses: { "201": { description: "Created; 409 when the key exists or it overlaps another period of its kind" } } },
+      },
+      "/api/v1/workspaces/{ws}/periods/generate": {
+        post: { operationId: "generatePeriods", parameters: [workspaceParam], requestBody: json(GeneratePeriodsInput), responses: { "201": { description: "{ created, kept }: a fiscal year's periods in a pattern (calendar, 4-4-5, 4-5-4, 5-4-4); existing keys are kept" } } },
+      },
+      "/api/v1/workspaces/{ws}/fiscal-year": {
+        get: { operationId: "getFiscalYearStart", parameters: [workspaceParam], responses: { "200": { description: "{ startMonth }: the month the fiscal year starts in", ...json(z.object({ startMonth: z.number().int() })) } } },
+        patch: { operationId: "setFiscalYearStart", parameters: [workspaceParam], requestBody: json(z.object({ startMonth: z.number().int().min(1).max(12) })), responses: { "200": { description: "The month the fiscal year starts in; computed periods follow, rows stay" } } },
+      },
+      "/api/v1/periods/{id}": {
+        patch: { operationId: "updatePeriod", parameters: [idParam, workspaceHeader], requestBody: json(UpdatePeriodInput), responses: { "200": { description: "Updated; 409 when it has a closure (its dates are frozen in the report)" } } },
+        delete: { operationId: "deletePeriod", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Deleted; 409 when it has a closure or budgets aligned to it" } } },
       },
       "/api/v1/workspaces/{ws}/closures": {
         get: { operationId: "listClosures", parameters: [workspaceParam], responses: { "200": { description: "Closures, newest first (restated ones included)" } } },

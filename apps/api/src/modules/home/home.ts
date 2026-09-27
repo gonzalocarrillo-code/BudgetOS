@@ -1,5 +1,5 @@
 import { LIVE_LEAVES, QueryRequest, canInScope, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
-import { plannerOptions, unmatchedSpend, withTenant } from "@budget/db";
+import { plannerOptions, unmatchedSpend, withTenant, fiscalCalendar } from "@budget/db";
 import { compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -46,7 +46,7 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     const mine = roots.filter((r) => r.ownerId === me || scopesOf === null || canInScope(auth.assignments, "envelope.read", scopesOf.get(r.id) ?? { dims: {} }));
     const picked = [...mine.filter((r) => r.ownerId === me), ...mine.filter((r) => r.ownerId !== me)].slice(0, MAX_SCOPES);
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
-    const period = resolvePeriod({ kind: "relative", preset: "current_year" }, today, ws.fiscalYearStartMonth);
+    const period = resolvePeriod({ kind: "relative", preset: "current_year" }, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period);
     const scopes: HomeResponse["scopes"] = [];
     for (const r of picked) {
