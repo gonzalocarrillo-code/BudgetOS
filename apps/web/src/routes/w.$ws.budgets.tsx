@@ -84,12 +84,12 @@ function ExplorerPage(): ReactElement {
   }, [dimensions]);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
   const source = useMemo(
     () =>
       !isTimeline && (template || view === "pivot")
         ? new ExplorerRowSource(
-            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
+            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
             // Only the current source reports: a replaced one (older filter) whose response lands

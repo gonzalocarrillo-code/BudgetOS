@@ -76,26 +76,37 @@ async function timed(c: Ctx, persona: string, method: "GET" | "POST" | "PATCH", 
   return { ms, body: res.body };
 }
 
-/** Explorer-shaped queries: tree levels, a deep expand, a leaf page, the pivot, a shard filter. */
+/**
+ * Explorer-shaped reads. The tree's levels are what the Explorer asks for: POST /tree on the
+ * "Region first" template (the first level, a country level, a deep audience level; ADR-038).
+ * A leaf page, the pivot and a shard filter go through /query.
+ */
 export async function gridQueries(c: Ctx, iterations: number): Promise<Record<string, number>> {
   const ws = c.g.workspaceId;
   const eq = (key: string, value: string) => ({ field: { kind: "dimension", key }, op: "eq", value });
-  const base = { workspaceId: ws, period: { kind: "relative", preset: "current_year" }, measures: ["budget", "actual", "projected", "pace_index"] };
+  const period = { kind: "relative", preset: "current_year" };
+  const measures = ["budget", "actual", "projected", "pace_index"];
+  const base = { workspaceId: ws, period, measures };
   const leaves = (...more: unknown[]) => ({ logic: "and", children: [...LIVE_LEAVES, ...more] });
-  const scenarios: Record<string, unknown> = {
-    tree_root: { ...base, groupBy: ["region"], filter: leaves() },
-    tree_country: { ...base, groupBy: ["country"], filter: leaves(eq("region", "LATAM")) },
-    tree_deep: { ...base, groupBy: ["audience"], filter: leaves(eq("region", "LATAM"), eq("country", "BR"), eq("platform", "meta"), eq("objective", "awareness")) },
-    leaf_page: { ...base, filter: leaves(eq("country", "BR")), sort: [{ key: "budget", dir: "desc" }], limit: 200 },
-    pivot: { ...base, groupBy: ["country", "platform"], filter: leaves(), limit: 1000 },
-    shard_filter: { ...base, filter: leaves(eq("load_shard", "s0100")), limit: 200 },
+  const template = await c.owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: ws, name: "Region first" }, select: { id: true } });
+  const tree = (parentPath: string) => ({ url: `/api/v1/workspaces/${ws}/tree`, body: { workspaceId: ws, templateId: template.id, period, parentPath, measures } });
+  const query = (body: unknown) => ({ url: `/api/v1/workspaces/${ws}/query`, body });
+  const scenarios: Record<string, { url: string; body: unknown }> = {
+    tree_root: tree(""),
+    tree_country: tree("LATAM"),
+    tree_deep: tree("LATAM/BR/meta/awareness"),
+    leaf_page: query({ ...base, filter: leaves(eq("country", "BR")), sort: [{ key: "budget", dir: "desc" }], limit: 200 }),
+    pivot: query({ ...base, groupBy: ["country", "platform"], filter: leaves(), limit: 1000 }),
+    shard_filter: query({ ...base, filter: leaves(eq("load_shard", "s0100")), limit: 200 }),
   };
   const out: Record<string, number> = {};
   const all: number[] = [];
-  for (const [name, body] of Object.entries(scenarios)) {
-    for (let i = 0; i < 2; i += 1) await timed(c, "planner", "POST", `/api/v1/workspaces/${ws}/query`, body); // warm
+  for (const [name, s] of Object.entries(scenarios)) {
+    const first = await timed(c, "planner", "POST", s.url, s.body);
+    if (s.url.endsWith("/tree") && first.body["available"] !== true) throw new Error(`${name}: the tree was not served from the cache (${String(first.body["reason"])})`);
+    await timed(c, "planner", "POST", s.url, s.body); // warm
     const ms: number[] = [];
-    for (let i = 0; i < iterations; i += 1) ms.push((await timed(c, "planner", "POST", `/api/v1/workspaces/${ws}/query`, body)).ms);
+    for (let i = 0; i < iterations; i += 1) ms.push((await timed(c, "planner", "POST", s.url, s.body)).ms);
     out[name] = Math.round(p95(ms));
     all.push(...ms);
   }

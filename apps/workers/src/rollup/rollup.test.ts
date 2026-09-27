@@ -72,6 +72,7 @@ afterAll(async () => {
   const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
   for (const sql of [
     `DELETE FROM rollup_cache WHERE workspace_id = $1::uuid`,
+    `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
     `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
     `DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`,
@@ -105,8 +106,29 @@ describe("rollup-worker", () => {
     const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
     const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId: env["latamTiktok"], kind: "archived" })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: "m" }, subscription: "rollup-worker" };
     const first = await handleRollupEvent(app, body, TODAY);
-    expect(first).toMatchObject({ outcome: "applied", deleted: 1 });
+    expect(first).toMatchObject({ outcome: "applied", deleted: 2 }); // LATAM/tiktok, in the fiscal year and the current quarter (ADR-038)
     expect(await tree()).toEqual({ "": "350.00", EMEA: "50.00", "EMEA/∅": "50.00", LATAM: "300.00", "LATAM/meta": "300.00" });
     expect((await handleRollupEvent(app, body, TODAY)).outcome).toBe("duplicate");
+  });
+
+  it("a refresh leaves the cache equal to a full rebuild, in every measure and period (ADR-038)", async () => {
+    const snapshot = async () => (await owner.$queryRawUnsafe<Array<{ k: string; m: unknown }>>(`SELECT period_start::text || '|' || node_path AS k, measures AS m FROM rollup_cache WHERE template_id = $1::uuid ORDER BY 1`, templateId)).map((r) => [r.k, r.m]);
+    // A new leaf under a node that did not exist (EMEA/tiktok), and spend on an existing one.
+    env["emeaTiktok"] = await envelope("EMEA tiktok", { region: "EMEA", platform: "tiktok" }, "70.00");
+    await owner.$executeRawUnsafe(
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
+       VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-05-10', 'USD', 12.34, 12.34, 'csv', $3::uuid, $4)`,
+      ws, env["latamMeta"], randomUUID(), randomUUID(),
+    );
+    for (const envelopeId of [env["emeaTiktok"], env["latamMeta"]]) {
+      await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { envelopeId } }));
+      const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+      const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
+      expect((await handleRollupEvent(app, body, TODAY)).outcome).toBe("applied");
+    }
+    const refreshed = await snapshot();
+    expect(await tree()).toEqual({ "": "420.00", EMEA: "120.00", "EMEA/∅": "50.00", "EMEA/tiktok": "70.00", LATAM: "300.00", "LATAM/meta": "300.00" });
+    await rebuildWorkspace(app, { workspaceId: ws, orgId }, { today: TODAY, periods: [period] });
+    expect(refreshed).toEqual(await snapshot());
   });
 });

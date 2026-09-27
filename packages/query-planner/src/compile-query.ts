@@ -33,6 +33,11 @@ export interface CompileOptions {
   hasProjections?: boolean | undefined;
   /** Grouped rows also carry `start_date` / `end_date`: the earliest start and latest end of the group's envelopes (the timeline's group bars, T-037). */
   groupDates?: boolean | undefined;
+  /**
+   * Internal (not part of the FilterGroup AST): only these envelopes. The roll-up refresh resolves a
+   * node's envelopes first and passes them here, so Postgres plans from a known set (ADR-038).
+   */
+  envelopeIds?: readonly string[] | undefined;
 }
 
 export interface OrderKey {
@@ -142,6 +147,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   // Budget as of a timestamp is the latest version approved by then. Versions approved earlier are
   // SUPERSEDED now (spec §7.3), so status alone cannot select them.
   const derived = projectionDerived("projected", "budget");
+  const onlyIds = opts.envelopeIds === undefined ? "" : ` AND e.id = ANY(${b.p([...opts.envelopeIds])}::uuid[])`;
   const measuresCte = `
     m AS (
       SELECT e.id AS envelope_id,
@@ -151,7 +157,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         ${kpiCols}
       FROM envelope e${projectionJoin("e.id")}
       WHERE e.workspace_id = ${ws}::uuid
-        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}
+        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${onlyIds}
     ),
     m2 AS (
       SELECT *, (budget - actual) AS remaining,
@@ -175,7 +181,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   };
   ctx.targetSql = targetSql;
 
-  const where = compileFilter(filter, b, ctx);
+  const where = onlyIds ? `(${compileFilter(filter, b, ctx)})${onlyIds}` : compileFilter(filter, b, ctx);
   const measures = [...new Set(q.measures)];
   const measureAgg = measures
     .map((mk) => {

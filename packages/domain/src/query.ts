@@ -70,3 +70,33 @@ export const QueryResponse = z.object({
   elapsedMs: z.number(),
 });
 export type QueryResponse = z.infer<typeof QueryResponse>;
+
+/**
+ * POST /workspaces/:ws/tree (ADR-038): one level of a hierarchy template's tree from rollup_cache
+ * (plan §5.3, "roll-ups are not computed on read"). No filter and no as-of: those trees go through
+ * /query. `parentPath` '' (or omitted) is the first level; a node's path joins its segments with '/'.
+ */
+export const TreeRequest = z.object({
+  workspaceId: z.string().uuid(),
+  templateId: z.string().uuid(),
+  period: PeriodSpec,
+  parentPath: z.string().max(4000).default(""),
+  measures: z.array(MeasureKey).min(1).default(["budget", "actual", "projected", "pace_index"]),
+});
+export type TreeRequest = z.infer<typeof TreeRequest>;
+
+export const TreeResponse = z.object({
+  /** false: not served from the cache (`reason`); the caller asks /query instead. */
+  available: z.boolean(),
+  reason: z.enum(["scoped", "not_cached"]).nullable(),
+  /** The children of `parentPath`, in the shape /query returns for groups. */
+  rows: z.array(QueryRow),
+  /** The root node: the tree's totals. */
+  totals: z.record(z.string(), z.string().nullable()),
+  dataAsOf: z.string().datetime(),
+  /** The workspace's data version, and the oldest version any returned node was computed at. */
+  dataVersion: z.number().int(),
+  cacheVersion: z.number().int().nullable(),
+  elapsedMs: z.number(),
+});
+export type TreeResponse = z.infer<typeof TreeResponse>;

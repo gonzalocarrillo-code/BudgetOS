@@ -194,6 +194,7 @@ const ROUTES: RouteCase[] = [
   { method: "DELETE", path: "/api/v1/comments/{id}/reactions", permission: "thread.comment", url: () => `/api/v1/comments/${rid}/reactions`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/people", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/people` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/query", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/query`, body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/tree", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/tree`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/saved-views", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/saved-views` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/saved-views", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/saved-views`, body: {} },
   { method: "PATCH", path: "/api/v1/saved-views/{id}", permission: "workspace.member", url: () => `/api/v1/saved-views/${rid}`, headers: X(), body: {} },

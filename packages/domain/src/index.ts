@@ -15,7 +15,7 @@ export {
 } from "./filter-ast.js";
 export type { FilterGroupT } from "./filter-ast.js";
 
-export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow } from "./query.js";
+export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow, TreeRequest, TreeResponse } from "./query.js";
 export { resolvePeriod } from "./period.js";
 export type { DateRange } from "./period.js";
 export {

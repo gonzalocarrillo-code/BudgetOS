@@ -75,6 +75,23 @@ test.describe("Explorer (T-027)", () => {
     expect(body.totals.budget).toBe(treeTotal);
   });
 
+  test("the tree's levels come from the roll-up cache, with /query's totals (ADR-038)", async ({ page }) => {
+    const token = await signIn(page);
+    const trees: Array<{ parentPath: string; available: boolean }> = [];
+    page.on("response", (r) => {
+      if (r.url().endsWith("/tree") && r.request().method() === "POST") void r.json().then((b: { available: boolean }) => trees.push({ parentPath: (JSON.parse(r.request().postData() ?? "{}") as { parentPath: string }).parentPath, available: b.available }));
+    });
+    await page.goto(budgetsUrl({ period: FY }));
+    await pick(page, "template-picker", { label: "Region first" });
+    await expect.poll(() => trees.some((t) => t.parentPath === "" && t.available)).toBe(true);
+    const live = await api(token, "POST", `/workspaces/${state().workspaceId}/query`, { workspaceId: state().workspaceId, period: FY, filter: { logic: "and", children: LIVE_LEAVES }, groupBy: ["region"], measures: ["budget"], limit: 1 });
+    await expect.poll(() => totalBudget(page)).toBe((live.body["totals"] as { budget: string }).budget);
+
+    await page.goto(`${page.url()}&expanded=${enc(["LATAM"])}`);
+    await expect.poll(() => trees.some((t) => t.parentPath === "LATAM" && t.available)).toBe(true);
+    await expect(page.getByTestId("explorer-grid")).toBeVisible();
+  });
+
   test("inline edit conflict: a stale edit shows the current value; reload, then the edit saves", async ({ page }) => {
     const token = await signIn(page);
     const s = state();
