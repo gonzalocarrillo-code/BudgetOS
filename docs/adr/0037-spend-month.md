@@ -36,3 +36,7 @@ The T-034 load job at spec scale (100k leaves, 24.4M spend facts) sends Explorer
 - **Deep filters:** the 400 ms of `tree_deep` goes to chained dimension filters that Postgres estimates at one row each. That is also a separate fix.
 - **Write cost:** each statement that writes `spend_fact` also upserts its months, one grouped upsert per statement.
 - **Tests:** `query-planner/src/spend-month.test.ts` checks the triggers through insert, re-match, cross-partition move and delete. A property test checks that `actual` equals a direct sum of `spend_fact` for random periods.
+
+## Follow-up (2026-09-27): large deletes
+
+The first version removed emptied months by joining `spend_month` to the statement's transition table. Transition tables have no statistics, so the load job's cleanup delete of about 24M facts ran for hours, and 4.7M locally ran for more than 85 minutes. Migration `20260928020000_spend_month_delete` finds emptied months through a partial index on `(workspace_id) WHERE fact_count = 0`, which normally holds no rows. The same 4.7M-row delete now takes about 25 s.
