@@ -119,6 +119,51 @@ test.describe("Explorer (T-027)", () => {
     await expect.poll(async () => Number(await page.getByTestId("explorer-grid").getAttribute("data-rows"))).toBeGreaterThan(before);
   });
 
+  test("send for approval: from the notice after an edit (auto-approved), and from the drawer (waiting, then withdrawn)", async ({ page }) => {
+    const token = await signIn(page);
+    const s = state();
+    const found = await api(token, "POST", `/workspaces/${s.workspaceId}/query`, { workspaceId: s.workspaceId, period: FY, filter: { logic: "and", children: [...LIVE_LEAVES, { field: { kind: "dimension", key: "country" }, op: "eq", value: "DE" }] }, measures: ["budget"], sort: [{ key: "name", dir: "asc" }], limit: 20 });
+    // Two leaves with no open draft (the golden data has some).
+    const clean: Array<{ envelopeId: string; path: string[]; measures: { budget: string } }> = [];
+    for (const r of found.body["rows"] as Array<{ envelopeId: string; path: string[]; measures: { budget: string } }>) {
+      if (clean.length < 2 && (await api(token, "GET", `/envelopes/${r.envelopeId}`)).body["draft"] === null) clean.push(r);
+    }
+    const [small, large] = clean;
+    expect(large, "two German leaves without a draft").toBeDefined();
+    const edit = async (leaf: typeof small, amount: string) => {
+      await page.goto(budgetsUrl({ period: FY, view: "pivot", filter: { logic: "and", children: [{ field: { kind: "attr", key: "name" }, op: "eq", value: leaf?.path.at(-1) }] } }));
+      await expect.poll(() => page.getByTestId("explorer-grid").getAttribute("data-rows")).toBe("1");
+      await page.waitForTimeout(300);
+      const box = await page.getByTestId("explorer-grid").locator("canvas").first().boundingBox();
+      if (!box) throw new Error("grid canvas not rendered");
+      await page.mouse.dblclick(box.x + 340 + 75, box.y + 40 + 18);
+      await page.keyboard.type(amount);
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("notice-ok")).toBeVisible();
+    };
+
+    // +0.5 %: the notice offers Send for approval; the minor-change policy approves it at once.
+    await edit(small, (Number(small?.measures.budget) * 1.005).toFixed(2));
+    const notice = page.getByTestId("notice-ok");
+    await expect(notice.getByTestId("approval-state")).toHaveAttribute("data-state", "draft");
+    await notice.getByTestId("approval-send").click();
+    await expect(notice.getByTestId("approval-state")).toHaveAttribute("data-state", "approved");
+    await expect.poll(async () => ((await api(token, "GET", `/envelopes/${small?.envelopeId}`)).body["draft"] ?? null)).toBeNull();
+
+    // ×3: sent from the drawer it waits for an approver, links to the request, and can be withdrawn
+    // (the version is kept as WITHDRAWN; the budget is back to its approved amount).
+    await edit(large, (Number(large?.measures.budget) * 3).toFixed(2));
+    await page.getByTestId("notice-open").click();
+    const drawer = page.getByTestId("envelope-drawer");
+    await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "draft");
+    await drawer.getByTestId("approval-send").click();
+    await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "waiting");
+    await expect(drawer.getByTestId("approval-open-request")).toHaveAttribute("href", /\/approvals\/[0-9a-f-]{36}$/);
+    await drawer.getByTestId("approval-withdraw").click();
+    await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "withdrawn");
+    expect((await api(token, "GET", `/envelopes/${large?.envelopeId}`)).body["draft"]).toBeNull();
+  });
+
   test("inline edit conflict: a stale edit shows the current value; reload, then the edit saves", async ({ page }) => {
     const token = await signIn(page);
     const s = state();

@@ -13,6 +13,7 @@ import { envelopeQuery, registryQuery } from "../../lib/queries.js";
 import { DimensionIcon } from "../registry/dimension-icon.js";
 import type { StructureOp } from "../structure/structure-dialog.js";
 import { StructureActions } from "../structure/structure-actions.js";
+import { SendForApproval } from "./send-for-approval.js";
 
 type Tab = "details" | "history" | "comments";
 
@@ -59,6 +60,7 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure }: { ws: string; i
           <X className="size-4" aria-hidden />
         </Button>
       </div>
+      {data ? <SendForApproval ws={ws} envelopeId={id} /> : null}
       <div role="tablist" aria-label={data?.name ?? ""} className="flex gap-1 border-b border-border" onKeyDown={onTabKey}>
         {tabs.map((x) => (
           <button
