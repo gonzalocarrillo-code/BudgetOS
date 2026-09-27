@@ -73,6 +73,10 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
     if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
     assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
     const [current, draft] = await Promise.all([loadVersion(tx, env.currentVersionId), loadVersion(tx, env.draftVersionId)]);
+    // The draft's pending approval request, so the drawer can link to it (product feedback 3).
+    const openRequest = env.draftVersionId
+      ? await tx.approvalRequest.findFirst({ where: { entityType: "envelope_version", entityId: env.draftVersionId, status: { in: ["PENDING", "ESCALATED", "CHANGES_REQUESTED"] } }, select: { id: true, status: true, summary: true } })
+      : null;
     const tagIds = (await tx.taggable.findMany({ where: { entityType: "envelope", entityId: id }, select: { tagId: true } })).map((t) => t.tagId);
     const tags = tagIds.length ? await tx.tag.findMany({ where: { id: { in: tagIds } }, select: { id: true, name: true, color: true }, orderBy: { name: "asc" } }) : [];
     const atInstant =
@@ -105,6 +109,7 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       draftVersionId: env.draftVersionId,
       current: current ? versionDto(current) : null,
       draft: draft ? versionDto(draft) : null,
+      openRequest,
       ...(asOf === null ? {} : { asOf: { at: asOf.toISOString(), approved: atInstant ? versionDto(atInstant) : null } }),
     };
   });

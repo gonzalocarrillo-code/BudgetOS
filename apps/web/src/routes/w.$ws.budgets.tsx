@@ -11,6 +11,7 @@ import { EnvelopeDrawer } from "../features/explorer/drawer.js";
 import { FilterBar } from "../features/explorer/filter-bar.js";
 import { PasteDialog } from "../features/explorer/paste-dialog.js";
 import { useExplorerLabels } from "../features/explorer/labels.js";
+import { SendForApproval } from "../features/explorer/send-for-approval.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
 import { SavedViews } from "../features/explorer/saved-views.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
@@ -56,7 +57,7 @@ const MEASURE_COLUMNS: Array<{ key: "budget" | "actual" | "projected" | "remaini
   { key: "pace_index", label: "explorer.col.pace" },
 ];
 
-type Notice = { kind: "ok" | "error"; text: string; requestId?: string } | { kind: "conflict"; name: string; amount: string };
+type Notice = { kind: "ok" | "error"; text: string; requestId?: string; envelopeId?: string } | { kind: "conflict"; name: string; amount: string };
 
 function ExplorerPage(): ReactElement {
   const { ws } = Route.useParams();
@@ -158,7 +159,7 @@ function ExplorerPage(): ReactElement {
         const e = (res.error ?? {}) as { message?: string };
         return setNotice({ kind: "error", text: t("explorer.error", { message: e.message ?? String(res.response.status) }) });
       }
-      setNotice({ kind: "ok", text: t("explorer.edit.saved", { amount: formatMoney(amount, "USD") }) });
+      setNotice({ kind: "ok", text: t("explorer.edit.saved", { amount: formatMoney(amount, "USD") }), envelopeId: r.envelopeId });
       await client.invalidateQueries({ queryKey: ["envelope", ws, r.envelopeId] });
       setReload((n) => n + 1);
     },
@@ -236,7 +237,7 @@ function ExplorerPage(): ReactElement {
           </Button>
         </div>
       ) : null}
-      {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} /> : null}
+      {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} onOpen={(id) => setSearch({ select: id })} /> : null}
       <div className="flex min-h-0 gap-0">
         <div className="min-w-0 flex-1">
           <Card>
@@ -297,7 +298,7 @@ function ExplorerPage(): ReactElement {
   );
 }
 
-function NoticeBar({ ws, notice, onDismiss, onReload }: { ws: string; notice: Notice; onDismiss: () => void; onReload: () => void }): ReactElement {
+function NoticeBar({ ws, notice, onDismiss, onReload, onOpen }: { ws: string; notice: Notice; onDismiss: () => void; onReload: () => void; onOpen?: (envelopeId: string) => void }): ReactElement {
   if (notice.kind === "conflict") {
     return (
       <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm" data-testid="edit-conflict">
@@ -316,6 +317,12 @@ function NoticeBar({ ws, notice, onDismiss, onReload }: { ws: string; notice: No
   return (
     <div role="status" className={cn("flex items-center gap-3 rounded-lg border px-4 py-2 text-sm", notice.kind === "ok" ? "border-success/40 bg-success/10" : "border-destructive/40 bg-destructive/10")} data-testid={notice.kind === "ok" ? "notice-ok" : "notice-error"}>
       <span className="flex-1">{notice.text}</span>
+      {notice.envelopeId ? <SendForApproval ws={ws} envelopeId={notice.envelopeId} compact /> : null}
+      {notice.envelopeId && onOpen ? (
+        <Button size="sm" variant="ghost" onClick={() => onOpen(notice.envelopeId as string)} data-testid="notice-open">
+          {t("explorer.open")}
+        </Button>
+      ) : null}
       {notice.requestId ? (
         <Link to="/w/$ws/approvals/$id" params={{ ws, id: notice.requestId }} className="font-medium text-primary hover:underline" data-testid="notice-request">
           {t("structure.openRequest")}

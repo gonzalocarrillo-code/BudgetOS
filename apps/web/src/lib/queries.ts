@@ -94,6 +94,8 @@ export const EnvelopeDetail = z
     rowVersion: z.number().default(1),
     currentVersionId: z.string().uuid().nullable().default(null),
     draftVersionId: z.string().uuid().nullable().default(null),
+    /** The draft's pending approval request, when it has been sent. */
+    openRequest: z.object({ id: z.string().uuid(), status: z.string(), summary: z.string() }).nullable().default(null),
     structure: z
       .object({ parent: StructureNode.nullable(), children: z.array(StructureNode), siblings: z.array(StructureNode) })
       .default({ parent: null, children: [], siblings: [] }),
