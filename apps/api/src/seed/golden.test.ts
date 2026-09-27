@@ -644,6 +644,16 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
     }
   });
 
+  it("on the Default template (client first, never set) parents still open: ∅/EMEA is the EMEA budget", async () => {
+    const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, isDefault: true } });
+    expect(t.path[0]).toBe("client");
+    const tree = await treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: range, parentPath: "∅", measures: ["budget"] }, now);
+    const emea = tree.rows.find((r) => r.key === "∅/EMEA");
+    expect(emea?.nodeEnvelopeId, "the EMEA region budget").toBe(golden.envelopeIds.get("EMEA"));
+    const live = await runQuery(app, who(), { workspaceId: golden.workspaceId, filter: { logic: "and", children: LIVE_LEAVES }, groupBy: ["client", "region"], measures: ["budget"], period: range, limit: 100 }, now);
+    expect(live.rows.find((r) => r.key === "∅/EMEA")?.nodeEnvelopeId).toBe(golden.envelopeIds.get("EMEA"));
+  });
+
   it("a scoped caller, a period the cache does not hold, and a template of another workspace are refused or sent to /query", async () => {
     const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
     const emea = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: "region" }, op: "eq" as const, value: "EMEA" }] };
