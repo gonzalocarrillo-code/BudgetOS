@@ -52,7 +52,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-031b | 16 | T-014, T-027 | done | plan 0.6: Playwright add child, move under and split from the tree / drawer, through preview and approval — green (`web/e2e/structure.spec.ts`: add child → budget owner → approver; move refused over cap then to top level; split auto-approved, source archived); `POST /envelopes/structure/preview` (real command, rolled back), `POST /envelopes/:id/children`, `structure` on `GET /envelopes/:id`, ADR-027 | — |
 | T-032 | 16 | T-017, T-018, T-024, T-026 | blocked | each screen's acceptance test — green locally (`web/e2e/alerts.spec.ts`, `rules.spec.ts`, `closures.spec.ts`, `sources.spec.ts`: CSV → mapping wizard → source → finished run with coverage; unmatched assigned); `POST /workspaces/:ws/mapping-suggestions`, local ingest runner, `CLOSURE_SINK=memory` for local stacks, ADR-028 | live source connectors (Snowflake / Sheets / BigQuery need Secret Manager); BigQuery closure sink |
 | T-033 | 16 | T-018, T-026 | done | overview < 1.5 s on small golden — green (`web/e2e/overview.spec.ts`: every widget ~0.85 s for an unfetched period, route already loaded; `overview.test.ts`: heatmap = live-leaf totals, endpoint < 1.5 s); `GET /workspaces/:ws/overview`, ADR-029 | — |
-| T-034 | 17 | T-022, T-027, T-033 | blocked | Appendix C targets at 100k leaves in the CI load job — job and generator in place (`scripts/load-test.ts`, `.github/workflows/load.yml`: 100,553 leaves, 20 dims, 5 templates, ~31M facts, ~1M comments), ADR-030; small scale: search p95 70 ms, edit 25 ms, search lag 0.2 s pass; grid 461–622 ms (projected measure), roll-up lag 12.6 s fail; full roll-up build > 18 min at 11.8k leaves | red, merged as recorded (2026-09-26): the nightly `load` job tracks it (first spec-scale run: actions run 36250221735); grid needs the planner projection speed-up, roll-up needs a faster refresh |
+| T-034 | 17 | T-022, T-027, T-033 | blocked | Appendix C targets at 100k leaves in the CI load job — job and generator in place (`scripts/load-test.ts`, `.github/workflows/load.yml`: 100,553 leaves, 20 dims, 5 templates, ~31M facts, ~1M comments), ADR-030; small scale: search p95 70 ms, edit 25 ms, search lag 0.2 s pass; grid 461–622 ms (projected measure), roll-up lag 12.6 s fail; full roll-up build > 18 min at 11.8k leaves | red, merged as recorded (2026-09-26): the nightly `load` job tracks it (first spec-scale run: actions run 36250221735); grid needs the planner projection speed-up, roll-up needs a faster refresh. Phase 19 re-run (2026-09-27, main `10da495`, actions run 36292069357): red, the same profile as run 36250221735, so no regression from phase 18 |
 | T-036 | 18 | T-017, T-034 | done | preview renders 5 samples; `match_method` on 100% of matched golden facts — green (`naming.test.ts` preview of 5, `seed/golden.test.ts` 100% of matched facts, `match-order.test.ts` external_id / match_key / parse pattern / tuple, `byMethod` on the run summary, `web/e2e/naming.spec.ts`), ADR-031 | — |
 | T-037 | 18 | T-026b, T-015, T-026 | done | 5k bars < 500 ms p95; targets as lanes with the effective target per date; as-of matches `/query`; no `@svar/*` PRO — green (`bench/render-budget.tsx` BudgetTimeline 5k bars 100.8 ms p95 with an absolute < 500 ms assertion, `query/timeline.test.ts` on the golden: group totals = /query, as-of envelope by envelope = /query?asOf, annual inherited CPA + Q4 override lanes and `effective` ranges, markers, closures, lz-string filter, paging; `domain/timeline.test.ts`; `timeline/no-pro.test.ts` eslint + license-check names; `web/e2e/timeline.spec.ts` drawer, lanes, scrubber = /query?asOf), ADR-032 | — |
 | T-038 | 18 | T-015, T-019, T-037 | done | weighted CPA test vs control; conclude requires a decision and posts a thread comment — green (`experiments/experiments.test.ts` on the golden: read-out = `golden.assertions.ts` = planner `compileTotals` per scope, not the mean of leaf CPAs; conclude 422 without / short decision, one thread + decision comment per linked envelope, in the Decision Timeline, `experiment.concluded` audit, outbox; lifecycle 409s; `experiment` tag, `experiment:running` search, timeline lanes, `experiment` filter attr; `web/e2e/experiments.spec.ts`), ADR-033 | — |
@@ -200,3 +200,41 @@ Phase 2 (plan epics 2.1–2.7) and Phase 3 (epics 3.1–3.2) have no §22 tasks.
 - **Ordering:** settings lead only when a title starts with the typed text.
 - **Existing workspaces** get settings on their next re-index.
 - **Palette fix:** a single word is searched unless it starts a qualifier key; a new result set highlights its first hit.
+
+## T-034 phase 19 re-run (2026-09-27)
+
+This is the Appendix C job re-run on main `10da495` (after phase 18), at the same scale. Actions run: 36292069357. The dataset was not changed.
+
+**Scale:**
+
+- 100,746 leaves and 172,783 envelopes;
+- 24.4M spend facts and 7.0M KPI facts;
+- 1.0M comments;
+- 20 dimensions and 5 templates;
+- a 20 GB database.
+
+**Results:**
+
+| measure | phase 19 | phase 17 (run 36250221735) | target | |
+|---|---|---|---|---|
+| gridQueryP95Ms | — (500: transaction > 15 s timeout) | — (same) | < 400 | FAIL |
+| searchP95Ms | — (500: transaction > 15 s timeout) | — (same) | < 150 | FAIL |
+| inlineEditP95Ms | 27 | 27 | < 300 | pass |
+| bulkCommit10kMs | 5791 | 5414 | < 10000 | pass |
+| rollupLagP95Ms | — (handler transaction expired, ~122 s) | — (same) | < 5000 | FAIL |
+| searchLagP95Ms | — (handler transaction expired, ~122 s) | — (same) | < 5000 | FAIL |
+
+**Phases:**
+
+| phase | phase 19 | phase 17 |
+|---|---|---|
+| scale (bulk SQL) | 19.7 min | 18.9 min |
+| search index | 48.3 min | 40.8 min |
+| 10k bulk commit | 8.7 s | 8.8 s |
+
+**Read:** no regression from T-036 to T-041. The phase gate ("green on the post-phase-18 code") stays red on the same four measures.
+
+**The fix is outside phase 19:**
+
+- The grid query and search at 1M+ documents exceed the 15 s interactive transaction. They need the planner projection speed-up and a look at search query plans at scale.
+- The roll-up and search-lag handlers need a faster, incremental refresh.
