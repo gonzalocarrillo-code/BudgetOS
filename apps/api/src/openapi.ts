@@ -57,6 +57,10 @@ import {
   RunSourceInput,
   QueryRequest,
   QueryResponse,
+  CompleteTourInput,
+  CreateWorkspaceInput,
+  HomeResponse,
+  UpdateTourInput,
   CreateManualEntryInput,
   UpdateManualEntryInput,
   CreateExperimentInput,
@@ -321,6 +325,30 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/manual-entries/{id}/submit": {
         post: { operationId: "submitManualEntry", parameters: [idParam, workspaceHeader], responses: { "201": { description: "An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue" } } },
+      },
+      "/api/v1/me/home": {
+        get: { operationId: "getHome", parameters: [workspaceHeader], responses: { "200": { description: "Waiting on me (approvals I can decide, mentions in open threads, alerts assigned to me, unmatched spend), then pacing per top-level budget, recents and saved views", ...json(HomeResponse) } } },
+      },
+      "/api/v1/tours": {
+        get: { operationId: "listTours", parameters: [workspaceHeader, { name: "role", in: "query", required: false, schema: { type: "string", enum: ["planner", "approver", "finance", "data_admin"] } }, { name: "all", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] } }], responses: { "200": { description: "The caller's role tours not completed at their current version (all=true: every one, with `completed`)" } } },
+      },
+      "/api/v1/tours/{id}/complete": {
+        post: { operationId: "completeTour", parameters: [idParam, workspaceHeader], requestBody: json(CompleteTourInput), responses: { "201": { description: "Recorded for the caller (idempotent)" } } },
+      },
+      "/api/v1/tours/{id}": {
+        patch: { operationId: "updateTour", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTourInput), responses: { "200": { description: "Org admins: a new version (a default becomes the workspace's copy)" } } },
+      },
+      "/api/v1/workspace-templates": {
+        get: { operationId: "listWorkspaceTemplates", responses: { "200": { description: "Org admins: the built-in default_agency template and the org's" } } },
+      },
+      "/api/v1/workspaces": {
+        post: { operationId: "createWorkspace", requestBody: json(CreateWorkspaceInput), responses: { "201": { description: "Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked" } } },
+      },
+      "/api/v1/workspaces/{ws}/demo-data": {
+        get: { operationId: "getDemoData", parameters: [workspaceParam], responses: { "200": { description: "Demo rows left: envelopes and targets" } } },
+      },
+      "/api/v1/workspaces/{ws}/demo-data/purge": {
+        post: { operationId: "purgeDemoData", parameters: [workspaceParam], responses: { "201": { description: "Every demo row deleted in one transaction; the template's configuration stays" } } },
       },
       "/api/v1/workspaces/{ws}/experiments": {
         get: { operationId: "listExperiments", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED)" }], responses: { "200": { description: "Experiments, newest first, with their linked envelopes" } } },

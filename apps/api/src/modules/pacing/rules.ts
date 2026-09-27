@@ -56,7 +56,7 @@ function assertWorkspaceWide(auth: AuthContext): void {
   assertInScope(auth, "rule.manage", { dims: {}, ancestors: {} });
 }
 
-async function insertRule(tx: Tx, ctx: TenantContext, workspaceId: string, input: CreateRuleInput) {
+export async function insertRule(tx: Tx, ctx: TenantContext, workspaceId: string, input: CreateRuleInput) {
   const clash = await tx.pacingRule.findFirst({ where: { workspaceId, name: input.name }, select: { id: true } });
   if (clash) throw new DomainError("CONFLICT", "A rule with this name exists", { ruleId: clash.id });
   const row = await tx.pacingRule.create({

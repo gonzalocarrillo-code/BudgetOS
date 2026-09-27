@@ -31,6 +31,8 @@ export type ButtonProps = Base & ({ disabled?: false; reason?: never } | { disab
 
 export function Button({ className, variant, size, asChild = false, disabled, reason, ...props }: ButtonProps): ReactElement {
   const Comp = asChild ? Slot : "button";
+  // The one place `disabled` is set from `reason`-carrying props: the tooltip below shows the reason.
+  // eslint-disable-next-line budget/no-bare-disabled
   const button = <Comp className={cn(buttonVariants({ variant, size }), className)} disabled={disabled === true} aria-disabled={disabled === true} {...props} />;
   if (!disabled) return button;
   return (

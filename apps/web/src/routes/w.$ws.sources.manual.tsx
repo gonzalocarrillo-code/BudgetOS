@@ -95,7 +95,7 @@ function ManualEntryPage(): ReactElement {
           </select>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-2" data-testid="batch-strip">
+      <div className="flex flex-wrap items-center gap-2" data-testid="batch-strip" data-tour="manual-batches">
         {batches.map((b) => (
           <BatchChip key={b.id} b={b} active={b.id === selected} onClick={() => setSearch({ batch: b.id })} />
         ))}

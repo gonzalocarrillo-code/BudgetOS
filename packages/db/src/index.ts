@@ -81,3 +81,8 @@ export type { LockedEnvelopeRow } from "./envelopes.js";
 export { withIdentity, withTenant } from "./tenant.js";
 export type { IdentityLookup, TenantContext } from "./tenant.js";
 export { activeNamingTemplates, dimensionLabels, fiscalLabel, recomputeNames } from "./naming.js";
+export { DEFAULT_TOURS } from "../seed/defaults.tours.js";
+export type { DefaultTourSeed } from "../seed/defaults.tours.js";
+export { DEFAULT_TEMPLATE_KEY, defaultAgencyTemplate, ensureDefaultTemplate, ensureDefaultTours } from "./templates.js";
+export { purgeDemoData, seedDemoData } from "./demo.js";
+export type { DemoSummary } from "./demo.js";

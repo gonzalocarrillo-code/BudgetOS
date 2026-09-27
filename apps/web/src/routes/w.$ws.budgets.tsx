@@ -168,7 +168,7 @@ function ExplorerPage(): ReactElement {
   return (
     <Page title={t("nav.budgets")}>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-lg border border-border bg-card p-0.5" role="tablist" data-testid="view-toggle">
+        <div className="inline-flex rounded-lg border border-border bg-card p-0.5" role="tablist" data-testid="view-toggle" data-tour="view-toggle">
           {(["tree", "pivot", "timeline"] as const).map((v) => (
             <button key={v} type="button" role="tab" aria-selected={search.view === v} className={cn(toggle, search.view === v ? "bg-primary text-primary-foreground" : "text-foreground/80 hover:bg-accent")} onClick={() => setSearch({ view: v, expanded: [], select: undefined })} data-testid={`view-${v}`}>
               {t(v === "tree" ? "explorer.view.tree" : v === "pivot" ? "explorer.view.pivot" : "explorer.view.timeline")}

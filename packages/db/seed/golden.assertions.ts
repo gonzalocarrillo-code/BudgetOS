@@ -213,6 +213,15 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
   "naming": {
     "templates": 1
   },
+  "tours": {
+    "roles": [
+      "planner",
+      "approver",
+      "finance",
+      "data_admin"
+    ],
+    "steps": 18
+  },
   "manualEntry": {
     "batches": 1,
     "status": "DRAFT",

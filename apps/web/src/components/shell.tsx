@@ -9,6 +9,7 @@ import {
   Database,
   FlaskConical,
   Gauge,
+  House,
   LayoutDashboard,
   LayoutTemplate,
   Lock,
@@ -26,6 +27,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState, type ReactElement, type ReactNode } from "react";
 import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
+import { TourLauncher } from "../features/home/tour-launcher.js";
 import { clearToken } from "../lib/auth.js";
 import { registryQuery, type Me } from "../lib/queries.js";
 
@@ -42,6 +44,7 @@ interface NavItem {
   tour?: string;
 }
 const NAV: NavItem[] = [
+  { to: "/w/$ws/home", label: "nav.home", icon: House, tour: "nav-home" },
   { to: "/w/$ws", label: "nav.overview", icon: LayoutDashboard, tour: "nav-overview" },
   { to: "/w/$ws/budgets", label: "nav.budgets", icon: ChartColumn, tour: "nav-budgets" },
   { to: "/w/$ws/approvals", label: "nav.approvals", icon: CircleCheck, tour: "nav-approvals" },
@@ -119,6 +122,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
           <kbd className="rounded border border-border bg-card px-1.5 text-[11px]">{t("search.shortcut")}</kbd>
         </button>
         <div className="ml-auto flex items-center gap-2">
+          <TourLauncher ws={ws} />
           <span className="max-w-64 truncate whitespace-nowrap text-sm text-muted-foreground" data-testid="user-email">
             {me.user.email}
           </span>

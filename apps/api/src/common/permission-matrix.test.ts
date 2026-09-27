@@ -160,6 +160,14 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/manual-entries/{id}", permission: "envelope.read", url: () => `/api/v1/manual-entries/${rid}`, headers: X() },
   { method: "PATCH", path: "/api/v1/manual-entries/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/manual-entries/${rid}`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/manual-entries/{id}/submit", permission: "envelope.edit_draft", url: () => `/api/v1/manual-entries/${rid}/submit`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/me/home", permission: "workspace.member", url: () => "/api/v1/me/home", headers: X() },
+  { method: "GET", path: "/api/v1/tours", permission: "workspace.member", url: () => "/api/v1/tours", headers: X() },
+  { method: "POST", path: "/api/v1/tours/{id}/complete", permission: "workspace.member", url: () => `/api/v1/tours/${rid}/complete`, headers: X(), body: {} },
+  { method: "PATCH", path: "/api/v1/tours/{id}", permission: "org.admin", url: () => `/api/v1/tours/${rid}`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspace-templates", permission: "org.admin", url: () => "/api/v1/workspace-templates" },
+  { method: "POST", path: "/api/v1/workspaces", permission: "org.admin", url: () => "/api/v1/workspaces", body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/demo-data", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/demo-data` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/demo-data/purge", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/demo-data/purge`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/overview", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/overview` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/timeline", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/timeline` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/pacing", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/pacing` },
@@ -237,6 +245,7 @@ const ROUTES: RouteCase[] = [
 
 function allowed(role: Role | "OUTSIDER", permission: RoutePermission): boolean {
   if (permission === "authenticated") return true;
+  if (permission === "org.admin") return role === "ORG_ADMIN";
   if (role === "OUTSIDER") return false;
   if (permission === "workspace.member") return true;
   return can([role], permission);

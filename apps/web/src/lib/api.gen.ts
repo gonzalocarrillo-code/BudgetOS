@@ -912,6 +912,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getHome"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTours"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tours/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["completeTour"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tours/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateTour"];
+        trace?: never;
+    };
+    "/api/v1/workspace-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWorkspaceTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/demo-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDemoData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/demo-data/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["purgeDemoData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/experiments": {
         parameters: {
             query?: never;
@@ -4136,6 +4264,301 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getHome: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Waiting on me (approvals I can decide, mentions in open threads, alerts assigned to me, unmatched spend), then pacing per top-level budget, recents and saved views */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        waitingOnMe: {
+                            approvals: {
+                                /** Format: uuid */
+                                id: string;
+                                summary: string | null;
+                                entityType: string;
+                                requestedAt: string;
+                                dueAt: string | null;
+                            }[];
+                            mentions: {
+                                /** Format: uuid */
+                                commentId: string;
+                                /** Format: uuid */
+                                threadId: string;
+                                anchorType: string;
+                                /** Format: uuid */
+                                anchorId: string;
+                                body: string;
+                                author: string | null;
+                                createdAt: string;
+                            }[];
+                            alerts: {
+                                /** Format: uuid */
+                                id: string;
+                                /** Format: uuid */
+                                envelopeId: string;
+                                envelopeName: string;
+                                severity: string;
+                                openedAt: string;
+                            }[];
+                            unmatched: number;
+                        };
+                        scopes: {
+                            label: string;
+                            filter: {
+                                /** @enum {string} */
+                                logic: "and" | "or";
+                                not?: boolean;
+                                children: ({
+                                    field: {
+                                        /** @enum {string} */
+                                        kind: "dimension";
+                                        key: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        kind: "measure";
+                                        /** @enum {string} */
+                                        key: "budget" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct";
+                                    } | {
+                                        /** @enum {string} */
+                                        kind: "target";
+                                        metric: string;
+                                        /** @enum {string} */
+                                        field: "value" | "actual" | "vs_target_pct" | "exists";
+                                    } | {
+                                        /** @enum {string} */
+                                        kind: "attr";
+                                        /** @enum {string} */
+                                        key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                    };
+                                    /** @enum {string} */
+                                    op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
+                                    value?: string | number | boolean | (string | number)[] | ((string | number) | (string | number))[] | {
+                                        /** @enum {string} */
+                                        unit: "day" | "week" | "month" | "quarter" | "year";
+                                        amount: number;
+                                        /**
+                                         * @default today
+                                         * @enum {string}
+                                         */
+                                        anchor: "today" | "period_start" | "period_end";
+                                    } | unknown;
+                                } | unknown)[];
+                            };
+                            budget: string | null;
+                            actual: string | null;
+                            projected: string | null;
+                            paceIndex: string | null;
+                            spentPct: string | null;
+                        }[];
+                        recents: {
+                            entityType: string;
+                            /** Format: uuid */
+                            entityId: string;
+                            title: string;
+                            at: string;
+                        }[];
+                        pinnedViews: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            screen: string;
+                            definition: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    listTours: {
+        parameters: {
+            query?: {
+                role?: "planner" | "approver" | "finance" | "data_admin";
+                all?: "true" | "false";
+            };
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's role tours not completed at their current version (all=true: every one, with `completed`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    completeTour: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Recorded for the caller (idempotent) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateTour: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    steps?: {
+                        path?: string;
+                        element: string;
+                        title: string;
+                        description: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Org admins: a new version (a default becomes the workspace's copy) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listWorkspaceTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Org admins: the built-in default_agency template and the org's */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    slug?: string;
+                    /** Format: uuid */
+                    templateId: string;
+                    /** @default false */
+                    withDemoData?: boolean;
+                    /** @default USD */
+                    reportingCurrency?: string;
+                    /** @default 1 */
+                    fiscalYearStartMonth?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getDemoData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demo rows left: envelopes and targets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    purgeDemoData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every demo row deleted in one transaction; the template's configuration stays */
             201: {
                 headers: {
                     [name: string]: unknown;

@@ -16,9 +16,9 @@ export function Page({ title, actions, children }: { title: string; actions?: Re
   );
 }
 
-export function Card({ title, children }: { title?: string; children: ReactNode }): ReactElement {
+export function Card({ title, children, tour }: { title?: string; children: ReactNode; tour?: string }): ReactElement {
   return (
-    <div className="rounded-xl border border-border bg-card shadow-xs">
+    <div className="rounded-xl border border-border bg-card shadow-xs" {...(tour ? { "data-tour": tour } : {})}>
       {title ? <div className="border-b border-border px-5 py-4 text-[15px] font-semibold">{title}</div> : null}
       <div className="px-5 py-4">{children}</div>
     </div>

@@ -35,6 +35,7 @@ import { addComment, createThread, resolveThread } from "../modules/threads/comm
 import { createNamingTemplate } from "../modules/naming/naming.js";
 import { createExperiment, linkEnvelope, transitionExperiment } from "../modules/experiments/commands/experiments.js";
 import { createManualEntry } from "../modules/manual-entry/commands/manual-entry.js";
+import { syncDefaultTours } from "../modules/tours/tours.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -325,6 +326,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   const m = GOLDEN_MANUAL_ENTRY;
   await createManualEntry(app, auth(m.enteredBy), { channel: m.channel, periodStart: m.periodStart, periodEnd: m.periodEnd, rows: m.rows.map((r) => ({ ...r, dimensionValues: { ...r.dimensionValues }, kpis: { ...r.kpis } })) });
   log(`golden: manual entry batch (${m.channel}, ${m.rows.length} rows) in draft`);
+
+  // ---- T-040: the built-in tours (one per role; the golden workspace uses the defaults). ----
+  await syncDefaultTours(app, auth("orgAdmin"));
 
   // ---- T-020: full search re-index (facets for the pacing day, so the documents are deterministic). ----
   const indexed = await reindexWorkspace(app, { workspaceId, orgId }, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);

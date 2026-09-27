@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-033, T-036, T-037, T-038, T-039, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-033, T-036, T-037, T-038, T-039, T-040, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -57,7 +57,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-037 | 18 | T-026b, T-015, T-026 | done | 5k bars < 500 ms p95; targets as lanes with the effective target per date; as-of matches `/query`; no `@svar/*` PRO — green (`bench/render-budget.tsx` BudgetTimeline 5k bars 100.8 ms p95 with an absolute < 500 ms assertion, `query/timeline.test.ts` on the golden: group totals = /query, as-of envelope by envelope = /query?asOf, annual inherited CPA + Q4 override lanes and `effective` ranges, markers, closures, lz-string filter, paging; `domain/timeline.test.ts`; `timeline/no-pro.test.ts` eslint + license-check names; `web/e2e/timeline.spec.ts` drawer, lanes, scrubber = /query?asOf), ADR-032 | — |
 | T-038 | 18 | T-015, T-019, T-037 | done | weighted CPA test vs control; conclude requires a decision and posts a thread comment — green (`experiments/experiments.test.ts` on the golden: read-out = `golden.assertions.ts` = planner `compileTotals` per scope, not the mean of leaf CPAs; conclude 422 without / short decision, one thread + decision comment per linked envelope, in the Decision Timeline, `experiment.concluded` audit, outbox; lifecycle 409s; `experiment` tag, `experiment:running` search, timeline lanes, `experiment` filter attr; `web/e2e/experiments.spec.ts`), ADR-033 | — |
 | T-039 | 18 | T-011, T-017, T-026c | done | approved batch appears in `/query` actuals with `source_system='manual'` and lineage; rejected batch reopens as draft — green (`manual-entry/manual-entry.test.ts` on the golden: registry validation with reasons, submit refused while a row has an issue, Finance approval → `/query` actual + 1000.00, spend and KPI facts `source_system='manual'` / `source_run_id` = batch / `match_method='tuple'`, lineage entered by / approved by, `facts.loaded`; rejection → DRAFT with the decision comment, no facts, resubmit; closed-period rows refused; `web/e2e/manual-entry.spec.ts` paste → issues → reason-bearing disabled submit → approval → actuals), ADR-034 | — |
-| T-040 | 18 | T-026, T-033 | pending | template workspace usable < 60 s; four role tours in Playwright; eslint fails a bare `disabled` | — |
+| T-040 | 18 | T-026, T-033 | done | new workspace from the template usable < 60 s; each role's tour end-to-end in Playwright; eslint rule fails a bare `disabled` — green (`home/home.test.ts`: `POST /workspaces` from `default_agency` with demo data in ~0.5 s, registry / policies / rules / view / tours there, `/query` budget = the demo budget, purge in one call; tours per role, completion, org-admin edit = new version; home blocks in order, scope totals = `/query`; `web/e2e/home-tours.spec.ts`: planner, approver, finance and data_admin tours end-to-end, home, workspace from the template in the UI + demo purge; `ui/no-bare-disabled.test.ts`), ADR-035 | — |
 | T-041 | 18 | T-020, T-040 | pending | setting name in ⌘K opens the admin page | — |
 | T-008 | 20 | T-001 | pending | — | GCP project, Terraform state, WIF, IAP, Identity Platform. Done when `/healthz` is reachable behind IAP in dev |
 | T-035 | 21 | T-034, T-041, phase 20 | pending | — | plan §16 questions 1, 2, 4, 5, 6, 8, 9, 15; human pen test; staging → prod |
@@ -183,3 +183,12 @@ Phase 2 (plan epics 2.1–2.7) and Phase 3 (epics 3.1–3.2) have no §22 tasks.
 - **Offline channels:** the default registry gains `tv`, `ooh`, `dooh`, `print`, `radio` and `sponsorship`. Channel colours come from a palette by position, because `dimension_value` has no colour field.
 - **Lineage** is `manual_entry_fact`: one row per fact, keyed by batch, row hash and date, with `entered_by` and `approved_by` (the last approver).
 - **Golden:** one DRAFT TV batch, so no golden fact totals move.
+
+## T-040 assumptions
+
+- **Home** is `/w/:ws/home`, first in the nav. The Overview stays at `/`. Scopes show % spent (product owner).
+- **Tour steps** carry an optional `path`, so a tour can span pages. Defaults per role are written on first use by an org admin.
+- **Org-level routes:** `org.admin` is a new route permission, for `GET /workspace-templates`, `POST /workspaces` and `PATCH /tours/:id`.
+- **Demo data** is a small generator, not the full golden seed: 9 budgets, 3 CPA targets, and facts to date. `demo = true` is set on envelope, envelope_version, target, target_version, spend_fact and kpi_fact.
+- **Purge:** `POST /workspaces/:ws/demo-data/purge` needs `user.manage`.
+- **`budget/no-bare-disabled`:** a native element may state its reason in `title`.
