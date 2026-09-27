@@ -49,6 +49,7 @@ const en = {
   "search.qualifiers": "Qualifiers",
   "search.values": "Values for {key}",
   "search.seeAll": "See all {count} in {type} →",
+  "search.countMore": "{count}+",
   "search.all": "All results for “{q}” →",
   "search.explorer": "Open as an Explorer filter",
   "search.noResults": "No results for “{q}”.",

@@ -5,7 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { searchQuery, suggestQuery, type Dimension } from "../../lib/queries.js";
+import { searchCount, searchQuery, suggestQuery, type Dimension } from "../../lib/queries.js";
 import { isQualifierToken, lastToken, qualifiersAsFilter, replaceLastToken } from "./query.js";
 
 /**
@@ -130,7 +130,7 @@ export function GlobalSearch({ ws, dimensions, open, onOpenChange }: { ws: strin
         {trimmed.length >= 2 && !results && isFetching ? <Command.Loading className="px-3 py-6 text-center text-sm text-muted-foreground">{t("search.loading")}</Command.Loading> : null}
         {trimmed.length >= 2 && results
           ? results.groups.map((g) => (
-              <Command.Group key={g.type} heading={`${typeLabel(g.type)} · ${g.count}`} className="search-group" data-testid={`search-group-${g.type}`}>
+              <Command.Group key={g.type} heading={`${typeLabel(g.type)} · ${searchCount(g)}`} className="search-group" data-testid={`search-group-${g.type}`}>
                 {g.hits.map((h) => (
                   <Command.Item key={h.id} value={`hit-${g.type}-${h.id}`} onSelect={() => go(h.deepLink)} className="search-item" data-testid="search-hit">
                     <span className="min-w-0 flex-1 truncate">
@@ -142,7 +142,7 @@ export function GlobalSearch({ ws, dimensions, open, onOpenChange }: { ws: strin
                 ))}
                 {g.count > g.hits.length ? (
                   <Command.Item value={`all-${g.type}`} onSelect={() => go(`/w/${ws}/search?q=${encodeURIComponent(JSON.stringify(trimmed))}&type=${encodeURIComponent(JSON.stringify(g.type))}`)} className="search-item text-secondary-foreground" data-testid="search-see-all">
-                    {t("search.seeAll", { count: g.count, type: typeLabel(g.type) })}
+                    {t("search.seeAll", { count: searchCount(g), type: typeLabel(g.type) })}
                   </Command.Item>
                 ) : null}
               </Command.Group>

@@ -1,6 +1,6 @@
 import { DomainError, can, parseSearch, settingById, type ScopeFilter } from "@budget/domain";
 import { withTenant } from "@budget/db";
-import { SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
+import { SEARCH_CANDIDATES, SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
@@ -41,7 +41,7 @@ export function deepLink(workspaceId: string, type: string, id: string, title: s
   }
 }
 
-/** GET /workspaces/:ws/search?q&types&limit: top hits per type with per-type counts. */
+/** GET /workspaces/:ws/search?q&types&limit: top hits per type with per-type counts (`more`: at least that many, T-034). */
 export async function search(prisma: PrismaClient, auth: AuthContext, query: { q?: string | undefined; types?: string | undefined; limit?: string | undefined }) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const q = (query.q ?? "").slice(0, 500);
@@ -51,9 +51,9 @@ export async function search(prisma: PrismaClient, auth: AuthContext, query: { q
   if (query.types) parsed.types.push(...query.types.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean));
   const c = compileSearch(parsed, { workspaceId, userId: auth.user.id, scopes: readScopes(auth), limitPerType: limit });
   const rows = await withTenant(prisma, auth.ctx, (tx) => tx.$queryRawUnsafe<Hit[]>(c.sql, ...c.values));
-  const groups = new Map<string, { type: string; count: number; hits: unknown[] }>();
+  const groups = new Map<string, { type: string; count: number; more: boolean; hits: unknown[] }>();
   for (const r of rows) {
-    const g = groups.get(r.entity_type) ?? { type: r.entity_type, count: Number(r.type_count), hits: [] };
+    const g = groups.get(r.entity_type) ?? { type: r.entity_type, count: Math.min(Number(r.type_count), SEARCH_CANDIDATES), more: Number(r.type_count) > SEARCH_CANDIDATES, hits: [] };
     g.hits.push({ id: r.entity_id, title: r.title, path: r.path, status: r.status, facets: r.numeric_facets, deepLink: deepLink(workspaceId, r.entity_type, r.entity_id, r.title) });
     groups.set(r.entity_type, g);
   }

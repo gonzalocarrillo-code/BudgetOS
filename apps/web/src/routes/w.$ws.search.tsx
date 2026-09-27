@@ -6,7 +6,7 @@ import type { ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { typeLabel } from "../features/search/global-search.js";
-import { searchQuery } from "../lib/queries.js";
+import { searchCount, searchQuery } from "../lib/queries.js";
 
 /** Full search results (spec §18.4): every group, up to 50 per type; `type` narrows to one. */
 export const Route = createFileRoute("/w/$ws/search")({ validateSearch: z.object({ q: z.string().max(500).default(""), type: z.string().max(40).optional() }), component: SearchPage });
@@ -16,7 +16,7 @@ function SearchPage(): ReactElement {
   const { q, type } = Route.useSearch();
   const navigate = useNavigate();
   const { data, isFetching } = useQuery({ ...searchQuery(ws, q, { types: type, limit: 50 }), enabled: q.trim().length >= 2 });
-  const total = data?.groups.reduce((n, g) => n + g.count, 0) ?? 0;
+  const total = searchCount({ count: data?.groups.reduce((n, g) => n + g.count, 0) ?? 0, more: data?.groups.some((g) => g.more) ?? false });
   return (
     <Page title={t("nav.search")}>
       <p className="text-sm text-muted-foreground" data-testid="search-query">
@@ -32,7 +32,7 @@ function SearchPage(): ReactElement {
       ) : null}
       {q && data && data.groups.length === 0 && !isFetching ? <Card><p className="text-sm text-muted-foreground">{t("search.noResults", { q })}</p></Card> : null}
       {data?.groups.map((g) => (
-        <Card key={g.type} title={`${typeLabel(g.type)} · ${g.count}`}>
+        <Card key={g.type} title={`${typeLabel(g.type)} · ${searchCount(g)}`}>
           <ul className="-mx-2 flex flex-col" data-testid={`results-${g.type}`}>
             {g.hits.map((h) => (
               <li key={h.id}>

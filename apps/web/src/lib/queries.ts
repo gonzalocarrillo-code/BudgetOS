@@ -1,4 +1,5 @@
 import { PeriodRow } from "@budget/domain";
+import { t } from "@budget/ui/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, unwrap } from "./api.js";
@@ -113,7 +114,9 @@ export const envelopeQuery = (ws: string, id: string) =>
   });
 
 export const SearchHit = z.object({ id: z.string(), title: z.string(), path: z.string().nullable(), status: z.string().nullable(), facets: z.record(z.string(), z.unknown()).nullable().optional(), deepLink: z.string() });
-export const SearchResult = z.object({ groups: z.array(z.object({ type: z.string(), count: z.number(), hits: z.array(SearchHit) })) }).passthrough();
+export const SearchResult = z.object({ groups: z.array(z.object({ type: z.string(), count: z.number(), more: z.boolean().optional(), hits: z.array(SearchHit) })) }).passthrough();
+/** A group's count; "1000+" when the server stopped counting (T-034). */
+export const searchCount = (g: { count: number; more?: boolean | undefined }): string => (g.more ? t("search.countMore", { count: g.count }) : String(g.count));
 export type SearchResult = z.infer<typeof SearchResult>;
 export const SuggestResult = z.object({ keys: z.array(z.object({ key: z.string(), label: z.string(), kind: z.string() })), values: z.array(z.object({ value: z.string(), label: z.string() })) });
 

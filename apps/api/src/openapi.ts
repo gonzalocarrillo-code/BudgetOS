@@ -567,7 +567,7 @@ export function openApiDocument(): Record<string, unknown> {
             { name: "types", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated entity types" },
             { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50 }, description: "Hits per type (default 5)" },
           ],
-          responses: { "200": { description: "{ groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed }" } },
+          responses: { "200": { description: "{ groups: [{ type, count, more (count is a lower bound), hits: [{ id, title, path, status, facets, deepLink }] }], parsed }" } },
         },
       },
       "/api/v1/workspaces/{ws}/search/suggest": {

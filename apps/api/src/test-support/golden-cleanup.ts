@@ -34,6 +34,7 @@ export async function cleanupWorkspace(owner: PrismaClient, ws: string): Promise
   for (const sql of [
     `DELETE FROM notification WHERE workspace_id = $1::uuid`,
     `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
+    `DELETE FROM search_term WHERE workspace_id = $1::uuid`,
     `DELETE FROM rollup_cache WHERE workspace_id = $1::uuid`,
     `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
     `DELETE FROM saved_view WHERE workspace_id = $1::uuid`,
