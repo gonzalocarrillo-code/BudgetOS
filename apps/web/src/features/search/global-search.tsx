@@ -41,14 +41,24 @@ export function GlobalSearch({ ws, dimensions, open, onOpenChange }: { ws: strin
   const token = lastToken(q);
   const qualifying = isQualifierToken(token);
   const parsed = useMemo(() => parseSearch(q), [q]);
+  const { data: suggest } = useQuery({ ...suggestQuery(ws, token.replace(/^-/, "")), enabled: open && qualifying });
   // A qualifier key still being typed is not searched: "brazil reg" searches "brazil" while `reg`
-  // completes to `region:`. A `key:value` token is searched as it stands.
-  const typingKey = qualifying && !token.includes(":");
+  // completes to `region:`. A word no qualifier key starts with is text ("snowflake", "pacing
+  // rules"). A `key:value` token is searched as it stands.
+  const typingKey = qualifying && !token.includes(":") && (suggest?.keys.length ?? 0) > 0;
   const trimmed = (typingKey ? q.slice(0, q.length - token.length) : q).trim();
   const shown = q.trim();
   const { data: results, isFetching } = useQuery({ ...searchQuery(ws, trimmed), enabled: open && trimmed.length >= 2, placeholderData: keepPreviousData });
-  const { data: suggest } = useQuery({ ...suggestQuery(ws, token.replace(/^-/, "")), enabled: open && qualifying });
   const dimensionKeys = useMemo(() => new Set(dimensions.map((d) => d.key)), [dimensions]);
+  // The highlighted item. A new result set highlights its first hit, so Enter right after typing
+  // opens the best match (a setting's page, T-041) rather than whatever was highlighted before.
+  const [selected, setSelected] = useState("");
+  const firstHit = results?.groups[0]?.hits[0] ? `hit-${results.groups[0].type}-${results.groups[0].hits[0].id}` : null;
+  const [seen, setSeen] = useState<typeof results>(undefined);
+  if (results !== seen) {
+    setSeen(results);
+    if (firstHit && !typingKey) setSelected(firstHit);
+  }
 
   const close = () => {
     onOpenChange(false);
@@ -70,6 +80,8 @@ export function GlobalSearch({ ws, dimensions, open, onOpenChange }: { ws: strin
       open={open}
       onOpenChange={(o) => (o ? onOpenChange(true) : close())}
       shouldFilter={false}
+      value={selected}
+      onValueChange={setSelected}
       label={t("search.palette")}
       overlayClassName="fixed inset-0 z-40 bg-inverse/30"
       contentClassName="fixed left-1/2 top-24 z-50 w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-lg"

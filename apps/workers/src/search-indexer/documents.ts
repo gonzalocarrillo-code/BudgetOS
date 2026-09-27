@@ -1,4 +1,4 @@
-import { QueryRequest, resolvePeriod, type FilterGroupT } from "@budget/domain";
+import { QueryRequest, SETTINGS, resolvePeriod, type FilterGroupT } from "@budget/domain";
 import { envelopePaths, plannerOptions, type SearchDoc, type Tx } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -18,7 +18,7 @@ export interface Built {
   upserts: SearchDoc[];
   deletes: string[];
 }
-export type IndexedType = "envelope" | "target" | "approval_request" | "alert" | "comment" | "tag" | "dimension_value" | "experiment";
+export type IndexedType = "envelope" | "target" | "approval_request" | "alert" | "comment" | "tag" | "dimension_value" | "experiment" | "setting";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const money = (v: unknown) => (v === null || v === undefined ? null : new Decimal(String(v)).toFixed(2));
@@ -286,6 +286,28 @@ export async function buildExperiments(tx: Tx, ctx: IndexContext, ids: string[] 
   };
 }
 
+/** T-041: the settings catalog (admin pages and their options), one document per entry, workspace-wide. */
+export async function buildSettings(_tx: Tx, ctx: IndexContext, ids: string[] | null): Promise<Built> {
+  const entries = SETTINGS.filter((e) => ids === null || ids.includes(e.id));
+  return {
+    upserts: entries.map((e) => ({
+      workspaceId: ctx.workspaceId,
+      entityType: "setting",
+      entityId: e.id,
+      title: e.title,
+      path: `Settings › ${e.section}`,
+      body: e.keywords.join(" · "),
+      tags: [],
+      dimensionValues: {},
+      numericFacets: {},
+      ownerId: null,
+      status: null,
+      periodKey: null,
+    })),
+    deletes: ids === null ? [] : ids.filter((x) => !SETTINGS.some((e) => e.id === x)),
+  };
+}
+
 /** Registry values the workspace sees; `dimensionIds` narrows to some dimensions (null = all). */
 export async function buildDimensionValues(tx: Tx, ctx: IndexContext, dimensionIds: string[] | null): Promise<Built> {
   const dims = await tx.dimension.findMany({ where: { orgId: ctx.orgId, OR: [{ workspaceId: null }, { workspaceId: ctx.workspaceId }], ...(dimensionIds ? { id: { in: dimensionIds } } : {}) }, select: { id: true, label: true, key: true } });
@@ -327,4 +349,5 @@ export const BUILDERS: Record<IndexedType, (tx: Tx, ctx: IndexContext, ids: stri
   tag: buildTags,
   dimension_value: buildDimensionValues,
   experiment: buildExperiments,
+  setting: buildSettings,
 };

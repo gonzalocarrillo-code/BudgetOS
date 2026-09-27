@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { SETTINGS } from "@budget/domain";
 import { handleSearchEvent, reindexWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -158,6 +159,37 @@ describe("search", () => {
     expect((await call(planner, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent("budget:lots")}`)).status).toBe(422);
     expect((await call(planner, "GET", `/workspaces/${ws}/search?q=x&types=bogus`)).status).toBe(422);
     expect((await call(planner, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent("updated:<soon")}`)).status).toBe(422);
+  });
+});
+
+describe("settings (T-041: typing a setting name in ⌘K opens the right admin page)", () => {
+  it("indexes the settings catalog; a setting's name leads the results and deep-links to its admin page", async () => {
+    const count = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws);
+    expect(Number(count[0]?.n)).toBe(SETTINGS.length);
+    for (const [q, title, link] of [
+      ["pacing rules", "Pacing rules", "/admin/rules"],
+      ["approval pol", "Approval policies", "/admin/policies"],
+      ["match keys", "Match keys", `/admin/naming?kind=${encodeURIComponent('"match_key"')}`],
+      ["metric library", "Metric library", `/admin/registry?tab=${encodeURIComponent('"metrics"')}`],
+      ["guided tours", "Guided tours", "/admin/tours"],
+    ] as const) {
+      const groups = await search(planner, q);
+      expect(groups[0]?.type, q).toBe("setting");
+      expect(groups[0]?.hits[0]?.title, q).toBe(title);
+      expect(groups[0]?.hits[0]?.deepLink, q).toBe(`/w/${ws}${link}`);
+    }
+    // Keywords find a setting too ("snowflake" → Data sources); settings are for every role.
+    expect(titles(await search(scoped, "snowflake"), "setting")).toContain("Data sources");
+    expect(titles(await search(planner, "type:settings"), "setting")).toHaveLength(SETTINGS.length);
+  });
+
+  it("a created workspace gets the catalog from its workspace.created event", async () => {
+    await owner.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws);
+    expect(await search(planner, "type:settings")).toEqual([]);
+    const payload = { workspaceId: ws };
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, 'workspace.created', $2::jsonb) RETURNING id::text`, ws, JSON.stringify(payload));
+    await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "workspace.created" }, messageId: `t041-${row?.id}` }, subscription: "search-indexer" });
+    expect(titles(await search(planner, "type:settings"), "setting")).toHaveLength(SETTINGS.length);
   });
 });
 

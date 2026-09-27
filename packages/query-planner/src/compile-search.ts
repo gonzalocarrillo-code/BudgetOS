@@ -8,9 +8,9 @@ import { SqlBuilder } from "./sql-builder.js";
  * of scoped types must match one of them; tags and registry values are workspace-wide.
  */
 
-export const SEARCH_TYPES = ["envelope", "target", "approval_request", "alert", "comment", "tag", "dimension_value", "experiment"] as const;
-const TYPE_ALIASES: Record<string, string> = { approval: "approval_request", request: "approval_request", value: "dimension_value", dimension: "dimension_value" };
-const WORKSPACE_WIDE = ["tag", "dimension_value", "experiment"];
+export const SEARCH_TYPES = ["envelope", "target", "approval_request", "alert", "comment", "tag", "dimension_value", "experiment", "setting"] as const;
+const TYPE_ALIASES: Record<string, string> = { approval: "approval_request", request: "approval_request", value: "dimension_value", dimension: "dimension_value", settings: "setting" };
+const WORKSPACE_WIDE = ["tag", "dimension_value", "experiment", "setting"];
 const NUMERIC: Record<string, string> = { budget: "budget", actual: "actual", cpa: "cpa", pace: "pace_index", target: "target" };
 
 export interface SearchContext {
