@@ -27,3 +27,15 @@ export const GroupsSyncInput = z.object({
     .max(500),
 });
 export type GroupsSyncInput = z.infer<typeof GroupsSyncInput>;
+
+/** POST /workspaces/:ws/members: add a person to the org by email; they sign in with Google later. */
+export const AddPersonInput = z.object({ email: z.string().trim().toLowerCase().email().max(320), name: z.string().trim().min(1).max(200) });
+export type AddPersonInput = z.infer<typeof AddPersonInput>;
+
+/** GET /workspaces/:ws/members: the org's people and groups, each with its role assignments in this workspace. */
+const Assignment = z.object({ id: z.string().uuid(), role: z.string(), scope: z.unknown() });
+export const PeopleResponse = z.object({
+  users: z.array(z.object({ id: z.string().uuid(), email: z.string(), name: z.string(), isActive: z.boolean(), signedIn: z.boolean(), orgAdmin: z.boolean(), roles: z.array(Assignment) })),
+  groups: z.array(z.object({ id: z.string().uuid(), name: z.string(), googleGroup: z.string(), memberCount: z.number().int(), roles: z.array(Assignment) })),
+});
+export type PeopleResponse = z.infer<typeof PeopleResponse>;

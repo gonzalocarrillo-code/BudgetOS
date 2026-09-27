@@ -6,6 +6,8 @@ import { assignRole } from "./commands/assign-role.js";
 import { revokeRole } from "./commands/revoke-role.js";
 import { syncGroups } from "./commands/sync-groups.js";
 import { listRoles } from "./queries/list-roles.js";
+import { listPeople } from "./queries/people.js";
+import { addPerson } from "./commands/add-person.js";
 
 /** Role and group changes clear the role cache after commit so they apply on the next request. */
 @Injectable()
@@ -14,6 +16,14 @@ export class AdminService {
     @Inject(PrismaClient) private readonly prisma: PrismaClient,
     @Inject(ROLE_CACHE) private readonly cache: RoleCache,
   ) {}
+
+  people(auth: AuthContext) {
+    return listPeople(this.prisma, auth);
+  }
+
+  addPerson(auth: AuthContext, body: unknown) {
+    return addPerson(this.prisma, auth, body);
+  }
 
   listRoles(auth: AuthContext) {
     return listRoles(this.prisma, auth);

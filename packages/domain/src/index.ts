@@ -33,7 +33,7 @@ export {
 export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope, permissions, readScopeFilter } from "./permissions.js";
 export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
 
-export { AssignRoleInput, GroupsSyncInput } from "./access.js";
+export { AddPersonInput, AssignRoleInput, GroupsSyncInput, PeopleResponse } from "./access.js";
 
 export {
   BULK_MAX_ROWS,

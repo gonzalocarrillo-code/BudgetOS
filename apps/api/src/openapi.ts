@@ -81,6 +81,8 @@ import {
   GeneratePeriodsInput,
   PeriodRow,
   UpdatePeriodInput,
+  AddPersonInput,
+  PeopleResponse,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -108,6 +110,10 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/workspaces/{ws}/roles": {
         get: { operationId: "listRoleAssignments", parameters: [workspaceParam], responses: { "200": { description: "Role assignments in the workspace" } } },
         post: { operationId: "assignRole", parameters: [workspaceParam], requestBody: json(AssignRoleInput), responses: { "200": { description: "Created role assignment" } } },
+      },
+      "/api/v1/workspaces/{ws}/members": {
+        get: { operationId: "listMembers", parameters: [workspaceParam], responses: { "200": { description: "The org's people and groups, each with its role assignments in this workspace", ...json(PeopleResponse) } } },
+        post: { operationId: "addMember", parameters: [workspaceParam], requestBody: json(AddPersonInput), responses: { "201": { description: "Added to the org by email (or the existing person); they sign in with Google later" }, "409": { description: "The email belongs to another organisation" } } },
       },
       "/api/v1/roles/{id}": {
         delete: { operationId: "revokeRole", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Revoked role assignment" } } },

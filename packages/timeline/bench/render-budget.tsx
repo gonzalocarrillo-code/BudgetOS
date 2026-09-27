@@ -50,7 +50,7 @@ function fiveThousand(): TimelineResponse {
     }
   }
   if (bars.length !== SPIKE_BAR_COUNT) throw new Error(`budget bench has ${bars.length} bars`);
-  return { bars, nextCursor: null, calendar: { fiscalYearStartMonth: 1, periods: fiscalPeriods("2026-01-01", "2026-12-31", 1, "month"), keyDates: [{ at: "2026-04-02", label: "2026-Q1", kind: "closure" }] }, dataVersion: "1", dataAsOf: "2026-09-26T00:00:00.000Z" };
+  return { bars, levels: [], nextCursor: null, calendar: { fiscalYearStartMonth: 1, periods: fiscalPeriods("2026-01-01", "2026-12-31", 1, "month"), keyDates: [{ at: "2026-04-02", label: "2026-Q1", kind: "closure" }] }, dataVersion: "1", dataAsOf: "2026-09-26T00:00:00.000Z" };
 }
 
 const data = fiveThousand();

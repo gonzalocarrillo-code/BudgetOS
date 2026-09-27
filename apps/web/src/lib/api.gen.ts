@@ -32,6 +32,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMembers"];
+        put?: never;
+        post: operations["addMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles/{id}": {
         parameters: {
             query?: never;
@@ -1834,6 +1850,92 @@ export interface operations {
         responses: {
             /** @description Created role assignment */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The org's people and groups, each with its role assignments in this workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: {
+                            /** Format: uuid */
+                            id: string;
+                            email: string;
+                            name: string;
+                            isActive: boolean;
+                            signedIn: boolean;
+                            orgAdmin: boolean;
+                            roles: {
+                                /** Format: uuid */
+                                id: string;
+                                role: string;
+                                scope: unknown;
+                            }[];
+                        }[];
+                        groups: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            googleGroup: string;
+                            memberCount: number;
+                            roles: {
+                                /** Format: uuid */
+                                id: string;
+                                role: string;
+                                scope: unknown;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    addMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Added to the org by email (or the existing person); they sign in with Google later */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The email belongs to another organisation */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5359,6 +5461,8 @@ export interface operations {
                                 end: string;
                             }[];
                         }[];
+                        /** @default [] */
+                        levels: string[];
                         nextCursor: string | null;
                         calendar: {
                             fiscalYearStartMonth: number;
