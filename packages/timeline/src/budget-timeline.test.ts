@@ -74,6 +74,12 @@ describe("SVAR tasks", () => {
     expect(fromLocal(tasks[0]?.end as Date)).toBe("2027-01-01");
   });
 
+  it("experiment lanes (T-038) are children of their envelope, shown when it is opened", () => {
+    const withExperiment = [...bars, bar({ key: "e1:x:1", parentKey: "e1", level: 2, kind: "experiment", experimentId: "01927a00-0000-7000-8000-0000000000aa", status: "RUNNING · TEST" })];
+    expect(toSvarTasks(withExperiment, new Set()).some((t) => t.id === "e1:x:1")).toBe(false);
+    expect(toSvarTasks(withExperiment, new Set(["e1"])).find((t) => t.id === "e1:x:1")).toMatchObject({ parent: "e1", type: "experiment" });
+  });
+
   it("opening an envelope passes all of its target lanes", () => {
     const tasks = toSvarTasks(bars, new Set(["e1", "e2"]));
     expect(tasks.map((t) => t.id)).toEqual(["BR", "e1", "e1:cpa", "e2", "e2:budget", "e2:roas"]);

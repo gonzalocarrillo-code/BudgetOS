@@ -78,7 +78,7 @@ function BarTemplate({ data }: { data: ITask }): ReactElement {
     <div className={`bt-bar bt-${bar.kind}`} data-bar-key={bar.key} data-pace={bar.paceState} data-kind={bar.kind}>
       <span className="bt-fill" style={style} />
       {bar.projectedPct !== undefined && bar.projectedPct > 0 ? <span className="bt-projected" style={{ left: `min(${pct(bar.projectedPct)}, calc(100% - 2px))` }} title={pct(bar.projectedPct)} /> : null}
-      <span className="bt-bar-label">{bar.kind === "group" && bar.name === "∅" ? ctx.labels.none : bar.name}</span>
+      <span className="bt-bar-label">{bar.kind === "group" && bar.name === "∅" ? ctx.labels.none : bar.kind === "experiment" && bar.status ? `${bar.name} · ${bar.status.toLowerCase()}` : bar.name}</span>
     </div>
   );
 }

@@ -40,6 +40,7 @@ export { GOLDEN_ASSERTIONS } from "../seed/golden.assertions.js";
 export {
   GOLDEN_COLLAB,
   GOLDEN_NAMING,
+  GOLDEN_EXPERIMENT,
   GOLDEN_CLOSURE,
   GOLDEN_EXPORT,
   GOLDEN_SAVED_VIEW,

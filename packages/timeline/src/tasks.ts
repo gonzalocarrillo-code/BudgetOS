@@ -2,8 +2,8 @@ import type { TimelineBar } from "@budget/domain";
 import { toLocal } from "./fiscal-scales.js";
 
 /**
- * TimelineBar → SVAR task (spec §23.2). Target rows are children of their envelope, collapsed by
- * default except the `budget` metric: a collapsed envelope passes only its budget-target rows and
+ * TimelineBar → SVAR task (spec §23.2). Target and experiment rows are children of their envelope,
+ * collapsed by default except `budget`-metric targets: a collapsed envelope passes only its budget-target rows and
  * is `lazy` when it has others, so SVAR draws the expand arrow and asks for them (ADR-003: `open`
  * on a task with no children throws, so `open` is set only where children are passed).
  */
@@ -27,6 +27,7 @@ export function visibleBars(bars: readonly TimelineBar[], openEnvelopes: Readonl
   const keys = new Set(bars.map((b) => b.key));
   return bars.filter((b) => {
     if (b.parentKey !== null && !keys.has(b.parentKey)) return false; // parent on another page or filtered out
+    if (b.kind === "experiment") return openEnvelopes.has(b.parentKey ?? "");
     return b.kind !== "target" || b.metric === "budget" || openEnvelopes.has(b.parentKey ?? "");
   });
 }

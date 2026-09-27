@@ -149,7 +149,8 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
   "collab": {
     "tags": {
       "q4-push": 24,
-      "brand-safety": 10
+      "brand-safety": 10,
+      "experiment": 1
     },
     "threads": {
       "open": 2,
@@ -205,10 +206,22 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "target": 105,
     "alert": 193,
     "comment": 5,
-    "tag": 2,
-    "dimension_value": 302
+    "tag": 3,
+    "dimension_value": 302,
+    "experiment": 1
   },
   "naming": {
     "templates": 1
+  },
+  "experiments": {
+    "count": 1,
+    "test": {
+      "leaves": 24,
+      "cpa": "24.2052"
+    },
+    "control": {
+      "leaves": 24,
+      "cpa": "23.4011"
+    }
   }
 };

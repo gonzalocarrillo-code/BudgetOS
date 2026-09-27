@@ -156,3 +156,19 @@ export {
   stackLanes,
 } from "./timeline.js";
 export type { LaneTarget } from "./timeline.js";
+
+export {
+  ConcludeExperimentInput,
+  CreateExperimentInput,
+  EXPERIMENT_TRANSITIONS,
+  ExperimentKind,
+  ExperimentReadout,
+  ExperimentRole,
+  ExperimentStatus,
+  LinkEnvelopeInput,
+  ListExperimentsQuery,
+  MetricSet,
+  SuccessCriterion,
+  UpdateExperimentInput,
+  criterionMet,
+} from "./experiments.js";

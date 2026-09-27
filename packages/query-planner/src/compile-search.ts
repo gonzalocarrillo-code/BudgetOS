@@ -8,9 +8,9 @@ import { SqlBuilder } from "./sql-builder.js";
  * of scoped types must match one of them; tags and registry values are workspace-wide.
  */
 
-export const SEARCH_TYPES = ["envelope", "target", "approval_request", "alert", "comment", "tag", "dimension_value"] as const;
+export const SEARCH_TYPES = ["envelope", "target", "approval_request", "alert", "comment", "tag", "dimension_value", "experiment"] as const;
 const TYPE_ALIASES: Record<string, string> = { approval: "approval_request", request: "approval_request", value: "dimension_value", dimension: "dimension_value" };
-const WORKSPACE_WIDE = ["tag", "dimension_value"];
+const WORKSPACE_WIDE = ["tag", "dimension_value", "experiment"];
 const NUMERIC: Record<string, string> = { budget: "budget", actual: "actual", cpa: "cpa", pace: "pace_index", target: "target" };
 
 export interface SearchContext {
@@ -103,6 +103,15 @@ export function compileSearch(parsed: ParsedSearch, ctx: SearchContext): Compile
           if (!/^-?\d+(\.\d+)?$/.test(q.value)) throw invalid(`${q.key} needs a number`, { value: q.value });
           conds.push(`${facet} ${cmp} ${b.p(q.value)}::numeric`);
         }
+        break;
+      }
+      case "experiment": {
+        // T-038: experiments in that status, and the envelopes linked to one.
+        const status = q.value.toUpperCase();
+        if (!/^(PLANNED|RUNNING|EVALUATING|CONCLUDED|ABANDONED)$/.test(status)) throw invalid("experiment needs a status: planned, running, evaluating, concluded or abandoned", { value: q.value });
+        const s = `${b.p(status)}::text`;
+        const hit = `((entity_type = 'experiment' AND status = ${s}) OR (entity_type = 'envelope' AND entity_id IN (SELECT ee.envelope_id FROM experiment_envelope ee JOIN experiment x ON x.id = ee.experiment_id WHERE x.workspace_id = ${b.p(ctx.workspaceId)}::uuid AND x.status::text = ${s})))`;
+        conds.push(q.op === "neq" ? `NOT ${hit}` : hit);
         break;
       }
       case "has":

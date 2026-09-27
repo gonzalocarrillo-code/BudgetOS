@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_EXPERIMENT, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -33,6 +33,7 @@ import { applyTag, createTag } from "../modules/threads/commands/tags.js";
 import { addReaction } from "../modules/threads/commands/reactions.js";
 import { addComment, createThread, resolveThread } from "../modules/threads/commands/threads.js";
 import { createNamingTemplate } from "../modules/naming/naming.js";
+import { createExperiment, linkEnvelope, transitionExperiment } from "../modules/experiments/commands/experiments.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -309,6 +310,15 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     if (t.resolve) await resolveThread(app, auth(author), created.id);
   }
   log(`golden: ${GOLDEN_COLLAB.tags.length} tags, ${GOLDEN_COLLAB.threads.length} threads`);
+
+  // ---- T-038: one running experiment, a TEST and a CONTROL envelope linked, through the commands. ----
+  const x = GOLDEN_EXPERIMENT;
+  const scope = (dims: Record<string, string>) => ({ logic: "and" as const, children: Object.entries(dims).map(([key, value]) => ({ field: { kind: "dimension" as const, key }, op: "eq" as const, value })) });
+  const experiment = await createExperiment(app, auth("planner"), { name: x.name, hypothesis: x.hypothesis, kind: x.kind, testFilter: scope(x.test), controlFilter: scope(x.control), primaryMetric: x.metric, criterion: x.criterion, startDate: x.startDate, endDate: x.endDate });
+  await linkEnvelope(app, auth("planner"), experiment.id, { envelopeId: ids.get(x.linkTest) as string, role: "TEST" });
+  await linkEnvelope(app, auth("planner"), experiment.id, { envelopeId: ids.get(x.linkControl) as string, role: "CONTROL" });
+  await transitionExperiment(app, auth("planner"), experiment.id, "start");
+  log(`golden: experiment '${x.name}' running`);
 
   // ---- T-020: full search re-index (facets for the pacing day, so the documents are deterministic). ----
   const indexed = await reindexWorkspace(app, { workspaceId, orgId }, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);
