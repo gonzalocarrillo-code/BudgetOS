@@ -4523,6 +4523,8 @@ export interface operations {
                         /** Format: date-time */
                         dataAsOf: string;
                         dataVersion: number;
+                        /** @enum {string} */
+                        engine?: "postgres" | "warehouse" | "cache";
                         elapsedMs: number;
                     };
                 };

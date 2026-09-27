@@ -10,6 +10,8 @@ import { cleanupGolden } from "../test-support/golden-cleanup.js";
 import { appDb, ownerDb, startHarness } from "../test-support/harness.js";
 
 const env = (k: string, d: string) => process.env[k] ?? d;
+// The job measures computing a query, not serving it from the query cache (ADR-042).
+process.env["QUERY_CACHE"] ??= "off";
 const shards = Number(env("LOAD_SHARDS", "521"));
 const commentsPerLeaf = Number(env("LOAD_COMMENTS_PER_LEAF", "10"));
 const iterations = Number(env("LOAD_ITERATIONS", "20"));

@@ -6734,6 +6734,14 @@
                     "dataVersion": {
                       "type": "integer"
                     },
+                    "engine": {
+                      "type": "string",
+                      "enum": [
+                        "postgres",
+                        "warehouse",
+                        "cache"
+                      ]
+                    },
                     "elapsedMs": {
                       "type": "number"
                     }

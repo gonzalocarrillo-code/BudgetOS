@@ -52,7 +52,7 @@ export interface CompiledQuery {
   orderKeys: OrderKey[];
 }
 
-const RATIO = new Set(["pace_index", "variance_pct", "projected_close_pct", "spend_to_date_pct"]);
+export const RATIO = new Set(["pace_index", "variance_pct", "projected_close_pct", "spend_to_date_pct"]);
 /** Measures that read projected spend. */
 const PROJECTION = new Set(["projected", "variance_abs", "variance_pct", "projected_close_pct"]);
 
@@ -283,7 +283,7 @@ export function compileTotals(q: QueryRequest, period: { start: string; end: str
  * Keyset order: requested sort keys, then a unique tie-break. Offsets drift when rows are inserted
  * between pages; a keyset cursor does not.
  */
-function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: string[], defaultSort: string[]): OrderKey[] {
+export function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: string[], defaultSort: string[]): OrderKey[] {
   const keys: OrderKey[] = [];
   const seen = new Set<string>();
   const push = (col: string, dir: "asc" | "desc") => {
