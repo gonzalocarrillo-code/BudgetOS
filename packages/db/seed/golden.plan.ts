@@ -261,6 +261,23 @@ export const GOLDEN_EXPERIMENT = {
   linkControl: "EMEA/DE/meta/conversion/prospecting",
 } as const;
 
+/**
+ * T-039's row: one DRAFT manual entry batch of TV results for September (an offline channel no
+ * integration covers). A draft writes no facts, so the golden totals do not move; the tests submit
+ * and approve their own batches.
+ */
+export const GOLDEN_MANUAL_ENTRY = {
+  channel: "tv",
+  periodStart: "2026-09-01",
+  periodEnd: "2026-09-30",
+  enteredBy: "planner",
+  rows: [
+    { dimensionValues: { country: "BR" }, periodDate: "2026-09-07", currency: "USD", amount: "12000.00", kpis: { conversions: "300" }, note: "Globo prime time" },
+    { dimensionValues: { country: "MX" }, periodDate: "2026-09-14", currency: "USD", amount: "8500.50", kpis: { conversions: "190" } },
+    { dimensionValues: { country: "AR" }, periodDate: "2026-09-21", currency: "USD", amount: "4300.00", kpis: {} },
+  ],
+} as const;
+
 export const GOLDEN_NAMING = [
   {
     kind: "match_key",
@@ -456,6 +473,8 @@ export interface GoldenTotals {
   search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment", number>;
   /** T-036: naming templates seeded (GOLDEN_NAMING). */
   naming: { templates: number };
+  /** T-039: GOLDEN_MANUAL_ENTRY: one DRAFT batch, its rows and its per-currency total. */
+  manualEntry: { batches: number; status: string; rows: number; byCurrency: Record<string, string> };
   /** T-038: GOLDEN_EXPERIMENT's read-out: live leaves and weighted CPA (Σspend / Σconversions, 4 dp) per side. */
   experiments: { count: number; test: { leaves: number; cpa: string }; control: { leaves: number; cpa: string } };
   /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
@@ -602,6 +621,12 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       experiment: 1,
     },
     naming: { templates: GOLDEN_NAMING.length },
+    manualEntry: {
+      batches: 1,
+      status: "DRAFT",
+      rows: GOLDEN_MANUAL_ENTRY.rows.length,
+      byCurrency: { USD: GOLDEN_MANUAL_ENTRY.rows.reduce((s, r) => s.plus(r.amount), new Decimal(0)).toFixed(2) },
+    },
     experiments: (() => {
       const side = (want: Record<string, string>) => {
         const match = (e: PlannedEnvelope) => Object.entries(want).every(([k, v]) => e.dimensionValues[k] === v);

@@ -57,6 +57,8 @@ import {
   RunSourceInput,
   QueryRequest,
   QueryResponse,
+  CreateManualEntryInput,
+  UpdateManualEntryInput,
   CreateExperimentInput,
   UpdateExperimentInput,
   LinkEnvelopeInput,
@@ -308,6 +310,17 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/query": {
         post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/manual-entries": {
+        get: { operationId: "listManualEntries", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED" }, { name: "channel", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "Batches, newest first (rows omitted, rowCount)" } } },
+        post: { operationId: "createManualEntry", parameters: [workspaceParam], requestBody: json(CreateManualEntryInput), responses: { "201": { description: "A DRAFT batch, its rows' issues (validated like ingestion) and warnings (rows no budget would take)" } } },
+      },
+      "/api/v1/manual-entries/{id}": {
+        get: { operationId: "getManualEntry", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The batch, its issues and warnings, the latest approval decision and, once approved, the lineage of its facts" } } },
+        patch: { operationId: "updateManualEntry", parameters: [idParam, workspaceHeader], requestBody: json(UpdateManualEntryInput), responses: { "200": { description: "Rows saved as typed, with their issues; only while DRAFT" } } },
+      },
+      "/api/v1/manual-entries/{id}/submit": {
+        post: { operationId: "submitManualEntry", parameters: [idParam, workspaceHeader], responses: { "201": { description: "An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue" } } },
       },
       "/api/v1/workspaces/{ws}/experiments": {
         get: { operationId: "listExperiments", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED)" }], responses: { "200": { description: "Experiments, newest first, with their linked envelopes" } } },

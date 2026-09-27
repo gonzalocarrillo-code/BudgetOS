@@ -26,6 +26,8 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM naming_template WHERE workspace_id = $1::uuid`,
     `DELETE FROM experiment_envelope WHERE workspace_id = $1::uuid`,
     `DELETE FROM experiment WHERE workspace_id = $1::uuid`,
+    `DELETE FROM manual_entry_fact WHERE workspace_id = $1::uuid`,
+    `DELETE FROM manual_entry_batch WHERE workspace_id = $1::uuid`,
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
     `DELETE FROM thread WHERE workspace_id = $1::uuid`,
     `DELETE FROM alert WHERE workspace_id = $1::uuid`,

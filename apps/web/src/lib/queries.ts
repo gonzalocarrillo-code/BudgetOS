@@ -175,6 +175,18 @@ export const ApprovalDetail = z
     people: z.record(z.string(), z.string()),
     decision: z.object({ canDecide: z.boolean(), reason: z.string().nullable(), stepRole: z.string().nullable() }),
     decisions: z.array(z.object({ id: z.string().uuid(), stepIndex: z.number(), decidedBy: z.string().uuid(), decision: z.string(), comment: z.string().nullable(), decidedAt: z.string() }).passthrough()),
+    /** T-039: a manual result batch waiting for approval — what it would load. */
+    manualEntry: z
+      .object({
+        id: z.string().uuid(),
+        channel: z.string(),
+        periodStart: z.string(),
+        periodEnd: z.string(),
+        totals: z.object({ amount: z.string().nullable(), byCurrency: z.record(z.string(), z.string()), rows: z.number() }).passthrough(),
+        rows: z.array(z.object({ rowNo: z.number(), dimensionValues: z.record(z.string(), z.string()), periodDate: z.string(), currency: z.string(), amount: z.string(), kpis: z.record(z.string(), z.string()), note: z.string().optional() }).passthrough()),
+      })
+      .nullable()
+      .optional(),
   })
   .passthrough();
 export type ApprovalDetail = z.infer<typeof ApprovalDetail>;

@@ -3,6 +3,7 @@ import { archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, typ
 import { clock } from "../../common/clock.js";
 import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
 import { approveVersion } from "./commands/approve-version.js";
+import { approveManualEntry, reopenManualEntry } from "../manual-entry/commands/manual-entry.js";
 import { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "./read.js";
 
 export { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "./read.js";
@@ -29,7 +30,7 @@ export function assertEnvelopeRequest(r: LockedRequestRow): void {
 
 /** A closed period freezes its envelopes' requests too (spec §15): no decision or withdrawal until it is restated. */
 export async function assertNotLocked(tx: Tx, r: { entityType: string; entityId: string }): Promise<void> {
-  if (r.entityType === "target_version") return;
+  if (r.entityType === "target_version" || r.entityType === "manual_entry") return; // a batch's closed-period rows are refused on save and submit
   const { versions } = await requestTargets(tx, r);
   const locked = await tx.envelope.count({ where: { id: { in: [...new Set(versions.map((v) => v.envelopeId))] }, status: "LOCKED" } });
   if (locked > 0) throw new DomainError("LOCKED", "Period is closed; restate via closure", { lockedEnvelopes: locked });
@@ -80,6 +81,8 @@ export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedReq
       await finalizeBulk(tx, ctx, r.entityId, r.id, reason);
     } else if (r.entityType === "target_version") {
       await approveTargetVersion(tx, ctx, r.entityId, r.id, reason);
+    } else if (r.entityType === "manual_entry") {
+      await approveManualEntry(tx, ctx, r.entityId, r.id, ctx.userId ?? r.requestedBy, reason);
     } else {
       await approveVersion(tx, ctx, r.entityId, r.id, reason);
     }
@@ -104,6 +107,11 @@ export async function closeRequest(tx: Tx, r: LockedRequestRow, outcome: "REJECT
     // New split / merge envelopes that will never be approved.
     if (outcome !== "CHANGES_REQUESTED") await archiveEnvelopes(tx, bulk.createdIds);
     await tx.approvalRequest.update({ where: { id: r.id }, data: outcome === "CHANGES_REQUESTED" ? { status: outcome } : { status: outcome, resolvedAt: new Date() } });
+    return;
+  }
+  if (r.entityType === "manual_entry") {
+    // Spec §26.2: a rejected (or returned) batch reopens as DRAFT.
+    await reopenManualEntry(tx, r, outcome);
     return;
   }
   if (r.entityType === "target_version") {
@@ -138,7 +146,7 @@ export async function closeRequest(tx: Tx, r: LockedRequestRow, outcome: "REJECT
 export async function openBlockingThread(tx: Tx, ctx: TenantContext, r: LockedRequestRow, comment: string): Promise<string> {
   // A bulk change spans many envelopes: the thread sits on the request itself.
   const anchor =
-    r.entityType === "bulk_change"
+    r.entityType === "bulk_change" || r.entityType === "manual_entry"
       ? { anchorType: "approval_request", anchorId: r.id }
       : r.entityType === "target_version"
         ? { anchorType: "target", anchorId: (await tx.targetVersion.findUniqueOrThrow({ where: { id: r.entityId }, select: { targetId: true } })).targetId }

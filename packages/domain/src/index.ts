@@ -172,3 +172,15 @@ export {
   UpdateExperimentInput,
   criterionMet,
 } from "./experiments.js";
+
+export {
+  CreateManualEntryInput,
+  ListManualEntriesQuery,
+  MANUAL_ENTRY_MAX_ROWS,
+  ManualEntryIssue,
+  ManualEntryRowInput,
+  ManualEntryStatus,
+  ManualEntryTotals,
+  UpdateManualEntryInput,
+  issueSummary,
+} from "./manual-entry.js";

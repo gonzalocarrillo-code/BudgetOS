@@ -200,11 +200,17 @@ it("seeds the default registry, nested countries, and the default hierarchy", as
   const channel = dimensions.find((dimension) => dimension.key === "channel");
   expect(channel?.values.map((value) => value.code).sort()).toEqual([
     "affiliate",
+    "dooh",
+    "ooh",
     "other",
     "paid_search",
     "paid_social",
+    "print",
     "programmatic",
+    "radio",
     "retail_media",
+    "sponsorship",
+    "tv",
     "video",
   ]);
 

@@ -16,6 +16,16 @@ export interface DefaultPolicySeed {
 }
 
 export const DEFAULT_POLICIES: readonly DefaultPolicySeed[] = [
+  // T-039 (spec §26.2): a manual result batch needs one approval by Finance. First, so the amount
+  // policies below never route a batch of facts as if it were a budget change.
+  {
+    name: "Manual results",
+    priority: 0,
+    conditions: { entityType: "manual_entry" },
+    chain: [{ role: "FINANCE", minApprovals: 1, timeoutHours: 72 }],
+    allowExternalEvidence: false,
+    blockSelfApproval: true,
+  },
   {
     name: "Auto-approve minor",
     priority: 1,
