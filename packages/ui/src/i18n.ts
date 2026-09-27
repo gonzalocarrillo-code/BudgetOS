@@ -175,6 +175,7 @@ const en = {
   "manual.approval.summary": "Manual results for {channel}, {start} – {end}: {rows} rows.",
   "manual.approval.open": "Open the batch",
   "search.type.experiment": "Experiments",
+  "search.type.setting": "Settings",
   "experiments.new": "New experiment",
   "experiments.cancel": "Cancel",
   "experiments.create": "Create experiment",

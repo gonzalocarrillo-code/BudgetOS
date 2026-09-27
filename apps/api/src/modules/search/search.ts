@@ -1,4 +1,4 @@
-import { DomainError, can, parseSearch, type ScopeFilter } from "@budget/domain";
+import { DomainError, can, parseSearch, settingById, type ScopeFilter } from "@budget/domain";
 import { withTenant } from "@budget/db";
 import { SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
@@ -32,6 +32,8 @@ export function deepLink(workspaceId: string, type: string, id: string, title: s
       return `${w}/threads?comment=${id}`;
     case "experiment":
       return `${w}/experiments/${id}`;
+    case "setting":
+      return `${w}${settingById(id)?.path ?? "/admin/registry"}`;
     case "tag":
       return `${w}/budgets?filter=${encodeURIComponent(JSON.stringify({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: title }] }))}`;
     default:
@@ -55,7 +57,11 @@ export async function search(prisma: PrismaClient, auth: AuthContext, query: { q
     g.hits.push({ id: r.entity_id, title: r.title, path: r.path, status: r.status, facets: r.numeric_facets, deepLink: deepLink(workspaceId, r.entity_type, r.entity_id, r.title) });
     groups.set(r.entity_type, g);
   }
-  const order = SEARCH_TYPES as readonly string[];
+  // Settings are listed last, except when the text names one ("pacing rules", "match keys"): then
+  // they lead, so Enter in ⌘K opens that admin page (T-041).
+  const text = parsed.text.trim().toLowerCase();
+  const namesSetting = text.length >= 2 && (groups.get("setting")?.hits as Array<{ title: string }> | undefined)?.some((h) => h.title.toLowerCase().startsWith(text));
+  const order = (namesSetting ? ["setting", ...SEARCH_TYPES] : SEARCH_TYPES) as readonly string[];
   return { groups: [...groups.values()].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type)), parsed: { ...parsed, types: c.types } };
 }
 

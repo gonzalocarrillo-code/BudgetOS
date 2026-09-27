@@ -1,3 +1,4 @@
+import { SETTINGS } from "@budget/domain";
 import { deleteSearchDocuments, loadBulkChange, searchDocumentIds, upsertSearchDocuments, withTenant, type TenantContext, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce, type OutboxEvent } from "../consumer.js";
@@ -81,6 +82,10 @@ export async function targetsFor(tx: Tx, topic: string, payload: Record<string, 
       // T-038: the experiment, and its envelopes (a TEST link tags them `experiment`).
       add(t, "experiment", strs(payload["experimentId"]));
       add(t, "envelope", strs(payload["envelopeIds"]));
+      break;
+    case "workspace.created":
+      // T-041: a new workspace gets the settings catalog in its search index.
+      add(t, "setting", SETTINGS.map((e) => e.id));
       break;
     case "registry.changed":
       add(t, "dimension_value", strs(payload["dimensionId"]));

@@ -1,5 +1,5 @@
 import { DEFAULT_TOURS } from "./defaults.tours.js";
-import { rephase } from "@budget/domain";
+import { SETTINGS, rephase } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "./defaults.registry.js";
 
@@ -471,7 +471,7 @@ export interface GoldenTotals {
   /** T-019: threads, comments and tag counts (GOLDEN_COLLAB). */
   collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; reactions: number; envelopesWithOpenThreads: number };
   /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
-  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment", number>;
+  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment" | "setting", number>;
   /** T-036: naming templates seeded (GOLDEN_NAMING). */
   naming: { templates: number };
   /** T-040: the built-in tours (one per role) and their steps. */
@@ -622,6 +622,7 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       tag: GOLDEN_COLLAB.tags.length + 1, // + the system tag `experiment` (T-038)
       dimension_value: DEFAULT_DIMENSIONS.reduce((n, d) => n + d.values.length, 0) + GOLDEN_CUSTOM_DIMENSIONS.reduce((n, d) => n + d.values.length, 0),
       experiment: 1,
+      setting: SETTINGS.length, // the settings catalog (T-041)
     },
     naming: { templates: GOLDEN_NAMING.length },
     tours: { roles: DEFAULT_TOURS.map((t) => t.role), steps: DEFAULT_TOURS.reduce((n, t) => n + t.steps.length, 0) },
