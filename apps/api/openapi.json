@@ -3325,6 +3325,36 @@
                           "type": "string"
                         }
                       },
+                      "requester": {
+                        "type": "object",
+                        "properties": {
+                          "roles": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "VIEWER",
+                                "PLANNER",
+                                "BUDGET_OWNER",
+                                "APPROVER",
+                                "FINANCE",
+                                "DATA_ADMIN",
+                                "WORKSPACE_ADMIN",
+                                "ORG_ADMIN"
+                              ]
+                            }
+                          },
+                          "userIds": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
+                        }
+                      },
                       "any": {
                         "type": "array",
                         "items": {}
@@ -3526,6 +3556,36 @@
                         "type": "array",
                         "items": {
                           "type": "string"
+                        }
+                      },
+                      "requester": {
+                        "type": "object",
+                        "properties": {
+                          "roles": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "VIEWER",
+                                "PLANNER",
+                                "BUDGET_OWNER",
+                                "APPROVER",
+                                "FINANCE",
+                                "DATA_ADMIN",
+                                "WORKSPACE_ADMIN",
+                                "ORG_ADMIN"
+                              ]
+                            }
+                          },
+                          "userIds": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
                         }
                       },
                       "any": {

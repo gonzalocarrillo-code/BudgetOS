@@ -6,7 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import { envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { matchPolicy, type DiffFacts } from "../../approvals/policy-matcher.js";
+import { matchPolicy, type DiffFacts, requesterOf } from "../../approvals/policy-matcher.js";
 import { resolveFx } from "../commands/version-writer.js";
 import { allocate, type AllocContext } from "./allocate.js";
 import { capViolations } from "./caps.js";
@@ -142,7 +142,7 @@ export async function buildPreview(prisma: PrismaClient, auth: AuthContext, raw:
         dimensionValues: {},
         daysRemaining: 0,
       };
-      const policy = changed.length ? await matchPolicy(tx, workspaceId, facts) : null;
+      const policy = changed.length ? await matchPolicy(tx, workspaceId, facts, requesterOf(auth)) : null;
       const paths = await envelopePaths(tx, changed.map((h) => h.id));
       const previewId = newId();
       const expiresAt = new Date(Date.now() + PREVIEW_TTL_SECONDS * 1000).toISOString();

@@ -8,7 +8,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 import { addHours, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
 import { manualEntryScopes } from "../../approvals/read.js";
 import { assertInScope } from "../../../common/scope.guard.js";
-import { matchPolicy, type DiffFacts } from "../../approvals/policy-matcher.js";
+import { matchPolicy, type DiffFacts, requesterOf } from "../../approvals/policy-matcher.js";
 import { batchView } from "../queries/manual-entry.js";
 import { resolveChannel, validateBatch, type NormalizedRow } from "../validate.js";
 
@@ -82,7 +82,7 @@ export async function submitManualEntry(prisma: PrismaClient, auth: AuthContext,
     for (const scope of await manualEntryScopes(tx, { workspaceId: b.workspaceId, channel: b.channel, rows: v.rows })) assertInScope(auth, "envelope.edit_draft", scope);
     const amount = new Decimal(v.totals.amount ?? 0);
     const facts: DiffFacts = { entityType: "manual_entry", amountAbs: amount, deltaAbs: amount, deltaPct: new Decimal(1), isOverAllocation: false, level: 0, dimensionValues: { channel: b.channel }, daysRemaining: 0 };
-    const policy = await matchPolicy(tx, b.workspaceId, facts);
+    const policy = await matchPolicy(tx, b.workspaceId, facts, requesterOf(auth));
     if (policy === null) throw new DomainError("POLICY_NOT_FOUND", "No approval policy matched");
     const policyRef = { id: policy.id, name: policy.name, version: policy.version };
     const submitted = await tx.manualEntryBatch.update({ where: { id: b.id }, data: { status: "SUBMITTED", submittedAt: new Date(), rows: json(v.rows), totals: json(v.totals) } });

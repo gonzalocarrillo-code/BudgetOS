@@ -5,7 +5,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseId, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { addHours, finalizeBulk, type PolicySnapshot } from "../../approvals/engine.js";
-import { matchPolicy } from "../../approvals/policy-matcher.js";
+import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { resolveFx } from "../commands/version-writer.js";
 import { capViolations } from "./caps.js";
 import type { StoredPreview } from "./preview.js";
@@ -100,7 +100,7 @@ export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPre
         level: 0,
         dimensionValues: {},
         daysRemaining: 0,
-      });
+      }, requesterOf(auth));
       if (policy === null) throw new DomainError("POLICY_NOT_FOUND", "No approval policy matched");
 
       let requestId: string | null = null;

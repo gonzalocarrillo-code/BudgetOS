@@ -81,12 +81,17 @@ export function SendForApproval({ ws, envelopeId, compact = false }: { ws: strin
   const draft = env.draft;
   return (
     <div className={cn(box, !compact && "border-primary/30 bg-secondary")} data-testid="approval-state" data-state="draft">
-      <span className="flex-1">
-        {t("approval.send.draft", { amount: formatMoney(draft.amount, env.currency), approved: env.current ? formatMoney(env.current.amount, env.currency) : "—" })}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span>{t("approval.send.draft", { amount: formatMoney(draft.amount, env.currency), approved: env.current ? formatMoney(env.current.amount, env.currency) : "—" })}</span>
+        {env.draftPolicy ? (
+          <span className="text-xs text-muted-foreground" data-testid="approval-policy">
+            {env.draftPolicy.autoApprove ? t("approval.send.policyDirect", { policy: env.draftPolicy.name }) : t("approval.send.policyRoute", { policy: env.draftPolicy.name, role: t(`role.${(env.draftPolicy.firstRole ?? "APPROVER").toLowerCase()}` as "role.approver"), steps: env.draftPolicy.steps })}
+          </span>
+        ) : null}
       </span>
-      <Button size="sm" onClick={() => submit.mutate(draft.id)} {...(submit.isPending ? { disabled: true as const, reason: t("approval.send.working") } : {})} data-testid="approval-send">
+      <Button size="sm" onClick={() => submit.mutate(draft.id)} {...(submit.isPending ? { disabled: true as const, reason: t("approval.send.working") } : {})} data-testid="approval-send" data-direct={env.draftPolicy?.autoApprove ? "true" : "false"}>
         <Send className="size-3.5" aria-hidden />
-        {t("approval.send.button")}
+        {env.draftPolicy?.autoApprove ? t("approval.send.apply") : t("approval.send.button")}
       </Button>
       {submit.error ? (
         <p role="alert" className="w-full text-xs text-destructive" data-testid="approval-send-error">

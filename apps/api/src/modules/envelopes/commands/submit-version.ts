@@ -7,7 +7,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 import { approveVersion } from "../../approvals/commands/approve-version.js";
 import { computeDiff, summarizeDiff } from "../../approvals/diff.js";
 import { addHours, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
-import { matchPolicy } from "../../approvals/policy-matcher.js";
+import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 
 /**
  * POST /envelopes/:id/submit (spec §7.2). Matches the first policy by priority, freezes it on the
@@ -49,7 +49,7 @@ export async function submitVersionIn(tx: Tx, auth: AuthContext, envelopeId: str
   }
 
   const diff = await computeDiff(tx, v.id);
-  const policy = await matchPolicy(tx, env.workspaceId, diff.facts);
+  const policy = await matchPolicy(tx, env.workspaceId, diff.facts, requesterOf(auth));
   if (policy === null) throw new DomainError("POLICY_NOT_FOUND", "No approval policy matched");
 
   if (policy.chain.length === 0) {

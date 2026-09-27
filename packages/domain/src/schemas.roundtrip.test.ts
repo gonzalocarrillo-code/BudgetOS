@@ -118,6 +118,8 @@ const samples: Record<string, readonly unknown[]> = {
   FamilyPlan: [{ parent: { envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", name: "EMEA DE", parentId: null, level: 0, currency: "USD", status: "APPROVED", mode: null, pct: null, before: "1000.00", after: "1100.00", changed: true, childCount: 2, sameCurrency: true }, members: [{ envelopeId: "01a0e0da-e7e9-7f9a-9212-1c166382caf5", name: "EMEA DE meta", parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", level: 1, currency: "USD", status: "APPROVED", mode: "percent", pct: "60", before: "600.00", after: "660.00", changed: true, childCount: 0, sameCurrency: true }], sums: [{ parentId: "01a0e0da-e7e9-7f9a-9212-1c166382caf4", parentAmount: "1100.00", childrenTotal: "960.00", unallocated: "140.00", status: "under" }] }],
   PolicyConditions: [
     {},
+    { entityType: "envelope_version", requester: { roles: ["BUDGET_OWNER"] } },
+    { requester: { userIds: ["01a0e0da-e7e9-7f9a-9212-1c166382caf1"] }, amountAbs: { lt: 50000 } },
     {
       entityType: "envelope_version",
       amountAbs: { gte: 1000 },
