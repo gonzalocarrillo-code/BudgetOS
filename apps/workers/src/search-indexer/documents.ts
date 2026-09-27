@@ -18,7 +18,7 @@ export interface Built {
   upserts: SearchDoc[];
   deletes: string[];
 }
-export type IndexedType = "envelope" | "target" | "approval_request" | "alert" | "comment" | "tag" | "dimension_value";
+export type IndexedType = "envelope" | "target" | "approval_request" | "alert" | "comment" | "tag" | "dimension_value" | "experiment";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const money = (v: unknown) => (v === null || v === undefined ? null : new Decimal(String(v)).toFixed(2));
@@ -263,6 +263,29 @@ export async function buildTags(tx: Tx, ctx: IndexContext, ids: string[] | null)
   };
 }
 
+/** T-038: experiments by name + hypothesis; status for `experiment:<status>` and `status:`; the window's fiscal period. */
+export async function buildExperiments(tx: Tx, ctx: IndexContext, ids: string[] | null): Promise<Built> {
+  const ws = await tx.workspace.findUniqueOrThrow({ where: { id: ctx.workspaceId }, select: { fiscalYearStartMonth: true } });
+  const rows = await tx.experiment.findMany({ where: { workspaceId: ctx.workspaceId, ...byIds(ids) } });
+  return {
+    upserts: rows.map((x) => ({
+      workspaceId: ctx.workspaceId,
+      entityType: "experiment",
+      entityId: x.id,
+      title: x.name,
+      path: `Experiments › ${x.kind.toLowerCase().replace(/_/g, " ")}`,
+      body: [x.hypothesis, x.decision].filter(Boolean).join("\n"),
+      tags: ["experiment"],
+      dimensionValues: {},
+      numericFacets: {},
+      ownerId: x.ownerId,
+      status: x.status,
+      periodKey: periodKey(x.startDate, x.endDate, ws.fiscalYearStartMonth),
+    })),
+    deletes: ids === null ? [] : ids.filter((id) => !rows.some((x) => x.id === id)),
+  };
+}
+
 /** Registry values the workspace sees; `dimensionIds` narrows to some dimensions (null = all). */
 export async function buildDimensionValues(tx: Tx, ctx: IndexContext, dimensionIds: string[] | null): Promise<Built> {
   const dims = await tx.dimension.findMany({ where: { orgId: ctx.orgId, OR: [{ workspaceId: null }, { workspaceId: ctx.workspaceId }], ...(dimensionIds ? { id: { in: dimensionIds } } : {}) }, select: { id: true, label: true, key: true } });
@@ -303,4 +326,5 @@ export const BUILDERS: Record<IndexedType, (tx: Tx, ctx: IndexContext, ids: stri
   comment: buildComments,
   tag: buildTags,
   dimension_value: buildDimensionValues,
+  experiment: buildExperiments,
 };

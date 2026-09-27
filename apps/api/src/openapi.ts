@@ -57,6 +57,11 @@ import {
   RunSourceInput,
   QueryRequest,
   QueryResponse,
+  CreateExperimentInput,
+  UpdateExperimentInput,
+  LinkEnvelopeInput,
+  ConcludeExperimentInput,
+  ExperimentReadout,
   TimelineResponse,
   CreateSavedViewInput,
   UpdateSavedViewInput,
@@ -303,6 +308,23 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/query": {
         post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/experiments": {
+        get: { operationId: "listExperiments", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED)" }], responses: { "200": { description: "Experiments, newest first, with their linked envelopes" } } },
+        post: { operationId: "createExperiment", parameters: [workspaceParam], requestBody: json(CreateExperimentInput), responses: { "201": { description: "The experiment, PLANNED" } } },
+      },
+      "/api/v1/experiments/{id}": {
+        get: { operationId: "getExperiment", parameters: [idParam, workspaceHeader], responses: { "200": { description: "{ experiment, readout }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met", ...json(ExperimentReadout) } } },
+        patch: { operationId: "updateExperiment", parameters: [idParam, workspaceHeader], requestBody: json(UpdateExperimentInput), responses: { "200": { description: "Updated (not once concluded or abandoned)" } } },
+      },
+      "/api/v1/experiments/{id}/link": {
+        post: { operationId: "linkExperimentEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(LinkEnvelopeInput), responses: { "201": { description: "Linked; a TEST envelope gets the system tag `experiment`" } } },
+      },
+      "/api/v1/experiments/{id}/start": { post: { operationId: "startExperiment", parameters: [idParam, workspaceHeader], responses: { "201": { description: "PLANNED → RUNNING" } } } },
+      "/api/v1/experiments/{id}/evaluate": { post: { operationId: "evaluateExperiment", parameters: [idParam, workspaceHeader], responses: { "201": { description: "RUNNING → EVALUATING" } } } },
+      "/api/v1/experiments/{id}/abandon": { post: { operationId: "abandonExperiment", parameters: [idParam, workspaceHeader], responses: { "201": { description: "→ ABANDONED (not once concluded)" } } } },
+      "/api/v1/experiments/{id}/conclude": {
+        post: { operationId: "concludeExperiment", parameters: [idParam, workspaceHeader], requestBody: json(ConcludeExperimentInput), responses: { "201": { description: "CONCLUDED; the decision is posted as a comment in a thread on every linked envelope" }, "422": { description: "No decision (min 20 characters), or no linked envelope" } } },
       },
       "/api/v1/workspaces/{ws}/timeline": {
         get: {

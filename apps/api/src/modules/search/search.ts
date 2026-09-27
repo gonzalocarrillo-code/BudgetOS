@@ -30,6 +30,8 @@ export function deepLink(workspaceId: string, type: string, id: string, title: s
       return `${w}/alerts?select=${id}`;
     case "comment":
       return `${w}/threads?comment=${id}`;
+    case "experiment":
+      return `${w}/experiments/${id}`;
     case "tag":
       return `${w}/budgets?filter=${encodeURIComponent(JSON.stringify({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: title }] }))}`;
     default:
@@ -70,8 +72,9 @@ const FIXED_KEYS: Array<{ key: string; label: string }> = [
   { key: "has", label: "Has" },
   { key: "mentions", label: "Mentions" },
   { key: "updated", label: "Updated" },
+  { key: "experiment", label: "Experiment" },
 ];
-const STATUSES = ["draft", "pending", "approved", "locked", "archived", "open", "acknowledged", "snoozed", "resolved", "rejected", "escalated", "active"];
+const STATUSES = ["draft", "pending", "approved", "locked", "archived", "open", "acknowledged", "snoozed", "resolved", "rejected", "escalated", "active", "planned", "running", "evaluating", "concluded", "abandoned"];
 
 /**
  * GET /workspaces/:ws/search/suggest?prefix: qualifier keys (the fixed set plus every registry
@@ -108,6 +111,8 @@ export async function suggest(prisma: PrismaClient, auth: AuthContext, rawPrefix
           return (await tx.tag.findMany({ where: { workspaceId, name: { startsWith: partial, mode: "insensitive" } }, select: { name: true }, take: 10, orderBy: { name: "asc" } })).map((t) => ({ value: t.name, label: t.name }));
         case "updated":
           return ["<1d", "<7d", "<30d", ">30d"].map((v) => ({ value: v, label: v }));
+        case "experiment":
+          return ["planned", "running", "evaluating", "concluded", "abandoned"].filter(starts).map((v) => ({ value: v, label: v }));
         default: {
           const dim = dims.find((d) => d.key === key);
           if (!dim) return [];

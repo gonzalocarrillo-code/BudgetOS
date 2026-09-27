@@ -171,6 +171,18 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
       // A leaf has no live child (archived children, e.g. merged-away envelopes, do not count).
       if (p.op !== "eq" || typeof p.value !== "boolean") throw invalid(`is_leaf needs eq true or false`, p);
       return `${p.value ? "NOT " : ""}EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED')`;
+    case "experiment": {
+      // Linked to an experiment (spec §25): by status, by id, or by id and role (`<id>:TEST`).
+      if (p.op !== "eq" && p.op !== "in") throw invalid(`op ${p.op} not valid for experiment`, p);
+      const arms = (p.op === "in" ? list(p) : [p.value]).map((raw) => {
+        const value = String(raw);
+        const m = /^([0-9a-f-]{36})(?::(TEST|CONTROL))?$/i.exec(value);
+        if (m) return `(x.id = ${b.p(m[1])}::uuid${m[2] ? ` AND ee.role = ${b.p(m[2].toUpperCase())}::"ExperimentRole"` : ""})`;
+        if (!/^(PLANNED|RUNNING|EVALUATING|CONCLUDED|ABANDONED)$/i.test(value)) throw invalid("experiment needs a status, an experiment id or <id>:TEST|CONTROL", p);
+        return `x.status = ${b.p(value.toUpperCase())}::"ExperimentStatus"`;
+      });
+      return `EXISTS (SELECT 1 FROM experiment_envelope ee JOIN experiment x ON x.id = ee.experiment_id WHERE ee.envelope_id = e.id AND (${arms.join(" OR ")}))`;
+    }
     case "alert_severity":
       return `EXISTS (SELECT 1 FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED') AND ${compileScalar("a.severity", p, b, "text")})`;
     case "created_at":

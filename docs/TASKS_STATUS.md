@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-033, T-036, T-037, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-033, T-036, T-037, T-038, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -55,7 +55,7 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-034 | 17 | T-022, T-027, T-033 | blocked | Appendix C targets at 100k leaves in the CI load job — job and generator in place (`scripts/load-test.ts`, `.github/workflows/load.yml`: 100,553 leaves, 20 dims, 5 templates, ~31M facts, ~1M comments), ADR-030; small scale: search p95 70 ms, edit 25 ms, search lag 0.2 s pass; grid 461–622 ms (projected measure), roll-up lag 12.6 s fail; full roll-up build > 18 min at 11.8k leaves | red, merged as recorded (2026-09-26): the nightly `load` job tracks it (first spec-scale run: actions run 36250221735); grid needs the planner projection speed-up, roll-up needs a faster refresh |
 | T-036 | 18 | T-017, T-034 | done | preview renders 5 samples; `match_method` on 100% of matched golden facts — green (`naming.test.ts` preview of 5, `seed/golden.test.ts` 100% of matched facts, `match-order.test.ts` external_id / match_key / parse pattern / tuple, `byMethod` on the run summary, `web/e2e/naming.spec.ts`), ADR-031 | — |
 | T-037 | 18 | T-026b, T-015, T-026 | done | 5k bars < 500 ms p95; targets as lanes with the effective target per date; as-of matches `/query`; no `@svar/*` PRO — green (`bench/render-budget.tsx` BudgetTimeline 5k bars 100.8 ms p95 with an absolute < 500 ms assertion, `query/timeline.test.ts` on the golden: group totals = /query, as-of envelope by envelope = /query?asOf, annual inherited CPA + Q4 override lanes and `effective` ranges, markers, closures, lz-string filter, paging; `domain/timeline.test.ts`; `timeline/no-pro.test.ts` eslint + license-check names; `web/e2e/timeline.spec.ts` drawer, lanes, scrubber = /query?asOf), ADR-032 | — |
-| T-038 | 18 | T-015, T-019, T-037 | pending | weighted CPA test vs control; conclude requires a decision and posts a thread comment | — |
+| T-038 | 18 | T-015, T-019, T-037 | done | weighted CPA test vs control; conclude requires a decision and posts a thread comment — green (`experiments/experiments.test.ts` on the golden: read-out = `golden.assertions.ts` = planner `compileTotals` per scope, not the mean of leaf CPAs; conclude 422 without / short decision, one thread + decision comment per linked envelope, in the Decision Timeline, `experiment.concluded` audit, outbox; lifecycle 409s; `experiment` tag, `experiment:running` search, timeline lanes, `experiment` filter attr; `web/e2e/experiments.spec.ts`), ADR-033 | — |
 | T-039 | 18 | T-011, T-017, T-026c | pending | approved batch in `/query` with `source_system='manual'`; rejected batch reopens as draft | — |
 | T-040 | 18 | T-026, T-033 | pending | template workspace usable < 60 s; four role tours in Playwright; eslint fails a bare `disabled` | — |
 | T-041 | 18 | T-020, T-040 | pending | setting name in ⌘K opens the admin page | — |
@@ -166,3 +166,11 @@ Phase 2 (plan epics 2.1–2.7) and Phase 3 (epics 3.1–3.2) have no §22 tasks.
 - The web view loads up to 5,000 envelope bars and says when it stops. It has its own TanStack Query cache, not the Explorer's `RowSource`.
 - The grid's third column is "Spent" (% of budget with a pace dot), not the pace index, because the product owner asked for % spent.
 - `@svar-ui/react-gantt` and React moved to runtime dependencies of `@budget/timeline`. `vis-timeline` stays a devDependency (bench only).
+
+## T-038 assumptions
+
+- **Permissions:** experiment writes need `envelope.edit_draft` and reads need `envelope.read`. No experiment action is specified (ADR-033).
+- **`workspace_id`:** `experiment_envelope` carries it (AGENTS §4), although spec §25.1 leaves it out.
+- **Scope of a side:** its filter OR the envelopes linked in that role, restricted to live leaves, for the experiment's window. The new FilterGroup attribute `experiment` (a status, an id, or `<id>:TEST|CONTROL`) expresses it.
+- **Concluding** needs at least one linked envelope, so the decision lands in their Decision Timeline. It posts one thread per linked envelope.
+- **Absolute criterion:** the reference is the criterion's `value`, and the control side is not read.

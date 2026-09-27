@@ -16,3 +16,4 @@ export { describeRegistry } from "./modules/registry/queries/list-registry.js";
 export { search } from "./modules/search/search.js";
 export { envelopeTargets, listTargets } from "./modules/targets/queries/targets.js";
 export { listTags, listThreads } from "./modules/threads/queries.js";
+export { getExperiment, listExperiments } from "./modules/experiments/queries/experiments.js";

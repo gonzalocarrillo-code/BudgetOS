@@ -674,3 +674,62 @@ model IngestRun {
   @@index([sourceId, startedAt])
   @@map("ingest_run")
 }
+
+/// T-038 (spec §25.1, plan §4.12): a test budget with a question attached.
+model Experiment {
+  id            String               @id @db.Uuid
+  workspaceId   String               @map("workspace_id") @db.Uuid
+  name          String
+  hypothesis    String
+  kind          ExperimentKind
+  testFilter    Json                 @map("test_scope_filter") // FilterGroup
+  controlFilter Json?                @map("control_scope_filter") // FilterGroup | null
+  primaryMetric String               @map("primary_metric_key")
+  criterion     Json                 @map("success_criterion") // { comparator: 'lte'|'gte', value?: string, vs: 'control'|'absolute', minDays?: number }
+  startDate     DateTime             @map("start_date") @db.Date
+  endDate       DateTime             @map("end_date") @db.Date
+  status        ExperimentStatus     @default(PLANNED)
+  ownerId       String               @map("owner_id") @db.Uuid
+  decision      String?
+  decidedBy     String?              @map("decided_by") @db.Uuid
+  decidedAt     DateTime?            @map("decided_at") @db.Timestamptz
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  envelopes     ExperimentEnvelope[]
+
+  @@index([workspaceId, status])
+  @@map("experiment")
+}
+
+model ExperimentEnvelope {
+  experimentId String         @map("experiment_id") @db.Uuid
+  experiment   Experiment     @relation(fields: [experimentId], references: [id])
+  envelopeId   String         @map("envelope_id") @db.Uuid
+  workspaceId  String         @map("workspace_id") @db.Uuid
+  role         ExperimentRole
+
+  @@id([experimentId, envelopeId])
+  @@index([envelopeId], map: "experiment_envelope_envelope_idx")
+  @@map("experiment_envelope")
+}
+
+enum ExperimentKind {
+  PLATFORM_TEST
+  OBJECTIVE_TEST
+  AUDIENCE_TEST
+  CREATIVE_TEST
+  GEO_HOLDOUT
+  CUSTOM
+}
+
+enum ExperimentStatus {
+  PLANNED
+  RUNNING
+  EVALUATING
+  CONCLUDED
+  ABANDONED
+}
+
+enum ExperimentRole {
+  TEST
+  CONTROL
+}

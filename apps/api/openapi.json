@@ -1479,7 +1479,8 @@
                                                     "name",
                                                     "has_attachments",
                                                     "alert_severity",
-                                                    "is_leaf"
+                                                    "is_leaf",
+                                                    "experiment"
                                                   ]
                                                 }
                                               },
@@ -2031,7 +2032,8 @@
                                                     "name",
                                                     "has_attachments",
                                                     "alert_severity",
-                                                    "is_leaf"
+                                                    "is_leaf",
+                                                    "experiment"
                                                   ]
                                                 }
                                               },
@@ -5464,7 +5466,8 @@
                                             "name",
                                             "has_attachments",
                                             "alert_severity",
-                                            "is_leaf"
+                                            "is_leaf",
+                                            "experiment"
                                           ]
                                         }
                                       },
@@ -5904,6 +5907,583 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/experiments": {
+      "get": {
+        "operationId": "listExperiments",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Experiments, newest first, with their linked envelopes"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createExperiment",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "hypothesis": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "PLATFORM_TEST",
+                      "OBJECTIVE_TEST",
+                      "AUDIENCE_TEST",
+                      "CREATIVE_TEST",
+                      "GEO_HOLDOUT",
+                      "CUSTOM"
+                    ]
+                  },
+                  "testFilter": {},
+                  "controlFilter": {
+                    "nullable": true,
+                    "default": null
+                  },
+                  "primaryMetric": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  },
+                  "criterion": {
+                    "type": "object",
+                    "properties": {
+                      "comparator": {
+                        "type": "string",
+                        "enum": [
+                          "lte",
+                          "gte"
+                        ]
+                      },
+                      "vs": {
+                        "type": "string",
+                        "enum": [
+                          "control",
+                          "absolute"
+                        ]
+                      },
+                      "value": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,14}(\\.\\d{1,4})?$"
+                      },
+                      "minDays": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": false,
+                        "maximum": 3650,
+                        "exclusiveMaximum": false
+                      }
+                    },
+                    "required": [
+                      "comparator",
+                      "vs"
+                    ]
+                  },
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "name",
+                  "hypothesis",
+                  "kind",
+                  "testFilter",
+                  "primaryMetric",
+                  "criterion",
+                  "startDate",
+                  "endDate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The experiment, PLANNED"
+          }
+        }
+      }
+    },
+    "/api/v1/experiments/{id}": {
+      "get": {
+        "operationId": "getExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ experiment, readout }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "test": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "actual": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "metric": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "leafCount": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "budget",
+                        "actual",
+                        "metric",
+                        "leafCount"
+                      ]
+                    },
+                    "control": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "actual": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "metric": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "leafCount": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "budget",
+                        "actual",
+                        "metric",
+                        "leafCount"
+                      ],
+                      "nullable": true
+                    },
+                    "delta": {
+                      "type": "object",
+                      "properties": {
+                        "abs": {
+                          "type": "string"
+                        },
+                        "pct": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "abs",
+                        "pct"
+                      ],
+                      "nullable": true
+                    },
+                    "criterionMet": {
+                      "type": "boolean",
+                      "nullable": true
+                    },
+                    "daysRunning": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "test",
+                    "control",
+                    "delta",
+                    "criterionMet",
+                    "daysRunning"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "hypothesis": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "PLATFORM_TEST",
+                      "OBJECTIVE_TEST",
+                      "AUDIENCE_TEST",
+                      "CREATIVE_TEST",
+                      "GEO_HOLDOUT",
+                      "CUSTOM"
+                    ]
+                  },
+                  "testFilter": {},
+                  "controlFilter": {
+                    "nullable": true
+                  },
+                  "primaryMetric": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  },
+                  "criterion": {
+                    "type": "object",
+                    "properties": {
+                      "comparator": {
+                        "type": "string",
+                        "enum": [
+                          "lte",
+                          "gte"
+                        ]
+                      },
+                      "vs": {
+                        "type": "string",
+                        "enum": [
+                          "control",
+                          "absolute"
+                        ]
+                      },
+                      "value": {
+                        "type": "string",
+                        "pattern": "^-?\\d{1,14}(\\.\\d{1,4})?$"
+                      },
+                      "minDays": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": false,
+                        "maximum": 3650,
+                        "exclusiveMaximum": false
+                      }
+                    },
+                    "required": [
+                      "comparator",
+                      "vs"
+                    ]
+                  },
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (not once concluded or abandoned)"
+          }
+        }
+      }
+    },
+    "/api/v1/experiments/{id}/link": {
+      "post": {
+        "operationId": "linkExperimentEnvelope",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "envelopeId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "TEST",
+                      "CONTROL"
+                    ]
+                  }
+                },
+                "required": [
+                  "envelopeId",
+                  "role"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Linked; a TEST envelope gets the system tag `experiment`"
+          }
+        }
+      }
+    },
+    "/api/v1/experiments/{id}/start": {
+      "post": {
+        "operationId": "startExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "PLANNED → RUNNING"
+          }
+        }
+      }
+    },
+    "/api/v1/experiments/{id}/evaluate": {
+      "post": {
+        "operationId": "evaluateExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "RUNNING → EVALUATING"
+          }
+        }
+      }
+    },
+    "/api/v1/experiments/{id}/abandon": {
+      "post": {
+        "operationId": "abandonExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "→ ABANDONED (not once concluded)"
+          }
+        }
+      }
+    },
+    "/api/v1/experiments/{id}/conclude": {
+      "post": {
+        "operationId": "concludeExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "CONCLUDED; the decision is posted as a comment in a thread on every linked envelope"
+          },
+          "422": {
+            "description": "No decision (min 20 characters), or no linked envelope"
           }
         }
       }
@@ -6872,7 +7452,8 @@
                                                 "name",
                                                 "has_attachments",
                                                 "alert_severity",
-                                                "is_leaf"
+                                                "is_leaf",
+                                                "experiment"
                                               ]
                                             }
                                           },

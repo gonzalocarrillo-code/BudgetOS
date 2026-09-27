@@ -242,6 +242,25 @@ export const GOLDEN_CLOSURE = { periodKey: "2026-Q1", closer: "finance1", restat
  * T-036's row: a match_key template, so every golden envelope carries a key like
  * `br_meta_awareness_prospecting` (codes, lower case). No display template: names stay as planned.
  */
+/**
+ * T-038's row: one running platform test. TikTok vs Meta on prospecting audiences, CPA lower than
+ * control, over the facts' months; one TEST and one CONTROL envelope linked (the TEST one is tagged
+ * `experiment`). The read-out is the planner's weighted CPA over each scope's live leaves.
+ */
+export const GOLDEN_EXPERIMENT = {
+  name: "TikTok vs Meta · prospecting",
+  hypothesis: "TikTok prospecting reaches a lower CPA than Meta prospecting at the same budget.",
+  kind: "PLATFORM_TEST",
+  test: { platform: "tiktok", audience: "prospecting" },
+  control: { platform: "meta", audience: "prospecting" },
+  metric: "cpa",
+  criterion: { comparator: "lte", vs: "control", minDays: 30 },
+  startDate: "2026-01-01",
+  endDate: "2026-08-31",
+  linkTest: "EMEA/DE/tiktok/conversion/prospecting",
+  linkControl: "EMEA/DE/meta/conversion/prospecting",
+} as const;
+
 export const GOLDEN_NAMING = [
   {
     kind: "match_key",
@@ -434,9 +453,11 @@ export interface GoldenTotals {
   /** T-019: threads, comments and tag counts (GOLDEN_COLLAB). */
   collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; reactions: number; envelopesWithOpenThreads: number };
   /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
-  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value", number>;
+  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment", number>;
   /** T-036: naming templates seeded (GOLDEN_NAMING). */
   naming: { templates: number };
+  /** T-038: GOLDEN_EXPERIMENT's read-out: live leaves and weighted CPA (Σspend / Σconversions, 4 dp) per side. */
+  experiments: { count: number; test: { leaves: number; cpa: string }; control: { leaves: number; cpa: string } };
   /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
   rollup: { nodesByTemplate: Record<string, number[]>; rootBudget: string; rootActual: string };
   /** T-023: the GOLDEN_EXPORT file: data rows and the totals row's budget. */
@@ -533,7 +554,8 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       const threads = GOLDEN_COLLAB.threads;
       const open = threads.filter((t) => !t.resolve);
       return {
-        tags: Object.fromEntries(GOLDEN_COLLAB.tags.map((t) => [t.name, goldenTagLeaves(plan, t.name).length])),
+        // + the system tag `experiment` on GOLDEN_EXPERIMENT's TEST envelope (T-038).
+        tags: { ...Object.fromEntries(GOLDEN_COLLAB.tags.map((t) => [t.name, goldenTagLeaves(plan, t.name).length])), experiment: 1 },
         threads: { open: open.length, resolved: threads.length - open.length, blocking: threads.filter((t) => t.isBlocking && !t.resolve).length },
         comments: threads.reduce((n, t) => n + t.comments.length, 0),
         reactions: threads.reduce((n, t) => n + t.reactions.reduce((m, r) => m + r.by.length, 0), 0),
@@ -575,9 +597,21 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       target: goldenTargets(plan).length + 1,
       alert: Object.values(expectedPacing(plan)).reduce((n, c) => n + c, 0),
       comment: GOLDEN_COLLAB.threads.reduce((n, t) => n + t.comments.length, 0),
-      tag: GOLDEN_COLLAB.tags.length,
+      tag: GOLDEN_COLLAB.tags.length + 1, // + the system tag `experiment` (T-038)
       dimension_value: DEFAULT_DIMENSIONS.reduce((n, d) => n + d.values.length, 0) + GOLDEN_CUSTOM_DIMENSIONS.reduce((n, d) => n + d.values.length, 0),
+      experiment: 1,
     },
     naming: { templates: GOLDEN_NAMING.length },
+    experiments: (() => {
+      const side = (want: Record<string, string>) => {
+        const match = (e: PlannedEnvelope) => Object.entries(want).every(([k, v]) => e.dimensionValues[k] === v);
+        const keys = new Set(leaves.filter(match).map((e) => e.key));
+        const rows = goldenFactRows(plan).filter((r) => r.leafKey !== null && keys.has(r.leafKey));
+        const spend = rows.reduce((s, r) => s.plus(r.cells[6] ?? 0), new Decimal(0));
+        const conversions = rows.reduce((s, r) => s.plus(r.cells[7] ?? 0), new Decimal(0));
+        return { leaves: keys.size, cpa: spend.div(conversions).toDecimalPlaces(4).toString() };
+      };
+      return { count: 1, test: side(GOLDEN_EXPERIMENT.test), control: side(GOLDEN_EXPERIMENT.control) };
+    })(),
   };
 }

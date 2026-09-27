@@ -77,6 +77,11 @@ export async function targetsFor(tx: Tx, topic: string, payload: Record<string, 
       }
       break;
     }
+    case "experiment.changed":
+      // T-038: the experiment, and its envelopes (a TEST link tags them `experiment`).
+      add(t, "experiment", strs(payload["experimentId"]));
+      add(t, "envelope", strs(payload["envelopeIds"]));
+      break;
     case "registry.changed":
       add(t, "dimension_value", strs(payload["dimensionId"]));
       add(t, "envelope", strs(payload["envelopeIds"]));

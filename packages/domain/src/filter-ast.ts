@@ -51,6 +51,8 @@ export const AttrKey = z.enum([
   "has_attachments",
   "alert_severity",
   "is_leaf",
+  /** T-038: linked to an experiment. Value: a status (RUNNING), an experiment id, or `<id>:TEST` / `<id>:CONTROL`. */
+  "experiment",
 ]);
 
 export const FieldRef = z.discriminatedUnion("kind", [

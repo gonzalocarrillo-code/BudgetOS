@@ -145,6 +145,14 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
     const dates = new Map((await tx.envelope.findMany({ where: { id: { in: ids } }, select: { id: true, startDate: true, endDate: true } })).map((e) => [e.id, e]));
     const targets = await ganttTargets(tx, workspaceId, ids, period.start, period.end, asOf);
     const markers = await ganttMarkers(tx, ids, period.start, period.end, asOf);
+    // T-038: experiments linked to these envelopes whose window overlaps the range, as they existed at asOf.
+    const experimentLinks = await tx.experimentEnvelope.findMany({
+      where: { envelopeId: { in: ids }, experiment: { startDate: { lte: new Date(period.end) }, endDate: { gte: new Date(period.start) }, createdAt: { lte: asOf } } },
+      include: { experiment: { select: { id: true, name: true, status: true, startDate: true, endDate: true } } },
+      orderBy: [{ envelopeId: "asc" }, { experimentId: "asc" }],
+    });
+    const experimentsOf = new Map<string, typeof experimentLinks>();
+    for (const l of experimentLinks) experimentsOf.set(l.envelopeId, [...(experimentsOf.get(l.envelopeId) ?? []), l]);
     const targetsOf = new Map<string, typeof targets>();
     for (const t of targets) targetsOf.set(t.envelopeId, [...(targetsOf.get(t.envelopeId) ?? []), t]);
     const markersOf = new Map<string, TimelineBar["markers"]>();
@@ -169,7 +177,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
         envelopeId: id,
         ...measuresOf(r),
         status: String(r["status"]),
-        hasChildren: own.length > 0,
+        hasChildren: own.length > 0 || experimentsOf.has(id),
         expanded: false,
         lane: 0,
         markers: markersOf.get(id) ?? [],
@@ -199,6 +207,28 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
           hasChildren: false,
           expanded: false,
           lane: lanes.get(t.targetId) ?? 0,
+          markers: [],
+        });
+      }
+      // Experiment lanes (T-038): the evaluation window, hatched; status and role in `status`.
+      for (const l of experimentsOf.get(id) ?? []) {
+        const x = l.experiment;
+        bars.push({
+          key: `${id}:x:${x.id}`,
+          parentKey: id,
+          level: levels.length + 1,
+          kind: "experiment",
+          name: x.name,
+          path: [...segments, String(r["name"]), x.name],
+          start: x.startDate.toISOString().slice(0, 10),
+          end: x.endDate.toISOString().slice(0, 10),
+          envelopeId: id,
+          experimentId: x.id,
+          status: `${x.status} · ${l.role}`,
+          paceState: "none",
+          hasChildren: false,
+          expanded: false,
+          lane: 0,
           markers: [],
         });
       }

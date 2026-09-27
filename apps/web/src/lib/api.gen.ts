@@ -864,6 +864,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listExperiments"];
+        put?: never;
+        post: operations["createExperiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/experiments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getExperiment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateExperiment"];
+        trace?: never;
+    };
+    "/api/v1/experiments/{id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["linkExperimentEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/experiments/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startExperiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/experiments/{id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["evaluateExperiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/experiments/{id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["abandonExperiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/experiments/{id}/conclude": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["concludeExperiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/timeline": {
         parameters: {
             query?: never;
@@ -2019,7 +2131,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -2166,7 +2278,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -3705,7 +3817,7 @@ export interface operations {
                                 /** @enum {string} */
                                 kind: "attr";
                                 /** @enum {string} */
-                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf";
+                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
                             };
                             /** @enum {string} */
                             op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -3818,6 +3930,295 @@ export interface operations {
                         elapsedMs: number;
                     };
                 };
+            };
+        };
+    };
+    listExperiments: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED) */
+                status?: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Experiments, newest first, with their linked envelopes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createExperiment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    hypothesis: string;
+                    /** @enum {string} */
+                    kind: "PLATFORM_TEST" | "OBJECTIVE_TEST" | "AUDIENCE_TEST" | "CREATIVE_TEST" | "GEO_HOLDOUT" | "CUSTOM";
+                    testFilter: unknown;
+                    /** @default null */
+                    controlFilter?: unknown;
+                    primaryMetric: string;
+                    criterion: {
+                        /** @enum {string} */
+                        comparator: "lte" | "gte";
+                        /** @enum {string} */
+                        vs: "control" | "absolute";
+                        value?: string;
+                        minDays?: number;
+                    };
+                    startDate: string;
+                    endDate: string;
+                    /** Format: uuid */
+                    ownerId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The experiment, PLANNED */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { experiment, readout }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        test: {
+                            budget: string | null;
+                            actual: string | null;
+                            metric: string | null;
+                            leafCount: number;
+                        };
+                        control: {
+                            budget: string | null;
+                            actual: string | null;
+                            metric: string | null;
+                            leafCount: number;
+                        } | null;
+                        delta: {
+                            abs: string;
+                            pct: string | null;
+                        } | null;
+                        criterionMet: boolean | null;
+                        daysRunning: number;
+                    };
+                };
+            };
+        };
+    };
+    updateExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    hypothesis?: string;
+                    /** @enum {string} */
+                    kind?: "PLATFORM_TEST" | "OBJECTIVE_TEST" | "AUDIENCE_TEST" | "CREATIVE_TEST" | "GEO_HOLDOUT" | "CUSTOM";
+                    testFilter?: unknown;
+                    controlFilter?: unknown;
+                    primaryMetric?: string;
+                    criterion?: {
+                        /** @enum {string} */
+                        comparator: "lte" | "gte";
+                        /** @enum {string} */
+                        vs: "control" | "absolute";
+                        value?: string;
+                        minDays?: number;
+                    };
+                    startDate?: string;
+                    endDate?: string;
+                    /** Format: uuid */
+                    ownerId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated (not once concluded or abandoned) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    linkExperimentEnvelope: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    envelopeId: string;
+                    /** @enum {string} */
+                    role: "TEST" | "CONTROL";
+                };
+            };
+        };
+        responses: {
+            /** @description Linked; a TEST envelope gets the system tag `experiment` */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    startExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PLANNED → RUNNING */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    evaluateExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description RUNNING → EVALUATING */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    abandonExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description → ABANDONED (not once concluded) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    concludeExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    decision: string;
+                };
+            };
+        };
+        responses: {
+            /** @description CONCLUDED; the decision is posted as a comment in a thread on every linked envelope */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No decision (min 20 characters), or no linked envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -4228,7 +4629,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";

@@ -74,15 +74,22 @@ export async function createThread(prisma: PrismaClient, auth: AuthContext, raw:
   if (input.isBlocking && !BLOCKABLE.includes(input.anchorType)) throw new DomainError("VALIDATION", "Only envelope and target threads can block a submit", { anchorType: input.anchorType });
   if (input.anchorType === "cell" && input.anchorMeta.month === undefined) throw new DomainError("VALIDATION", "A cell thread needs anchorMeta.month");
   if (input.anchorType === "diff_field" && input.anchorMeta.field === undefined) throw new DomainError("VALIDATION", "A diff_field thread needs anchorMeta.field");
-  return withTenant(prisma, auth.ctx, async (tx) => {
-    assertCanRead(auth, await resolveAnchor(tx, workspaceId, input.anchorType, input.anchorId));
-    const thread = await tx.thread.create({
-      data: { id: newId(), workspaceId, anchorType: input.anchorType, anchorId: input.anchorId, anchorMeta: json(input.anchorMeta), title: input.title ?? null, isBlocking: input.isBlocking, createdBy: auth.user.id },
-    });
-    const { comment, mentions } = await insertComment(tx, auth, thread, input.firstComment);
-    await record(tx, auth, thread, "thread.created", { isBlocking: thread.isBlocking, title: thread.title }, mentions, comment.id);
-    return { ...thread, createdAt: thread.createdAt.toISOString(), comments: [{ id: comment.id, bodyMd: comment.bodyMd, mentions }] };
+  return withTenant(prisma, auth.ctx, (tx) => createThreadIn(tx, auth, workspaceId, input));
+}
+
+/**
+ * A thread and its first comment inside the caller's transaction (its own audit_event and
+ * `thread.changed` outbox row, so notify and search see it). Used by POST /threads and by commands
+ * that post a comment as part of their write (an experiment's decision, T-038).
+ */
+export async function createThreadIn(tx: Tx, auth: AuthContext, workspaceId: string, input: CreateThreadInput) {
+  assertCanRead(auth, await resolveAnchor(tx, workspaceId, input.anchorType, input.anchorId));
+  const thread = await tx.thread.create({
+    data: { id: newId(), workspaceId, anchorType: input.anchorType, anchorId: input.anchorId, anchorMeta: json(input.anchorMeta), title: input.title ?? null, isBlocking: input.isBlocking, createdBy: auth.user.id },
   });
+  const { comment, mentions } = await insertComment(tx, auth, thread, input.firstComment);
+  await record(tx, auth, thread, "thread.created", { isBlocking: thread.isBlocking, title: thread.title }, mentions, comment.id);
+  return { ...thread, createdAt: thread.createdAt.toISOString(), comments: [{ id: comment.id, bodyMd: comment.bodyMd, mentions }] };
 }
 
 /** POST /threads/:id/comments */
