@@ -29,6 +29,9 @@ Product direction (2026-09-27): spend and projected spend come from the client's
   - It returns exactly what the per-envelope planner returns: the same columns, order keys and cursor. A test asserts this across group-bys, filters, sorts, `asOf`, mid-month periods and paging.
   - It covers grouped and total queries whose filter reads dimensions and envelope attributes. Queries with measure filters, KPI targets, templates, flat pages or envelope scopes keep the per-envelope planner.
   - The roll-up worker's full build uses it.
+  - **Plan shape.** Under RLS, Postgres estimates the selected envelopes at a row or two. Every per-envelope input is therefore a `UNION ALL` folded by one `GROUP BY envelope_id` rather than joined. Dimension values are looked up per selected envelope on the `(envelope_id, dimension_id)` key (`LATERAL … LIMIT 1`).
+    - The first version joined the CTEs. At 100 shards it re-ran the spend aggregate once per envelope (3.2 s for leaf-page totals), and nested-looped dimension values against every envelope: 647M comparisons, 97 s for the pivot.
+    - Measured afterwards on the same data: 91 ms for the leaf-page totals and 460 ms warm for the pivot.
 - **Warehouse routing** (`runQuery`, `engine.ts`).
   - This applies when `BIGQUERY_DATASET` is set and the query is a grouped shape the BigQuery dialect supports (`compileAggregateBq`: no `asOf`; dimension predicates, status and is_leaf).
   - The query runs on BigQuery when the period spans more than 13 months or `EXPLAIN` estimates more than 200k rows.
