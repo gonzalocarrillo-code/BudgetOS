@@ -10902,11 +10902,29 @@
                 "next_90_days"
               ]
             }
+          },
+          {
+            "name": "rows",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Heatmap rows: a registry granularity key (default country)"
+          },
+          {
+            "name": "cols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Heatmap columns: another granularity key (default platform)"
           }
         ],
         "responses": {
           "200": {
-            "description": "The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness"
+            "description": "The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness"
           }
         }
       }

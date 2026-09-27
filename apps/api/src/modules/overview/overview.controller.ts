@@ -11,7 +11,7 @@ export class OverviewController {
 
   @Get("workspaces/:ws/overview")
   @Permission("envelope.read")
-  get(@Tenant() auth: AuthContext, @Query("period") period?: string) {
-    return overview(this.prisma, auth, period);
+  get(@Tenant() auth: AuthContext, @Query("period") period?: string, @Query("rows") rows?: string, @Query("cols") cols?: string) {
+    return overview(this.prisma, auth, period, { rows, cols });
   }
 }

@@ -50,6 +50,22 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(o.totals["budget"]).toBe((q.body["totals"] as Record<string, string>)["budget"]);
   });
 
+  it("the heatmap's axes are any two granularities the caller picks; every column comes back (product feedback 8)", async () => {
+    const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?rows=region&cols=objective`);
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+    const o = res.body as Body & { heatmap: { rowDimension: { key: string }; colDimension: { key: string }; cols: string[]; cells: Array<{ budget: string; spend_to_date_pct: string | null }>; dimensions: Array<{ key: string }> }; totals: Record<string, string>; period: { elapsed: string } };
+    expect([o.heatmap.rowDimension.key, o.heatmap.colDimension.key]).toEqual(["region", "objective"]);
+    expect(o.heatmap.dimensions.map((d) => d.key)).toEqual(expect.arrayContaining(["country", "platform", "region", "objective"]));
+    expect(o.heatmap.cells.every((c) => c.spend_to_date_pct !== undefined)).toBe(true);
+    const sum = o.heatmap.cells.reduce((s, c) => s.plus(c.budget ?? 0), new Decimal(0));
+    expect(sum.toFixed(2)).toBe(new Decimal(o.totals["budget"] ?? 0).toFixed(2)); // any axes: same leaves, same total
+    expect(Number(o.period.elapsed)).toBeGreaterThan(0);
+    const platforms = (await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview`)).body as Body & { heatmap: { cols: string[]; cells: Array<{ col: string | null }> } };
+    expect([...platforms.heatmap.cols].sort()).toEqual([...new Set(platforms.heatmap.cells.map((c) => c.col).filter((c): c is string => c !== null))].sort()); // every platform, none cut off
+    expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?rows=region&cols=region`)).status).toBe(422);
+    expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?rows=nope`)).status).toBe(422);
+  });
+
   it("top variances are over and under, largest first; alerts, approvals and freshness are there; fast", async () => {
     const started = Date.now();
     const res = await as("budgetOwner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=current_year`);
