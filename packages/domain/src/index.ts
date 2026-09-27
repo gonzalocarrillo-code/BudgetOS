@@ -188,3 +188,5 @@ export {
 export { CompleteTourInput, CreateWorkspaceInput, HomeResponse, HomeScope, ListToursQuery, TemplateSavedView, TourRole, TourStep, UpdateTourInput, tourRolesFor } from "./home.js";
 export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
+export { elapsedFraction, groupRatios } from "./rollup-measures.js";
+export type { GroupSums } from "./rollup-measures.js";

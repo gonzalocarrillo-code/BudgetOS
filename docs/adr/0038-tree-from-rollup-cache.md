@@ -45,6 +45,14 @@ The Explorer uses it for tree levels when there is no filter and no as-of date. 
 
 **Planner.** Dimension predicates compile to `e.id [NOT] IN (the value's envelopes)` instead of a correlated `EXISTS`. Inside an OR, Postgres hashes each set once instead of probing it per row. They are equivalent because `envelope_id` is never null.
 
+**One roll-up writer per workspace at a time.** Every refresh upserts the root and shared ancestors. Two concurrent deliveries, or a delivery and a rebuild, would lock the same rows in different orders and deadlock. Each roll-up transaction takes a per-workspace advisory lock first (`lockRollup`); different workspaces still run in parallel.
+
+**Ratios for the reading day.** Pace depends on today, and a cached node only changes when its data does. `/tree` recomputes the ratios (pace index, spend-to-date, projected close, variance %) from the cached sums for the request's day, with the shared `groupRatios` / `elapsedFraction` from `@budget/domain`. The worker stores the same formulas for closures.
+
+**Local delivery.** There is no Pub/Sub locally. The local runner (Playwright stack and `pnpm dev:local`) now delivers the roll-up worker's topics as well as `ingest.requested`: `budget.changed`, `facts.loaded`, `registry.changed` and `naming.changed`. It serves the newest workspace first, so a workspace a crashed run left behind cannot starve the live one.
+
+**The golden seed marks its events delivered** after its own full re-index and roll-up rebuild, which already applied them. The runner then does not replay thousands of superseded events; events after that point are delivered as usual.
+
 ## Consequences
 
 **Measured locally** at 19.5k leaves (untuned Postgres):

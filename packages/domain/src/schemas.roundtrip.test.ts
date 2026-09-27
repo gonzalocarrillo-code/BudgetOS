@@ -92,6 +92,23 @@ const samples: Record<string, readonly unknown[]> = {
       elapsedMs: 12,
     },
   ],
+  TreeRequest: [
+    { workspaceId: "01a0e0da-e7e9-7f9a-9212-1c166382caf2", templateId: "01a0e0da-e7e9-7f9a-9212-1c166382caf3", period: { kind: "relative", preset: "current_quarter" } },
+    { workspaceId: "01a0e0da-e7e9-7f9a-9212-1c166382caf2", templateId: "01a0e0da-e7e9-7f9a-9212-1c166382caf3", period: { kind: "range", start: "2026-01-01", end: "2026-12-31" }, parentPath: "LATAM/BR", measures: ["budget", "pace_index"] },
+  ],
+  TreeResponse: [
+    {
+      available: true,
+      reason: null,
+      rows: [{ key: "LATAM/BR", envelopeId: null, path: ["LATAM", "BR"], dimensions: { region: "LATAM", country: "BR" }, measures: { budget: "10.00", pace_index: "0.95" }, targets: {}, status: null, pendingCount: 1, openAlerts: 0, openThreads: 0 }],
+      totals: { budget: "10.00", leafCount: "4" },
+      dataAsOf: "2026-09-28T10:00:00.000Z",
+      dataVersion: 7,
+      cacheVersion: 6,
+      elapsedMs: 8,
+    },
+    { available: false, reason: "scoped", rows: [], totals: {}, dataAsOf: "2026-09-28T10:00:00.000Z", dataVersion: 7, cacheVersion: null, elapsedMs: 2 },
+  ],
   PolicyConditions: [
     {},
     {

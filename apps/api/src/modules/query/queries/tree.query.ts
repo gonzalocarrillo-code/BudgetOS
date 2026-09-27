@@ -1,4 +1,5 @@
-import { DomainError, TreeRequest, readScopeFilter, resolvePeriod, type QueryRow, type TreeResponse } from "@budget/domain";
+import { DomainError, TreeRequest, elapsedFraction, groupRatios, readScopeFilter, resolvePeriod, type QueryRow, type TreeResponse } from "@budget/domain";
+import { Decimal } from "decimal.js";
 import { withTenant } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileTree } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
@@ -48,7 +49,13 @@ export async function treeQuery(prisma: PrismaClient, auth: AuthContext, raw: un
     if (!root) return unavailable("not_cached", dataVersion, now, started);
     const children = await read(q.parentPath, undefined);
     const measures = [...new Set(q.measures)];
-    const pick = (m: Cached["measures"]) => Object.fromEntries(measures.map((k) => [k, text(m[k])]));
+    // Ratios for today: pace moves every day while a cached node only changes with its data.
+    const elapsed = elapsedFraction(period, now.toISOString().slice(0, 10));
+    const dec = (v: unknown) => (v === null || v === undefined ? null : new Decimal(String(v)));
+    const pick = (m: Cached["measures"]) => {
+      const withRatios: Record<string, unknown> = { ...m, ...groupRatios({ budget: dec(m["budget"]), actual: dec(m["actual"]), projected: dec(m["projected"]) }, elapsed) };
+      return Object.fromEntries(measures.map((k) => [k, text(withRatios[k])]));
+    };
     const keys = template.path.slice(0, parentDepth + 1);
     const rows: QueryRow[] = children.map((n) => {
       const segments = n.node_path.split("/");

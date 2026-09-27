@@ -598,7 +598,7 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
 });
 
 describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree from rollup_cache)", () => {
-  const ALL = ["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "spend_to_date_pct", "projected_close_pct"] as const;
+  const ALL = ["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "spend_to_date_pct", "projected_close_pct"] as const;
   const EXACT = new Set(["budget", "actual", "projected", "remaining", "variance_abs"]);
   const who = (scope: AuthContext["assignments"][number]["scope"] = {}): AuthContext => ({
     ctx: { ...ctx(), userId: golden.users.planner },

@@ -11,14 +11,14 @@ export type { DimensionValuePathRow, DimensionValueStateRow, UpsertDimensionValu
 export { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "../seed/defaults.registry.js";
 export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.registry.js";
 export { audit, bumpDataVersion, outbox } from "./sql.js";
-export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
+export { claimOutbox, markOutboxDelivered, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
 export { closedPeriods, lockPeriodEnvelopes, unlockClosureEnvelopes } from "./closures.js";
 export type { ClosedPeriod } from "./closures.js";
-export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, rollupChildren, upsertRollupNodes } from "./rollup.js";
+export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, lockRollup, rollupChildren, upsertRollupNodes } from "./rollup.js";
 export type { RollupNode, RollupScope } from "./rollup.js";
 export type { SearchDoc } from "./search.js";
 export { openAlert, saveRuleStates } from "./alerts.js";

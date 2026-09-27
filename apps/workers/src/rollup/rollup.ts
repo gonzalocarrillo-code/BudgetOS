@@ -1,5 +1,5 @@
-import { LIVE_LEAVES, QueryRequest, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx } from "@budget/db";
+import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
+import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
@@ -58,29 +58,16 @@ function add(into: Sums, x: Sums): void {
 const sumsOfRow = (r: Row): Sums => ({ budget: dec(r["budget"]), actual: dec(r["actual"]), projected: dec(r["projected"]), remaining: dec(r["remaining"]), variance_abs: dec(r["variance_abs"]), leafCount: Number(r["leaf_count"] ?? 0), pendingCount: Number(r["pending_count"] ?? 0) });
 const sumsOfCached = (m: Record<string, unknown>): Sums => ({ budget: dec(m["budget"]), actual: dec(m["actual"]), projected: dec(m["projected"]), remaining: dec(m["remaining"]), variance_abs: dec(m["variance_abs"]), leafCount: Number(m["leafCount"] ?? 0), pendingCount: Number(m["pendingCount"] ?? 0) });
 
-/** The planner's elapsed fraction of the period at `today` (compile-query.ts `elapsedFrac`). */
-function elapsed(period: Period, today: string): Decimal {
-  const day = (d: string) => Date.parse(`${d}T00:00:00Z`) / 86_400_000;
-  const len = day(period.end) - day(period.start) + 1;
-  if (len <= 0) return new Decimal(0);
-  return Decimal.min(1, Decimal.max(0, new Decimal(day(today) - day(period.start) + 1).div(len)));
-}
-
 /** Stored measures: money as NUMERIC(18,2) strings; ratios recomputed from the sums, never averaged. */
 function measuresOf(x: Sums, frac: Decimal): RollupNode["measures"] {
   const money = (v: Decimal | null) => (v === null ? null : v.toFixed(2));
-  const positive = x.budget !== null && x.budget.gt(0) ? x.budget : null;
-  const ratio = (n: Decimal | null) => (positive === null || n === null ? null : n.div(positive).toString());
   return {
     budget: money(x.budget),
     actual: money(x.actual),
     projected: money(x.projected),
     remaining: money(x.remaining),
     variance_abs: money(x.variance_abs),
-    variance_pct: positive === null || x.projected === null ? null : x.projected.minus(positive).div(positive).toString(),
-    pace_index: positive === null || x.actual === null || frac.lte(0) ? null : x.actual.div(positive).div(frac).toString(),
-    spend_to_date_pct: ratio(x.actual),
-    projected_close_pct: ratio(x.projected),
+    ...groupRatios(x, frac),
     leafCount: x.leafCount,
     pendingCount: x.pendingCount,
   };
@@ -173,7 +160,7 @@ export async function templateNodes(tx: Tx, ctx: Ctx, template: Pick<HierarchyTe
   }
   const paths = [...sums.keys()].sort((a, b) => depthOf(a) - depthOf(b) || (a < b ? -1 : a > b ? 1 : 0));
   const envelopeOf = await nodeEnvelopes(tx, ctx.workspaceId, template.path, paths);
-  const frac = elapsed(period, ctx.today);
+  const frac = elapsedFraction(period, ctx.today);
   return paths.map((p) => ({ nodePath: p, envelopeId: envelopeOf.get(p) ?? null, measures: measuresOf(sums.get(p) as Sums, frac) }));
 }
 
@@ -194,7 +181,7 @@ export async function refreshTemplate(tx: Tx, ctx: Ctx, template: Pick<Hierarchy
   const envs = await tx.envelope.findMany({ where: { id: { in: envelopeIds } }, select: { dimensionValues: true } });
   const scope = { workspaceId: ctx.workspaceId, templateId: template.id, periodStart: period.start, periodEnd: period.end, dataVersion: await dataVersionOf(tx, ctx.workspaceId) };
   const depth = template.path.length;
-  const frac = elapsed(period, ctx.today);
+  const frac = elapsedFraction(period, ctx.today);
   if (depth === 0) {
     return { upserted: await upsertRollupNodes(tx, scope, [{ nodePath: ROOT_PATH, envelopeId: null, measures: measuresOf(await rootSums(tx, ctx, period), frac) }]), deleted: 0 };
   }
@@ -260,6 +247,7 @@ export async function rebuildWorkspace(prisma: PrismaClient, tenant: { workspace
       prisma,
       system(tenant, `rollup-${t.id}`),
       async (tx) => {
+        await lockRollup(tx, tenant.workspaceId);
         for (const p of await periodsFor(tx, ctx, t.id, opts.periods ?? [])) counts[`${t.name}|${p.start}|${p.end}`] = await buildTemplate(tx, ctx, t, p);
       },
       { timeoutMs: 300_000 },
@@ -275,6 +263,7 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
   const ctx: Ctx = { workspaceId: event.workspaceId, orgId: event.orgId, today };
   let result: { templates: number; upserted: number; deleted: number; rebuilt: boolean; renamed?: number } = { templates: 0, upserted: 0, deleted: 0, rebuilt: false };
   const outcome = await handleOnce(prisma, ROLLUP_CONSUMER, event, async (tx) => {
+    await lockRollup(tx, event.workspaceId);
     // T-036 (§24.2): a naming or registry change renames every envelope (labels, codes, templates).
     if (event.topic === "naming.changed" || event.topic === "registry.changed") result.renamed = await recomputeNames(tx, event.workspaceId);
     if (!["budget.changed", "facts.loaded", "registry.changed"].includes(event.topic)) return;

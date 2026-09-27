@@ -17,3 +17,13 @@
 - **Needs:** Postgres and Redis from `packages/db/.env` (and `REDIS_URL`), Node 22.
 - **Stop:** Ctrl-C (or stop the "local" preview). The data is kept.
 - **The Playwright stack** (`pnpm test:e2e`, `e2e:stack`) is separate: fresh workspace, new key, other ports.
+
+## Roll-up cache (ADR-038)
+
+The Explorer's tree reads `rollup_cache`. Locally, the worker runner (`apps/workers/src/local-runner.ts`) delivers `budget.changed`, `facts.loaded`, `registry.changed` and `naming.changed` to the roll-up worker, so parent totals catch up a few seconds after an edit.
+
+If the tree looks stale:
+
+1. Check the runner is up (`local runner up` in its log).
+2. Look for unpublished outbox rows of the workspace.
+3. Rebuild the workspace: `pnpm --filter @budget/workers exec tsx src/rollup/main.ts rebuild --workspace <id> --org <id>` with `APP_DATABASE_URL`.

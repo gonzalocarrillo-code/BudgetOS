@@ -118,3 +118,12 @@ export async function envelopesUnderPrefixes(tx: Tx, tenant: { workspaceId: stri
   const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT DISTINCT envelope_id::text AS id FROM (${arms.map((a) => `(${a})`).join(" UNION ALL ")}) x`, ...params);
   return rows.map((r) => r.id);
 }
+
+/**
+ * Serializes roll-up writers of one workspace (ADR-038): every refresh upserts the root and shared
+ * ancestors, so two concurrent deliveries (or a delivery and a rebuild) would otherwise take the
+ * same rows' locks in different orders and deadlock. Held until the transaction ends.
+ */
+export async function lockRollup(tx: Tx, workspaceId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('rollup:' || ${workspaceId}, 0))`;
+}
