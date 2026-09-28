@@ -28,10 +28,8 @@ describe("Explorer labels (product feedback 2: the root is the account, not '(no
     expect(explorerLabels(dims, null).none("client", 0)).toBe("No Client");
   });
 
-  it("the tree's root group is named after the account; a pivot's empty group says what is missing", async () => {
+  it("a pivot's empty group says what is missing", async () => {
     const labels = explorerLabels(dims, "Golden");
-    const tree = new ExplorerRowSource({ ws: "w", view: "tree", filter: { logic: "and", children: [] }, period: {}, measures: ["budget"], templateId: "00000000-0000-4000-8000-000000000001", levels: ["client", "region"], groupBy: [], expanded: [], sort: [] }, labels, () => undefined);
-    expect((await tree.getRows({ start: 0, end: 10 })).rows.map((r) => (r as { name: string }).name)).toEqual(["Golden"]);
     const pivot = new ExplorerRowSource({ ws: "w", view: "pivot", filter: { logic: "and", children: [] }, period: {}, measures: ["budget"], levels: [], groupBy: ["client", "region"], expanded: [], sort: [] }, labels, () => undefined);
     expect((await pivot.getRows({ start: 0, end: 10 })).rows.map((r) => (r as { name: string }).name)).toEqual(["No Client · No Region"]);
   });

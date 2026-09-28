@@ -35,7 +35,7 @@ test.describe("registry (T-031)", () => {
     const started = Date.now();
     await page.getByTestId("dim-save").click();
     await expect(page.getByTestId("dimension-header")).toContainText("Retail tier");
-    await expect(page.getByTestId("dimension-header")).toContainText("nests under country");
+    await expect(page.getByTestId("dimension-header")).toContainText("values nest under country");
     await expect(row(page, "flagship")).toBeVisible();
     await expect(row(page, "tier_2")).toBeVisible();
 
@@ -82,9 +82,9 @@ test.describe("registry (T-031)", () => {
     await page.getByTestId("template-name").fill("Country by retail tier");
     await page.getByTestId("template-add").and(page.locator('[data-key="retail_tier"]')).click();
     await page.getByTestId("template-add").and(page.locator('[data-key="country"]')).click();
-    // Country (nests under region) cannot sit under Retail tier: the level says why until it moves up.
-    await expect(page.getByTestId("template-level").nth(1)).toContainText("cannot sit under Retail tier");
-    await expect(page.getByTestId("template-save")).toBeDisabled();
+    // Levels nest in any order (ADR-049): Country may sit under Retail tier; reorder anyway.
+    await expect(page.getByTestId("template-level").nth(1)).not.toContainText("cannot sit under");
+    await expect(page.getByTestId("template-save")).toBeEnabled();
     await expect(page.getByTestId("template-level").first()).toHaveAttribute("data-key", "retail_tier");
     await page.getByRole("button", { name: "Move Country up" }).click();
     await expect(page.getByTestId("template-levels").getByTestId("template-level")).toHaveText([/Country/, /Retail tier/]);

@@ -7,19 +7,15 @@ import { api, unwrap } from "../../lib/api.js";
 import type { Dimension, Template } from "../../lib/queries.js";
 import { DimensionIcon } from "./dimension-icon.js";
 
-/** Why a level cannot sit under the one above it (the API refuses the same), or null. */
+/** Why a level cannot be saved (the API refuses the same), or null. Levels nest in any order (ADR-049). */
 export function levelProblem(path: string[], i: number, dims: Dimension[]): string | null {
-  const d = dims.find((x) => x.key === path[i]);
-  if (!d) return t("registry.hierarchy.unknown");
-  const parent = path[i - 1];
-  if (i === 0 || parent === undefined || d.allowedParents.length === 0 || d.allowedParents.includes(parent)) return null;
-  return t("registry.hierarchy.cannotNest", { child: d.label, parent: dims.find((x) => x.key === parent)?.label ?? parent, allowed: d.allowedParents.join(", ") });
+  return dims.some((x) => x.key === path[i] && x.isActive) ? null : t("registry.hierarchy.unknown");
 }
 
 /**
  * HierarchyBuilder (spec §18.5): the ordered paths the Explorer's tree follows. Pick a template or
- * start one; add levels, reorder them (drag, or the arrow buttons), remove them; make one the
- * default. Envelopes never change, only the tree does. A level that cannot nest where it sits says why.
+ * start one; add levels, reorder them freely (drag, or the arrow buttons), remove them; make one the
+ * default. Envelopes never change, only the tree does.
  */
 export function HierarchyBuilder({ ws, dims, templates, blocked, onSaved }: { ws: string; dims: Dimension[]; templates: Template[]; blocked: string | null; onSaved: () => Promise<void> }): ReactElement {
   const [selected, setSelected] = useState<string>(templates.find((x) => x.isDefault)?.id ?? templates[0]?.id ?? "new");

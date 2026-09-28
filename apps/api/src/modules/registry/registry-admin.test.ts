@@ -99,14 +99,16 @@ describe("registry admin (T-031)", () => {
     expect((await values("market_tier")).get("tier1_core_a")?.path).toBe("tier1_core.tier1_core_a");
   });
 
-  it("hierarchy templates: rename, reorder within allowedParents, and make default", async () => {
+  it("hierarchy templates: rename, reorder in any order, and make default", async () => {
     const child = await call(admin, "POST", `/workspaces/${ws}/dimensions`, { key: "store_cluster", label: "Store cluster", dataType: "ENUM", icon: "lucide:store", allowedParents: ["market_tier"], workspaceId: ws });
     expect(child.status, JSON.stringify(child.body)).toBe(201);
     const a = await call(admin, "POST", `/workspaces/${ws}/hierarchy-templates`, { name: "By tier", path: ["market_tier", "store_cluster"], isDefault: true });
     const b = await call(admin, "POST", `/workspaces/${ws}/hierarchy-templates`, { name: "Tier only", path: ["market_tier"] });
     expect([a.status, b.status]).toEqual([201, 201]);
     const id = String(b.body["id"]);
-    expect((await call(admin, "PATCH", `/hierarchy-templates/${id}`, { path: ["market_tier", "store_cluster", "store_cluster"] })).status).toBe(422); // store_cluster nests only under market_tier
+    expect((await call(admin, "PATCH", `/hierarchy-templates/${id}`, { path: ["market_tier", "store_cluster", "store_cluster"] })).status).toBe(422); // a level once
+    // Levels nest in any order (ADR-049): store_cluster's values nest under market_tier's, its level need not.
+    expect((await call(admin, "PATCH", `/hierarchy-templates/${id}`, { path: ["store_cluster", "market_tier"] })).body).toMatchObject({ path: ["store_cluster", "market_tier"] });
     expect((await call(admin, "PATCH", `/hierarchy-templates/${id}`, { name: "By tier" })).status).toBe(409);
     expect((await call(viewer, "PATCH", `/hierarchy-templates/${id}`, { name: "x" })).status).toBe(403);
     const requestId = rid();

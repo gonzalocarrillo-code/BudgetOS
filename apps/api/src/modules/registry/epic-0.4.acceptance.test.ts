@@ -293,10 +293,16 @@ it("creates a dimension, nested values, and another hierarchy template", async (
     path: ["region", "country"],
     isDefault: false,
   });
+  // Levels nest in any order (ADR-049); a level appears once, and must exist.
+  await saveHierarchyTemplate(app, ctx, ["WORKSPACE_ADMIN"], {
+    name: "Country first",
+    path: ["country", "region"],
+    isDefault: false,
+  });
   await expectDomain("VALIDATION", () =>
     saveHierarchyTemplate(app, ctx, ["WORKSPACE_ADMIN"], {
       name: "Bad",
-      path: ["country", "region"],
+      path: ["country", "country"],
       isDefault: false,
     }),
   );
@@ -308,7 +314,7 @@ it("creates a dimension, nested values, and another hierarchy template", async (
   expect(retailer?.values.map((value) => value.path).sort()).toEqual(["grocery", "grocery.carrefour"]);
 
   const templates = await withTenant(app, ctx, (tx) => listHierarchyTemplates(tx, workspaceId));
-  expect(templates.map((template) => template.name)).toEqual(["Default", "Geo"]);
+  expect(templates.map((template) => template.name)).toEqual(["Country first", "Default", "Geo"]);
 
   const audits = await owner.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM audit_event
