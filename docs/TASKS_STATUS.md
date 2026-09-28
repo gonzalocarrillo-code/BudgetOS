@@ -333,3 +333,7 @@ The spec-scale load job re-measures this on this branch.
 - Submitting for approval, rejecting, requesting changes, withdrawing, re-routing on a move, and closing or restating a period change `envelope.status` to or from PENDING without a `budget.changed`. The cached `pendingCount` stayed stale.
 - `rollup-worker` now also consumes `approval.changed` (status-changing actions only), `period.closed` and `period.restated`, and refreshes the affected envelopes' paths. No write emits a second outbox row.
 - Test: `apps/workers/src/rollup/rollup.test.ts`, "status-only events … refresh pendingCount to what a rebuild gives".
+
+## Product feedback, round 3 (2026-09-28)
+
+- **An org admin can approve anything**, their own changes included: `eligible_approver()` (migration `20260930000000_org_admin_approves`) and `eligibleApprover()` let an org-wide ORG_ADMIN decide any step. Everyone else keeps the step role, the group and blockSelfApproval.
