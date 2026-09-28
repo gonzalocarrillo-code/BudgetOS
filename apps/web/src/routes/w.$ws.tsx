@@ -26,7 +26,9 @@ export const Route = createFileRoute("/w/$ws")({
 
 function WorkspaceLayout(): ReactElement {
   const { ws } = Route.useParams();
-  const { me } = Route.useRouteContext();
+  const { me: loaded } = Route.useRouteContext();
+  // Live after the first load: a renamed person or a new workspace shows without a reload.
+  const { data: me = loaded } = useQuery(meQuery);
   // Keeps the registry fresh after the loader (a new dimension shows up without a reload).
   useQuery(registryQuery(ws));
   return (

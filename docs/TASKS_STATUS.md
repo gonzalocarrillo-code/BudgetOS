@@ -333,3 +333,12 @@ The spec-scale load job re-measures this on this branch.
 - Submitting for approval, rejecting, requesting changes, withdrawing, re-routing on a move, and closing or restating a period change `envelope.status` to or from PENDING without a `budget.changed`. The cached `pendingCount` stayed stale.
 - `rollup-worker` now also consumes `approval.changed` (status-changing actions only), `period.closed` and `period.restated`, and refreshes the affected envelopes' paths. No write emits a second outbox row.
 - Test: `apps/workers/src/rollup/rollup.test.ts`, "status-only events … refresh pendingCount to what a rebuild gives".
+
+## Product feedback, round 3: Home (2026-09-28)
+
+- **Greeting:** "Good morning / afternoon / evening, <first name>".
+- **Names:** each person can change their own name from the top bar (`PATCH /me`, through the `app_set_my_name()` definer function, which changes only their own name; audited).
+- **Blank workspace:** Home says "Add your first budgets", with a five-step getting-started list: budgets, spend data, people, approval policies, pacing rules.
+- **With budgets:** a summary strip (the year's budget, % spent against % of the year gone, open alerts, waiting on you) above "Waiting on you".
+- **New budget:** Budgets gets a "New budget" button for a top-level budget (there was no way to add a first one; Add child needs a parent).
+- **Fix:** Home's saved views now include workspace-shared views; it asked for visibility values that don't exist.

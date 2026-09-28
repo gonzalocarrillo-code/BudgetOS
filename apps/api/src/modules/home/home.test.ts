@@ -123,7 +123,11 @@ describe("home (T-040)", () => {
     const res = await as("budgetOwner", "GET", "/me/home");
     expect(res.status, JSON.stringify(res.body).slice(0, 400)).toBe(200);
     const home = res.body as { waitingOnMe: { approvals: unknown[]; mentions: Array<{ body: string; author: string | null }>; alerts: unknown[]; unmatched: number }; scopes: Array<{ label: string; filter: unknown; budget: string }>; recents: unknown[]; pinnedViews: Array<{ name: string }> };
-    expect(Object.keys(res.body)).toEqual(["waitingOnMe", "scopes", "recents", "pinnedViews"]);
+    expect(Object.keys(res.body)).toEqual(["waitingOnMe", "scopes", "recents", "pinnedViews", "workspace", "totals", "setup"]);
+    // The header: the workspace, its fiscal year so far, and the year's totals over what the caller reads.
+    expect(res.body["workspace"]).toMatchObject({ name: "Golden", currency: "USD" });
+    expect((res.body["setup"] as { budgets: number }).budgets).toBeGreaterThan(0);
+    expect((res.body["totals"] as { budget: string | null }).budget).not.toBeNull();
     expect(home.waitingOnMe.unmatched).toBeGreaterThan(0); // the golden CSV's unmatched US rows
     expect(home.scopes.length).toBeGreaterThan(0);
     const first = home.scopes[0];
@@ -143,5 +147,35 @@ describe("home (T-040)", () => {
     const planner = (await as("planner", "GET", "/me/home")).body as typeof home;
     expect(planner.recents.length).toBeGreaterThan(0);
     expect(planner.pinnedViews.map((v) => v.name).length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("a workspace with no budgets says so: no totals, and what is set up (feedback 2026-09-28)", async () => {
+    const templates = (await as("orgAdmin", "GET", "/workspace-templates", undefined, null)).body as unknown as Array<{ id: string; key: string }>;
+    const res = await as("orgAdmin", "POST", "/workspaces", { name: "Blank", templateId: templates.find((t) => t.key === "default_agency")?.id, withDemoData: false }, null);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const ws = String(res.body["id"]);
+    created.push(ws);
+    const home = await as("orgAdmin", "GET", "/me/home", undefined, ws);
+    expect(home.status, JSON.stringify(home.body).slice(0, 300)).toBe(200);
+    expect(home.body["totals"]).toBeNull();
+    expect(home.body["setup"]).toMatchObject({ budgets: 0, sources: 0, spend: false });
+    expect(home.body["workspace"]).toMatchObject({ name: "Blank" });
+  });
+
+  it("a person renames themselves: only their name, audited (feedback 2026-09-28)", async () => {
+    const bad = await as("planner", "PATCH", "/me", { name: "  " });
+    expect(bad.status).toBe(422);
+    const ok = await as("planner", "PATCH", "/me", { name: "Maya Chen" });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body).toMatchObject({ id: golden.users.planner, name: "Maya Chen" });
+    const me = await as("planner", "GET", "/me", undefined, null);
+    expect((me.body["user"] as { name: string }).name).toBe("Maya Chen");
+    const row = await owner.user.findUniqueOrThrow({ where: { id: golden.users.planner }, select: { name: true, email: true } });
+    expect(row).toMatchObject({ name: "Maya Chen", email: `planner@${slug}.golden.test` });
+    const [audited] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'user.renamed'`, golden.users.planner);
+    expect(Number(audited?.n)).toBe(1);
+    const [evented] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'user.updated' AND payload->>'userId' = $1`, golden.users.planner);
+    expect(Number(evented?.n)).toBe(1);
+    await owner.user.update({ where: { id: golden.users.planner }, data: { name: "Golden planner" } });
   });
 });
