@@ -33,8 +33,9 @@ export class HomeController {
     return completeTour(this.prisma, auth, id, body);
   }
 
+  /** A workspace's own tours (ORG-007): its admins edit them; the built-in defaults stay superadmin-owned. */
   @Patch("tours/:id")
-  @Permission("org.admin")
+  @Permission("user.manage")
   updateTour(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateTourDto) {
     return updateTour(this.prisma, auth, id, body);
   }

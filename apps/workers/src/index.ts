@@ -22,3 +22,4 @@ export type { ExportResult } from "./export/export.js";
 export { buildTable } from "./export/table.js";
 export type { Column, ExportTable } from "./export/table.js";
 export { toCsv, toXlsx } from "./export/writers.js";
+export { purgeDueWorkspaces, purgeWorkspace } from "./purge/purge.js";

@@ -1,5 +1,11 @@
 import { z } from "zod";
 import {
+  AddMemberInput,
+  DeleteWorkspaceInput,
+  OrgPeopleResponse,
+  OrgWorkspacesResponse,
+  UpdateOrgPersonInput,
+  UpdateWorkspaceStatusInput,
   AddValuesInput,
   AssignRoleInput,
   MergeEnvelopesInput,
@@ -81,7 +87,6 @@ import {
   GeneratePeriodsInput,
   PeriodRow,
   UpdatePeriodInput,
-  AddPersonInput,
   PeopleResponse,
   UpdateMeInput,
   UpdateWorkspaceInput,
@@ -117,8 +122,8 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "assignRole", parameters: [workspaceParam], requestBody: json(AssignRoleInput), responses: { "200": { description: "Created role assignment" } } },
       },
       "/api/v1/workspaces/{ws}/members": {
-        get: { operationId: "listMembers", parameters: [workspaceParam], responses: { "200": { description: "The org's people and groups, each with its role assignments in this workspace", ...json(PeopleResponse) } } },
-        post: { operationId: "addMember", parameters: [workspaceParam], requestBody: json(AddPersonInput), responses: { "201": { description: "Added to the org by email (or the existing person); they sign in with Google later" }, "409": { description: "The email belongs to another organisation" } } },
+        get: { operationId: "listMembers", parameters: [workspaceParam], responses: { "200": { description: "The people and groups with a role in this workspace (a superadmin sees the whole org), each with its role assignments here", ...json(PeopleResponse) } } },
+        post: { operationId: "addMember", parameters: [workspaceParam], requestBody: json(AddMemberInput), responses: { "201": { description: "Added to this workspace by email with a role here (joins the org when new); they sign in with Google later" }, "409": { description: "The email belongs to another organisation" } } },
       },
       "/api/v1/roles/{id}": {
         delete: { operationId: "revokeRole", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Revoked role assignment" } } },
@@ -241,7 +246,7 @@ export function openApiDocument(): Record<string, unknown> {
         patch: { operationId: "updatePolicy", parameters: [idParam, workspaceHeader], requestBody: json(UpdatePolicyInput), responses: { "200": { description: "Updated policy (version + 1)" }, "409": { description: "Stale version" } } },
       },
       "/api/v1/workspaces/{ws}/groups/sync": {
-        post: { operationId: "syncGroups", parameters: [workspaceParam], requestBody: json(GroupsSyncInput), responses: { "200": { description: "Group membership after sync" } } },
+        post: { operationId: "syncGroups", parameters: [workspaceParam], requestBody: json(GroupsSyncInput), responses: { "200": { description: "Superadmins: group membership after sync" } } },
       },
       "/api/v1/workspaces/{ws}/dimensions": {
         get: { operationId: "listDimensions", parameters: [workspaceParam], responses: { "200": { description: "Registry dimensions visible to the workspace" } } },
@@ -366,13 +371,27 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "completeTour", parameters: [idParam, workspaceHeader], requestBody: json(CompleteTourInput), responses: { "201": { description: "Recorded for the caller (idempotent)" } } },
       },
       "/api/v1/tours/{id}": {
-        patch: { operationId: "updateTour", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTourInput), responses: { "200": { description: "Org admins: a new version (a default becomes the workspace's copy)" } } },
+        patch: { operationId: "updateTour", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTourInput), responses: { "200": { description: "Workspace admins: a new version (a default becomes the workspace's copy)" } } },
       },
       "/api/v1/workspace-templates": {
         get: { operationId: "listWorkspaceTemplates", responses: { "200": { description: "Org admins: the built-in default_agency template and the org's" } } },
       },
       "/api/v1/workspaces": {
+        get: { operationId: "listWorkspaces", responses: { "200": { description: "Superadmins: every workspace of the org with its status, admins and counts", ...json(OrgWorkspacesResponse) } } },
         post: { operationId: "createWorkspace", requestBody: json(CreateWorkspaceInput), responses: { "201": { description: "Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked" } } },
+      },
+      "/api/v1/workspaces/{ws}": {
+        patch: { operationId: "setWorkspaceStatus", parameters: [workspaceParam], requestBody: json(UpdateWorkspaceStatusInput), responses: { "200": { description: "Superadmins: archived (read-only, hidden from its members) or restored" } } },
+        delete: { operationId: "deleteWorkspace", parameters: [workspaceParam], requestBody: json(DeleteWorkspaceInput), responses: { "200": { description: "Superadmins: an archived workspace, its name typed, becomes a tombstone purged after the retention window" }, "409": { description: "Not archived, or already deleted" } } },
+      },
+      "/api/v1/workspaces/{ws}/undelete": {
+        post: { operationId: "undeleteWorkspace", parameters: [workspaceParam], responses: { "200": { description: "Superadmins: back as archived, within the retention window" } } },
+      },
+      "/api/v1/org/people": {
+        get: { operationId: "listOrgPeople", responses: { "200": { description: "Superadmins: everyone in the org and where they hold roles", ...json(OrgPeopleResponse) } } },
+      },
+      "/api/v1/org/people/{id}": {
+        patch: { operationId: "updateOrgPerson", parameters: [idParam], requestBody: json(UpdateOrgPersonInput), responses: { "200": { description: "Superadmins: deactivate or reactivate someone" } } },
       },
       "/api/v1/workspaces/{ws}/demo-data": {
         get: { operationId: "getDemoData", parameters: [workspaceParam], responses: { "200": { description: "Demo rows left: envelopes and targets" } } },

@@ -16,23 +16,37 @@ export interface AuthDeps {
   cache: RoleCache;
 }
 
-export async function authenticate(deps: AuthDeps, input: { authorization: string | undefined; workspaceId: string | null; requestId: string; actorType?: "user" | "mcp" }): Promise<AuthContext> {
+/**
+ * How a request may use an archived or deleted workspace (ADR-052): `read` for GETs, `write` for
+ * the rest, `lifecycle` for the superadmin routes that archive, restore, delete and undelete it.
+ */
+export type WorkspaceUse = "read" | "write" | "lifecycle";
+
+export async function authenticate(deps: AuthDeps, input: { authorization: string | undefined; workspaceId: string | null; requestId: string; actorType?: "user" | "mcp"; use?: WorkspaceUse }): Promise<AuthContext> {
   const identity = await deps.verifier.verify(input.authorization);
   const user = await deps.access.findUser(identity);
   if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "Unknown or inactive user");
   const { workspaceId, requestId } = input;
-  if (workspaceId !== null) {
-    const orgId = await deps.access.workspaceOrg(workspaceId, user, requestId);
-    // Same answer for "no such workspace" and "another org's workspace".
-    if (orgId !== user.orgId) throw new DomainError("FORBIDDEN", "No access to this workspace");
-  }
   let access: WorkspaceAccess | undefined = deps.cache.get(user.id, workspaceId);
   if (!access) {
     access = await deps.access.access(user, workspaceId, requestId);
     deps.cache.set(user.id, workspaceId, access);
   }
+  if (workspaceId !== null) {
+    const ws = await deps.access.workspaceInfo(workspaceId, user, requestId);
+    // Same answer for "no such workspace", "another org's workspace" and a deleted one.
+    if (ws === null || ws.orgId !== user.orgId || (ws.deleted && input.use !== "lifecycle")) throw new DomainError("FORBIDDEN", "No access to this workspace");
+    if (ws.deleted && !access.isOrgAdmin) throw new DomainError("FORBIDDEN", "No access to this workspace");
+    if (ws.status === "ARCHIVED" && input.use !== "lifecycle") {
+      // Archived: read-only, and only superadmins still open it.
+      if (!access.isOrgAdmin) throw new DomainError("FORBIDDEN", "This workspace is archived", { archived: true });
+      if (input.use === "write") throw new DomainError("LOCKED", "This workspace is archived: restore it to make changes", { archived: true });
+    }
+  }
+  // A superadmin acting in a workspace where they hold no role of their own (ADR-052).
+  const actingAs = workspaceId !== null && access.isOrgAdmin && !access.assignments.some((a) => a.role !== "ORG_ADMIN") ? ("superadmin" as const) : null;
   return {
-    ctx: { workspaceId, orgId: user.orgId, userId: user.id, isOrgAdmin: access.isOrgAdmin && workspaceId === null, actorType: input.actorType ?? "user", requestId },
+    ctx: { workspaceId, orgId: user.orgId, userId: user.id, isOrgAdmin: access.isOrgAdmin && workspaceId === null, actorType: input.actorType ?? "user", requestId, actingAs },
     user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
     isOrgAdmin: access.isOrgAdmin,
     roles: [...new Set(access.assignments.map((a) => a.role))] as Role[],
@@ -47,8 +61,9 @@ export async function authenticate(deps: AuthDeps, input: { authorization: strin
 export async function authenticateVerifiedEmail(deps: Pick<AuthDeps, "access" | "cache">, input: { email: string; workspaceId: string; requestId: string }): Promise<AuthContext> {
   const user = await deps.access.findUser({ sub: `external:${input.email}`, email: input.email, emailVerified: true, googleSub: null });
   if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "No active Budget OS account for this Slack user's email");
-  const orgId = await deps.access.workspaceOrg(input.workspaceId, user, input.requestId);
-  if (orgId !== user.orgId) throw new DomainError("FORBIDDEN", "No access to this workspace");
+  const ws = await deps.access.workspaceInfo(input.workspaceId, user, input.requestId);
+  if (ws === null || ws.orgId !== user.orgId || ws.deleted) throw new DomainError("FORBIDDEN", "No access to this workspace");
+  if (ws.status === "ARCHIVED") throw new DomainError("FORBIDDEN", "This workspace is archived", { archived: true });
   let access: WorkspaceAccess | undefined = deps.cache.get(user.id, input.workspaceId);
   if (!access) {
     access = await deps.access.access(user, input.workspaceId, input.requestId);

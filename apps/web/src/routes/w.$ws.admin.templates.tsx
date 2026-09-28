@@ -1,7 +1,7 @@
 import { Button } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutTemplate, Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
@@ -54,7 +54,14 @@ function TemplatesAdmin(): ReactElement {
 
   return (
     <Page title={t("admin.templates")}>
-      <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+      {isOrgAdmin ? (
+        <p className="-mt-2 text-sm text-muted-foreground">
+          {t("templates.consoleHint")}{" "}
+          <Link to="/org/workspaces" className="font-medium text-primary hover:underline">{t("org.console")}</Link>
+        </p>
+      ) : null}
+      <div className={isOrgAdmin ? "grid gap-5 lg:grid-cols-[1fr_22rem]" : "grid max-w-xl gap-5"}>
+        {isOrgAdmin ? (
         <Card title={t("templates.new")}>
           <div className="flex flex-col gap-4" data-testid="workspace-create">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -92,6 +99,7 @@ function TemplatesAdmin(): ReactElement {
             </div>
           </div>
         </Card>
+        ) : null}
         <Card title={t("templates.demo")}>
           <div className="flex flex-col gap-3 text-sm" data-testid="demo-panel">
             <p className="text-muted-foreground" data-testid="demo-count">

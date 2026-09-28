@@ -14,8 +14,8 @@ import { createDimension } from "../registry/commands/create-dimension.js";
  * Workspace templates and new workspaces (spec §27, plan §11.7 "Templates"). An org admin creates
  * a workspace from a template: its hierarchy templates, approval policies, pacing rules, a shared
  * sample view and a tour per role are written in one transaction with the workspace (one
- * `workspace.created` audit_event and outbox row, plus each policy's and rule's own); org-wide
- * dimensions the org does not have yet are added from the template's registry; `withDemoData`
+ * `workspace.created` audit_event and outbox row, plus each policy's and rule's own); the template's
+ * granularities the org does not share yet are created as the workspace's own (ORG-006); `withDemoData`
  * writes the demo dataset (every row `demo = true`), which the purge deletes in one transaction.
  */
 
@@ -79,21 +79,47 @@ export async function createWorkspace(prisma: PrismaClient, auth: AuthContext, r
     return { ws, summary };
   });
 
-  // Org-wide dimensions the org does not have yet, from the template's registry (a no-op for an org that has them).
+  // The template's granularities the org does not share yet become this workspace's own (ORG-006,
+  // ADR-052): its admins can change them, and no other workspace sees them. Shared org-wide rows a
+  // superadmin publishes are used as they are.
   const registry = Registry.parse(template.registry);
-  const have = new Set((await withTenant(prisma, ctx, (tx) => tx.dimension.findMany({ where: { orgId: auth.user.orgId }, select: { key: true } }))).map((d) => d.key));
+  const have = new Set((await withTenant(prisma, ctx, (tx) => tx.dimension.findMany({ where: { orgId: auth.user.orgId, workspaceId: null }, select: { key: true } }))).map((d) => d.key));
   const store = new InMemoryAssetStore();
   const roles: Role[] = ["ORG_ADMIN"];
   let dimensionsAdded = 0;
   for (const d of registry.filter((x) => !have.has(x.key))) {
-    const dim = await createDimension(prisma, ctx, roles, { key: d.key, label: d.label, dataType: d.dataType, icon: d.icon, allowedParents: d.allowedParents.filter((p) => have.has(p) || registry.some((x) => x.key === p)), isRequiredForLeaf: d.isRequiredForLeaf, sortOrder: d.sortOrder, workspaceId: null }, store);
+    const dim = await createDimension(prisma, ctx, roles, { key: d.key, label: d.label, dataType: d.dataType, icon: d.icon, allowedParents: d.allowedParents.filter((p) => have.has(p) || registry.some((x) => x.key === p)), isRequiredForLeaf: d.isRequiredForLeaf, sortOrder: d.sortOrder, workspaceId }, store);
     if (d.values.length) await addValues(prisma, ctx, roles, dim.id, { values: d.values.map((v) => ({ code: v.code, label: v.label, ...(v.parentCode ? { parentCode: v.parentCode } : {}) })) });
     have.add(d.key);
     dimensionsAdded += 1;
   }
 
+  const firstAdmin = input.firstAdmin ? await appointFirstAdmin(prisma, auth, ctx, input.firstAdmin) : null;
   const demo = input.withDemoData ? await seedDemo(prisma, auth, ctx, created.ws, now) : null;
-  return { id: created.ws.id, slug: created.ws.slug, name: created.ws.name, ...created.summary, dimensionsAdded, demo, elapsedMs: Math.round(performance.now() - started) };
+  return { id: created.ws.id, slug: created.ws.slug, name: created.ws.name, ...created.summary, dimensionsAdded, firstAdmin, demo, elapsedMs: Math.round(performance.now() - started) };
+}
+
+/** ADR-052: the new workspace's first admin, found by email in the org or created in it, with WORKSPACE_ADMIN. */
+async function appointFirstAdmin(prisma: PrismaClient, auth: AuthContext, ctx: TenantContext, who: { email: string; name: string }) {
+  return withTenant(prisma, ctx, async (tx) => {
+    const workspaceId = ctx.workspaceId as string;
+    let user = await tx.user.findUnique({ where: { email: who.email }, select: { id: true, orgId: true } });
+    if (user && user.orgId !== auth.user.orgId) throw new DomainError("CONFLICT", "That email belongs to another organisation", { email: who.email });
+    if (!user) {
+      user = await tx.user.create({ data: { id: newId(), orgId: auth.user.orgId, email: who.email, name: who.name }, select: { id: true, orgId: true } }).catch((e: unknown) => {
+        if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "That email belongs to another organisation", { email: who.email });
+        throw e;
+      });
+      await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "user.added", entityType: "user", entityId: user.id, after: { email: who.email, name: who.name }, requestId: auth.ctx.requestId });
+      await outbox(tx, { workspaceId, topic: "user.added", payload: { userId: user.id } });
+    }
+    const id = newId();
+    await tx.roleAssignment.create({ data: { id, workspaceId, principalType: "user", principalId: user.id, role: "WORKSPACE_ADMIN", scope: {}, createdBy: auth.user.id } });
+    const after = { principalType: "user", principalId: user.id, role: "WORKSPACE_ADMIN", scope: {} };
+    await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "role.assigned", entityType: "role_assignment", entityId: id, after, requestId: auth.ctx.requestId });
+    await outbox(tx, { workspaceId, topic: "access.changed", payload: { kind: "role.assigned", roleAssignmentId: id, ...after } });
+    return { userId: user.id, email: who.email };
+  });
 }
 
 async function seedDemo(prisma: PrismaClient, auth: AuthContext, ctx: TenantContext, ws: { id: string; reportingCurrency: string; fiscalYearStartMonth: number }, now: Date) {

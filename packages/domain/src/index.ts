@@ -35,6 +35,7 @@ export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope,
 export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
 
 export { AddPersonInput, AssignRoleInput, GroupsSyncInput, PeopleResponse } from "./access.js";
+export { AddMemberInput, DeleteWorkspaceInput, OrgPeopleResponse, OrgPerson, OrgWorkspace, OrgWorkspacesResponse, UpdateOrgPersonInput, UpdateWorkspaceStatusInput, WorkspaceStatus } from "./workspaces.js";
 
 export {
   BULK_MAX_ROWS,

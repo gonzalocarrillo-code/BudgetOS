@@ -7,7 +7,7 @@ import { AccessRepository } from "./auth/access.repository.js";
 import { JwtVerifier } from "./auth/jwt-verifier.js";
 import { authenticate, authorize } from "./auth/authenticate.js";
 import { ROLE_CACHE, type RoleCache } from "./auth/role-cache.js";
-import { PERMISSION_KEY, type RoutePermission } from "./permission.decorator.js";
+import { LIFECYCLE_KEY, PERMISSION_KEY, type RoutePermission } from "./permission.decorator.js";
 import type { TenantRequest } from "./tenant.js";
 import { verifySlackSignature } from "../modules/slack/signature.js";
 
@@ -32,11 +32,12 @@ export class TenantInterceptor implements NestInterceptor {
       context.getHandler(),
       context.getClass(),
     ]);
+    const lifecycle = this.reflector.getAllAndOverride<boolean | undefined>(LIFECYCLE_KEY, [context.getHandler(), context.getClass()]) === true;
     const request = context.switchToHttp().getRequest<TenantRequest>();
-    return from(this.authorize(request, permission)).pipe(switchMap(() => next.handle()));
+    return from(this.authorize(request, permission, lifecycle)).pipe(switchMap(() => next.handle()));
   }
 
-  private async authorize(request: TenantRequest, permission: RoutePermission | undefined): Promise<void> {
+  private async authorize(request: TenantRequest, permission: RoutePermission | undefined, lifecycle = false): Promise<void> {
     if (permission === undefined) {
       throw new DomainError("FORBIDDEN", "Route declares no permission");
     }
@@ -46,7 +47,7 @@ export class TenantInterceptor implements NestInterceptor {
     }
     const tenant = await authenticate(
       { verifier: this.verifier, access: this.access, cache: this.cache },
-      { authorization: header(request, "authorization"), workspaceId: resolveWorkspace(request), requestId: header(request, "x-request-id") ?? randomUUID() },
+      { authorization: header(request, "authorization"), workspaceId: resolveWorkspace(request), requestId: header(request, "x-request-id") ?? randomUUID(), use: lifecycle ? "lifecycle" : request.method === "GET" || request.method === "HEAD" ? "read" : "write" },
     );
     authorize(tenant, permission);
     request.tenant = tenant;

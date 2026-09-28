@@ -122,6 +122,16 @@ const samples: Record<string, readonly unknown[]> = {
   GeneratePeriodsInput: [{ fiscalYear: 2027, pattern: "445" }, { fiscalYear: 2027, pattern: "calendar" }],
   PeriodRow: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf7", key: "2026-Q1", kind: "quarter", start: "2026-01-01", end: "2026-03-31", closure: { id: "01a0e0da-e7e9-7f9a-9212-1c166382caf8", status: "restated" } }, { id: "01a0e0da-e7e9-7f9a-9212-1c166382caf9", key: "Black Friday 2026", kind: "custom", start: "2026-11-20", end: "2026-11-30", closure: null }],
   AddPersonInput: [{ email: "ana@acme.test", name: "Ana" }],
+  // ADR-052 / ORG-005: workspace lifecycle and the org console.
+  WorkspaceStatus: ["ACTIVE", "ARCHIVED"],
+  UpdateWorkspaceStatusInput: [{ status: "ARCHIVED", reason: "Client ended" }, { status: "ACTIVE" }],
+  DeleteWorkspaceInput: [{ confirmName: "Acme LATAM", reason: "Contract over" }],
+  AddMemberInput: [{ email: "ana@acme.test", name: "Ana", role: "PLANNER", scope: {} }, { email: "bo@acme.test", name: "Bo", scope: {} }],
+  UpdateOrgPersonInput: [{ isActive: false }],
+  OrgWorkspace: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Acme", slug: "acme", currency: "USD", fiscalYearStartMonth: 1, status: "ACTIVE", archivedAt: null, deletedAt: null, purgeAfter: null, createdAt: "2026-09-28T00:00:00.000Z", members: 3, budgets: 12, lastActivityAt: null, admins: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Ana", email: "ana@acme.test" }] }],
+  OrgWorkspacesResponse: [{ workspaces: [] }],
+  OrgPerson: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Ana", email: "ana@acme.test", isActive: true, signedIn: true, superadmin: false, workspaces: [{ workspaceId: "01927a00-0000-7000-8000-0000000000a1", name: "Acme", roles: ["PLANNER"] }] }],
+  OrgPeopleResponse: [{ people: [] }],
   PeopleResponse: [{ users: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf1", email: "ana@acme.test", name: "Ana", isActive: true, signedIn: false, orgAdmin: false, roles: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf2", role: "PLANNER", scope: {} }] }], groups: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf3", name: "LATAM leads", googleGroup: "latam@acme.test", memberCount: 4, roles: [] }] }],
   PolicyConditions: [
     {},

@@ -2,9 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { state, tokenFor } from "./auth.js";
 
 /**
- * No placeholders: the Roles and Tags admin pages work end to end. An org admin adds a person by
- * email and gives them a scoped role; a workspace admin manages roles but cannot add people; tags
- * are created, renamed, recoloured, merged and open their budgets.
+ * No placeholders: the Roles and Tags admin pages work end to end. A superadmin adds a person by
+ * email and gives them a scoped role; a workspace admin adds people to their own workspace with a
+ * role and sees only its people (ORG-005); tags are created, renamed, recoloured, merged and open
+ * their budgets.
  */
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -38,13 +39,23 @@ test("roles: add a person, give a role for Region LATAM only, then remove it", a
   await expect(person.getByTestId("role-chip")).toHaveCount(0);
 });
 
-test("roles: a workspace admin manages roles but cannot add people; a planner cannot see them", async ({ page }) => {
+test("roles: a workspace admin adds people to their workspace with a role and sees only its people; a planner cannot see them", async ({ page }) => {
   await signIn(page, "admin");
   await page.goto(`/w/${state().workspaceId}/admin/roles`);
   await expect(page.getByTestId("principal").first()).toBeVisible();
-  await expect(page.getByTestId("person-add")).toHaveCount(0);
   const planners = page.getByTestId("principal").filter({ has: page.getByTestId("role-chip").and(page.locator('[data-role="PLANNER"]')) });
   await expect(planners.first()).toBeVisible();
+  // The superadmin has no role in this workspace, so a workspace admin does not see them (ORG-005).
+  await expect(page.getByTestId("principal").and(page.locator(`[data-email^="orgadmin@"]`))).toHaveCount(0);
+
+  const email = `team.mate.${Date.now()}@example.test`;
+  await page.getByTestId("person-email").fill(email);
+  await page.getByTestId("person-name").fill("Team Mate");
+  await page.getByTestId("person-role").selectOption("PLANNER");
+  await page.getByTestId("person-add").click();
+  const person = page.getByTestId("principal").and(page.locator(`[data-email="${email}"]`));
+  await expect(person.getByTestId("role-chip").and(page.locator('[data-role="PLANNER"]'))).toBeVisible();
+  await expect(page.getByTestId("toast").first()).toContainText("Person added");
 
   const other = await page.context().newPage();
   const token = await tokenFor("planner");

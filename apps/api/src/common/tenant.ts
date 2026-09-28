@@ -18,6 +18,7 @@ export interface AuthContext {
 }
 
 export interface TenantRequest {
+  method?: string;
   headers: Record<string, string | string[] | undefined>;
   params?: Record<string, string | undefined>;
   tenant?: AuthContext;

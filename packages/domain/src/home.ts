@@ -57,6 +57,8 @@ export const CreateWorkspaceInput = z.object({
   withDemoData: z.boolean().default(false),
   reportingCurrency: z.string().regex(/^[A-Z]{3}$/).default("USD"),
   fiscalYearStartMonth: z.number().int().min(1).max(12).default(1),
+  /** ADR-052: the workspace's first admin, by work email (created in the org when new). */
+  firstAdmin: z.object({ email: z.string().trim().toLowerCase().email().max(320), name: z.string().trim().min(1).max(200) }).optional(),
 });
 export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceInput>;
 

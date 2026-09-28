@@ -104,7 +104,7 @@ function RegistryPage(): ReactElement {
       ) : null}
       {search.tab === "metrics" ? (
         <Card>
-          <MetricLibrary ws={ws} blocked={isOrgAdmin ? null : t("registry.blocked.metrics")} />
+          <MetricLibrary ws={ws} blocked={canManage ? null : t("registry.blocked.metrics")} />
         </Card>
       ) : null}
     </Page>

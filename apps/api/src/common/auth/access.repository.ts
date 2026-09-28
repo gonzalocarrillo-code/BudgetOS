@@ -36,11 +36,14 @@ export class AccessRepository {
 
   /** The workspace's org, or null when it does not exist or belongs to another org (RLS hides it). */
   async workspaceOrg(workspaceId: string, user: { id: string; orgId: string }, requestId: string): Promise<string | null> {
+    return (await this.workspaceInfo(workspaceId, user, requestId))?.orgId ?? null;
+  }
+
+  /** The workspace's org and lifecycle (ADR-052), or null when it is not visible. */
+  async workspaceInfo(workspaceId: string, user: { id: string; orgId: string }, requestId: string): Promise<{ orgId: string; status: string; deleted: boolean } | null> {
     const ctx = { workspaceId: null, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user" as const, requestId };
-    const ws = await withTenant(this.prisma, ctx, (tx) =>
-      tx.workspace.findUnique({ where: { id: workspaceId }, select: { orgId: true } }),
-    );
-    return ws?.orgId ?? null;
+    const ws = await withTenant(this.prisma, ctx, (tx) => tx.workspace.findUnique({ where: { id: workspaceId }, select: { orgId: true, status: true, deletedAt: true } }));
+    return ws ? { orgId: ws.orgId, status: ws.status, deleted: ws.deletedAt !== null } : null;
   }
 
   /** Assignments for the user in `workspaceId` (or org-wide only when null), including via groups. */

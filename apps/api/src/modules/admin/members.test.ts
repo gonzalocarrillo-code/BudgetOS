@@ -52,32 +52,47 @@ afterAll(async () => {
   await owner.$disconnect();
 });
 
-describe("members", () => {
-  it("lists the org's people and groups with their roles here; not other orgs", async () => {
+describe("members (ORG-005: a workspace admin sees and adds only their workspace's people)", () => {
+  it("a workspace admin sees the people and groups with a role here; a superadmin sees the whole org; never other orgs", async () => {
     const res = await call(admin, "GET", `/workspaces/${ws}/members`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const m = res.body as unknown as Members;
-    expect(m.users.map((u) => u.email).sort()).toEqual([admin.email, planner.email, orgAdmin.email].sort());
-    expect(m.users.find((u) => u.id === orgAdmin.id)?.orgAdmin).toBe(true);
+    expect(m.users.map((u) => u.email).sort()).toEqual([admin.email, planner.email].sort());
     expect(m.users.find((u) => u.id === planner.id)).toMatchObject({ signedIn: true, orgAdmin: false, roles: [{ role: "PLANNER" }] });
-    expect(m.groups).toEqual([expect.objectContaining({ id: groupId, memberCount: 1, roles: [] })]);
+    expect(m.groups).toEqual([]); // the Leads group has no role here
+    const all = (await call(orgAdmin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
+    expect(all.users.map((u) => u.email).sort()).toEqual([admin.email, planner.email, orgAdmin.email].sort());
+    expect(all.users.find((u) => u.id === orgAdmin.id)?.orgAdmin).toBe(true);
+    expect(all.groups).toEqual([expect.objectContaining({ id: groupId, memberCount: 1, roles: [] })]);
     expect((await call(planner, "GET", `/workspaces/${ws}/members`)).status).toBe(403);
   });
 
-  it("an org admin adds a person by email (once), who can be given a role before signing in", async () => {
-    expect((await call(admin, "POST", `/workspaces/${ws}/members`, { email: "x@members.test", name: "X" })).status).toBe(403); // a workspace admin cannot
+  it("a workspace admin adds someone by email with a role here (Viewer unless chosen); once; never another org's email", async () => {
     const requestId = `members-${randomUUID()}`;
-    const added = await call(orgAdmin, "POST", `/workspaces/${ws}/members`, { email: "  New.Person@Members.test ", name: "New Person" }, requestId);
+    const added = await call(admin, "POST", `/workspaces/${ws}/members`, { email: "  New.Person@Members.test ", name: "New Person" }, requestId);
     expect(added.status, JSON.stringify(added.body)).toBe(201);
-    expect(added.body).toMatchObject({ email: "new.person@members.test", created: true });
-    expect(Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1 AND action = 'user.added'`, requestId))[0]?.n)).toBe(1);
-    const again = await call(orgAdmin, "POST", `/workspaces/${ws}/members`, { email: "new.person@members.test", name: "Someone else" });
-    expect(again.body).toMatchObject({ id: added.body["id"], created: false });
-    expect((await call(orgAdmin, "POST", `/workspaces/${ws}/members`, { email: outsider.email, name: "x" })).status).toBe(409);
+    expect(added.body).toMatchObject({ email: "new.person@members.test", created: true, role: "VIEWER" });
+    const audited = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId);
+    expect(audited.map((a) => a.action).sort()).toEqual(["role.assigned", "user.added"]);
+    const again = await call(admin, "POST", `/workspaces/${ws}/members`, { email: "new.person@members.test", name: "Someone else", role: "BUDGET_OWNER", scope: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "LATAM" }] } });
+    expect(again.body).toMatchObject({ id: added.body["id"], created: false, role: "BUDGET_OWNER" });
+    expect((await call(admin, "POST", `/workspaces/${ws}/members`, { email: outsider.email, name: "x" })).status).toBe(409);
+    expect((await call(planner, "POST", `/workspaces/${ws}/members`, { email: "y@members.test", name: "Y" })).status).toBe(403);
 
-    const role = await call(admin, "POST", `/workspaces/${ws}/roles`, { principalType: "user", principalId: added.body["id"], role: "BUDGET_OWNER", scope: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "LATAM" }] } });
-    expect(role.status, JSON.stringify(role.body)).toBeLessThan(300);
     const m = (await call(admin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
-    expect(m.users.find((u) => u.email === "new.person@members.test")).toMatchObject({ signedIn: false, roles: [{ role: "BUDGET_OWNER" }] });
+    expect(m.users.find((u) => u.email === "new.person@members.test")).toMatchObject({ signedIn: false, roles: [{ role: "VIEWER" }, { role: "BUDGET_OWNER" }] });
+    // A superadmin may add someone with no role yet, to give one later.
+    const bare = await call(orgAdmin, "POST", `/workspaces/${ws}/members`, { email: "later@members.test", name: "Later" });
+    expect(bare.body).toMatchObject({ created: true, role: null });
+  });
+
+  it("a workspace keeps at least one admin", async () => {
+    const roles = (await call(admin, "GET", `/workspaces/${ws}/roles`)).body as unknown as { rows?: Array<{ id: string; role: string }> } | Array<{ id: string; role: string }>;
+    const list = Array.isArray(roles) ? roles : (roles.rows ?? []);
+    const only = list.find((r) => r.role === "WORKSPACE_ADMIN");
+    expect(only).toBeDefined();
+    const res = await h.call("DELETE", `/api/v1/roles/${only?.id ?? ""}`, await h.mint(admin), { headers: { "x-workspace-id": ws } });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ details: { lastAdmin: true } });
   });
 });

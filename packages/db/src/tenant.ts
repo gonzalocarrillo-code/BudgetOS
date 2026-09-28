@@ -11,6 +11,11 @@ export interface TenantContext {
   isOrgAdmin: boolean;
   actorType: "user" | "system" | "mcp";
   requestId: string;
+  /**
+   * ADR-052: "superadmin" when the caller acts in a workspace through the org-wide role only. Sets
+   * `app.acting_as`, which `audit_event.actor_context` defaults from.
+   */
+  actingAs?: "superadmin" | null | undefined;
 }
 
 /**
@@ -27,11 +32,12 @@ export async function withTenant<T>(
     async (tx) => {
       // One statement for the four settings: every command pays this per transaction (ADR-034).
       await tx.$executeRawUnsafe(
-        `SELECT set_config('app.workspace_id', $1, true), set_config('app.org_id', $2, true), set_config('app.user_id', $3, true), set_config('app.is_org_admin', $4, true)`,
+        `SELECT set_config('app.workspace_id', $1, true), set_config('app.org_id', $2, true), set_config('app.user_id', $3, true), set_config('app.is_org_admin', $4, true), set_config('app.acting_as', $5, true)`,
         ctx.workspaceId ?? "",
         ctx.orgId ?? "",
         ctx.userId ?? "",
         String(ctx.isOrgAdmin),
+        ctx.actingAs ?? "",
       );
       return fn(tx);
     },
