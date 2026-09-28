@@ -285,6 +285,9 @@ Not spec tasks. They are built one PR each, in this order, after phase 19. Phase
 | 6 | Roles that set budgets without approval | done: policies match "who is asking" (roles or people); the Approval policies admin page (was a placeholder); the drawer says "Apply now" when a draft needs no approval; ADR-040; the Roles admin page (people and groups, scoped roles, add a person by email) |
 | 7 | Dynamic quarters, partitions, views; end and reopen a quarter | done: the fiscal calendar is the workspace's rows (calendar or 4-4-5 / 4-5-4 / 5-4-4, custom partitions) and every "this quarter" follows it; Admin › Fiscal calendar (start month, generate a year, custom periods, close / reopen); the Explorer picks any period; ADR-041 |
 | 8 | Overview: % of budget spent, user-picked groupings, platforms from the registry | done: the Spent tile (% of budget, % of the period gone) replaces the pace number; heatmap cells show % spent (colour: spend against time); rows × columns are any two granularities, in the URL; every column comes back (top 8 first, "Show all") |
+| 9 | Edit budgets from the Overview | done (2026-09-28): a heatmap cell opens its leaf budgets beside the heatmap; each takes a new amount (a draft, then Send for approval), or the whole cell changes by a percentage through the bulk preview and the approval policy; "Open in Budgets" keeps the old drill-down |
+| 10 | Choose what the Overview shows | done (2026-09-28): Customise turns each tile and panel on or off, saved per person as a private `overview` saved view (a workspace-shared one is the default); ADR-045 |
+| 11 | The Overview's period picker lists the fiscal calendar (years, quarters, custom periods) as the Explorer does; seven-figure amounts no longer cut off in the tiles | done (2026-09-28) |
 
 No placeholder screens are left (2026-09-27):
 

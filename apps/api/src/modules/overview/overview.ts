@@ -24,8 +24,11 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   const started = performance.now();
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const preset = rawPeriod ?? "current_year";
-  if (!(PRESETS as readonly string[]).includes(preset)) throw new DomainError("VALIDATION", `period must be one of ${PRESETS.join(", ")}`);
-  const period = parseInput(PeriodSpec, { kind: "relative", preset });
+  // A relative preset, or one of the workspace's own periods as `fiscal:<key>` (a quarter as the
+  // fiscal calendar defines it, a custom partition), like the Explorer's period picker.
+  const fiscal = preset.startsWith("fiscal:") ? preset.slice("fiscal:".length) : null;
+  if (fiscal === null && !(PRESETS as readonly string[]).includes(preset)) throw new DomainError("VALIDATION", `period must be one of ${PRESETS.join(", ")} or fiscal:<key>`);
+  const period = parseInput(PeriodSpec, fiscal === null ? { kind: "relative", preset } : { kind: "fiscal", key: fiscal });
 
   const { dims, labels, currency, cpa, hasProjections, dimensions, range } = await withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true, reportingCurrency: true } });
@@ -45,7 +48,13 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
     const label = (d: typeof rows) => Object.fromEntries(values.filter((v) => v.dimensionId === d?.id).map((v) => [v.code, v.label]));
     const wsCal = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
     const today = new Date().toISOString().slice(0, 10);
-    const range = resolvePeriod(period, today, wsCal.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
+    const calendar = await fiscalCalendar(tx, workspaceId);
+    let range: { start: string; end: string };
+    try {
+      range = resolvePeriod(period, today, wsCal.fiscalYearStartMonth, calendar);
+    } catch (e) {
+      throw new DomainError("VALIDATION", e instanceof Error ? e.message : String(e), { period: preset });
+    }
     const metric = await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: ws.orgId, key: "cpa" } }, select: { id: true } });
     // The projection measures are the planner's costly ones; ask for them only when there are projections.
     const [projection] = await tx.$queryRaw<Array<{ one: number }>>`SELECT 1 AS one FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid LIMIT 1`;

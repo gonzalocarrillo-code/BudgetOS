@@ -9191,7 +9191,8 @@
                       "alerts",
                       "approvals",
                       "targets",
-                      "report"
+                      "report",
+                      "overview"
                     ],
                     "default": "explorer"
                   },
@@ -11093,17 +11094,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "enum": [
-                "current_month",
-                "current_quarter",
-                "current_year",
-                "last_30_days",
-                "last_90_days",
-                "ytd",
-                "next_90_days"
-              ]
-            }
+              "type": "string"
+            },
+            "description": "A relative preset (current_month, current_quarter, current_year, last_30_days, last_90_days, ytd, next_90_days) or fiscal:<key>, one of the workspace's periods (e.g. fiscal:2026-Q2)"
           },
           {
             "name": "rows",

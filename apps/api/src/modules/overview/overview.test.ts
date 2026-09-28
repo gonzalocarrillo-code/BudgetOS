@@ -98,5 +98,12 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
 
   it("rejects an unknown period, and needs envelope.read", async () => {
     expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=forever`)).status).toBe(422);
+    expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=fiscal:nope`)).status).toBe(422);
+  });
+
+  it("takes one of the workspace's own periods as fiscal:<key>, like the Explorer (feedback)", async () => {
+    const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=fiscal:2026-Q2`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((res.body as { period: { start: string; end: string } }).period).toMatchObject({ start: "2026-04-01", end: "2026-06-30" });
   });
 });
