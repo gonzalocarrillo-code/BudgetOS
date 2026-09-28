@@ -1664,6 +1664,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/tags/applied": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["appliedTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags/{id}": {
         parameters: {
             query?: never;
@@ -6875,6 +6891,30 @@ export interface operations {
         responses: {
             /** @description Created tag */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    appliedTags: {
+        parameters: {
+            query: {
+                type: "envelope" | "target" | "alert" | "approval_request" | "thread";
+                /** @description Comma-separated entity ids (up to 200) */
+                ids: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Each entity id's tags; entities without tags are left out */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

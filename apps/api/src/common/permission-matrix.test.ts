@@ -145,6 +145,7 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/threads/{id}/reopen", permission: "thread.comment", url: () => `/api/v1/threads/${rid}/reopen`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/subscriptions", permission: "workspace.member", url: () => `/api/v1/subscriptions`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/tags", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/tags` },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/tags/applied", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/tags/applied?type=alert&ids=${rid}` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/tags", permission: "tag.create", url: () => `/api/v1/workspaces/${wsA}/tags`, body: {} },
   { method: "PATCH", path: "/api/v1/tags/{id}", permission: "tag.create", url: () => `/api/v1/tags/${rid}`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/tags/apply", permission: "tag.apply", url: () => `/api/v1/tags/apply`, headers: X(), body: {} },

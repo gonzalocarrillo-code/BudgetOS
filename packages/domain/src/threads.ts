@@ -91,3 +91,13 @@ export const ApplyTagInput = z.object({
   entities: z.array(z.object({ type: TaggableType, id: z.string().uuid() })).min(1).max(10_000),
 });
 export type ApplyTagInput = z.infer<typeof ApplyTagInput>;
+
+/** GET /workspaces/:ws/tags/applied?type&ids: the tags on up to 200 entities of one type (chips anywhere). */
+export const AppliedTagsQuery = z.object({
+  type: TaggableType,
+  ids: z
+    .string()
+    .transform((v) => v.split(",").map((x) => x.trim()).filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1).max(200)),
+});
+export type AppliedTagsQuery = z.infer<typeof AppliedTagsQuery>;

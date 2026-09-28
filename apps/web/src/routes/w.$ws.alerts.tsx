@@ -9,6 +9,8 @@ import { Card, Page } from "../components/page.js";
 import { alertsQuery, can, type Alert } from "../features/ops/queries.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
+import { appliedTagsQuery } from "../features/threads/queries.js";
+import { TagChips } from "../features/threads/tag-chips.js";
 
 /**
  * Alerts (spec §18.5, §11): what the pacing rules raised, newest first, by status and severity.
@@ -53,6 +55,8 @@ function AlertsPage(): ReactElement {
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
   const canAct = can(perms, me?.isOrgAdmin ?? false, "envelope.edit_draft");
   const { data: alerts = [], isPending, error } = useQuery(alertsQuery(ws, search.status, search.severity));
+  // Every listed alert's tags in one request (chips on each row).
+  const { data: alertTags = {} } = useQuery(appliedTagsQuery(ws, "alert", alerts.slice(0, 200).map((a) => a.id)));
   const set = (s: Partial<AlertsSearch>) => void navigate({ search: (prev: AlertsSearch) => ({ ...prev, ...s }) });
   const act = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => unwrap(api.PATCH("/api/v1/alerts/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: body as never })),
@@ -100,7 +104,7 @@ function AlertsPage(): ReactElement {
               </thead>
               <tbody>
                 {alerts.map((a) => (
-                  <AlertRow key={a.id} ws={ws} a={a} canAct={canAct} pending={act.isPending} onAct={(body) => act.mutate({ id: a.id, body })} weekFromNow={weekFromNow} />
+                  <AlertRow key={a.id} ws={ws} a={a} tags={alertTags[a.id] ?? []} canAct={canAct} pending={act.isPending} onAct={(body) => act.mutate({ id: a.id, body })} weekFromNow={weekFromNow} />
                 ))}
               </tbody>
             </table>
@@ -111,7 +115,7 @@ function AlertsPage(): ReactElement {
   );
 }
 
-function AlertRow({ ws, a, canAct, pending, onAct, weekFromNow }: { ws: string; a: Alert; canAct: boolean; pending: boolean; onAct: (body: Record<string, unknown>) => void; weekFromNow: () => string }): ReactElement {
+function AlertRow({ ws, a, tags, canAct, pending, onAct, weekFromNow }: { ws: string; a: Alert; tags: Array<{ id: string; name: string; color: string | null }>; canAct: boolean; pending: boolean; onAct: (body: Record<string, unknown>) => void; weekFromNow: () => string }): ReactElement {
   const ctx = a.context ?? {};
   // Reporting-currency amounts from the evaluator's context, as plain numbers.
   const money = (k: string) => (typeof ctx[k] === "string" ? Number(ctx[k]).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null);
@@ -136,6 +140,9 @@ function AlertRow({ ws, a, canAct, pending, onAct, weekFromNow }: { ws: string; 
           {a.envelopeName ?? a.envelopeId}
         </Link>
         {money("budget") ? <div className="tabular text-xs text-muted-foreground">{t("alerts.context", { budget: money("budget") ?? "—", actual: money("actual") ?? "—", projected: money("projected") ?? "—" })}</div> : null}
+        <div className="mt-1">
+          <TagChips ws={ws} entity={{ type: "alert", id: a.id }} tags={tags} compact />
+        </div>
       </td>
       <td className="py-2 pr-3">{a.ruleName ?? "—"}</td>
       <td className="tabular whitespace-nowrap py-2 pr-3 text-right" data-testid="alert-value">
