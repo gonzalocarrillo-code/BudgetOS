@@ -438,6 +438,19 @@ All four phases are built (2026-09-28): PRs #83 (A), #84 (C), #85 (B) and #86 (D
 
 Decisions D1–D9 in the plan's Part 5 are open for the product owner.
 
-## Product feedback, round 7: baselines and budget history (2026-09-28)
+## Product feedback, round 7: snapshots and budget history (2026-09-28)
 
-The product owner asked how to tell apart the plan (the budget on, say, October 1st), the working budget and the closed budget, and to ask "how much did budgets move" through the MCP server, without breaking real-time editing. The plan is `docs/BUDGET_HISTORY_PLAN.md` (Phase E, ADR-053 proposed): named baselines taken at period start, at closure and by hand; a `compareTo` on `/query` with Plan · Now · Change measures; a movement report; three MCP tools. Tasks H-001…H-010, all `pending`. Decisions E1–E7 are open.
+Plan: `docs/BUDGET_HISTORY_PLAN.md` (Phase E, revision 2: snapshots by hand for the workspace, a filter or one budget's subtree; end and reintroduce budgets). ADR-053.
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| H-001 | E1 | Schemas, migration, RLS | pending |
+| H-002 | E1 | Save / list / rename / archive snapshots; versions list their snapshots | pending |
+| H-005 | E1 | Change report | pending |
+| H-011 | E2 | End a budget through the approval policy | pending |
+| H-012 | E2 | Reintroduce a budget; lineage `continues` | pending |
+| H-004 | E3 | Planner `compareTo` and change measures | pending |
+| H-006 | E4 | Budgets: Compare to, Plan · Now · Change, Save snapshot | pending |
+| H-007 | E4 | Drawer, Overview, Closures, Settings › Snapshots | pending |
+| H-008 | E5 | MCP tools | pending |
+| H-009 | E5 | Golden seed and assertions | pending |
