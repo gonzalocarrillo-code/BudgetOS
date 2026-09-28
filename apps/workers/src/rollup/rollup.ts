@@ -1,5 +1,5 @@
 import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { cachedPeriods, deleteRollupNodes, loadBulkChange, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
@@ -261,7 +261,41 @@ export async function rebuildWorkspace(prisma: PrismaClient, tenant: { workspace
   return counts;
 }
 
-/** Push handler for budget.changed, facts.loaded and registry.changed; once per outbox id. */
+/** Topics whose envelopes the worker refreshes; registry.changed rebuilds instead (naming.changed only renames). */
+export const ROLLUP_TOPICS = ["budget.changed", "facts.loaded", "registry.changed", "approval.changed", "period.closed", "period.restated"] as const;
+
+/**
+ * approval.changed actions that move an envelope into or out of PENDING without a budget.changed
+ * of their own (ADR-044). An approval that completes the chain already emits budget.changed from
+ * approveVersion; advancing a step, escalating or recording evidence leaves the status as it is.
+ */
+const PENDING_ACTIONS = new Set(["approval.requested", "approval.reject", "approval.request_changes", "approval.withdrawn", "approval.rerouted"]);
+
+/**
+ * The envelopes whose status a status-only event changed, so their pendingCount is stale (ADR-044):
+ * the request's envelope, or every envelope of its bulk change; for a closure, the envelopes it
+ * locked (or unlocked) that were PENDING — locking is the only other status a measure sees.
+ */
+async function statusEnvelopes(tx: Tx, topic: string, payload: Record<string, unknown>): Promise<string[]> {
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  if (topic === "period.closed" || topic === "period.restated") {
+    const closureId = str(payload["closureId"]);
+    if (closureId === null) return [];
+    return (await tx.closureEnvelope.findMany({ where: { closureId, priorStatus: "PENDING" }, select: { envelopeId: true } })).map((c) => c.envelopeId);
+  }
+  const requestId = str(payload["requestId"]);
+  if (!PENDING_ACTIONS.has(String(payload["action"])) || requestId === null) return [];
+  const r = await tx.approvalRequest.findUnique({ where: { id: requestId }, select: { entityType: true, entityId: true } });
+  if (r === null) return [];
+  if (r.entityType === "envelope_version") return (await tx.envelopeVersion.findMany({ where: { id: r.entityId }, select: { envelopeId: true } })).map((v) => v.envelopeId);
+  if (r.entityType !== "bulk_change") return []; // targets and manual entries have no envelope status
+  const bulk = await loadBulkChange(tx, r.entityId);
+  if (bulk === null) return [];
+  const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { envelopeId: true } });
+  return [...new Set([...versions.map((v) => v.envelopeId), ...bulk.archiveIds, ...bulk.createdIds])];
+}
+
+/** Push handler for ROLLUP_TOPICS (and naming.changed's rename); once per outbox id. */
 export async function handleRollupEvent(prisma: PrismaClient, body: unknown, today = new Date().toISOString().slice(0, 10)) {
   const event = decodePush(body);
   const ctx: Ctx = { workspaceId: event.workspaceId, orgId: event.orgId, today };
@@ -270,7 +304,7 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
     await lockRollup(tx, event.workspaceId);
     // T-036 (§24.2): a naming or registry change renames every envelope (labels, codes, templates).
     if (event.topic === "naming.changed" || event.topic === "registry.changed") result.renamed = await recomputeNames(tx, event.workspaceId);
-    if (!["budget.changed", "facts.loaded", "registry.changed"].includes(event.topic)) return;
+    if (!(ROLLUP_TOPICS as readonly string[]).includes(event.topic)) return;
     const templates = await tx.hierarchyTemplate.findMany({ where: { workspaceId: event.workspaceId } });
     result.templates = templates.length;
     if (event.topic === "registry.changed") {
@@ -279,7 +313,8 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
       result = { ...result, rebuilt: true };
       return;
     }
-    const envelopeIds = (await targetsFor(tx, event.topic, (event.payload ?? {}) as Record<string, unknown>)).envelope ?? [];
+    const payload = (event.payload ?? {}) as Record<string, unknown>;
+    const envelopeIds = event.topic === "budget.changed" || event.topic === "facts.loaded" ? ((await targetsFor(tx, event.topic, payload)).envelope ?? []) : await statusEnvelopes(tx, event.topic, payload);
     if (envelopeIds.length === 0) return;
     for (const t of templates) {
       for (const p of await periodsFor(tx, ctx, t.id, [])) {

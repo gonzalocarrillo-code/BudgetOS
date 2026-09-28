@@ -316,3 +316,9 @@ Deferred from T-007 and now built (ADR-042).
 - typos: about 2 s with 0–1 results → 180–265 ms with results.
 
 The spec-scale load job re-measures this on this branch.
+
+## Roll-up pendingCount after status-only writes (T-022 follow-up, 2026-09-27, ADR-044)
+
+- Submitting for approval, rejecting, requesting changes, withdrawing, re-routing on a move, and closing or restating a period change `envelope.status` to or from PENDING without a `budget.changed`. The cached `pendingCount` stayed stale.
+- `rollup-worker` now also consumes `approval.changed` (status-changing actions only), `period.closed` and `period.restated`, and refreshes the affected envelopes' paths. No write emits a second outbox row.
+- Test: `apps/workers/src/rollup/rollup.test.ts`, "status-only events … refresh pendingCount to what a rebuild gives".
