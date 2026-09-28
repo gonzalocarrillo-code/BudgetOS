@@ -367,3 +367,8 @@ The spec-scale load job re-measures this on this branch.
 - **Admin › Slack:** connection, Link, channels (default, alerts, severities), a test message, and the setup steps with the app manifest.
 - **Local runner:** now delivers notifications (in-app and Slack), and every workspace of the local stack's org.
 - **Needs a real Slack app to use:** the bot token and signing secret, plus a public URL for buttons and /budget.
+
+## Product feedback, round 4: admins apply directly (2026-09-28)
+
+- A workspace admin's or org admin's own change is approved on submit, with no approval step. `matchPolicy` returns the built-in "Admins apply directly" policy before the workspace's own, so every write path gets it: edits, bulk, family, structure, targets and manual entry, plus the drawer's "Apply now".
+- The Approval policies page says so.
