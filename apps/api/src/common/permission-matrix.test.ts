@@ -181,6 +181,7 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/workspaces/{ws}/rules", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/rules` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/rules", permission: "rule.manage", url: () => `/api/v1/workspaces/${wsA}/rules`, body: {} },
   { method: "PATCH", path: "/api/v1/rules/{id}", permission: "rule.manage", url: () => `/api/v1/rules/${rid}`, headers: X(), body: {} },
+  { method: "DELETE", path: "/api/v1/rules/{id}", permission: "rule.manage", url: () => `/api/v1/rules/${rid}`, headers: X() },
   { method: "GET", path: "/api/v1/alerts", permission: "envelope.read", url: () => `/api/v1/alerts`, headers: X() },
   { method: "PATCH", path: "/api/v1/alerts/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/alerts/${rid}`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/sources", permission: "source.manage", url: () => `/api/v1/workspaces/${wsA}/sources` },

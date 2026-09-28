@@ -500,6 +500,7 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/rules/{id}": {
         patch: { operationId: "updateRule", parameters: [idParam, workspaceHeader], requestBody: json(UpdateRuleInput), responses: { "200": { description: "Updated rule" } } },
+        delete: { operationId: "deleteRule", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The rule stops and is kept for its alerts' history; its open alerts are resolved" } } },
       },
       "/api/v1/alerts": {
         get: {

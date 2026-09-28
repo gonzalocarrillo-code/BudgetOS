@@ -190,4 +190,21 @@ describe("evaluateWorkspace (T-018 done-when)", () => {
     const out = await runPacing(app, [orgId], "2026-08-22");
     expect(out.map((o) => o.workspaceId)).toEqual([ws]);
   });
+
+  it("a rule's alerts go to the person it names; a deleted rule is not evaluated (feedback 2026-09-28)", async () => {
+    const assignee = randomUUID();
+    await owner.user.create({ data: { id: assignee, orgId, email: `${assignee}@t018.test`, name: "Assignee", googleSub: `g-${assignee}` } });
+    const assigned = randomUUID();
+    await owner.pacingRule.create({ data: { id: assigned, workspaceId: ws, name: "Assigned", metric: "pace_index", comparator: "gt", threshold: "1.00", consecutiveDays: 1, severity: "info", delivery: { inApp: true, assignTo: assignee } } });
+    const deleted = randomUUID();
+    await owner.pacingRule.create({ data: { id: deleted, workspaceId: ws, name: "Deleted", metric: "pace_index", comparator: "gt", threshold: "1.00", consecutiveDays: 1, severity: "info", delivery: { inApp: true }, isActive: true, deletedAt: new Date() } });
+    await setActive([assigned, deleted]);
+    await owner.pacingRule.update({ where: { id: deleted }, data: { isActive: true } });
+    await evaluateWorkspace(app, tenant, "2026-08-15");
+    const [alert] = await openAlerts(assigned);
+    expect(alert).toMatchObject({ envelopeId: env["a"], ownerId: assignee });
+    expect(await openAlerts(deleted)).toHaveLength(0);
+    await owner.$executeRawUnsafe(`DELETE FROM alert WHERE rule_id = ANY($1::uuid[])`, [assigned, deleted]);
+    await owner.$executeRawUnsafe(`DELETE FROM rule_state WHERE rule_id = ANY($1::uuid[])`, [assigned, deleted]);
+  });
 });

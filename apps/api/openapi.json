@@ -11375,11 +11375,19 @@
                           "type": "string",
                           "format": "email"
                         }
+                      },
+                      "assignTo": {
+                        "type": "string",
+                        "format": "uuid"
                       }
                     },
                     "default": {
                       "inApp": true
                     }
+                  },
+                  "isActive": {
+                    "type": "boolean",
+                    "default": true
                   }
                 },
                 "required": [
@@ -11582,6 +11590,10 @@
                           "type": "string",
                           "format": "email"
                         }
+                      },
+                      "assignTo": {
+                        "type": "string",
+                        "format": "uuid"
                       }
                     }
                   },
@@ -11596,6 +11608,34 @@
         "responses": {
           "200": {
             "description": "Updated rule"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule stops and is kept for its alerts' history; its open alerts are resolved"
           }
         }
       }

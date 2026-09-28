@@ -34,7 +34,13 @@ export const RuleMetricArgs = z
 export type RuleMetricArgs = z.infer<typeof RuleMetricArgs>;
 
 export const RuleDelivery = z
-  .object({ inApp: z.boolean().default(true), slackChannel: z.string().min(1).max(80).optional(), emails: z.array(z.string().email()).max(20).optional() })
+  .object({
+    inApp: z.boolean().default(true),
+    slackChannel: z.string().min(1).max(80).optional(),
+    emails: z.array(z.string().email()).max(20).optional(),
+    /** Who an alert is assigned to: this person, instead of the budget's owner. */
+    assignTo: z.string().uuid().optional(),
+  })
   .strict();
 
 const ruleFields = {
@@ -47,6 +53,7 @@ const ruleFields = {
   consecutiveDays: z.number().int().min(1).max(90).default(1),
   severity: RuleSeverity,
   delivery: RuleDelivery.default({ inApp: true }),
+  isActive: z.boolean().default(true),
 };
 
 const needsMetricKey = (r: { metric?: string | undefined; metricArgs?: { metricKey?: string | undefined } | undefined }) =>

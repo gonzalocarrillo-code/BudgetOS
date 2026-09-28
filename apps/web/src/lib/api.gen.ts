@@ -1514,7 +1514,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["deleteRule"];
         options?: never;
         head?: never;
         patch: operations["updateRule"];
@@ -6459,13 +6459,39 @@ export interface operations {
                         inApp?: boolean;
                         slackChannel?: string;
                         emails?: string[];
+                        /** Format: uuid */
+                        assignTo?: string;
                     };
+                    /** @default true */
+                    isActive?: boolean;
                 };
             };
         };
         responses: {
             /** @description Created rule (workspace-wide rule.manage role) */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteRule: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule stops and is kept for its alerts' history; its open alerts are resolved */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6521,6 +6547,8 @@ export interface operations {
                         inApp?: boolean;
                         slackChannel?: string;
                         emails?: string[];
+                        /** Format: uuid */
+                        assignTo?: string;
                     };
                     isActive?: boolean;
                 };

@@ -45,3 +45,38 @@ test.describe("pacing rules (T-032)", () => {
     await expect(page.getByTestId("rule-new")).toBeDisabled();
   });
 });
+
+/** Product feedback 2026-09-28: every part of a rule is editable — period, delivery, who it's for, duplicate, delete. */
+test("rules: duplicate a rule, change every part, then delete it", async ({ page }) => {
+  await as(page, "admin");
+  await page.goto(`/w/${state().workspaceId}/admin/rules`);
+  await page.getByTestId("rule-row").first().click();
+  await page.getByTestId("rule-duplicate").click();
+  const editor = page.getByTestId("rule-editor");
+  await expect(editor.getByTestId("rule-name")).toHaveValue(/\(copy\)$/);
+  await editor.getByTestId("rule-name").fill("E2E every part");
+  await editor.getByTestId("rule-metric").selectOption("spend_to_date_pct");
+  await editor.getByTestId("rule-comparator").selectOption("gte");
+  await editor.getByTestId("rule-threshold").fill("0.9");
+  await editor.getByTestId("rule-days").fill("2");
+  await editor.getByTestId("rule-period").selectOption("current_quarter");
+  await editor.getByTestId("rule-severity-info").click();
+  await editor.getByTestId("rule-inapp").uncheck();
+  await editor.getByTestId("rule-slack").fill("#e2e-alerts");
+  await editor.getByTestId("rule-assign").selectOption({ index: 1 });
+  await editor.getByTestId("rule-active").uncheck();
+  await editor.getByTestId("rule-save").click();
+
+  const row = page.getByTestId("rule-row").filter({ hasText: "E2E every part" });
+  await expect(row).toContainText("Off");
+  await row.click();
+  await expect(editor.getByTestId("rule-period")).toHaveValue("current_quarter");
+  await expect(editor.getByTestId("rule-inapp")).not.toBeChecked();
+  await expect(editor.getByTestId("rule-slack")).toHaveValue("#e2e-alerts");
+  await expect(editor.getByTestId("rule-assign")).not.toHaveValue("");
+  await expect(editor.getByTestId("rule-threshold")).toHaveValue("0.9");
+
+  await editor.getByTestId("rule-delete").click();
+  await page.getByTestId("rule-delete-yes").click();
+  await expect(page.getByTestId("rule-row").filter({ hasText: "E2E every part" })).toHaveCount(0);
+});
