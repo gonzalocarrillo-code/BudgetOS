@@ -390,3 +390,11 @@ The spec-scale load job re-measures this on this branch.
 - **New data source:** step 1 is now Connect, with BigQuery, Snowflake, Google Sheets or a CSV file.
 - **Warehouses and Sheets:** you enter the connection (validated against `SourceConfig`, credentials only as a Secret Manager name) and the table's columns, then map them as for a CSV, then save. The backend already accepted these source types.
 - **Test the connection:** shown, and disabled with a reason until the connector's credentials are set up. For warehouses, "Run it now" is off by default.
+
+## Product feedback, round 5: a free OpenAI workspace (2026-09-28)
+
+- **An admin's approval is final** (#77, ADR-048): an org admin, or a workspace admin in scope, may decide any step, and their approve approves the request outright.
+- **Free hierarchies** (#78, ADR-049):
+  - a template's levels may come in any order; `allowedParents` now governs values only;
+  - in the Budgets tree, a group with no value for its level folds into the level above, so a budget with no granularities is at the top and an unused Client level never shows.
+- **Edit granularities** (#79): a budget's granularities change from its drawer (`PATCH /envelopes/:id` `dimensionValues`). They're registry- and scope-checked, audited, and the roll-ups rebuild.

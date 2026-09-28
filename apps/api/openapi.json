@@ -654,6 +654,13 @@
                   },
                   "useTemplateName": {
                     "type": "boolean"
+                  },
+                  "dimensionValues": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [

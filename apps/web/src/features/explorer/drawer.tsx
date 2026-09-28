@@ -37,6 +37,15 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
       onChanged?.();
     },
   });
+  const [editingDims, setEditingDims] = useState<Record<string, string> | null>(null);
+  const saveDims = useMutation({
+    mutationFn: async (dimensionValues: Record<string, string>) => unwrap(api.PATCH("/api/v1/envelopes/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: { rowVersion: data?.rowVersion ?? 1, dimensionValues } as never })),
+    onSuccess: async () => {
+      setEditingDims(null);
+      await client.invalidateQueries({ queryKey: ["envelope", ws, id] });
+      onChanged?.();
+    },
+  });
   const { data: threads } = useQuery(threadsQuery(ws, "envelope", id));
   const { data: dims = [] } = useQuery(registryQuery(ws));
   const open = threads?.filter((x) => x.status === "open").length ?? 0;
@@ -155,8 +164,68 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
           <dd className="text-right">
             {data.startDate} – {data.endDate}
           </dd>
-          <dt className="col-span-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("drawer.dimensions")}</dt>
-          {Object.entries(data.dimensionValues).map(([k, v]) => {
+          <dt className="col-span-2 flex items-center gap-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            {t("drawer.dimensions")}
+            {editingDims === null ? (
+              <button type="button" className="rounded-md p-0.5 normal-case tracking-normal text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={t("drawer.editDimensions")} title={t("drawer.editDimensions")} onClick={() => setEditingDims({ ...data.dimensionValues })} data-testid="drawer-edit-dimensions">
+                <Pencil className="size-3.5" aria-hidden />
+              </button>
+            ) : null}
+          </dt>
+          {editingDims !== null ? (
+            <dd className="col-span-2">
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveDims.mutate(editingDims);
+                }}
+                data-testid="drawer-dimensions-form"
+              >
+                <p className="text-xs text-muted-foreground">{t("drawer.editDimensionsHelp")}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {dims
+                    .filter((d) => d.isActive && (d.values.length > 0 || d.key in editingDims))
+                    .map((d) => (
+                      <label key={d.key} className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <DimensionIcon ws={ws} icon={d.icon} className="size-3.5" />
+                          {d.label}
+                        </span>
+                        <select
+                          className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                          value={editingDims[d.key] ?? ""}
+                          onChange={(e) => setEditingDims((c) => (e.target.value ? { ...c, [d.key]: e.target.value } : Object.fromEntries(Object.entries(c ?? {}).filter(([k]) => k !== d.key))))}
+                          data-testid="drawer-dimension-select"
+                          data-key={d.key}
+                        >
+                          <option value="">{t("structure.dimNone")}</option>
+                          {d.values
+                            .filter((v) => v.isActive || v.code === editingDims[d.key])
+                            .map((v) => (
+                              <option key={v.code} value={v.code}>
+                                {v.label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    ))}
+                </div>
+                {saveDims.error ? <p className="text-xs text-destructive" role="alert">{saveDims.error.message}</p> : null}
+                <div className="flex justify-end gap-2">
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingDims(null)}>{t("drawer.renameCancel")}</Button>
+                  {saveDims.isPending ? (
+                    <Button type="button" size="sm" disabled reason={t("shell.loading")}>{t("drawer.renameSave")}</Button>
+                  ) : (
+                    <Button type="submit" size="sm" data-testid="drawer-dimensions-save">{t("drawer.renameSave")}</Button>
+                  )}
+                </div>
+              </form>
+            </dd>
+          ) : Object.keys(data.dimensionValues).length === 0 ? (
+            <dd className="col-span-2 text-sm text-muted-foreground" data-testid="drawer-no-dimensions">{t("drawer.noDimensions")}</dd>
+          ) : null}
+          {editingDims === null && Object.entries(data.dimensionValues).map(([k, v]) => {
             const dim = dims.find((d) => d.key === k);
             return (
               <div key={k} className="contents" data-testid="drawer-dimension">
