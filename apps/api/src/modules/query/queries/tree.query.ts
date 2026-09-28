@@ -46,14 +46,17 @@ export async function treeQuery(prisma: PrismaClient, auth: AuthContext, raw: un
       return tx.$queryRawUnsafe<Cached[]>(c.sql, ...c.values);
     };
     const [root] = await read(undefined, 0);
-    if (!root) return unavailable("not_cached", dataVersion, now, started);
+    // A tree cached before budgets had a share of the period cannot give pace: rebuilt by the worker.
+    if (!root || !("budget_in_period" in ((root as { measures?: object }).measures ?? {}))) return unavailable("not_cached", dataVersion, now, started);
     const children = await read(q.parentPath, undefined);
     const measures = [...new Set(q.measures)];
     // Ratios for today: pace moves every day while a cached node only changes with its data.
     const elapsed = elapsedFraction(period, now.toISOString().slice(0, 10));
     const dec = (v: unknown) => (v === null || v === undefined ? null : new Decimal(String(v)));
     const pick = (m: Cached["measures"]) => {
-      const withRatios: Record<string, unknown> = { ...m, ...groupRatios({ budget: dec(m["budget"]), actual: dec(m["actual"]), projected: dec(m["projected"]) }, elapsed) };
+      const withRatios: Record<string, unknown> = { ...m, ...groupRatios({ budget: dec(m["budget"]), budgetInPeriod: dec(m["budget_in_period"]), actual: dec(m["actual"]), projected: dec(m["projected"]) }, elapsed) };
+      // The cache keeps budget_in_period unrounded (parents are sums of it); money reads to the cent.
+      if (withRatios["budget_in_period"] !== null && withRatios["budget_in_period"] !== undefined) withRatios["budget_in_period"] = new Decimal(String(withRatios["budget_in_period"])).toFixed(2);
       return Object.fromEntries(measures.map((k) => [k, text(withRatios[k])]));
     };
     const keys = template.path.slice(0, parentDepth + 1);

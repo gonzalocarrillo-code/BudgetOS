@@ -17,6 +17,8 @@ export function elapsedFraction(period: { start: string; end: string }, today: s
 
 export interface GroupSums {
   budget: Decimal | null;
+  /** Σ the budgets' shares of the period (what pace compares spend with); absent = the full budget. */
+  budgetInPeriod?: Decimal | null;
   actual: Decimal | null;
   projected: Decimal | null;
 }
@@ -24,8 +26,9 @@ export interface GroupSums {
 export function groupRatios(x: GroupSums, elapsed: Decimal): Record<"pace_index" | "spend_to_date_pct" | "projected_close_pct" | "variance_pct", string | null> {
   const budget = x.budget !== null && x.budget.gt(0) ? x.budget : null;
   const ratio = (n: Decimal | null) => (budget === null || n === null ? null : n.div(budget).toString());
+  const inPeriod = x.budgetInPeriod === undefined ? budget : x.budgetInPeriod !== null && x.budgetInPeriod.gt(0) ? x.budgetInPeriod : null;
   return {
-    pace_index: budget === null || x.actual === null || elapsed.lte(0) ? null : x.actual.div(budget).div(elapsed).toString(),
+    pace_index: inPeriod === null || x.actual === null || elapsed.lte(0) ? null : x.actual.div(inPeriod).div(elapsed).toString(),
     spend_to_date_pct: ratio(x.actual),
     projected_close_pct: ratio(x.projected),
     variance_pct: budget === null || x.projected === null ? null : x.projected.minus(budget).div(budget).toString(),

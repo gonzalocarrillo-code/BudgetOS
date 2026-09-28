@@ -21,6 +21,8 @@ export type Comparator = z.infer<typeof Comparator>;
 
 export const MeasureKey = z.enum([
   "budget",
+  /** The part of the budget that falls in the query period (prorated by days of overlap): what pace compares spend with. */
+  "budget_in_period",
   "actual",
   "projected",
   "remaining",

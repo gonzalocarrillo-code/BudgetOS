@@ -59,9 +59,22 @@ export function conditionsMatch(c: PolicyConditionsT, f: DiffFacts): boolean {
 
 export type MatchedPolicy = Omit<ApprovalPolicy, "chain"> & { chain: ChainStep[]; conditionsParsed: PolicyConditionsT };
 
-/** First active policy by priority whose conditions match. A policy with unreadable JSON is skipped, never matched. */
+/** Roles whose own changes always apply directly (product decision 2026-09-28). */
+export const DIRECT_ROLES = ["WORKSPACE_ADMIN", "ORG_ADMIN"] as const;
+/** Fixed id of the built-in "admins apply directly" policy (it has no steps, so no request ever names it). */
+export const ADMIN_DIRECT_POLICY_ID = "00000000-0000-4000-8000-00000000ad01";
+
+/**
+ * First active policy by priority whose conditions match. A policy with unreadable JSON is skipped,
+ * never matched. Before any policy: a workspace or org admin's own change applies directly — every
+ * write path (edits, bulk, family, structure, targets, manual entry) and the drawer's "Apply now"
+ * come through here. A reroute passes no requester, so it still matches the workspace's policies.
+ */
 export async function matchPolicy(tx: Tx, workspaceId: string, facts: DiffFacts, requester?: DiffFacts["requester"]): Promise<MatchedPolicy | null> {
   const f: DiffFacts = requester === undefined ? facts : { ...facts, requester };
+  if (f.requester && DIRECT_ROLES.some((r) => f.requester?.roles.includes(r))) {
+    return { id: ADMIN_DIRECT_POLICY_ID, workspaceId, name: "Admins apply directly", priority: -1, conditions: {}, chain: [], allowExternalEvidence: false, blockSelfApproval: false, version: 1, isActive: true, conditionsParsed: {} };
+  }
   const policies = await tx.approvalPolicy.findMany({ where: { workspaceId, isActive: true }, orderBy: [{ priority: "asc" }, { name: "asc" }] });
   for (const p of policies) {
     const conditions = PolicyConditions.safeParse(p.conditions);

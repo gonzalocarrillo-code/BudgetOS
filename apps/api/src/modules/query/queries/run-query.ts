@@ -14,7 +14,7 @@ import type { AuthContext } from "../../../common/tenant.js";
  */
 
 type Row = Record<string, unknown>;
-const MONEY = new Set(["budget", "actual", "projected", "remaining", "variance_abs"]);
+const MONEY = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs"]);
 const measure = (k: string, v: unknown) => (v === null || v === undefined ? null : MONEY.has(k) ? new Decimal(String(v)).toFixed(2) : String(v));
 const text = (v: unknown) => (v === null || v === undefined ? null : String(v));
 
