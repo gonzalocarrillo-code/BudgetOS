@@ -437,3 +437,20 @@ Phase A notes (2026-09-28): tours never start by themselves (Home invites; a clo
 All four phases are built (2026-09-28): PRs #83 (A), #84 (C), #85 (B) and #86 (D), stacked in that order. Decisions D1–D9 in the plan stay open; the builds follow the plan's proposals.
 
 Decisions D1–D9 in the plan's Part 5 are open for the product owner.
+
+## Product feedback, round 7: snapshots and budget history (2026-09-28)
+
+Plan: `docs/BUDGET_HISTORY_PLAN.md` (Phase E, revision 2: snapshots by hand for the workspace, a filter or one budget's subtree; end and reintroduce budgets). ADR-053.
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| H-001 | E1 | Schemas, migration, RLS | pending |
+| H-002 | E1 | Save / list / rename / archive snapshots; versions list their snapshots | pending |
+| H-005 | E1 | Change report | pending |
+| H-011 | E2 | End a budget through the approval policy | pending |
+| H-012 | E2 | Reintroduce a budget; lineage `continues` | pending |
+| H-004 | E3 | Planner `compareTo` and change measures | pending |
+| H-006 | E4 | Budgets: Compare to, Plan · Now · Change, Save snapshot | pending |
+| H-007 | E4 | Drawer, Overview, Closures, Settings › Snapshots | pending |
+| H-008 | E5 | MCP tools | pending |
+| H-009 | E5 | Golden seed and assertions | pending |
