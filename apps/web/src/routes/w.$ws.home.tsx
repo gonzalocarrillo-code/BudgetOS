@@ -117,7 +117,8 @@ function Summary({ ws, home }: { ws: string; home: HomeResponse }): ReactElement
   const totals = home.totals;
   if (!totals) return null;
   const currency = home.workspace?.currency ?? CURRENCY;
-  const waiting = home.waitingOnMe.approvals.length + home.waitingOnMe.mentions.length + home.waitingOnMe.alerts.length;
+  // The same count as the "Waiting on you" card below (unmatched spend is one item there).
+  const waiting = home.waitingOnMe.approvals.length + home.waitingOnMe.mentions.length + home.waitingOnMe.alerts.length + (home.waitingOnMe.unmatched > 0 ? 1 : 0);
   const spent = totals.spentPct === null ? null : Number(totals.spentPct);
   const elapsed = home.workspace?.period.elapsed === null || home.workspace?.period.elapsed === undefined ? null : Number(home.workspace.period.elapsed);
   const stat = "flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 shadow-xs hover:border-primary/50";
