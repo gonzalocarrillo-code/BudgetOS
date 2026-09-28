@@ -2,12 +2,13 @@ import type { ColumnMapping } from "@budget/domain";
 import { Button, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, FileUp, Sparkles } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { ApiError, api, unwrap } from "../../lib/api.js";
 import { registryQuery } from "../../lib/queries.js";
 import { guessMapping, mappingProblems, parseCsvSample, type Sample } from "./mapping.js";
+import { ConnectStep, type WarehouseConfig } from "./connect-step.js";
 
 type Kind = "spend" | "kpi" | "spend+kpi" | "projection";
 export interface Mapping {
@@ -30,6 +31,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
   const { data: dims = [] } = useQuery(registryQuery(ws));
   const [step, setStep] = useState<1 | 2 | 3>(source ? 2 : 1);
   const [file, setFile] = useState<File | null>(null);
+  const [warehouse, setWarehouse] = useState<WarehouseConfig | null>(null);
   const [sample, setSample] = useState<Sample | null>(source ? { header: Object.keys(source.mapping.columns), rows: [] } : null);
   const [mapping, setMapping] = useState<Mapping | null>(source?.mapping ?? null);
   const [name, setName] = useState(source?.name ?? "");
@@ -44,6 +46,19 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
     setSample(s);
     setMapping(guessMapping(s, dims));
     setName(f.name.replace(/\.csv$/i, ""));
+    setWarehouse(null);
+    setAiNote(null);
+    setStep(2);
+  };
+  // A warehouse table or a sheet: its columns as typed (no rows until the connector reads them).
+  const connect = (config: WarehouseConfig, columns: string[], label: string) => {
+    const s: Sample = { header: columns, rows: [] };
+    setWarehouse(config);
+    setFile(null);
+    setSample(s);
+    setMapping(guessMapping(s, dims));
+    setName(label || t(`sources.connector.${config.kind}` as MessageKey));
+    setRunNow(false);
     setAiNote(null);
     setStep(2);
   };
@@ -66,6 +81,11 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
       if (source) {
         await unwrap(api.PATCH("/api/v1/sources/{id}", { params: { path: { id: source.id }, header }, body: { mapping } as never }));
         return source.id;
+      }
+      if (warehouse) {
+        const made = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: warehouse, mapping, ...(schedule.trim() ? { schedule: schedule.trim() } : {}), ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never })));
+        if (runNow) await unwrap(api.POST("/api/v1/sources/{id}/run", { params: { path: { id: made.id }, header }, body: {} as never }));
+        return made.id;
       }
       if (!file) throw new Error("no file");
       const upload = z.object({ uri: z.string(), uploadUrl: z.string(), method: z.enum(["PUT", "POST"]).default("PUT"), contentType: z.string() }).parse(await unwrap(api.POST("/api/v1/uploads", { params: { header }, body: { filename: file.name.replace(/[^\w.\- ]/g, "_") } as never })));
@@ -96,7 +116,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
   return (
     <div className="flex flex-col gap-4" data-testid="mapping-wizard" data-step={step}>
       <ol className="flex flex-wrap gap-2 text-sm" aria-label={t("sources.steps")}>
-        {(["sources.step.file", "sources.step.columns", "sources.step.save"] as const).map((k, i) => (
+        {(["sources.step.connect", "sources.step.columns", "sources.step.save"] as const).map((k, i) => (
           <li key={k} aria-current={step === i + 1 ? "step" : undefined} className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1", step === i + 1 ? "bg-primary text-primary-foreground" : step > i + 1 ? "bg-secondary text-secondary-foreground" : "bg-surface text-muted-foreground")}>
             {step > i + 1 ? <Check className="size-3.5" aria-hidden /> : <span className="tabular">{i + 1}</span>}
             {t(k)}
@@ -104,14 +124,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
         ))}
       </ol>
 
-      {step === 1 ? (
-        <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border px-6 py-10 text-center hover:bg-accent/40">
-          <FileUp className="size-8 text-muted-foreground" aria-hidden />
-          <span className="text-sm font-medium">{t("sources.chooseCsv")}</span>
-          <span className="text-xs text-muted-foreground">{t("sources.chooseCsvHelp")}</span>
-          <input type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => e.target.files?.[0] && void read(e.target.files[0])} data-testid="wizard-file" />
-        </label>
-      ) : null}
+      {step === 1 ? <ConnectStep onFile={(f) => void read(f)} onWarehouse={connect} /> : null}
 
       {step === 2 && sample && mapping ? (
         <div className="flex flex-col gap-3">
@@ -226,7 +239,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
           ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={runNow} onChange={(e) => setRunNow(e.target.checked)} />
-            {t("sources.runNow")}
+            {t(warehouse ? "sources.runNowWarehouse" : "sources.runNow")}
           </label>
           {create.error ? <p role="alert" className="text-sm text-destructive">{create.error.message}</p> : null}
           <div className="flex justify-end gap-2">

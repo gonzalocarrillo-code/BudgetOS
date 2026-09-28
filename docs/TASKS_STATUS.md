@@ -384,3 +384,9 @@ The spec-scale load job re-measures this on this branch.
 
 - A workspace admin's or org admin's own change is approved on submit, with no approval step. `matchPolicy` returns the built-in "Admins apply directly" policy before the workspace's own, so every write path gets it: edits, bulk, family, structure, targets and manual entry, plus the drawer's "Apply now".
 - The Approval policies page says so.
+
+## Product feedback, round 4: data sources from BigQuery and Snowflake (2026-09-28)
+
+- **New data source:** step 1 is now Connect, with BigQuery, Snowflake, Google Sheets or a CSV file.
+- **Warehouses and Sheets:** you enter the connection (validated against `SourceConfig`, credentials only as a Secret Manager name) and the table's columns, then map them as for a CSV, then save. The backend already accepted these source types.
+- **Test the connection:** shown, and disabled with a reason until the connector's credentials are set up. For warehouses, "Run it now" is off by default.
