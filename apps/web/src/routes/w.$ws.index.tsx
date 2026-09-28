@@ -1,14 +1,16 @@
 import { formatMoney } from "@budget/grid";
 import { cn, Button } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock, Database, XCircle } from "lucide-react";
-import { useState, type ReactElement, type ReactNode } from "react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock, Database, SlidersHorizontal, XCircle } from "lucide-react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { SeverityChip } from "./w.$ws.alerts.js";
 import { api, unwrap } from "../lib/api.js";
+import { meQuery, periodsQuery, SavedView } from "../lib/queries.js";
+import { CellEditor, type CellRef } from "../features/overview/cell-editor.js";
 
 /**
  * Overview (spec §18.5, plan §11.1 / Epic 1.11): glanceable risk with zero configuration. Pacing
@@ -17,8 +19,10 @@ import { api, unwrap } from "../lib/api.js";
  * server. Colours always come with their legend and the number they stand for.
  */
 const PRESETS = ["current_month", "current_quarter", "current_year", "ytd", "last_90_days"] as const;
+// A relative preset, or one of the workspace's own periods as `fiscal:<key>` (as in Budgets).
+const PeriodParam = z.union([z.enum(PRESETS), z.string().regex(/^fiscal:[A-Za-z0-9_-]{1,40}$/)]);
 // Heatmap axes: any two granularities of the registry (product feedback 8), kept in the URL.
-const OverviewSearch = z.object({ period: z.enum(PRESETS).default("current_year"), rows: z.string().optional(), cols: z.string().optional() });
+const OverviewSearch = z.object({ period: PeriodParam.catch("current_year").default("current_year"), rows: z.string().optional(), cols: z.string().optional() });
 type OverviewSearch = z.infer<typeof OverviewSearch>;
 export const Route = createFileRoute("/w/$ws/")({ validateSearch: OverviewSearch, search: { middlewares: [stripSearchParams({ period: "current_year" })] }, component: OverviewPage });
 
@@ -49,6 +53,88 @@ const Overview = z.object({
 });
 type Overview = z.infer<typeof Overview>;
 
+/**
+ * What each person sees (product feedback: "what we see and what we don't see"): tiles and panels
+ * they turned off, kept on the server as their private `overview` saved view. A view the
+ * workspace shares is everyone's default until they save their own.
+ */
+const SECTIONS = ["tile.budget", "tile.actual", "tile.spent", "tile.projected", "tile.alerts", "tile.approvals", "heatmap", "overPace", "underPace", "kpi", "alerts", "approvals", "freshness"] as const;
+type Section = (typeof SECTIONS)[number];
+const LAYOUT_NAME = "Overview layout";
+const Layout = z.object({ hidden: z.array(z.string()).default([]) });
+
+function useLayout(ws: string) {
+  const client = useQueryClient();
+  const { data: me } = useQuery(meQuery);
+  const viewsKey = ["saved-views", ws, "overview"];
+  const viewsQuery = {
+    queryKey: viewsKey,
+    queryFn: async () => z.array(SavedView).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/saved-views", { params: { path: { ws }, query: { screen: "overview" } as never } }))),
+  };
+  const { data: views = [] } = useQuery(viewsQuery);
+  const mineOf = (vs: SavedView[]) => vs.find((v) => v.createdBy === me?.user.id && v.visibility === "private") ?? null;
+  const mine = mineOf(views);
+  const shared = views.find((v) => v.visibility === "workspace") ?? null;
+  // The choice shows at once; saves run one after another, and the last one's result stays shown.
+  const [pending, setPending] = useState<string[] | null>(null);
+  const latest = useRef<string[] | null>(null);
+  const hidden = new Set(pending ?? Layout.parse((mine ?? shared)?.definition ?? {}).hidden);
+  const save = useMutation({
+    scope: { id: `overview-layout-${ws}` },
+    mutationFn: async (next: string[]) => {
+      // Looked up fresh: the save before this one may have just created the view.
+      const current = mineOf(await client.fetchQuery({ ...viewsQuery, staleTime: 0 }));
+      return current
+        ? unwrap(api.PATCH("/api/v1/saved-views/{id}", { params: { path: { id: current.id }, header: { "X-Workspace-Id": ws } }, body: { definition: { hidden: next } } as never }))
+        : unwrap(api.POST("/api/v1/workspaces/{ws}/saved-views", { params: { path: { ws } }, body: { name: LAYOUT_NAME, screen: "overview", definition: { hidden: next }, visibility: "private" } as never }));
+    },
+    onSettled: async (_r, _e, next) => {
+      await client.invalidateQueries({ queryKey: viewsKey });
+      if (latest.current === next) setPending(null);
+    },
+  });
+  const shows = (s: Section) => !hidden.has(s);
+  const apply = (next: string[]) => {
+    latest.current = next;
+    setPending(next);
+    save.mutate(next);
+  };
+  const toggle = (s: Section) => apply(hidden.has(s) ? [...hidden].filter((x) => x !== s) : [...hidden, s]);
+  const reset = () => apply([]);
+  return { shows, toggle, reset, hiddenCount: hidden.size, saving: save.isPending, ready: me !== undefined };
+}
+
+function Customise({ layout }: { layout: ReturnType<typeof useLayout> }): ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)} aria-expanded={open} data-testid="overview-customise">
+        <SlidersHorizontal className="size-4" aria-hidden />
+        {layout.hiddenCount ? t("overview.customise.withHidden", { count: layout.hiddenCount }) : t("overview.customise")}
+      </Button>
+      {open ? (
+        <div className="absolute right-0 top-10 z-30 flex w-64 flex-col gap-1 rounded-xl border border-border bg-card p-3 shadow-lg" role="dialog" aria-label={t("overview.customise")} data-testid="overview-customise-menu">
+          <p className="pb-1 text-xs text-muted-foreground">{t("overview.customise.help")}</p>
+          {SECTIONS.map((s) => (
+            <label key={s} className="flex items-center gap-2 rounded-md px-1 py-1 text-sm hover:bg-accent">
+              <input type="checkbox" checked={layout.shows(s)} onChange={() => layout.toggle(s)} data-testid={`customise-${s}`} />
+              {t(`overview.section.${s}` as MessageKey)}
+            </label>
+          ))}
+          <div className="flex justify-between pt-2">
+            {layout.hiddenCount ? (
+              <Button size="sm" variant="ghost" onClick={layout.reset} data-testid="customise-reset">{t("overview.customise.reset")}</Button>
+            ) : (
+              <Button size="sm" variant="ghost" disabled reason={t("overview.customise.nothingHidden")}>{t("overview.customise.reset")}</Button>
+            )}
+            <Button size="sm" onClick={() => setOpen(false)}>{t("overview.customise.done")}</Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const overviewQuery = (ws: string, period: string, rows?: string, cols?: string) =>
   queryOptions({
     queryKey: ["overview", ws, period, rows ?? "", cols ?? ""],
@@ -73,53 +159,84 @@ function OverviewPage(): ReactElement {
   const { period, rows, cols } = Route.useSearch();
   const navigate = Route.useNavigate();
   const { data: o, error, isPending } = useQuery(overviewQuery(ws, period, rows, cols));
+  const { data: periods = [] } = useQuery(periodsQuery(ws));
+  const layout = useLayout(ws);
+  const [cell, setCell] = useState<CellRef | null>(null);
   const money = (v: string | null | undefined) => (v === null || v === undefined ? "—" : formatMoney(v, o?.currency ?? "USD"));
+  const periodSpec = period.startsWith("fiscal:") ? { kind: "fiscal", key: period.slice("fiscal:".length) } : { kind: "relative", preset: period };
+  const tiles = [
+    layout.shows("tile.budget") ? <Tile key="b" label={t("overview.budget")} value={o ? money(o.totals["budget"]) : ""} /> : null,
+    layout.shows("tile.actual") ? <Tile key="a" label={t("overview.actual")} value={o ? money(o.totals["actual"]) : ""} hint={o ? t("overview.spendToDate", { pct: pct(o.totals["spend_to_date_pct"] ?? null) }) : undefined} /> : null,
+    // % of the budget spent (product feedback 8), against how much of the period has gone.
+    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(o.totals["spend_to_date_pct"] ?? null) : ""} hint={o?.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" /> : null,
+    // A projection needs projection facts; without them it would read 0%.
+    layout.shows("tile.projected") ? <Tile key="p" label={t("overview.projectedClose")} value={o ? (Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])) : ""} hint={o && Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} /> : null,
+    layout.shows("tile.alerts") ? <Tile key="al" label={t("overview.openAlerts")} value={o ? String(o.alerts.open) : ""} to="alerts" ws={ws} testId="tile-alerts" /> : null,
+    layout.shows("tile.approvals") ? <Tile key="ap" label={t("overview.approvalsMine")} value={o ? String(o.approvals.mine) : ""} hint={o?.approvals.overdue ? t("overview.overdue", { n: o.approvals.overdue }) : undefined} to="approvals" ws={ws} testId="tile-approvals" /> : null,
+  ].filter((x) => x !== null);
 
   return (
     <Page
       title={t("nav.overview")}
       actions={
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          {t("overview.period")}
-          <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={period} onChange={(e) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, period: e.target.value as OverviewSearch["period"] }) })} data-testid="overview-period">
-            {PRESETS.map((p) => (
-              <option key={p} value={p}>
-                {t(`explorer.period.${p}` as MessageKey)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            {t("overview.period")}
+            <select className="h-8 max-w-64 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={period} onChange={(e) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, period: e.target.value }) })} data-testid="overview-period">
+              {PRESETS.map((p) => (
+                <option key={p} value={p}>
+                  {t(`explorer.period.${p}` as MessageKey)}
+                </option>
+              ))}
+              {/* The workspace's own years, quarters and custom periods (Admin › Fiscal calendar). */}
+              {periods.length ? (
+                <optgroup label={t("explorer.period.calendar")}>
+                  {periods
+                    .filter((p) => p.kind !== "month")
+                    .map((p) => (
+                      <option key={p.id} value={`fiscal:${p.key}`}>
+                        {p.key} · {p.start} – {p.end}
+                      </option>
+                    ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </label>
+          <Customise layout={layout} />
+        </div>
       }
     >
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
       {isPending || !o ? (
         <p className="text-sm text-muted-foreground" data-testid="overview-loading">{t("shell.loading")}</p>
       ) : (
-        <div className="flex flex-col gap-5" data-testid="overview" data-ready="true" data-period={period}>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6" data-testid="overview-tiles">
-            <Tile label={t("overview.budget")} value={money(o.totals["budget"])} />
-            <Tile label={t("overview.actual")} value={money(o.totals["actual"])} hint={t("overview.spendToDate", { pct: pct(o.totals["spend_to_date_pct"] ?? null) })} />
-            {/* % of the budget spent (product feedback 8), against how much of the period has gone. */}
-            <Tile label={t("overview.spent")} value={pct(o.totals["spend_to_date_pct"] ?? null)} hint={o.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" />
-            {/* A projection needs projection facts; without them it would read 0%. */}
-            <Tile label={t("overview.projectedClose")} value={Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])} hint={Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} />
-            <Tile label={t("overview.openAlerts")} value={String(o.alerts.open)} to="alerts" ws={ws} testId="tile-alerts" />
-            <Tile label={t("overview.approvalsMine")} value={String(o.approvals.mine)} hint={o.approvals.overdue ? t("overview.overdue", { n: o.approvals.overdue }) : undefined} to="approvals" ws={ws} testId="tile-approvals" />
-          </div>
+        <div className="flex min-w-0 flex-col gap-5" data-testid="overview" data-ready="true" data-period={period}>
+          {tiles.length ? (
+            // Wide enough for a seven-figure amount: tiles wrap instead of cutting it off.
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-3" data-testid="overview-tiles">
+              {tiles}
+            </div>
+          ) : null}
 
-          {o.heatmap ? <Heatmap ws={ws} h={o.heatmap} money={money} onAxes={(axes) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, ...axes }) })} /> : null}
+          {o.heatmap && layout.shows("heatmap") ? <Heatmap h={o.heatmap} money={money} onAxes={(axes) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, ...axes }) })} onCell={setCell} /> : null}
 
-          <div className="grid gap-5 lg:grid-cols-2">
-            <Card title={t("overview.overPace")}>
-              <LeafList ws={ws} rows={o.variances.over} icon={<ArrowUpRight className="size-4 text-destructive" aria-hidden />} money={money} testId="over-pace" />
-            </Card>
-            <Card title={t("overview.underPace")}>
-              <LeafList ws={ws} rows={o.variances.under} icon={<ArrowDownRight className="size-4 text-secondary-foreground" aria-hidden />} money={money} testId="under-pace" />
-            </Card>
-          </div>
+          {layout.shows("overPace") || layout.shows("underPace") ? (
+            <div className="grid gap-5 lg:grid-cols-2">
+              {layout.shows("overPace") ? (
+                <Card title={t("overview.overPace")}>
+                  <LeafList ws={ws} rows={o.variances.over} icon={<ArrowUpRight className="size-4 text-destructive" aria-hidden />} money={money} testId="over-pace" />
+                </Card>
+              ) : null}
+              {layout.shows("underPace") ? (
+                <Card title={t("overview.underPace")}>
+                  <LeafList ws={ws} rows={o.variances.under} icon={<ArrowDownRight className="size-4 text-secondary-foreground" aria-hidden />} money={money} testId="under-pace" />
+                </Card>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="grid gap-5 lg:grid-cols-3">
-            {o.kpi ? (
+            {o.kpi && layout.shows("kpi") ? (
               <Card title={t("overview.kpi", { metric: o.kpi.metric.toUpperCase(), dimension: o.kpi.dimension.label })}>
                 <table className="tabular w-full text-sm" data-testid="kpi-table">
                   <thead className="text-left text-muted-foreground">
@@ -147,6 +264,7 @@ function OverviewPage(): ReactElement {
                 <p className="mt-2 text-xs text-muted-foreground">{t("overview.kpiHelp")}</p>
               </Card>
             ) : null}
+            {layout.shows("alerts") ? (
             <Card title={t("overview.alerts")}>
               <div className="flex flex-col gap-2" data-testid="overview-alerts">
                 <div className="flex flex-wrap gap-2">
@@ -172,6 +290,8 @@ function OverviewPage(): ReactElement {
                 <Link to="/w/$ws/alerts" params={{ ws }} className="text-sm text-primary hover:underline">{t("overview.allAlerts")}</Link>
               </div>
             </Card>
+            ) : null}
+            {layout.shows("approvals") ? (
             <Card title={t("overview.approvals")}>
               <div className="flex flex-col gap-2" data-testid="overview-approvals">
                 {o.approvals.due.length === 0 ? <p className="text-sm text-muted-foreground">{t("overview.noApprovals")}</p> : null}
@@ -194,8 +314,10 @@ function OverviewPage(): ReactElement {
                 <Link to="/w/$ws/approvals" params={{ ws }} search={{ tab: "mine" }} className="text-sm text-primary hover:underline">{t("overview.allApprovals")}</Link>
               </div>
             </Card>
+            ) : null}
           </div>
 
+          {layout.shows("freshness") ? (
           <Card title={t("overview.freshness")}>
             <div className="flex flex-col gap-2 text-sm" data-testid="overview-freshness">
               <p className="flex items-center gap-2">
@@ -220,8 +342,11 @@ function OverviewPage(): ReactElement {
               </ul>
             </div>
           </Card>
+          ) : null}
+          {tiles.length === 0 && layout.hiddenCount >= SECTIONS.length ? <p className="text-sm text-muted-foreground" data-testid="overview-all-hidden">{t("overview.customise.allHidden")}</p> : null}
         </div>
       )}
+      {cell && o ? <CellEditor ws={ws} cell={cell} period={periodSpec} currency={o.currency} onClose={() => setCell(null)} /> : null}
     </Page>
   );
 }
@@ -230,7 +355,7 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
   const body = (
     <>
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="tabular whitespace-nowrap text-lg font-semibold tracking-[-0.02em]">{value}</span>
+      <span className="tabular whitespace-nowrap text-lg font-semibold tracking-[-0.02em]" title={value}>{value}</span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </>
   );
@@ -255,7 +380,7 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
 const COLS_SHOWN = 8;
 const ROWS_SHOWN = 12;
 
-function Heatmap({ ws, h, money, onAxes }: { ws: string; h: NonNullable<Overview["heatmap"]>; money: (v: string | null | undefined) => string; onAxes: (axes: { rows?: string; cols?: string }) => void }): ReactElement {
+function Heatmap({ h, money, onAxes, onCell }: { h: NonNullable<Overview["heatmap"]>; money: (v: string | null | undefined) => string; onAxes: (axes: { rows?: string; cols?: string }) => void; onCell: (cell: CellRef) => void }): ReactElement {
   const cell = (row: string, col: string) => h.cells.find((c) => c.row === row && c.col === col);
   const label = (kind: "rows" | "cols", code: string) => h.labels[kind][code] ?? code;
   const [allCols, setAllCols] = useState(false);
@@ -307,21 +432,19 @@ function Heatmap({ ws, h, money, onAxes }: { ws: string; h: NonNullable<Overview
                     const p = x?.pace_index === null || x?.pace_index === undefined ? null : Number(x.pace_index);
                     const spent = x?.spend_to_date_pct ?? null;
                     const b = band(p);
-                    const filter = { logic: "and", children: [{ field: { kind: "dimension", key: h.rowDimension.key }, op: "eq", value: r }, { field: { kind: "dimension", key: h.colDimension.key }, op: "eq", value: c }] };
                     return (
                       <td key={c} className="p-0">
                         {x ? (
-                          <Link
-                            to="/w/$ws/budgets"
-                            params={{ ws }}
-                            search={{ view: "pivot", groupBy: [h.rowDimension.key, h.colDimension.key], filter } as never}
-                            className={cn("flex min-w-24 flex-col rounded-md px-2 py-1.5 text-foreground hover:ring-2 hover:ring-primary", b?.cls ?? "bg-surface")}
+                          <button
+                            type="button"
+                            onClick={() => onCell({ row: { key: h.rowDimension.key, code: r, label: label("rows", r) }, col: { key: h.colDimension.key, code: c, label: label("cols", c) } })}
+                            className={cn("flex w-full min-w-24 flex-col rounded-md px-2 py-1.5 text-left text-foreground hover:ring-2 hover:ring-primary", b?.cls ?? "bg-surface")}
                             aria-label={t("overview.cellLabel", { row: label("rows", r), col: label("cols", c), spent: pct(spent), budget: money(x.budget), actual: money(x.actual) })}
                             data-testid="heatmap-cell"
                           >
                             <span className="font-semibold" data-testid="heatmap-spent">{pct(spent)}</span>
                             <span className="text-xs text-muted-foreground">{money(x.budget)}</span>
-                          </Link>
+                          </button>
                         ) : (
                           <span className="block min-w-24 rounded-md bg-surface/60 px-2 py-1.5 text-xs text-muted-foreground">—</span>
                         )}

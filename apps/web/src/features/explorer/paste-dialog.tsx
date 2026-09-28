@@ -9,7 +9,7 @@ import { api, unwrap } from "../../lib/api.js";
  * The bulk preview a paste opens (spec §18.2, T-013): the rows before and after, totals, cap
  * violations and the approval policy that will apply. Nothing is written until Commit.
  */
-export function PasteDialog({ ws, preview, onDone, onCancel }: { ws: string; preview: BulkPreview; onDone: (committed: number) => void; onCancel: () => void }): ReactElement {
+export function PasteDialog({ ws, preview, onDone, onCancel, title, body }: { ws: string; preview: BulkPreview; onDone: (committed: number) => void; onCancel: () => void; title?: string; body?: string }): ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const commit = async () => {
@@ -28,9 +28,9 @@ export function PasteDialog({ ws, preview, onDone, onCancel }: { ws: string; pre
       <div className="flex max-h-[80vh] w-full max-w-2xl flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-lg">
         <div>
           <h2 id="paste-title" className="text-lg font-semibold tracking-[-0.015em]">
-            {t("paste.title")}
+            {title ?? t("paste.title")}
           </h2>
-          <p className="text-sm text-muted-foreground">{t("paste.body")}</p>
+          <p className="text-sm text-muted-foreground">{body ?? t("paste.body")}</p>
         </div>
         <div className="overflow-y-auto rounded-lg border border-border">
           <table className="tabular w-full text-sm">

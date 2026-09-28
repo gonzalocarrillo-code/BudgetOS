@@ -5,7 +5,7 @@ import { z } from "zod";
  * replaces the search params. private: the owner only; workspace: everyone in the workspace
  * (needs view.share_workspace).
  */
-export const SavedViewScreen = z.enum(["explorer", "alerts", "approvals", "targets", "report"]);
+export const SavedViewScreen = z.enum(["explorer", "alerts", "approvals", "targets", "report", "overview"]);
 export const SavedViewVisibility = z.enum(["private", "workspace"]);
 
 export const CreateSavedViewInput = z.object({

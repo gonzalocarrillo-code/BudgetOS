@@ -5532,7 +5532,7 @@ export interface operations {
                      * @default explorer
                      * @enum {string}
                      */
-                    screen?: "explorer" | "alerts" | "approvals" | "targets" | "report";
+                    screen?: "explorer" | "alerts" | "approvals" | "targets" | "report" | "overview";
                     definition: {
                         [key: string]: unknown;
                     };
@@ -6335,7 +6335,8 @@ export interface operations {
     getOverview: {
         parameters: {
             query?: {
-                period?: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+                /** @description A relative preset (current_month, current_quarter, current_year, last_30_days, last_90_days, ytd, next_90_days) or fiscal:<key>, one of the workspace's periods (e.g. fiscal:2026-Q2) */
+                period?: string;
                 /** @description Heatmap rows: a registry granularity key (default country) */
                 rows?: string;
                 /** @description Heatmap columns: another granularity key (default platform) */
