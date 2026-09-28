@@ -104,6 +104,7 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
       parentId: env.parentId,
       name: env.name,
       displayName: env.displayName,
+      nameCustom: env.nameCustom,
       matchKey: env.matchKey,
       dimensionValues: env.dimensionValues,
       periodId: env.periodId,

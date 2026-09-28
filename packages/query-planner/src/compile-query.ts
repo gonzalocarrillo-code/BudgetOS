@@ -152,6 +152,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     m AS (
       SELECT e.id AS envelope_id,
         ${budgetSql} AS budget,
+        -- The share of the envelope's days that fall in the period (its budget's share, below).
+        (LEAST(e.end_date, ${pEnd}) - GREATEST(e.start_date, ${pStart}) + 1)::numeric / NULLIF(e.end_date - e.start_date + 1, 0) AS period_share,
         ${spendSql(b, period, ws)} AS actual,
         ${opts.hasProjections === false ? "0::numeric" : "coalesce(p.projected, 0)"} AS projected
         ${kpiCols}
@@ -159,15 +161,19 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       WHERE e.workspace_id = ${ws}::uuid
         AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${onlyIds}
     ),
+    m1 AS (
+      SELECT *, budget * period_share AS budget_in_period FROM m
+    ),
     m2 AS (
       SELECT *, (budget - actual) AS remaining,
         ${derived.variance_abs} AS variance_abs,
         ${derived.variance_pct} AS variance_pct,
         CASE WHEN budget > 0 THEN actual / budget ELSE NULL END AS spend_to_date_pct,
-        CASE WHEN budget > 0 AND ${elapsedFrac} > 0 THEN (actual / budget) / ${elapsedFrac} ELSE NULL END AS pace_index,
+        -- Pace: the period's spend against the budget's share of the period, over the share of the period gone.
+        CASE WHEN budget_in_period > 0 AND ${elapsedFrac} > 0 THEN (actual / budget_in_period) / ${elapsedFrac} ELSE NULL END AS pace_index,
         ${derived.projected_close_pct} AS projected_close_pct
         ${kpiDerived}
-      FROM m
+      FROM m1
     )`;
 
   // Target of one envelope row: envelope-scoped via effective_target() (walks up parents), else the
@@ -304,7 +310,7 @@ export function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: st
 }
 
 const UUID_COLS = new Set(["envelope_id", "parent_id"]);
-const NUMERIC_COLS = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
+const NUMERIC_COLS = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
 const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */
@@ -358,7 +364,7 @@ export function pageOf<R extends Record<string, unknown>>(
 function ratioExpr(mk: string, elapsedFrac: string): string {
   switch (mk) {
     case "pace_index":
-      return `(sum(m.actual)/sum(m.budget)) / NULLIF(${elapsedFrac},0)`;
+      return `(sum(m.actual)/NULLIF(sum(m.budget_in_period),0)) / NULLIF(${elapsedFrac},0)`;
     case "variance_pct":
       return `(sum(m.projected)-sum(m.budget))/sum(m.budget)`;
     case "projected_close_pct":

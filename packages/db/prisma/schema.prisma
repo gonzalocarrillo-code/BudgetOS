@@ -208,6 +208,8 @@ model Envelope {
   parent              Envelope?            @relation("EnvelopeTree", fields: [parentId], references: [id])
   children            Envelope[]           @relation("EnvelopeTree")
   name                String
+  /// Renamed by someone: the display naming template leaves it alone.
+  nameCustom          Boolean              @default(false) @map("name_custom")
   dimensionValues     Json                 @map("dimension_values") // {"country":"BR","platform":"meta"} — denormalised copy
   periodId            String?              @map("period_id") @db.Uuid
   startDate           DateTime             @map("start_date") @db.Date
