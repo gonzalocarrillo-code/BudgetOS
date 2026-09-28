@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { can, type Role } from "@budget/domain";
+import { can, eligibleApprover, type Role } from "@budget/domain";
 import { withTenant } from "@budget/db";
 import { SignJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -538,5 +538,24 @@ describe("separation of duties", () => {
     expect(await eligible(users.APPROVER.id)).toBe(false);
     expect(await eligible(approver2.id)).toBe(true);
     expect(await eligible(users.FINANCE.id)).toBe(false); // wrong role for the step
+    expect(await eligible(users.ORG_ADMIN.id)).toBe(true); // an org admin decides any step
+  });
+
+  it("an org admin may approve their own request (product decision 2026-09-28); others still may not", async () => {
+    const requestId = randomUUID();
+    await owner.$executeRawUnsafe(
+      `INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by)
+       VALUES ($1::uuid, $2::uuid, 'envelope_version', $3::uuid, $4::uuid, 1, $5::jsonb, 'own', $6::uuid)`,
+      requestId, wsA, randomUUID(), randomUUID(), JSON.stringify({ chain: [{ role: "FINANCE" }], blockSelfApproval: true }), users.ORG_ADMIN.id,
+    );
+    const eligible = async (userId: string) => (await owner.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT eligible_approver($1::uuid, $2::uuid) AS ok`, requestId, userId))[0]?.ok;
+    expect(await eligible(users.ORG_ADMIN.id)).toBe(true);
+    expect(await eligible(users.FINANCE.id)).toBe(true);
+    expect(await eligible(users.APPROVER.id)).toBe(false);
+    const target = { dims: {} };
+    const orgAdmin = [{ role: "ORG_ADMIN" as const, scope: {} }];
+    expect(eligibleApprover({ assignments: orgAdmin, stepRole: "FINANCE", target, userId: users.ORG_ADMIN.id, authorId: users.ORG_ADMIN.id, blockSelfApproval: true })).toBe(true);
+    const finance = [{ role: "FINANCE" as const, scope: {} }];
+    expect(eligibleApprover({ assignments: finance, stepRole: "FINANCE", target, userId: users.FINANCE.id, authorId: users.FINANCE.id, blockSelfApproval: true })).toBe(false);
   });
 });
