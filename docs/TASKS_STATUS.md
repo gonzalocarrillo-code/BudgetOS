@@ -375,3 +375,7 @@ The spec-scale load job re-measures this on this branch.
 - **Statuses:** read as words (Draft, Waiting for approval, Approved, Locked (period closed), Archived; groups "N waiting"), with an explanation on the drawer's chip.
 - **Rename:** a budget is renamed from its drawer. A custom name wins over the display naming template (`envelope.name_custom`); "use the template name" undoes it.
 - **Adding budgets:** "New budget" (#68) adds a top-level budget; Add child / Split add below one.
+## Product feedback, round 4: admins apply directly (2026-09-28)
+
+- A workspace admin's or org admin's own change is approved on submit, with no approval step. `matchPolicy` returns the built-in "Admins apply directly" policy before the workspace's own, so every write path gets it: edits, bulk, family, structure, targets and manual entry, plus the drawer's "Apply now".
+- The Approval policies page says so.

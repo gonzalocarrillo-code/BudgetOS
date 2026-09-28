@@ -539,6 +539,7 @@ const en = {
   "approval.send.apply": "Apply now",
   "approval.send.policyDirect": "Policy \u201c{policy}\u201d lets you set this without approval",
   "approval.send.policyRoute": "Goes to {role} first \u00b7 policy \u201c{policy}\u201d, {steps} step(s)",
+  "policy.adminsDirect": "Workspace and org admins' own changes always apply directly, without an approval step. These policies decide everyone else's.",
   "policy.intro": "The first active policy, top to bottom, that matches a change decides who approves it. A policy with no approval steps sets the change at once: use \u201cWho is asking\u201d to let some people set budgets without approval.",
   "policy.new": "New policy",
   "policy.edit": "Edit",

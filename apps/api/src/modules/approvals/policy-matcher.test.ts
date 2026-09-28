@@ -1,7 +1,7 @@
 import { PolicyConditions } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { describe, expect, it } from "vitest";
-import { conditionsMatch, type DiffFacts } from "./policy-matcher.js";
+import { ADMIN_DIRECT_POLICY_ID, conditionsMatch, matchPolicy, type DiffFacts } from "./policy-matcher.js";
 
 /** Product feedback 6 (ADR-040): a policy can say who is asking — roles (direct or via groups) or people. */
 
@@ -43,5 +43,18 @@ describe("requester conditions", () => {
   it("need roles or people", () => {
     expect(PolicyConditions.safeParse({ requester: {} }).success).toBe(false);
     expect(PolicyConditions.safeParse({ requester: { roles: ["NOT_A_ROLE"] } }).success).toBe(false);
+  });
+});
+
+describe("admins apply directly (product decision 2026-09-28)", () => {
+  const policies = [{ id: U1, workspaceId: U1, name: "Everything", priority: 10, conditions: {}, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], allowExternalEvidence: false, blockSelfApproval: true, version: 3, isActive: true }];
+  const tx = { approvalPolicy: { findMany: async () => policies } } as unknown as Parameters<typeof matchPolicy>[0];
+  it("a workspace or org admin's own change matches no step; anyone else gets the workspace's policies", async () => {
+    for (const role of ["WORKSPACE_ADMIN", "ORG_ADMIN"]) {
+      const p = await matchPolicy(tx, U1, facts(), { userId: U2, roles: [role] });
+      expect(p).toMatchObject({ id: ADMIN_DIRECT_POLICY_ID, name: "Admins apply directly", chain: [] });
+    }
+    expect((await matchPolicy(tx, U1, facts(), { userId: U2, roles: ["PLANNER", "BUDGET_OWNER"] }))?.name).toBe("Everything");
+    expect((await matchPolicy(tx, U1, facts()))?.name).toBe("Everything"); // a re-route names nobody
   });
 });
