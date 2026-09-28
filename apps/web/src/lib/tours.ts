@@ -8,17 +8,23 @@ import { api, unwrap } from "./api.js";
 /**
  * Guided tours (spec §27, plan §11.7) on driver.js (MIT). A tour's steps point at `[data-tour="…"]`
  * elements; a step with a `path` other than the current page navigates there first and waits for
- * its element. Finishing the last step (or closing on it) records completion for that version, so
- * the first-run tour does not come back until an admin publishes a new version.
+ * its element. Finishing the last step records completion for that version; closing earlier records
+ * a skip (UX-001). Either way Home stops offering the tour until a new version is published. Tours
+ * never start on their own: Home invites, Help lists them.
  */
 
-export const Tour = z.object({ id: z.string().uuid(), role: z.string(), name: z.string(), steps: z.array(TourStep), version: z.number(), completed: z.boolean(), isDefault: z.boolean() }).passthrough();
+export const Tour = z.object({ id: z.string().uuid(), role: z.string(), name: z.string(), steps: z.array(TourStep), version: z.number(), completed: z.boolean(), dismissed: z.boolean().default(false), isDefault: z.boolean() }).passthrough();
 export type Tour = z.infer<typeof Tour>;
 
 export const toursQuery = (ws: string, all: boolean) => ({
   queryKey: ["tours", ws, all],
   queryFn: async () => z.array(Tour).parse(await unwrap(api.GET("/api/v1/tours", { params: { header: { "X-Workspace-Id": ws }, query: (all ? { all: "true" } : {}) as never } }))),
 });
+
+/** Records a finish, or a skip (`dismissed`), for the tour's current version. */
+export async function markTour(ws: string, tour: Pick<Tour, "id" | "version">, dismissed: boolean): Promise<void> {
+  await unwrap(api.POST("/api/v1/tours/{id}/complete", { params: { path: { id: tour.id }, header: { "X-Workspace-Id": ws } }, body: { version: tour.version, dismissed } as never }));
+}
 
 let running: Driver | null = null;
 export const tourRunning = () => running !== null;
@@ -75,7 +81,9 @@ export async function runTour(ws: string, tour: Tour, go: (path: string) => Prom
       },
       onDestroyed: () => {
         running = null;
-        if (finished) void unwrap(api.POST("/api/v1/tours/{id}/complete", { params: { path: { id: tour.id }, header: { "X-Workspace-Id": ws } }, body: { version: tour.version } as never })).finally(() => resolve({ finished }));
+        // Closing early is a skip, unless the tour was already finished or skipped at this version.
+        if (finished) void markTour(ws, tour, false).finally(() => resolve({ finished }));
+        else if (!tour.completed && !tour.dismissed) void markTour(ws, tour, true).finally(() => resolve({ finished }));
         else resolve({ finished });
       },
     });

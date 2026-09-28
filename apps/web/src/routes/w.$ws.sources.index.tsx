@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, StatusChip } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -23,13 +23,7 @@ export const Route = createFileRoute("/w/$ws/sources/")({ validateSearch: Source
 const STATUS_ICON = { ok: CheckCircle2, failed: XCircle, queued: Clock, running: Loader2 } as const;
 
 function RunStatus({ status }: { status: string }): ReactElement {
-  const Icon = STATUS_ICON[status as keyof typeof STATUS_ICON] ?? Clock;
-  return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", status === "ok" ? "bg-success/15" : status === "failed" ? "bg-destructive/10 text-destructive" : "bg-surface")} data-testid="run-status" data-status={status}>
-      <Icon className={cn("size-3.5", status === "running" ? "animate-spin" : "")} aria-hidden />
-      {t(`sources.run.${status}` as MessageKey)}
-    </span>
-  );
+  return <StatusChip status={status} icon={STATUS_ICON[status as keyof typeof STATUS_ICON] ?? Clock} className={status === "running" ? "[&>svg]:animate-spin" : undefined} label={t(`sources.run.${status}` as MessageKey)} data-testid="run-status" />;
 }
 
 const coverageOf = (r: Run) => {

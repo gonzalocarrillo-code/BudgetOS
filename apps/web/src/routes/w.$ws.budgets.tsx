@@ -1,12 +1,12 @@
 import { BulkPreview, FilterGroup, Grain, PeriodSpec, type FilterGroupT } from "@budget/domain";
 import { BudgetGrid, parseMoney, formatMoney, type ColumnSpec, type GridEvents } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, EmptyState, SkeletonRows } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
 import { useRef, useMemo, useState, type ReactElement } from "react";
 import { z } from "zod";
-import { CheckSquare } from "lucide-react";
+import { CheckSquare, SearchX, Wallet } from "lucide-react";
 import { BulkTagBar } from "../features/explorer/bulk-tag.js";
 import { tagsQuery } from "../features/threads/queries.js";
 import { Card, Page } from "../components/page.js";
@@ -308,7 +308,7 @@ function ExplorerPage(): ReactElement {
         <div className="min-w-0 flex-1">
           <Card>
             {isTimeline ? (
-              <div className="h-[calc(100vh-19rem)] min-h-80">
+              <div className="h-[calc(100dvh-19rem)] min-h-80">
                 <TimelineView
                   ws={ws}
                   search={{ filter: search.filter, templateId: template?.id, structure: byStructure, period: search.period, asOf: search.asOf, zoom: search.zoom }}
@@ -319,8 +319,18 @@ function ExplorerPage(): ReactElement {
               </div>
             ) : (
               <>
-                <div className="h-[calc(100vh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
-                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} selectRows={selecting} /> : <p className="text-sm text-muted-foreground">{t("explorer.loading")}</p>}
+                <div className="relative h-[calc(100dvh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
+                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} selectRows={selecting} /> : <SkeletonRows rows={6} className="p-2" />}
+                  {loaded && loaded.total === 0 ? (
+                    // UX-007: an empty tree says why and offers the next step.
+                    <div className="absolute inset-x-0 top-20 flex justify-center">
+                      {search.filter.children.length > 0 ? (
+                        <EmptyState icon={SearchX} title={t("explorer.empty.filtered")} body={t("explorer.empty.filteredBody")} action={<Button size="sm" variant="outline" onClick={() => setSearch({ filter: { logic: "and", children: [] }, expanded: [] })}>{t("explorer.empty.clear")}</Button>} testId="explorer-empty" />
+                      ) : (
+                        <EmptyState icon={Wallet} title={t("explorer.empty.title")} body={t("explorer.empty.body")} action={<Button size="sm" onClick={() => setSearch({ new: true })}>{t("newBudget.button")}</Button>} testId="explorer-empty" />
+                      )}
+                    </div>
+                  ) : null}
                 </div>
                 <p className="pt-3 text-xs text-muted-foreground" data-testid="explorer-state">
                   {loaded ? t("explorer.rows", { count: loaded.total }) : t("explorer.loading")} · {view} · {search.period.kind} · {search.measures.join(", ")}

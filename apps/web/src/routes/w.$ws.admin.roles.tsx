@@ -38,6 +38,7 @@ function RolesPage(): ReactElement {
   const [problem, setProblem] = useState<string | null>(null);
   const refresh = () => (setProblem(null), client.invalidateQueries({ queryKey: ["members", ws] }));
   const revoke = useMutation({
+    meta: { success: t("toast.roleRemoved"), error: true },
     mutationFn: async (id: string) => unwrap(api.DELETE("/api/v1/roles/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } })),
     onSuccess: refresh,
     onError: (e: Error) => setProblem(e.message),
@@ -115,6 +116,7 @@ function AddRole({ ws, principal, onDone, onError }: { ws: string; principal: { 
   const [dim, setDim] = useState("");
   const [values, setValues] = useState<string[]>([]);
   const assign = useMutation({
+    meta: { success: t("toast.roleGiven") },
     mutationFn: async () => {
       const scope = dim && values.length ? { logic: "and", children: [{ field: { kind: "dimension", key: dim }, op: "descends_from", value: values }] } : {};
       return unwrap(api.POST("/api/v1/workspaces/{ws}/roles", { params: { path: { ws } }, body: { principalType: principal.type, principalId: principal.id, role, scope } as never }));
@@ -174,6 +176,7 @@ function AddPerson({ ws, onDone }: { ws: string; onDone: () => void }): ReactEle
   const [name, setName] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const add = useMutation({
+    meta: { success: t("toast.personAdded") },
     mutationFn: async () => z.object({ created: z.boolean(), email: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/members", { params: { path: { ws } }, body: { email, name } as never }))),
     onSuccess: (r) => (setNote(r.created ? t("roles.added", { email: r.email }) : t("roles.already", { email: r.email })), setEmail(""), setName(""), onDone()),
   });

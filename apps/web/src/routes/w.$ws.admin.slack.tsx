@@ -60,6 +60,7 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
   const [notice, setNotice] = useState<string | null>(null);
   const connected = data.connected.botToken && data.connected.signingSecret;
   const save = useMutation({
+    meta: { success: t("toast.slackSaved") },
     mutationFn: async (body: Record<string, unknown>) => unwrap(api.PATCH("/api/v1/workspaces/{ws}/integrations/slack", { params: { path: { ws } }, body: body as never })),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["slack", ws] });
@@ -67,6 +68,7 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
     },
   });
   const test = useMutation({
+    meta: { success: t("toast.slackTest") },
     mutationFn: async () => unwrap(api.POST("/api/v1/workspaces/{ws}/integrations/slack/test", { params: { path: { ws } }, body: (testChannel.trim() ? { channel: testChannel.trim() } : {}) as never })),
     onSuccess: (r) => setNotice(t("slack.testQueued", { channel: String((r as unknown as { channel?: string } | undefined)?.channel ?? "") })),
   });

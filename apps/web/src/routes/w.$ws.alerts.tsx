@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, StatusChip } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -25,17 +25,10 @@ type AlertsSearch = z.infer<typeof AlertsSearch>;
 export const Route = createFileRoute("/w/$ws/alerts")({ validateSearch: AlertsSearch, component: AlertsPage });
 
 const SEVERITY_ICON = { critical: AlertOctagon, warning: AlertTriangle, info: Info, data: Database } as const;
-const SEVERITY_TONE: Record<string, string> = { critical: "bg-destructive/10 text-destructive", warning: "bg-warning/15 text-foreground", info: "bg-secondary text-secondary-foreground", data: "bg-surface text-foreground" };
 const COMPARATOR: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤" };
 
 export function SeverityChip({ severity }: { severity: string }): ReactElement {
-  const Icon = SEVERITY_ICON[severity as keyof typeof SEVERITY_ICON] ?? Info;
-  return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", SEVERITY_TONE[severity] ?? "bg-surface")} data-testid="severity-chip">
-      <Icon className="size-3.5" aria-hidden />
-      {t(`alerts.severity.${severity}` as MessageKey)}
-    </span>
-  );
+  return <StatusChip status={severity} icon={SEVERITY_ICON[severity as keyof typeof SEVERITY_ICON] ?? Info} label={t(`alerts.severity.${severity}` as MessageKey)} data-testid="severity-chip" />;
 }
 
 /** A metric value as people read it: ratios as percentages, the rest as numbers. */
@@ -59,6 +52,7 @@ function AlertsPage(): ReactElement {
   const { data: alertTags = {} } = useQuery(appliedTagsQuery(ws, "alert", alerts.slice(0, 200).map((a) => a.id)));
   const set = (s: Partial<AlertsSearch>) => void navigate({ search: (prev: AlertsSearch) => ({ ...prev, ...s }) });
   const act = useMutation({
+    meta: { success: t("toast.alertUpdated"), error: true },
     mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => unwrap(api.PATCH("/api/v1/alerts/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: body as never })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["alerts", ws] }),
   });

@@ -102,7 +102,7 @@ const workspaceHeader = { name: "X-Workspace-Id", in: "header", required: true, 
 export function openApiDocument(): Record<string, unknown> {
   return {
     openapi: "3.0.3",
-    info: { title: "Budget OS", version: "0.5.0" },
+    info: { title: "BudgetOS", version: "0.5.0" },
     components: {
       securitySchemes: { identityPlatform: { type: "http", scheme: "bearer", bearerFormat: "JWT", description: "Identity Platform ID token" } },
     },

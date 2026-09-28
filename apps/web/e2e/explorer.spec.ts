@@ -75,8 +75,11 @@ test.describe("Explorer (T-027)", () => {
   test("pivot totals == tree totals, and the pivot's rows add up to them", async ({ page }) => {
     await signIn(page);
     await page.goto(budgetsUrl({ period: FY }));
-    await pick(page, "template-picker", { label: "Region first" });
+    // Budgets opens on the budget structure (ADR-050); wait for it, then for the template's own tree.
     await expect.poll(() => totalBudget(page)).not.toBe("");
+    const structureTotal = await totalBudget(page);
+    await pick(page, "template-picker", { label: "Region first" });
+    await expect.poll(() => totalBudget(page)).not.toBe(structureTotal);
     const treeTotal = await totalBudget(page);
     const treeText = await page.getByTestId("grid-totals").locator('[data-column="budget"]').textContent();
 

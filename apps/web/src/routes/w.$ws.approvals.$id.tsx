@@ -72,7 +72,6 @@ function RequestDetail(): ReactElement {
           <Card title={t("approvals.diff")}>
             {r.manualEntry ? <ManualEntryDiff ws={ws} batch={r.manualEntry} /> : <DiffTable ws={ws} r={r} currency={currency} />}
           </Card>
-          <DecisionBar r={r} comment={comment} setComment={setComment} pending={decide.isPending} error={decide.error?.message ?? null} onDecide={(d) => decide.mutate(d)} />
           <Card title={t("threads.title")}>
             <ThreadPanel ws={ws} anchorType="approval_request" anchorId={r.id} />
           </Card>
@@ -82,7 +81,11 @@ function RequestDetail(): ReactElement {
             </Card>
           ) : null}
         </div>
-        <div className="flex flex-col gap-5">
+        {/* UX-002: the decision stays in view while the diff scrolls; on a phone it comes first. */}
+        <div className="order-first flex flex-col gap-5 lg:order-none">
+          <div className="z-10 lg:sticky lg:top-24" data-testid="decision-sticky">
+            <DecisionBar r={r} comment={comment} setComment={setComment} pending={decide.isPending} error={decide.error?.message ?? null} onDecide={(d) => decide.mutate(d)} />
+          </div>
           <Card title={t("approvals.chain")}>
             <Chain r={r} />
           </Card>

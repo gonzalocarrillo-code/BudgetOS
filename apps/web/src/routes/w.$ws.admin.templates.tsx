@@ -40,6 +40,7 @@ function TemplatesAdmin(): ReactElement {
     },
   });
   const purge = useMutation({
+    meta: { success: t("toast.demoRemoved") },
     mutationFn: async () => unwrap(api.POST("/api/v1/workspaces/{ws}/demo-data/purge", { params: { path: { ws } } })),
     onSuccess: async () => {
       setConfirm(false);

@@ -1,6 +1,7 @@
-import { LIVE_LEAVES, QueryRequest, canInScope, elapsedFraction, readScopeFilter, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
+import { QueryRequest, canInScope, elapsedFraction, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
+import { headline } from "../../common/headline.js";
 import { plannerOptions, unmatchedSpend, withTenant, fiscalCalendar, workspaceSetup } from "@budget/db";
-import { compileTotals } from "@budget/query-planner";
+import { compileQuery, compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../common/parse-input.js";
@@ -48,14 +49,21 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true, name: true, reportingCurrency: true } });
     const period = resolvePeriod({ kind: "relative", preset: "current_year" }, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period);
+    // Each strip is that budget's own row in the budget structure (UX-008, ADR-051): its approved
+    // amount against everything spent under it, found by parent links, not by dimension values.
     const scopes: HomeResponse["scopes"] = [];
+    const rootRows = new Map<string, Record<string, unknown>>();
+    if (picked.length > 0) {
+      const rq = QueryRequest.parse({ workspaceId, filter: { logic: "and", children: [{ field: { kind: "attr", key: "parent_id" }, op: "is_empty" }, { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" }] }, period: { kind: "range", ...period }, measures: ["budget", "actual", "projected", "pace_index", "spend_to_date_pct"], subtree: true, limit: 500 });
+      const cq = compileQuery(rq, period, today, opts);
+      for (const row of await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(cq.sql, ...cq.values)) rootRows.set(String(row["envelope_id"]), row);
+    }
     for (const r of picked) {
       const dims = Object.entries((r.dimensionValues ?? {}) as Record<string, string>);
+      // The link opens Budgets on this budget's granularities; the numbers are the budget's own row.
       const filter: FilterGroupT = { logic: "and", children: dims.map(([key, value]) => ({ field: { kind: "dimension", key }, op: "eq", value })) };
-      const q = QueryRequest.parse({ workspaceId, filter: { logic: "and", children: [...LIVE_LEAVES, ...filter.children] }, period: { kind: "range", ...period }, measures: ["budget", "actual", "projected", "pace_index", "spend_to_date_pct"], limit: 1 });
-      const t = compileTotals(q, period, today, opts);
-      const [row] = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(t.sql, ...t.values);
-      scopes.push({ label: r.displayName ?? r.name, filter, budget: money(row?.["budget"]), actual: money(row?.["actual"]), projected: money(row?.["projected"]), paceIndex: ratio(row?.["pace_index"]), spentPct: ratio(row?.["spend_to_date_pct"]) });
+      const row = rootRows.get(r.id);
+      scopes.push({ label: r.displayName ?? r.name, filter, envelopeId: r.id, budget: money(row?.["budget"]), actual: money(row?.["actual"]), projected: money(row?.["projected"]), paceIndex: ratio(row?.["pace_index"]), spentPct: ratio(row?.["spend_to_date_pct"]) });
     }
 
     // What I touched last: the latest audit event per entity I acted on.
@@ -78,15 +86,11 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     // The year so far over every budget the caller may read (Home's header numbers).
     const setup = await workspaceSetup(tx, workspaceId);
     let totals: HomeResponse["totals"] = null;
-    // Someone with no role that reads budgets gets no totals (readScopeFilter refuses them).
-    let scope: FilterGroupT | null | undefined;
-    try {
-      scope = auth.isOrgAdmin ? null : readScopeFilter(auth.assignments, "envelope.read");
-    } catch {
-      scope = undefined;
-    }
-    if (setup.budgets > 0 && scope !== undefined) {
-      const q = QueryRequest.parse({ workspaceId, filter: { logic: "and", children: [...LIVE_LEAVES, ...(scope ? [scope] : [])] }, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct"], limit: 1 });
+    // The same definition as Budgets (UX-008): top-level budgets, or the caller's scope. Someone with
+    // no role that reads budgets gets no totals.
+    const head = headline(auth);
+    if (setup.budgets > 0 && head !== undefined) {
+      const q = QueryRequest.parse({ workspaceId, filter: head.filter, subtree: head.subtree, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct"], limit: 1 });
       const tt = compileTotals(q, period, today, opts);
       const [row] = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(tt.sql, ...tt.values);
       const openAlerts = await tx.alert.count({ where: { workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });

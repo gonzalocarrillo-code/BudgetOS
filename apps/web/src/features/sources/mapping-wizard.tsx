@@ -75,6 +75,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
     onError: (e) => setAiNote(e instanceof ApiError && e.status === 503 ? t("sources.ai.unavailable") : e.message),
   });
   const create = useMutation({
+    meta: { success: t("toast.sourceSaved") },
     mutationFn: async () => {
       if (!mapping) throw new Error("no mapping");
       const header = { "X-Workspace-Id": ws };

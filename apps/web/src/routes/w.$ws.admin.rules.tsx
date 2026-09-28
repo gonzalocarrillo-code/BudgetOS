@@ -1,9 +1,9 @@
 import { FilterGroup, type FilterGroupT } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, EmptyState, SkeletonRows } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { Copy, Plus, Trash2, Gauge } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -66,7 +66,9 @@ function RulesPage(): ReactElement {
       <div className="grid gap-5 lg:grid-cols-[1fr_28rem]">
         <Card>
           {isPending ? (
-            <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
+            <SkeletonRows rows={5} />
+          ) : rules.length === 0 ? (
+            <EmptyState icon={Gauge} title={t("rules.empty.title")} body={t("rules.empty.body")} action={canManage ? <Button size="sm" onClick={() => set({ edit: "new", copy: undefined })}>{t("rules.new")}</Button> : undefined} />
           ) : (
             <table className="w-full text-sm" data-testid="rules-table">
               <thead className="text-left text-muted-foreground">
@@ -165,6 +167,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
     isActive: active,
   });
   const remove = useMutation({
+    meta: { success: t("toast.ruleDeleted") },
     mutationFn: async () => unwrap(api.DELETE("/api/v1/rules/{id}", { params: { path: { id: rule?.id ?? "" }, header: { "X-Workspace-Id": ws } } })),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["rules", ws] });
@@ -173,6 +176,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
     },
   });
   const save = useMutation({
+    meta: { success: t("toast.ruleSaved") },
     mutationFn: async () =>
       rule
         ? unwrap(api.PATCH("/api/v1/rules/{id}", { params: { path: { id: rule.id }, header: { "X-Workspace-Id": ws } }, body: body() as never }))

@@ -2,6 +2,7 @@ import { DomainError, LIVE_LEAVES, PeriodSpec, elapsedFraction, resolvePeriod, t
 import { fiscalCalendar, withTenant } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
+import { headline } from "../../common/headline.js";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
 import { listApprovals } from "../approvals/queries/approvals.js";
@@ -69,7 +70,9 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   const colKey = dims.cols?.key ?? "";
   // KPI targets sit on the market-level budgets (a market set, no platform): read them there.
   const marketLevel = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: rowKey }, op: "not_empty" as const }, { field: { kind: "dimension" as const, key: colKey }, op: "is_empty" as const }, { field: { kind: "attr" as const, key: "status" as const }, op: "neq" as const, value: "ARCHIVED" }] };
-  const [heat, over, under, kpi, kpiTargets, alerts, mine, sources, projected] = await Promise.all([
+  // The headline (UX-008, ADR-051): the same "budget" as Budgets and Home.
+  const head = headline(auth);
+  const [heat, over, under, kpi, kpiTargets, alerts, mine, sources, projected, headTotals] = await Promise.all([
     dims.rows && dims.cols ? q({ groupBy: [rowKey, colKey], measures: ["budget", "actual", "pace_index", "spend_to_date_pct"], sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
     q({ measures: PACE, sort: [{ key: "pace_index", dir: "desc" }], limit: 5 }),
     q({ measures: PACE, sort: [{ key: "pace_index", dir: "asc" }], limit: 5 }),
@@ -79,6 +82,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
     listApprovals(prisma, auth, { assignee: "me", status: "PENDING,ESCALATED", limit: "100" }),
     freshness(prisma, auth, workspaceId),
     hasProjections ? q({ measures: ["projected", "projected_close_pct"], limit: 1 }) : null,
+    head ? q({ filter: head.filter, subtree: head.subtree, measures: PACE, limit: 1 }) : null,
   ]);
 
   const cells = (heat?.rows ?? []).map((r) => ({ row: r.dimensions[dims.rows?.key ?? ""] ?? null, col: r.dimensions[dims.cols?.key ?? ""] ?? null, ...r.measures }));
@@ -96,6 +100,9 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
     period: { preset, ...range },
     currency,
     dataAsOf: over.dataAsOf,
+    // The tiles (UX-008): Budgets' definition of the budget; `assigned` is what the leaves hold, the
+    // heatmap's basis, so the two can differ by what is not yet split below the top-level budgets.
+    headline: headTotals && head ? { basis: head.basis, budget: headTotals.totals["budget"] ?? null, actual: headTotals.totals["actual"] ?? null, spentPct: headTotals.totals["spend_to_date_pct"] ?? null, paceIndex: headTotals.totals["pace_index"] ?? null, assigned: (heat?.totals ?? over.totals)["budget"] ?? null } : null,
     totals: { ...(heat?.totals ?? over.totals), projected: projected?.totals["projected"] ?? null, projected_close_pct: projected?.totals["projected_close_pct"] ?? null },
     heatmap: dims.rows && dims.cols ? { rowDimension: { key: dims.rows.key, label: dims.rows.label }, colDimension: { key: dims.cols.key, label: dims.cols.label }, rows: top("row", 50), cols: top("col", 50), labels, cells, dimensions } : null,
     variances: { over: variance(over, 1), under: variance(under, -1) },

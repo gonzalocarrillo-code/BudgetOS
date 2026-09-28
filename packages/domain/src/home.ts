@@ -31,7 +31,8 @@ export const UpdateTourInput = z
 export type UpdateTourInput = z.infer<typeof UpdateTourInput>;
 
 /** POST /tours/:id/complete — the version the user saw. */
-export const CompleteTourInput = z.object({ version: z.number().int().min(1) });
+/** POST /tours/:id/complete: `dismissed` when the person closed it before the last step (UX-001). */
+export const CompleteTourInput = z.object({ version: z.number().int().min(1), dismissed: z.boolean().default(false) });
 export type CompleteTourInput = z.infer<typeof CompleteTourInput>;
 
 /** The tour a user's roles call for: builders and budget owners plan, approvers approve, finance closes, data admins load. */
@@ -67,6 +68,8 @@ export const TemplateSavedView = z.object({ name: z.string().min(1).max(120), sc
 export const HomeScope = z.object({
   label: z.string(),
   filter: FilterGroup,
+  /** The top-level budget this strip is (UX-008): its own row in the budget structure. */
+  envelopeId: z.string().uuid().optional(),
   budget: z.string().nullable(),
   actual: z.string().nullable(),
   projected: z.string().nullable(),

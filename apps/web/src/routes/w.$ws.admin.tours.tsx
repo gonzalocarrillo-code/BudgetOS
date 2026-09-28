@@ -42,6 +42,7 @@ function TourEditor({ ws, tour, blocked }: { ws: string; tour: Tour; blocked: st
   const [steps, setSteps] = useState<TourStep[]>(tour.steps);
   const dirty = JSON.stringify(steps) !== JSON.stringify(tour.steps);
   const save = useMutation({
+    meta: { success: t("toast.tourSaved"), error: true },
     mutationFn: async () => unwrap(api.PATCH("/api/v1/tours/{id}", { params: { path: { id: tour.id }, header: { "X-Workspace-Id": ws } }, body: { steps } as never })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["tours", ws] }),
   });

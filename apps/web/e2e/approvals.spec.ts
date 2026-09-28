@@ -51,7 +51,7 @@ test.describe("approvals (T-029)", () => {
     await approver.getByTestId("approval-link").click();
     await expect(approver.getByTestId("decide-reject")).toBeDisabled(); // reject needs a comment
     await approver.getByTestId("decide-approve").click();
-    await expect(approver.getByTestId("status-chip").first()).toHaveText("approved");
+    await expect(approver.getByTestId("status-chip").first()).toHaveText("Approved");
     await expect(approver.getByTestId("decision-entry")).toHaveCount(2);
     await expect(approver.getByTestId("decision-entry").nth(1)).toContainText("Golden approver: Approve");
     await approver.goto(inbox("resolved"));

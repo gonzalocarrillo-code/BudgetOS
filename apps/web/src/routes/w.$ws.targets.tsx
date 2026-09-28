@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, StatusChip } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -153,7 +153,7 @@ function Versions({ ws, id }: { ws: string; id: string }): ReactElement {
           <div className="flex items-center gap-2">
             <span className="font-medium">v{v.versionNo}</span>
             <span className="tabular">{formatTarget(v)}</span>
-            <span className="ml-auto rounded-full bg-surface px-2 py-0.5 text-xs">{v.status.toLowerCase()}</span>
+            <StatusChip status={v.status} className="ml-auto" />
           </div>
           {v.rationale ? <p className="mt-1 text-xs text-muted-foreground">{v.rationale}</p> : null}
           <time className="block text-xs text-muted-foreground" dateTime={v.createdAt}>{new Date(v.createdAt).toLocaleString()}</time>

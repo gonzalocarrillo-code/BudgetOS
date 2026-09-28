@@ -1,4 +1,4 @@
-import { cn } from "@budget/ui";
+import { cn, StatusChip } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -49,7 +49,7 @@ function SearchPage(): ReactElement {
                     <span className="font-medium">{h.title}</span>
                     {h.path ? <span className="ml-2 text-xs text-muted-foreground">{h.path}</span> : null}
                   </span>
-                  {h.status ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{h.status.toLowerCase()}</span> : null}
+                  {h.status ? <StatusChip status={h.status} /> : null}
                 </a>
               </li>
             ))}

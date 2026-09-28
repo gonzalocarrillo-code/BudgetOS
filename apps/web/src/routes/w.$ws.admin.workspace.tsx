@@ -22,6 +22,7 @@ function WorkspacePage(): ReactElement {
   const [name, setName] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const save = useMutation({
+    meta: { success: t("toast.workspaceRenamed") },
     mutationFn: async (n: string) => unwrap(api.PATCH("/api/v1/workspaces/{ws}/general", { params: { path: { ws } }, body: { name: n } as never })),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["workspace-general", ws] });

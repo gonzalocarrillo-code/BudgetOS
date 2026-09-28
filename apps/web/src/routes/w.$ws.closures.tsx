@@ -1,9 +1,8 @@
 import { formatMoney } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, StatusChip as SharedStatusChip } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Lock, LockOpen } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -70,7 +69,7 @@ function ClosuresPage(): ReactElement {
                         </div>
                       </td>
                       <td className="py-2 pr-3">
-                        <StatusChip status={c.status} />
+                        <ClosureStatus status={c.status} />
                       </td>
                       <td className="tabular py-2 pr-3 text-right">{c.lockedEnvelopes}</td>
                       <td className="py-2 text-muted-foreground">{new Date(c.closedAt).toLocaleString()}</td>
@@ -90,20 +89,16 @@ function ClosuresPage(): ReactElement {
   );
 }
 
-function StatusChip({ status }: { status: string }): ReactElement {
+function ClosureStatus({ status }: { status: string }): ReactElement {
   const closed = status === "closed";
-  return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", closed ? "bg-secondary text-secondary-foreground" : "bg-surface")} data-testid="closure-status">
-      {closed ? <Lock className="size-3" aria-hidden /> : <LockOpen className="size-3" aria-hidden />}
-      {t(closed ? "closures.status.closed" : "closures.status.restated")}
-    </span>
-  );
+  return <SharedStatusChip status={closed ? "CLOSED" : "RESTATED"} label={t(closed ? "closures.status.closed" : "closures.status.restated")} data-testid="closure-status" />;
 }
 
 function CloseForm({ ws, canClose, onClosed }: { ws: string; canClose: boolean; onClosed: (id: string) => Promise<void> }): ReactElement {
   const [key, setKey] = useState("");
   const [confirming, setConfirming] = useState(false);
   const close = useMutation({
+    meta: { success: t("toast.periodClosed") },
     mutationFn: async () => z.object({ id: z.string() }).passthrough().parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/closures", { params: { path: { ws } }, body: { periodKey: key.trim() } as never }))),
     onSuccess: async (c) => {
       setConfirming(false);
@@ -151,6 +146,7 @@ function Report({ ws, closure, canRestate, onChanged }: { ws: string; closure: C
   const { data, isPending } = useQuery(closureReportQuery(ws, closure.id));
   const [reason, setReason] = useState("");
   const restate = useMutation({
+    meta: { success: t("toast.restated") },
     mutationFn: async () => unwrap(api.POST("/api/v1/closures/{id}/restate", { params: { path: { id: closure.id }, header: { "X-Workspace-Id": ws } }, body: { reason: reason.trim() } as never })),
     onSuccess: async () => {
       setReason("");

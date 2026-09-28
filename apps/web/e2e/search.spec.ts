@@ -34,7 +34,7 @@ test.describe("global search (T-028)", () => {
     await expect(envelopes.getByTestId("search-hit").first()).toBeVisible();
     const heading = (await envelopes.locator("[cmdk-group-heading]").textContent()) ?? "";
     expect(Number(heading.split("·")[1]?.trim())).toBeGreaterThan(0);
-    const title = (await envelopes.getByTestId("search-hit").first().locator("span.font-medium").textContent()) ?? "";
+    const title = (await envelopes.getByTestId("search-hit").first().locator("span.font-medium").first().textContent()) ?? "";
     await envelopes.getByTestId("search-hit").first().click();
     await expect(page).toHaveURL(/\/budgets\?.*select=/);
     await expect(page.getByTestId("drawer-name")).toHaveText(title);

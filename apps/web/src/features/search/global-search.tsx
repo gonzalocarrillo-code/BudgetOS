@@ -1,3 +1,4 @@
+import { StatusChip } from "@budget/ui";
 import { parseSearch } from "@budget/domain";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -137,7 +138,7 @@ export function GlobalSearch({ ws, dimensions, open, onOpenChange }: { ws: strin
                       <span className="font-medium">{h.title}</span>
                       {h.path ? <span className="ml-2 text-xs text-muted-foreground">{h.path}</span> : null}
                     </span>
-                    {h.status ? <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{h.status.toLowerCase()}</span> : null}
+                    {h.status ? <StatusChip status={h.status} /> : null}
                   </Command.Item>
                 ))}
                 {g.count > g.hits.length ? (

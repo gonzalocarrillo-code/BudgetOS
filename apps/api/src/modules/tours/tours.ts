@@ -16,9 +16,11 @@ import { orgAdminCtx, type AuthContext } from "../../common/tenant.js";
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 const Steps = z.array(TourStep);
 
-export function tourView(t: Tour, completedVersion: number | null) {
+/** `completed`: finished at the current version; `dismissed`: closed early at it (UX-001), so not offered again. */
+export function tourView(t: Tour, completedVersion: number | null, dismissedVersion: number | null = null) {
   const steps = Steps.safeParse(t.steps);
-  return { id: t.id, workspaceId: t.workspaceId, role: t.role as TourRole, name: t.name, steps: steps.success ? steps.data : [], version: t.version, completed: completedVersion !== null && completedVersion >= t.version, isDefault: t.workspaceId === null };
+  const completed = completedVersion !== null && completedVersion >= t.version;
+  return { id: t.id, workspaceId: t.workspaceId, role: t.role as TourRole, name: t.name, steps: steps.success ? steps.data : [], version: t.version, completed, dismissed: !completed && dismissedVersion !== null && dismissedVersion >= t.version, isDefault: t.workspaceId === null };
 }
 
 /** The effective tour per role for a workspace: its own row, else the default. */
@@ -40,8 +42,12 @@ export async function listTours(prisma: PrismaClient, auth: AuthContext, raw: un
     const picked = roles.flatMap((r) => (tours.has(r) ? [tours.get(r) as Tour] : []));
     const done = await tx.tourCompletion.findMany({ where: { userId: auth.user.id, tourId: { in: picked.map((t) => t.id) } } });
     const best = new Map<string, number>();
-    for (const d of done) best.set(d.tourId, Math.max(best.get(d.tourId) ?? 0, d.version));
-    return picked.map((t) => tourView(t, best.get(t.id) ?? null)).filter((t) => q.all === "true" || !t.completed);
+    const skipped = new Map<string, number>();
+    for (const d of done) {
+      const into = d.dismissed ? skipped : best;
+      into.set(d.tourId, Math.max(into.get(d.tourId) ?? 0, d.version));
+    }
+    return picked.map((t) => tourView(t, best.get(t.id) ?? null, skipped.get(t.id) ?? null)).filter((t) => q.all === "true" || (!t.completed && !t.dismissed));
   });
 }
 
@@ -54,10 +60,13 @@ export async function completeTour(prisma: PrismaClient, auth: AuthContext, rawI
     const t = await tx.tour.findUnique({ where: { id } });
     if (t === null) throw new DomainError("NOT_FOUND", "Tour not found");
     if (input.version > t.version) throw new DomainError("VALIDATION", "That version of the tour does not exist", { version: t.version });
-    await tx.tourCompletion.upsert({ where: { userId_tourId_version: { userId: auth.user.id, tourId: id, version: input.version } }, create: { userId: auth.user.id, tourId: id, version: input.version }, update: {} });
-    await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "tour.completed", entityType: "tour", entityId: id, after: { role: t.role, version: input.version }, requestId: auth.ctx.requestId });
-    await outbox(tx, { workspaceId, topic: "tour.completed", payload: { tourId: id, role: t.role, version: input.version, userId: auth.user.id } });
-    return { tourId: id, version: input.version, completed: input.version >= t.version };
+    const key = { userId_tourId_version: { userId: auth.user.id, tourId: id, version: input.version } };
+    // A finish after a skip turns the row into a completion; a skip never undoes a completion.
+    await tx.tourCompletion.upsert({ where: key, create: { userId: auth.user.id, tourId: id, version: input.version, dismissed: input.dismissed }, update: input.dismissed ? {} : { dismissed: false, completedAt: new Date() } });
+    const action = input.dismissed ? "tour.dismissed" : "tour.completed";
+    await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action, entityType: "tour", entityId: id, after: { role: t.role, version: input.version }, requestId: auth.ctx.requestId });
+    await outbox(tx, { workspaceId, topic: action, payload: { tourId: id, role: t.role, version: input.version, userId: auth.user.id } });
+    return { tourId: id, version: input.version, completed: !input.dismissed && input.version >= t.version, dismissed: input.dismissed };
   });
 }
 

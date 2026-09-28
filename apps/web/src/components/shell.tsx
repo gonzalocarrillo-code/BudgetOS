@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, Logo, Toaster, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -29,12 +29,13 @@ import {
   Settings,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
 import { TourLauncher } from "../features/home/tour-launcher.js";
 import { clearToken } from "../lib/auth.js";
 import { api, unwrap } from "../lib/api.js";
 import { registryQuery, type Me } from "../lib/queries.js";
+import type { Action } from "@budget/domain";
 
 /**
  * The app shell (spec §18.1 __root, ADR-021): a white top bar with the workspace switcher and the
@@ -47,6 +48,18 @@ interface NavItem {
   label: MessageKey;
   icon: LucideIcon;
   tour?: string;
+  /**
+   * UX-003: shown when the caller's roles here grant any of these actions ("org" = org admin only).
+   * No list: every member (the page is read-only for those who cannot change it).
+   */
+  requires?: Array<Action | "org">;
+}
+
+/** Whether the signed-in person sees a nav item or settings page in this workspace (UX-003). */
+export function canSee(item: Pick<NavItem, "requires">, me: Me, ws: string): boolean {
+  if (!item.requires || me.isOrgAdmin) return true;
+  const perms = me.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
+  return item.requires.some((r) => r !== "org" && perms.includes(r));
 }
 const NAV: NavItem[] = [
   { to: "/w/$ws/home", label: "nav.home", icon: House, tour: "nav-home" },
@@ -64,31 +77,31 @@ const NAV: NavItem[] = [
 const ADMIN: NavItem[] = [
   { to: "/w/$ws/admin/registry", label: "admin.registry", icon: BookOpen },
   { to: "/w/$ws/admin/rules", label: "admin.rules", icon: Gauge },
-  { to: "/w/$ws/admin/roles", label: "admin.roles", icon: Users },
+  { to: "/w/$ws/admin/roles", label: "admin.roles", icon: Users, requires: ["user.manage"] },
   { to: "/w/$ws/admin/tags", label: "admin.tags", icon: Tag },
 ];
 
 /** Settings: its own page (the hub) and a strip above each of these pages to move between them. */
 export const SETTINGS_PAGES: Array<NavItem & { description: MessageKey }> = [
-  { to: "/w/$ws/admin/workspace", label: "admin.workspace", icon: Building2, description: "settings.desc.workspace" },
-  { to: "/w/$ws/admin/policies", label: "admin.policies", icon: ShieldCheck, description: "settings.desc.policies" },
-  { to: "/w/$ws/admin/slack", label: "admin.slack", icon: MessageSquare, description: "settings.desc.slack" },
-  { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug, description: "settings.desc.sources" },
-  { to: "/w/$ws/admin/naming", label: "admin.naming", icon: Type, description: "settings.desc.naming" },
-  { to: "/w/$ws/admin/periods", label: "admin.periods", icon: CalendarRange, description: "settings.desc.periods" },
-  { to: "/w/$ws/admin/templates", label: "admin.templates", icon: LayoutTemplate, description: "settings.desc.templates" },
-  { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map, description: "settings.desc.tours" },
+  { to: "/w/$ws/admin/workspace", label: "admin.workspace", icon: Building2, requires: ["user.manage"], description: "settings.desc.workspace" },
+  { to: "/w/$ws/admin/policies", label: "admin.policies", icon: ShieldCheck, requires: ["policy.manage", "approval.decide"], description: "settings.desc.policies" },
+  { to: "/w/$ws/admin/slack", label: "admin.slack", icon: MessageSquare, requires: ["user.manage"], description: "settings.desc.slack" },
+  { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug, requires: ["source.manage"], description: "settings.desc.sources" },
+  { to: "/w/$ws/admin/naming", label: "admin.naming", icon: Type, requires: ["registry.manage"], description: "settings.desc.naming" },
+  { to: "/w/$ws/admin/periods", label: "admin.periods", icon: CalendarRange, requires: ["registry.manage", "closure.close", "closure.restate"], description: "settings.desc.periods" },
+  { to: "/w/$ws/admin/templates", label: "admin.templates", icon: LayoutTemplate, requires: ["user.manage"], description: "settings.desc.templates" },
+  { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map, requires: ["user.manage"], description: "settings.desc.tours" },
 ];
 const SETTINGS_HUB = "/w/$ws/admin/settings";
 const settingsPath = (pathname: string, ws: string) => [SETTINGS_HUB, ...SETTINGS_PAGES.map((p) => p.to)].some((to) => pathname === to.replace("$ws", ws));
 
-function SettingsStrip({ ws }: { ws: string }): ReactElement {
+function SettingsStrip({ ws, me }: { ws: string; me: Me }): ReactElement {
   return (
     <nav aria-label={t("admin.settings")} className="flex gap-1 overflow-x-auto border-b border-border bg-card px-6" data-testid="settings-strip">
       <Link to={SETTINGS_HUB} params={{ ws }} activeOptions={{ exact: true }} className="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm text-muted-foreground hover:text-foreground" activeProps={{ className: "whitespace-nowrap border-b-2 border-primary px-2 py-2.5 text-sm font-medium text-foreground" }}>
         {t("admin.settings")}
       </Link>
-      {SETTINGS_PAGES.map((p) => (
+      {SETTINGS_PAGES.filter((p) => canSee(p, me, ws)).map((p) => (
         <Link key={p.to} to={p.to} params={{ ws }} className="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm text-muted-foreground hover:text-foreground" activeProps={{ className: "whitespace-nowrap border-b-2 border-primary px-2 py-2.5 text-sm font-medium text-foreground" }}>
           {t(p.label)}
         </Link>
@@ -121,9 +134,15 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
   const current = me.workspaces.find((w) => w.workspaceId === ws);
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const inSettings = settingsPath(pathname, ws);
+  useDocumentTitle(pathname, ws, current?.name);
   return (
-    <div className="flex min-h-screen flex-col bg-surface">
+    <div className="flex h-dvh flex-col overflow-hidden bg-surface">
       <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-card px-4">
+        <Link to="/w/$ws/home" params={{ ws }} className="flex shrink-0 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("shell.homeLink")} data-testid="brand">
+          <Logo size={26} className="hidden md:inline-flex" />
+          <Logo variant="mark" size={28} className="md:hidden" />
+        </Link>
+        <span className="hidden h-7 w-px shrink-0 bg-border md:block" aria-hidden />
         <label className="flex h-10 w-40 shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-3 shadow-xs lg:w-60" data-tour="workspace-switcher">
           <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground" aria-hidden>
             {(current?.name ?? "?").slice(0, 1).toUpperCase()}
@@ -171,24 +190,42 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
               <NavLink key={item.to} item={item} ws={ws} exact={item.to === "/w/$ws"} />
             ))}
             <SectionLabel>{t("shell.admin")}</SectionLabel>
-            {ADMIN.map((item) => (
+            {ADMIN.filter((item) => canSee(item, me, ws)).map((item) => (
               <NavLink key={item.to} item={item} ws={ws} />
             ))}
+            {SETTINGS_PAGES.some((p) => canSee(p, me, ws)) ? (
             <Link to={SETTINGS_HUB} params={{ ws }} className={cn(linkClass, inSettings && activeClass)} data-testid="nav-settings" aria-current={inSettings ? "page" : undefined}>
               <Settings className="size-4 shrink-0" aria-hidden />
               {t("admin.settings")}
             </Link>
+            ) : null}
           </nav>
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          {inSettings ? <SettingsStrip ws={ws} /> : null}
+        <main className="min-w-0 flex-1 overflow-y-auto" data-testid="main-scroll">
+          {inSettings ? <SettingsStrip ws={ws} me={me} /> : null}
           {children}
         </main>
       </div>
       <GlobalSearch ws={ws} dimensions={dimensions} open={searching} onOpenChange={setSearching} />
-      <div role="status" aria-live="polite" className="sr-only" data-testid="toasts" />
+      <Toaster />
     </div>
   );
+}
+
+/** The browser tab says where you are: "Budgets · Golden · BudgetOS" (UX-005). */
+function useDocumentTitle(pathname: string, ws: string, workspace: string | undefined): void {
+  const base = `/w/${ws}`;
+  const rest = pathname.startsWith(base) ? pathname.slice(base.length) || "/" : pathname;
+  const items = [...NAV, ...ADMIN, ...SETTINGS_PAGES, { to: SETTINGS_HUB, label: "admin.settings" as MessageKey, icon: Settings }];
+  const match = items
+    .map((i) => ({ i, path: i.to.replace("/w/$ws", "") || "/" }))
+    .filter(({ path }) => (path === "/" ? rest === "/" : rest === path || rest.startsWith(`${path}/`)))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  const title = [match ? t(match.i.label) : rest === "/search" ? t("nav.search") : null, workspace, t("app.name")].filter(Boolean).join(" · ");
+  // Setting the tab title is UI, not data fetching.
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
 }
 
 /** The signed-in person: their name (editable; what Home greets them by) and email. */
@@ -198,6 +235,7 @@ function Profile({ ws, name, email }: { ws: string; name: string; email: string 
   const [draft, setDraft] = useState(name);
   const [error, setError] = useState<string | null>(null);
   const save = useMutation({
+    meta: { success: t("toast.profileSaved") },
     mutationFn: async (n: string) => unwrap(api.PATCH("/api/v1/me", { params: { header: { "X-Workspace-Id": ws } }, body: { name: n } as never })),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["me"] });

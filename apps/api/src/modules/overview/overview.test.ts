@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { LIVE_LEAVES } from "@budget/domain";
+import { LIVE_LEAVES, TOP_LEVEL } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -48,6 +48,11 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(sum.toFixed(2)).toBe(new Decimal(o.totals["budget"] ?? 0).toFixed(2));
     const q = await as("planner", "POST", `/api/v1/workspaces/${golden.workspaceId}/query`, { workspaceId: golden.workspaceId, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: LIVE_LEAVES }, measures: ["budget"], limit: 1 });
     expect(o.totals["budget"]).toBe((q.body["totals"] as Record<string, string>)["budget"]);
+    // UX-008 (ADR-051): the tiles read Budgets' total (top-level budgets with their subtree's
+    // spend); `assigned` is the leaves' total the heatmap adds up to.
+    const top = await as("planner", "POST", `/api/v1/workspaces/${golden.workspaceId}/query`, { workspaceId: golden.workspaceId, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: TOP_LEVEL }, subtree: true, measures: ["budget", "actual"], limit: 1 });
+    const head = (res.body as { headline: Record<string, string> }).headline;
+    expect(head).toMatchObject({ basis: "top_level", budget: (top.body["totals"] as Record<string, string>)["budget"], actual: (top.body["totals"] as Record<string, string>)["actual"], assigned: o.totals["budget"] });
   });
 
   it("the heatmap's axes are any two granularities the caller picks; every column comes back (product feedback 8)", async () => {
