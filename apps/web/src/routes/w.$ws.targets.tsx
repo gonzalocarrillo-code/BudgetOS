@@ -5,6 +5,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
+import { TagChips } from "../features/threads/tag-chips.js";
 import { Card, Page } from "../components/page.js";
 import { formatTarget, targetVersionsQuery, targetsQuery, type TargetRow } from "../features/targets/queries.js";
 import { threadsQuery } from "../features/threads/queries.js";
@@ -113,6 +114,9 @@ function TargetDrawer({ ws, target, onClose }: { ws: string; target: TargetRow; 
               {t("targets.openBudget")}
             </Link>
           ) : null}
+          <div className="mt-2">
+            <TagChips ws={ws} entity={{ type: "target", id: target.id }} />
+          </div>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("drawer.close")}>
           <X className="size-4" aria-hidden />

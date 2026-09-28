@@ -5,7 +5,7 @@ import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { applyTag, createTag, updateTag } from "./commands/tags.js";
 import { addComment, createThread, deleteComment, editComment, reopenThread, resolveThread, subscribe } from "./commands/threads.js";
 import { ApplyTagDto, CommentDto, CreateTagDto, CreateThreadDto, ListThreadsQueryDto, PeopleQueryDto, ReactionDto, SubscriptionDto, UpdateCommentDto, UpdateTagDto } from "./dto.js";
-import { listPeople, listTags, listThreads } from "./queries.js";
+import { appliedTags, listPeople, listTags, listThreads } from "./queries.js";
 import { addReaction, removeReaction } from "./commands/reactions.js";
 
 /**
@@ -87,6 +87,12 @@ export class ThreadsController {
   @Permission("workspace.member")
   tags(@Tenant() auth: AuthContext) {
     return listTags(this.prisma, auth);
+  }
+
+  @Get("workspaces/:ws/tags/applied")
+  @Permission("workspace.member")
+  appliedTags(@Tenant() auth: AuthContext, @Query() query: Record<string, string>) {
+    return appliedTags(this.prisma, auth, query);
   }
 
   @Post("workspaces/:ws/tags")

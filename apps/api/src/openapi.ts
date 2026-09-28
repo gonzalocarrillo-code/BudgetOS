@@ -554,6 +554,13 @@ export function openApiDocument(): Record<string, unknown> {
         get: { operationId: "listTags", parameters: [workspaceParam], responses: { "200": { description: "Tags with usage counts" } } },
         post: { operationId: "createTag", parameters: [workspaceParam], requestBody: json(CreateTagInput), responses: { "201": { description: "Created tag" } } },
       },
+      "/api/v1/workspaces/{ws}/tags/applied": {
+        get: {
+          operationId: "appliedTags",
+          parameters: [workspaceParam, { name: "type", in: "query", required: true, schema: { type: "string", enum: ["envelope", "target", "alert", "approval_request", "thread"] } }, { name: "ids", in: "query", required: true, schema: { type: "string" }, description: "Comma-separated entity ids (up to 200)" }],
+          responses: { "200": { description: "Each entity id's tags; entities without tags are left out" } },
+        },
+      },
       "/api/v1/tags/{id}": {
         patch: { operationId: "updateTag", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTagInput), responses: { "200": { description: "Renamed, recoloured, or merged into another tag" } } },
       },

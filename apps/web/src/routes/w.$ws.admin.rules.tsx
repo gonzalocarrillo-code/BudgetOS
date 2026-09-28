@@ -11,7 +11,7 @@ import { FilterBar } from "../features/explorer/filter-bar.js";
 import { can, rulesQuery, type Rule } from "../features/ops/queries.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, periodsQuery, registryQuery } from "../lib/queries.js";
-import { Person } from "../features/threads/queries.js";
+import { Person, tagsQuery } from "../features/threads/queries.js";
 import { SeverityChip } from "./w.$ws.alerts.js";
 
 /**
@@ -123,6 +123,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
   const client = useQueryClient();
   const { data: dims = [] } = useQuery(registryQuery(ws));
   const { data: periods = [] } = useQuery(periodsQuery(ws));
+  const { data: tags = [] } = useQuery(tagsQuery(ws));
   const { data: people = [] } = useQuery({
     queryKey: ["people", ws, "", 50],
     queryFn: async () => z.array(Person).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/people", { params: { path: { ws }, query: { q: "", limit: 50 } as never } }))),
@@ -275,7 +276,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium">{t("rules.scope")}</p>
         <p className="text-xs text-muted-foreground">{t("rules.scopeHelp")}</p>
-        <FilterBar filter={scope} dimensions={dims} onChange={setScope} />
+        <FilterBar filter={scope} dimensions={dims} tags={tags} onChange={setScope} />
       </div>
       <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
         <legend className="px-1 text-sm font-medium">{t("rules.delivery")}</legend>

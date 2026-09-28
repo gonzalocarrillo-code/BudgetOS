@@ -297,5 +297,11 @@ describe("tags", () => {
     expect(list).toEqual([{ id: a.body["id"], name: "Q4 push", color: "#FF8800", kind: "label", count: 1 }]);
     const events = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'tag.changed'`, ws);
     expect(Number(events[0]?.n)).toBe(8); // 2 creates, 3 applies, 1 merge, 1 rename, 1 remove
+
+    // Chips anywhere: the tags on a set of entities of one type, entities without tags left out.
+    const applied = await call(viewer, "GET", `/workspaces/${ws}/tags/applied?type=envelope&ids=${env["emea"]},${env["latam"]}`);
+    expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+    expect(applied.body).toEqual({ [env["emea"] as string]: [{ id: a.body["id"], name: "Q4 push", color: "#FF8800", kind: "label" }] });
+    expect((await call(viewer, "GET", `/workspaces/${ws}/tags/applied?type=envelope&ids=nope`)).status).toBe(422);
   });
 });

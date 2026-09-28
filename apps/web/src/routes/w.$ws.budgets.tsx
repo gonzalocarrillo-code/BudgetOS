@@ -6,6 +6,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
 import { useRef, useMemo, useState, type ReactElement } from "react";
 import { z } from "zod";
+import { CheckSquare } from "lucide-react";
+import { BulkTagBar } from "../features/explorer/bulk-tag.js";
+import { tagsQuery } from "../features/threads/queries.js";
 import { Card, Page } from "../components/page.js";
 import { EnvelopeDrawer } from "../features/explorer/drawer.js";
 import { FilterBar } from "../features/explorer/filter-bar.js";
@@ -75,6 +78,10 @@ function ExplorerPage(): ReactElement {
   const [reload, setReload] = useState(0);
   const [loaded, setLoaded] = useState<{ totals: Record<string, string | null>; total: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  // Select mode: tick rows, then tag or untag them together (product feedback 2026-09-28).
+  const [selecting, setSelecting] = useState(false);
+  const [ticked, setTicked] = useState<string[]>([]);
+  const { data: tags = [] } = useQuery(tagsQuery(ws));
   const [pasted, setPasted] = useState<BulkPreview | null>(null);
   const [familyOf, setFamilyOf] = useState<string | null>(null);
   const [structure, setStructure] = useState<StructureOp | null>(null);
@@ -126,6 +133,8 @@ function ExplorerPage(): ReactElement {
 
   const events: GridEvents = {
     onSelect: () => undefined,
+    // A group row that is a budget (a parent) counts as that budget.
+    onRowsSelected: (rows) => setTicked([...new Set(rows.map((r) => r.envelopeId ?? r.nodeEnvelopeId ?? null).filter((x): x is string => x !== null))]),
     onOpen: (row) => {
       // A leaf, or a parent budget from its group row (the envelope that is the group).
       const id = row.envelopeId ?? row.nodeEnvelopeId ?? null;
@@ -262,7 +271,25 @@ function ExplorerPage(): ReactElement {
           <SavedViews ws={ws} current={search} onLoad={(v) => void navigate({ search: { ...(v.definition as Partial<ExplorerSearchT>), savedViewId: v.id } as ExplorerSearchT })} onSaved={(name) => setNotice({ kind: "ok", text: t("explorer.views.saved", { name }) })} />
         </div>
       </div>
-      <FilterBar filter={search.filter} dimensions={dimensions} onChange={(filter: FilterGroupT) => setSearch({ filter, expanded: [] })} />
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <FilterBar filter={search.filter} dimensions={dimensions} tags={tags} onChange={(filter: FilterGroupT) => setSearch({ filter, expanded: [] })} />
+        </div>
+        {search.view !== "timeline" ? (
+          <Button size="sm" variant={selecting ? "default" : "outline"} aria-pressed={selecting} onClick={() => (setSelecting((v) => !v), setTicked([]))} data-testid="select-mode">
+            <CheckSquare className="size-4" aria-hidden />
+            {t("bulkTag.select")}
+          </Button>
+        ) : null}
+      </div>
+      {selecting && search.view !== "timeline" ? (
+        <BulkTagBar
+          ws={ws}
+          envelopeIds={ticked}
+          onDone={(text) => (setNotice({ kind: "ok", text }), setReload((n) => n + 1))}
+          onExit={() => (setSelecting(false), setTicked([]))}
+        />
+      ) : null}
       {search.asOf ? (
         <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2 text-sm" data-testid="as-of-banner">
           <span className="flex-1">{t("timeline.asOfPast", { date: search.asOf.slice(0, 10) })}</span>
@@ -288,7 +315,7 @@ function ExplorerPage(): ReactElement {
             ) : (
               <>
                 <div className="h-[calc(100vh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
-                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} /> : <p className="text-sm text-muted-foreground">{t("explorer.loading")}</p>}
+                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} selectRows={selecting} /> : <p className="text-sm text-muted-foreground">{t("explorer.loading")}</p>}
                 </div>
                 <p className="pt-3 text-xs text-muted-foreground" data-testid="explorer-state">
                   {loaded ? t("explorer.rows", { count: loaded.total }) : t("explorer.loading")} · {view} · {search.period.kind} · {search.measures.join(", ")}
