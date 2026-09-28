@@ -437,3 +437,7 @@ Phase A notes (2026-09-28): tours never start by themselves (Home invites; a clo
 All four phases are built (2026-09-28): PRs #83 (A), #84 (C), #85 (B) and #86 (D), stacked in that order. Decisions D1–D9 in the plan stay open; the builds follow the plan's proposals.
 
 Decisions D1–D9 in the plan's Part 5 are open for the product owner.
+
+## Product feedback, round 7: baselines and budget history (2026-09-28)
+
+The product owner asked how to tell apart the plan (the budget on, say, October 1st), the working budget and the closed budget, and to ask "how much did budgets move" through the MCP server, without breaking real-time editing. The plan is `docs/BUDGET_HISTORY_PLAN.md` (Phase E, ADR-053 proposed): named baselines taken at period start, at closure and by hand; a `compareTo` on `/query` with Plan · Now · Change measures; a movement report; three MCP tools. Tasks H-001…H-010, all `pending`. Decisions E1–E7 are open.
