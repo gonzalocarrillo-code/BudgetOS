@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
+import { configureApp } from "../configure-app.js";
 import { PrismaClient } from "@prisma/client";
 import { SignJWT, exportJWK, generateKeyPair, type CryptoKey, type JWK } from "jose";
 import { AppModule } from "../app.module.js";
@@ -77,8 +78,8 @@ export async function startHarness(): Promise<Harness> {
   process.env["AUTH_ISSUER"] = ISSUER;
   process.env["AUTH_JWKS_URL"] = `http://127.0.0.1:${(jwks.address() as AddressInfo).port}/jwks`;
 
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: ["error"], abortOnError: false });
-  app.setGlobalPrefix("api/v1");
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: ["error"], abortOnError: false, bodyParser: false });
+  configureApp(app);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
 

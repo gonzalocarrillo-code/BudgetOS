@@ -22,7 +22,10 @@ import {
   Target,
   Type,
   Users,
-  type LucideIcon, CalendarRange } from "lucide-react";
+  type LucideIcon,
+  CalendarRange,
+  MessageSquare,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, type ReactElement, type ReactNode } from "react";
 import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
@@ -58,6 +61,7 @@ const ADMIN: NavItem[] = [
   { to: "/w/$ws/admin/registry", label: "admin.registry", icon: BookOpen },
   { to: "/w/$ws/admin/policies", label: "admin.policies", icon: ShieldCheck },
   { to: "/w/$ws/admin/rules", label: "admin.rules", icon: Gauge },
+  { to: "/w/$ws/admin/slack", label: "admin.slack", icon: MessageSquare },
   { to: "/w/$ws/admin/roles", label: "admin.roles", icon: Users },
   { to: "/w/$ws/admin/tags", label: "admin.tags", icon: Tag },
   { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug },

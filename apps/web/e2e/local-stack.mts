@@ -36,7 +36,7 @@ const persona = process.env["LOCAL_PERSONA"] ?? "orgAdmin";
 if (!(persona in tokens)) throw new Error(`LOCAL_PERSONA must be one of ${personas.join(", ")}`);
 
 run(tsx, ["src/main.ts"], join(E2E_DIR, "../../api"), { ...dbEnv(), PORT: String(PORTS.api), AUTH_AUDIENCE: PROJECT, AUTH_ISSUER: ISSUER, AUTH_JWKS_URL: `http://127.0.0.1:${PORTS.jwks}/jwks`, CLOSURE_SINK: "memory" });
-run(join(E2E_DIR, "../../workers/node_modules/.bin/tsx"), ["src/local-runner.ts"], join(E2E_DIR, "../../workers"), { ...dbEnv(), PORT: String(PORTS.worker), LOCAL_WORKSPACE_PREFIX: "local" });
+run(join(E2E_DIR, "../../workers/node_modules/.bin/tsx"), ["src/local-runner.ts"], join(E2E_DIR, "../../workers"), { ...dbEnv(), PORT: String(PORTS.worker), LOCAL_ORG_FROM: "local" });
 run(join(E2E_DIR, "../node_modules/.bin/vite"), [], join(E2E_DIR, ".."), { WEB_PORT: String(PORTS.web), API_URL: `http://127.0.0.1:${PORTS.api}`, VITE_DEV_ID_TOKEN: tokens[persona] ?? "" });
 
 const { workspaceId } = JSON.parse(seeded) as { workspaceId: string };

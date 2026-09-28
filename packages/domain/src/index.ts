@@ -127,6 +127,8 @@ export {
 export type { Mention, Reference } from "./threads.js";
 
 export { CreateSavedViewInput, ListSavedViewsQuery, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput } from "./views.js";
+export { SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, UpdateSlackSettingsInput } from "./slack.js";
+export type { SlackActionId } from "./slack.js";
 
 export { newId } from "./ids.js";
 

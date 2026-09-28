@@ -13,3 +13,15 @@
   - the current step's eligible approvers, for a new request;
   - the requester, for an outcome.
   - The actor is never notified of their own action.
+
+## Slack bot (ADR-046)
+
+- **Environment:**
+  - `SLACK_BOT_TOKEN`: posting and editing, plus `users.info`, `views.open` and `auth.test`.
+  - `SLACK_SIGNING_SECRET`: verifies `/api/v1/slack/interactions` and `/api/v1/slack/commands`.
+  - `API_PUBLIC_URL`: what Slack calls.
+  - `APP_BASE_URL`: links in messages.
+- **Setup:** Admin › Slack has the steps and the app manifest. Create the app from the manifest, install it, invite the bot to its channels, set the env, then Link and send a test.
+- **Topics:** the notify worker now also takes `alert.changed` (it edits posted alert messages) and `slack.test`.
+- **`slack_message`** records the posted messages it edits. Losing it only means later changes post nothing instead of editing.
+- **"Your Slack profile has no email…" / "No active Budget OS account…":** the Slack user's email doesn't match a Budget OS user. Add them in Admin › Roles with the same email.

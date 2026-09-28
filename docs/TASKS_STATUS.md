@@ -357,3 +357,13 @@ The spec-scale load job re-measures this on this branch.
 - **Delete** (`DELETE /rules/:id`, migration `20260930020000_rule_deleted_at`) keeps the rule for its alerts' history, stops it, and resolves its open alerts. The name can be reused.
 - **Removed:** the email field, which was saved but never delivered; stored emails are kept.
 - **Fixed:** opening a default rule crashed the editor (its empty scope `{}` reached the filter bar).
+
+## Product feedback, round 3: Slack notifications and bot (2026-09-28, ADR-046)
+
+- **Alert messages** carry Acknowledge / Snooze a week / Resolve.
+- **Approval requests** carry Approve / Reject; Reject asks for a reason in a Slack form.
+- **Acting from Slack:** each click runs the app's command as the Slack user's Budget OS account (matched by email; the workspace must be linked to that Slack team). The posted message is edited when the alert or request changes, from Slack or the app.
+- **`/budget`:** `alerts`, `search <text>`, or a budget's name, answered privately.
+- **Admin › Slack:** connection, Link, channels (default, alerts, severities), a test message, and the setup steps with the app manifest.
+- **Local runner:** now delivers notifications (in-app and Slack), and every workspace of the local stack's org.
+- **Needs a real Slack app to use:** the bot token and signing secret, plus a public URL for buttons and /budget.

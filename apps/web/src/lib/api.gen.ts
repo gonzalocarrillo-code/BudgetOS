@@ -1648,6 +1648,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/integrations/slack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSlackSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateSlackSettings"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/integrations/slack/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sendSlackTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Called by Slack (signed with SLACK_SIGNING_SECRET; no JWT): button clicks and form submissions */
+        post: operations["slackInteractions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Called by Slack (signed; no JWT): the /budget slash command */
+        post: operations["slackCommands"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/tags": {
         parameters: {
             query?: never;
@@ -6915,6 +6981,118 @@ export interface operations {
         responses: {
             /** @description Follow or stop following an entity's threads */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSlackSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateSlackSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    defaultChannel?: string | null;
+                    alertChannel?: string | null;
+                    alertSeverities?: ("info" | "warning" | "critical" | "data")[];
+                    approvals?: boolean;
+                    link?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The workspace's Slack settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sendSlackTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    channel?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description A test message is queued for the notify worker */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    slackInteractions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What Slack expects: {} or form errors */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    slackCommands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An ephemeral reply */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

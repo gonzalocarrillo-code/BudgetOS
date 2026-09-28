@@ -27,7 +27,7 @@ const ruleIds = { critical: randomUUID(), channel: randomUUID(), quiet: randomUU
 class FakeSlack implements SlackClient {
   posts: Array<{ channel: string; text: string }> = [];
   failNext = false;
-  async postMessage(m: { channel: string; text: string }) {
+  async postMessage(m: { channel: string; text: string }): Promise<{ channel: string; ts: string } | void> {
     if (this.failNext) {
       this.failNext = false;
       throw new Error("slack: ratelimited");
@@ -50,7 +50,7 @@ const notifications = (userId: string) => owner.$queryRawUnsafe<Array<{ kind: st
 async function alert(ruleId: string, severity: string): Promise<string> {
   const id = randomUUID();
   // One open alert per rule and envelope (T-018's unique index): close the previous one first.
-  await owner.alert.updateMany({ where: { ruleId, envelopeId, status: "OPEN" }, data: { status: "RESOLVED", resolvedAt: new Date() } });
+  await owner.alert.updateMany({ where: { ruleId, envelopeId, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } }, data: { status: "RESOLVED", resolvedAt: new Date() } });
   await owner.alert.create({ data: { id, workspaceId: ws, ruleId, envelopeId, severity, metricValue: "1.3", threshold: "1.25", context: { budget: "1000.00", actual: "700.00", evaluatedFor: "2026-08-15" }, ownerId: u.owner } });
   return id;
 }
@@ -88,6 +88,7 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const sql of [
     `DELETE FROM notification WHERE workspace_id = $1::uuid`,
+    `DELETE FROM slack_message WHERE workspace_id = $1::uuid`,
     `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
     `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
     `DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)`,
@@ -158,6 +159,66 @@ describe("Slack delivery (fake client)", () => {
   it("without SLACK_BOT_TOKEN nothing is sent and the event is still acknowledged", async () => {
     const res = await handleSlackEvent(app, null, await event("alert.triggered", { alertId: await alert(ruleIds.critical, "critical") }));
     expect(res).toMatchObject({ outcome: "applied", posted: [] });
+  });
+});
+
+/** A fake that answers like chat.postMessage (channel + ts) and records chat.update edits. */
+class RecordingSlack extends FakeSlack {
+  sent: Array<{ channel: string; ts: string; text: string; blocks: unknown[] }> = [];
+  edits: Array<{ channel: string; ts: string; text: string; blocks: unknown[] }> = [];
+  override async postMessage(m: { channel: string; text: string; blocks?: unknown[] }) {
+    await super.postMessage(m);
+    const ref = { channel: m.channel.replace(/^#/, "C-"), ts: `${Date.now()}.${this.sent.length}` };
+    this.sent.push({ ...ref, text: m.text, blocks: m.blocks ?? [] });
+    return ref;
+  }
+  async updateMessage(m: { channel: string; ts: string; text: string; blocks: unknown[] }) {
+    this.edits.push(m);
+  }
+}
+const actionIds = (blocks: unknown[]) => JSON.stringify(blocks).match(/"action_id":"[a-z_.]+"/g) ?? [];
+
+describe("Slack bot: buttons, routing and keeping messages current (feedback 2026-09-28)", () => {
+  beforeAll(async () => {
+    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], teamId: "T0TEST" } } } });
+  });
+  afterAll(async () => {
+    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops" } } } });
+  });
+
+  it("an alert posts with Acknowledge / Snooze / Resolve; when it changes, the same message is edited", async () => {
+    const slack = new RecordingSlack();
+    const id = await alert(ruleIds.quiet, "warning"); // no rule channel: the workspace's alert channel takes warnings
+    await handleSlackEvent(app, slack, await event("alert.triggered", { alertId: id }));
+    expect(slack.sent.map((m) => m.channel)).toEqual(["C-alerts"]);
+    expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"alert.acknowledge"', '"action_id":"alert.snooze"', '"action_id":"alert.resolve"', '"action_id":"open_alert"', '"action_id":"open_envelope"']);
+
+    await owner.alert.update({ where: { id }, data: { status: "ACKNOWLEDGED" } });
+    await owner.$executeRawUnsafe(`INSERT INTO audit_event (id, workspace_id, actor_id, actor_type, action, entity_type, entity_id, after, request_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', 'alert.acknowledged', 'alert', $4::uuid, '{}'::jsonb, 'slack-test')`, randomUUID(), ws, u.owner, id);
+    const res = await handleSlackEvent(app, slack, await event("alert.changed", { alertId: id, status: "ACKNOWLEDGED" }));
+    expect(res.posted).toEqual([]);
+    expect(slack.edits.map((e) => [e.channel, e.ts])).toEqual([[slack.sent[0]?.channel, slack.sent[0]?.ts]]);
+    expect(JSON.stringify(slack.edits[0]?.blocks)).toContain("Acknowledged by Name owner");
+    expect(actionIds(slack.edits[0]?.blocks ?? [])).not.toContain('"action_id":"alert.acknowledge"');
+  });
+
+  it("a request posts with Approve / Reject; its outcome edits that message instead of posting again", async () => {
+    const slack = new RecordingSlack();
+    const id = await request();
+    await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
+    expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
+    await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "approve" } });
+    const res = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
+    expect(res.posted).toEqual([]);
+    expect(slack.edits).toHaveLength(1);
+    expect(slack.edits[0]?.text).toBe("✅ Approved: BR Meta");
+    expect(actionIds(slack.edits[0]?.blocks ?? [])).toEqual(['"action_id":"open_approval"']);
+  });
+
+  it("a test message goes to the channel asked for", async () => {
+    const slack = new RecordingSlack();
+    await handleSlackEvent(app, slack, await event("slack.test", { channel: "#budget-ops", requestedBy: "Name planner" }));
+    expect(slack.sent.map((m) => [m.channel, m.text])).toEqual([["C-budget-ops", ":white_check_mark: Budget OS is connected"]]);
   });
 });
 

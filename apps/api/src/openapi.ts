@@ -84,6 +84,8 @@ import {
   AddPersonInput,
   PeopleResponse,
   UpdateMeInput,
+  UpdateSlackSettingsInput,
+  SlackTestInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -549,6 +551,19 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/subscriptions": {
         post: { operationId: "setSubscription", parameters: [workspaceHeader], requestBody: json(SubscriptionInput), responses: { "201": { description: "Follow or stop following an entity's threads" } } },
+      },
+      "/api/v1/workspaces/{ws}/integrations/slack": {
+        get: { operationId: "getSlackSettings", parameters: [workspaceParam], responses: { "200": { description: "Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest" } } },
+        patch: { operationId: "updateSlackSettings", parameters: [workspaceParam], requestBody: json(UpdateSlackSettingsInput), responses: { "200": { description: "The workspace's Slack settings" } } },
+      },
+      "/api/v1/workspaces/{ws}/integrations/slack/test": {
+        post: { operationId: "sendSlackTest", parameters: [workspaceParam], requestBody: json(SlackTestInput), responses: { "201": { description: "A test message is queued for the notify worker" } } },
+      },
+      "/api/v1/slack/interactions": {
+        post: { operationId: "slackInteractions", description: "Called by Slack (signed with SLACK_SIGNING_SECRET; no JWT): button clicks and form submissions", responses: { "200": { description: "What Slack expects: {} or form errors" } } },
+      },
+      "/api/v1/slack/commands": {
+        post: { operationId: "slackCommands", description: "Called by Slack (signed; no JWT): the /budget slash command", responses: { "200": { description: "An ephemeral reply" } } },
       },
       "/api/v1/workspaces/{ws}/tags": {
         get: { operationId: "listTags", parameters: [workspaceParam], responses: { "200": { description: "Tags with usage counts" } } },

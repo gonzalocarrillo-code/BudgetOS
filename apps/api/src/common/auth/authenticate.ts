@@ -40,9 +40,34 @@ export async function authenticate(deps: AuthDeps, input: { authorization: strin
   };
 }
 
+/**
+ * An AuthContext for an email another trusted system vouches for (the Slack user of a linked
+ * Slack team, product feedback 2026-09-28): the same user, workspace and role checks as a JWT.
+ */
+export async function authenticateVerifiedEmail(deps: Pick<AuthDeps, "access" | "cache">, input: { email: string; workspaceId: string; requestId: string }): Promise<AuthContext> {
+  const user = await deps.access.findUser({ sub: `external:${input.email}`, email: input.email, emailVerified: true, googleSub: null });
+  if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "No active Budget OS account for this Slack user's email");
+  const orgId = await deps.access.workspaceOrg(input.workspaceId, user, input.requestId);
+  if (orgId !== user.orgId) throw new DomainError("FORBIDDEN", "No access to this workspace");
+  let access: WorkspaceAccess | undefined = deps.cache.get(user.id, input.workspaceId);
+  if (!access) {
+    access = await deps.access.access(user, input.workspaceId, input.requestId);
+    deps.cache.set(user.id, input.workspaceId, access);
+  }
+  return {
+    ctx: { workspaceId: input.workspaceId, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user", requestId: input.requestId },
+    user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
+    isOrgAdmin: access.isOrgAdmin,
+    roles: [...new Set(access.assignments.map((a) => a.role))] as Role[],
+    assignments: access.assignments,
+  };
+}
+
 /** The route's (or tool's) declared permission, against the caller's roles in the workspace. */
 export function authorize(auth: AuthContext, permission: RoutePermission): void {
   if (permission === "authenticated") return;
+  // Signed Slack requests never reach here (the interceptor verifies them without a JWT).
+  if (permission === "slack.signed") throw new DomainError("FORBIDDEN", "Slack routes take no JWT");
   // T-040: org-level administration (workspaces, templates, tours); with or without a workspace.
   if (permission === "org.admin") {
     if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin can do this", { permission });

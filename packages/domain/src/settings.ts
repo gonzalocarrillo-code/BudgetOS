@@ -37,6 +37,7 @@ export const SETTINGS: readonly SettingEntry[] = [
   { id: id(17), title: "Manual results", section: "Data", path: "/sources/manual", keywords: ["manual entry", "offline", "TV", "out of home", "print", "radio", "paste results"] },
   { id: id(18), title: "Period closures", section: "Finance", path: "/closures", keywords: ["close period", "restate", "lock budgets", "month end", "quarter end"] },
   { id: id(20), title: "Fiscal calendar", section: "Finance", path: "/admin/periods", keywords: ["quarters", "4-4-5", "fiscal year", "periods", "partitions", "reopen quarter", "close quarter"] },
+  { id: id(21), title: "Slack", section: "Notifications", path: "/admin/slack", keywords: ["Slack bot", "Slack channel", "alerts in Slack", "approve from Slack", "/budget command", "notifications", "integrations"] },
   { id: id(19), title: "Unmatched spend", section: "Data", path: "/sources", keywords: ["unmatched", "data to map", "coverage", "rejected rows"] },
 ];
 

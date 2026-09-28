@@ -1,4 +1,4 @@
-import { button, context, esc, header, link, money, section, type SlackMessage } from "./common.js";
+import { actionButton, button, context, esc, header, link, money, section, type SlackMessage } from "./common.js";
 
 /** Alert posted to a rule's channel (spec §19 blocks/alert.ts). */
 export interface AlertMessageInput {
@@ -19,6 +19,12 @@ export interface AlertMessageInput {
   ownerName: string | null;
   reopened: boolean;
   evaluatedFor: string;
+  /** Where the alert is now (the message is edited when it changes) and who moved it there. */
+  status?: "OPEN" | "ACKNOWLEDGED" | "SNOOZED" | "RESOLVED";
+  statusBy?: string | null;
+  snoozedUntil?: string | null;
+  /** Show the Acknowledge / Snooze / Resolve buttons (the bot is connected with interactivity). */
+  actions?: boolean;
 }
 
 const ICON = { info: ":information_source:", warning: ":warning:", critical: ":rotating_light:", data: ":bar_chart:" } as const;
@@ -37,8 +43,30 @@ export function alertMessage(a: AlertMessageInput): SlackMessage {
         `*Budget*\n${money(a.budget, a.currency)}`,
         `*Actual*\n${money(a.actual, a.currency)}`,
       ]),
-      { type: "actions", elements: [button("Open alert", url, "open_alert", "primary"), button("Open envelope", link(a.baseUrl, a.workspaceId, `/budgets?select=${a.envelopeId}`), "open_envelope")] },
+      ...(a.status && a.status !== "OPEN" ? [context(statusLine(a))] : []),
+      {
+        type: "actions",
+        elements: [
+          ...(a.actions && a.status !== "RESOLVED"
+            ? [
+                ...(a.status !== "ACKNOWLEDGED" && a.status !== "SNOOZED" ? [actionButton("Acknowledge", "alert.acknowledge", a.workspaceId, a.alertId)] : []),
+                ...(a.status !== "SNOOZED" ? [actionButton("Snooze a week", "alert.snooze", a.workspaceId, a.alertId)] : []),
+                actionButton("Resolve", "alert.resolve", a.workspaceId, a.alertId),
+              ]
+            : []),
+          button("Open alert", url, "open_alert", a.actions ? undefined : "primary"),
+          button("Open budget", link(a.baseUrl, a.workspaceId, `/budgets?select=${a.envelopeId}`), "open_envelope"),
+        ],
+      },
       context(`Evaluated for ${a.evaluatedFor}`, "Budget OS pacing"),
     ],
   };
+}
+
+function statusLine(a: AlertMessageInput): string {
+  const by = a.statusBy ? ` by ${esc(a.statusBy)}` : "";
+  if (a.status === "ACKNOWLEDGED") return `:eyes: Acknowledged${by}`;
+  if (a.status === "SNOOZED") return `:zzz: Snoozed${by}${a.snoozedUntil ? ` until ${a.snoozedUntil.slice(0, 10)}` : ""}`;
+  if (a.status === "RESOLVED") return `:white_check_mark: Resolved${by}`;
+  return "";
 }

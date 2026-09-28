@@ -1,4 +1,4 @@
-import { button, context, esc, header, link, money, section, type SlackMessage } from "./common.js";
+import { actionButton, button, context, esc, header, link, money, section, type SlackMessage } from "./common.js";
 
 /** Approval request / outcome posted to the workspace channel (spec §19 blocks/approval.ts). */
 export interface ApprovalMessageInput {
@@ -17,6 +17,8 @@ export interface ApprovalMessageInput {
   policyName: string;
   dueAt: string | null;
   comment: string | null;
+  /** Approve / Reject buttons on a request waiting for a decision (the bot is connected). */
+  actions?: boolean;
 }
 
 const TITLE: Record<ApprovalMessageInput["kind"], string> = {
@@ -43,8 +45,14 @@ export function approvalMessage(a: ApprovalMessageInput): SlackMessage {
       header(`${ICON[a.kind]} ${TITLE[a.kind]}: ${a.subject}`),
       section(esc(a.summary), fields),
       ...(a.comment ? [section(`> ${esc(a.comment).replace(/\n/g, "\n> ")}`)] : []),
-      { type: "actions", elements: [button(a.kind === "requested" || a.kind === "escalated" ? "Review" : "Open", url, "open_approval", "primary")] },
-      context("Decide in Budget OS; interactive Slack approvals come in Phase 2"),
+      {
+        type: "actions",
+        elements: [
+          ...(a.actions && (a.kind === "requested" || a.kind === "escalated") ? [actionButton("Approve", "approval.approve", a.workspaceId, a.requestId, "primary"), actionButton("Reject", "approval.reject", a.workspaceId, a.requestId, "danger")] : []),
+          button(a.kind === "requested" || a.kind === "escalated" ? "Review" : "Open", url, "open_approval", a.actions ? undefined : "primary"),
+        ],
+      },
+      context(a.actions && (a.kind === "requested" || a.kind === "escalated") ? "Approve or reject here, or review the change in Budget OS" : "Budget OS approvals"),
     ],
   };
 }

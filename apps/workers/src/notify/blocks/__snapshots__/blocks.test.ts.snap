@@ -58,7 +58,7 @@ USD 812,345.50",
           "action_id": "open_envelope",
           "text": {
             "emoji": true,
-            "text": "Open envelope",
+            "text": "Open budget",
             "type": "plain_text",
           },
           "type": "button",
@@ -143,7 +143,7 @@ EUR 0",
           "action_id": "open_envelope",
           "text": {
             "emoji": true,
-            "text": "Open envelope",
+            "text": "Open budget",
             "type": "plain_text",
           },
           "type": "button",
@@ -224,7 +224,7 @@ Finance Fay",
     {
       "elements": [
         {
-          "text": "Decide in Budget OS; interactive Slack approvals come in Phase 2",
+          "text": "Budget OS approvals",
           "type": "mrkdwn",
         },
       ],
@@ -302,7 +302,7 @@ Owner Olga",
     {
       "elements": [
         {
-          "text": "Decide in Budget OS; interactive Slack approvals come in Phase 2",
+          "text": "Budget OS approvals",
           "type": "mrkdwn",
         },
       ],
@@ -372,7 +372,7 @@ BUDGET_OWNER, due 2026-09-26",
     {
       "elements": [
         {
-          "text": "Decide in Budget OS; interactive Slack approvals come in Phase 2",
+          "text": "Budget OS approvals",
           "type": "mrkdwn",
         },
       ],
