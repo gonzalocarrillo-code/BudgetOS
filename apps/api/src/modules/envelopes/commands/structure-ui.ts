@@ -6,6 +6,7 @@ import { parseId, parseInput, requireWorkspace } from "../../../common/parse-inp
 import type { AuthContext } from "../../../common/tenant.js";
 import { createEnvelopeIn } from "./create-envelope.js";
 import { mergeIn, moveIn, splitIn } from "./structure.js";
+import { endIn, reintroduceIn } from "./end-reintroduce.js";
 import { submitVersionIn } from "./submit-version.js";
 import { resolveFx } from "./version-writer.js";
 
@@ -138,6 +139,22 @@ export async function previewStructure(prisma: PrismaClient, auth: AuthContext, 
           const cap = await capOf(tx, env?.parentId ?? null);
           result = await splitIn(tx, auth, workspaceId, p.envelopeId, p.input);
           parent = capView(cap, new Decimal(0)); // the parts sum to the source
+        } else if (p.op === "end") {
+          const env = await tx.envelope.findUnique({ where: { id: p.envelopeId }, select: { parentId: true, currency: true } });
+          const rate = (await resolveFx(tx, env?.currency ?? reporting, workspaceId)).rate;
+          const final = new Decimal(p.input.finalAmount).mul(rate).toDecimalPlaces(2);
+          const successor = p.input.successor ? new Decimal(p.input.successor.amount).mul(rate).toDecimalPlaces(2) : new Decimal(0);
+          total = final.plus(successor);
+          const cap = await capOf(tx, env?.parentId ?? null);
+          const before = await approvedReporting(tx, p.envelopeId);
+          result = await endIn(tx, auth, workspaceId, p.envelopeId, p.input);
+          parent = capView(cap, total.minus(before)); // what goes back to (or comes from) the parent
+        } else if (p.op === "reintroduce") {
+          const env = await tx.envelope.findUnique({ where: { id: p.envelopeId }, select: { parentId: true, currency: true } });
+          total = new Decimal(p.input.amount).mul((await resolveFx(tx, env?.currency ?? reporting, workspaceId)).rate).toDecimalPlaces(2);
+          const cap = await capOf(tx, env?.parentId ?? null);
+          result = await reintroduceIn(tx, auth, workspaceId, p.envelopeId, p.input);
+          parent = capView(cap, total);
         } else {
           const ids = [...new Set(p.input.sourceIds)];
           if (ids.length < 2) throw new DomainError("VALIDATION", "Merge needs at least two different envelopes");

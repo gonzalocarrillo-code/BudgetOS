@@ -82,8 +82,10 @@ export const savedViewsQuery = (ws: string) =>
 
 const Version = z.object({ id: z.string().uuid(), versionNo: z.number(), amount: z.string(), status: z.string() }).passthrough();
 /** A neighbour in the tree (T-031b): parent, child or sibling, with its approved amount. */
-export const StructureNode = z.object({ id: z.string().uuid(), name: z.string(), status: z.string(), currency: z.string(), approved: z.string().nullable(), dimensionValues: z.record(z.string(), z.string()).default({}) });
+export const StructureNode = z.object({ id: z.string().uuid(), name: z.string(), status: z.string(), currency: z.string(), approved: z.string().nullable(), dimensionValues: z.record(z.string(), z.string()).default({}), ended: z.boolean().default(false) });
 export type StructureNode = z.infer<typeof StructureNode>;
+const LineageLink = z.object({ id: z.string().uuid(), name: z.string(), status: z.string(), startDate: z.string(), endDate: z.string(), ended: z.boolean() });
+
 export const EnvelopeDetail = z
   .object({
     id: z.string().uuid(),
@@ -107,6 +109,14 @@ export const EnvelopeDetail = z
     structure: z
       .object({ parent: StructureNode.nullable(), children: z.array(StructureNode), siblings: z.array(StructureNode) })
       .default({ parent: null, children: [], siblings: [] }),
+    /** H-011: when it ended; an ended budget is read-only. */
+    ended: z.object({ at: z.string(), by: z.string().nullable(), reason: z.string().nullable() }).nullable().default(null),
+    /** What the open bulk request holding its draft does (split, merge, end…). */
+    pendingKind: z.string().nullable().default(null),
+    /** H-012: the budget it continues, and the ones that continue it. */
+    lineage: z
+      .object({ continues: LineageLink.nullable(), continuedBy: z.array(LineageLink) })
+      .default({ continues: null, continuedBy: [] }),
   })
   .passthrough();
 export type EnvelopeDetail = z.infer<typeof EnvelopeDetail>;

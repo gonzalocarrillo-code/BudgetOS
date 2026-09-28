@@ -28,4 +28,4 @@ export function useExplorerLabels(ws: string): Labels {
 }
 
 /** What each budget status reads as (the grid and the drawer). */
-export const STATUS_LABELS = (): Record<string, string> => ({ DRAFT: t("status.DRAFT"), PENDING: t("status.PENDING"), APPROVED: t("status.APPROVED"), LOCKED: t("status.LOCKED"), ARCHIVED: t("status.ARCHIVED") });
+export const STATUS_LABELS = (): Record<string, string> => ({ DRAFT: t("status.DRAFT"), PENDING: t("status.PENDING"), APPROVED: t("status.APPROVED"), LOCKED: t("status.LOCKED"), ARCHIVED: t("status.ARCHIVED"), ENDED: t("status.ENDED") });

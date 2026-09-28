@@ -12,6 +12,8 @@ export async function lockForWrite(tx: Tx, auth: AuthContext, envelopeId: string
   if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
   if (env.status === "LOCKED") throw new DomainError("LOCKED", "Period is closed; restate via closure");
   if (env.status === "ARCHIVED") throw new DomainError("CONFLICT", "Envelope is archived");
+  // H-011: an ended budget keeps its history and spend but takes no more changes.
+  if (env.endedAt) throw new DomainError("LOCKED", `This budget ended on ${env.endDate}; reintroduce it to keep planning`, { endedAt: env.endedAt, endDate: env.endDate });
   assertInScope(auth, action, await envelopeScopeTarget(tx, envelopeId));
   return env;
 }

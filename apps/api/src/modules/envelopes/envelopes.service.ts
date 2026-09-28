@@ -9,12 +9,13 @@ import { createDraftVersion } from "./commands/create-draft-version.js";
 import { createEnvelope } from "./commands/create-envelope.js";
 import { restoreVersion } from "./commands/restore-version.js";
 import { mergeEnvelopes, moveEnvelope, splitEnvelope } from "./commands/structure.js";
+import { endEnvelope, reintroduceEnvelope } from "./commands/end-reintroduce.js";
 import { addChild, previewStructure } from "./commands/structure-ui.js";
 import { submitVersion } from "./commands/submit-version.js";
 import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
 import { updateEnvelope } from "./commands/update-envelope.js";
 import { updatePhasing } from "./commands/update-phasing.js";
-import { getEnvelope, listVersions, versionDto } from "./queries/get-envelope.js";
+import { getEnvelope, getEnvelopeSpend, listVersions, versionDto } from "./queries/get-envelope.js";
 import { getFamily, previewFamily, saveFamily } from "./family/family.js";
 import { getTimeline, type TimelineParams } from "./queries/timeline.js";
 
@@ -30,6 +31,14 @@ export class EnvelopesService {
   }
   split(auth: AuthContext, id: string, body: unknown) {
     return splitEnvelope(this.prisma, auth, id, body);
+  }
+
+  end(auth: AuthContext, id: string, body: unknown) {
+    return endEnvelope(this.prisma, auth, id, body);
+  }
+
+  reintroduce(auth: AuthContext, id: string, body: unknown) {
+    return reintroduceEnvelope(this.prisma, auth, id, body);
   }
   merge(auth: AuthContext, body: unknown) {
     return mergeEnvelopes(this.prisma, auth, body);
@@ -71,6 +80,10 @@ export class EnvelopesService {
   timeline(auth: AuthContext, id: string, params: TimelineParams) {
     return getTimeline(this.prisma, auth, id, params);
   }
+  spend(auth: AuthContext, id: string, through?: string) {
+    return getEnvelopeSpend(this.prisma, auth, id, through);
+  }
+
   versions(auth: AuthContext, id: string) {
     return listVersions(this.prisma, auth, id);
   }

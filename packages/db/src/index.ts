@@ -69,8 +69,8 @@ export {
 } from "../seed/golden.plan.js";
 export type { GoldenFactRow, GoldenTotals, PlannedEnvelope, PlannedTarget, PlannedVersion } from "../seed/golden.plan.js";
 export type { DefaultPolicySeed } from "../seed/defaults.policies.js";
-export { actualsByEnvelope, archiveEnvelopes, auditMany, capInputs, closeBulkVersions, insertBulkChange, loadBulkChange, envelopePaths, insertBulkVersions, loadBulkHeads, lockEnvelopes, previousPeriodAmounts, setDraftPointers, supersedeDrafts } from "./bulk.js";
-export type { BulkChangeRow, BulkHeadRow, BulkVersionRow } from "./bulk.js";
+export { actualsByEnvelope, applyEnd, archiveEnvelopes, auditMany, capInputs, closeBulkVersions, insertBulkChange, loadBulkChange, openBulkRequestFor, envelopePaths, insertBulkVersions, loadBulkHeads, lockEnvelopes, previousPeriodAmounts, setDraftPointers, spendThrough, supersedeDrafts } from "./bulk.js";
+export type { BulkChangeRow, BulkEndPayload, BulkHeadRow, BulkKind, BulkVersionRow } from "./bulk.js";
 export { envelopeTimeline } from "./timeline.js";
 export { ganttKeyDates, ganttMarkers, ganttTargets } from "./gantt.js";
 export type { GanttKeyDateRow, GanttMarkerRow, GanttTargetRow } from "./gantt.js";

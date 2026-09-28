@@ -11,6 +11,7 @@ import {
   outbox,
   recomputeNames,
   withTenant,
+  type BulkEndPayload,
   type LockedEnvelopeRow,
   type Tx,
 } from "@budget/db";
@@ -59,8 +60,9 @@ export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, inpu
       if (p === envelopeId) throw new DomainError("VALIDATION", "An envelope cannot move under itself or its own descendant");
       p = (await tx.envelope.findUnique({ where: { id: p }, select: { parentId: true } }))?.parentId ?? null;
     }
-    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { status: true } });
+    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { status: true, endedAt: true } });
     if (parent === null) throw new DomainError("NOT_FOUND", "New parent not found");
+    if (parent.endedAt !== null) throw new DomainError("LOCKED", "The new parent has ended");
     if (parent.status === "LOCKED") throw new DomainError("LOCKED", "New parent's period is closed");
     if (parent.status === "ARCHIVED") throw new DomainError("CONFLICT", "New parent is archived");
     assertInScope(auth, "envelope.move", await envelopeScopeTarget(tx, input.parentId));
@@ -118,25 +120,33 @@ async function rerouteOpenRequest(tx: Tx, auth: AuthContext, envelopeId: string,
 // Split and merge: one bulk_change, one approval (or auto-approval), sources archived at the end
 // ---------------------------------------------------------------------------------------------
 
-interface Structural {
-  kind: "split" | "merge";
+export interface Structural {
+  kind: "split" | "merge" | "end" | "reintroduce";
   workspaceId: string;
   versionIds: string[];
   archiveIds: string[];
   createdIds: string[];
   amountReporting: Decimal;
   rationale: string;
+  /** End / reintroduce (H-011, H-012): the change in amount the policy judges; split and merge change no total. */
+  deltaAbs?: Decimal;
+  deltaPct?: Decimal;
+  /** Existing budgets held as "Waiting for approval" until the request resolves (an ended budget). */
+  holdIds?: string[];
+  payload?: BulkEndPayload;
 }
 
-async function routeStructural(tx: Tx, auth: AuthContext, s: Structural): Promise<{ bulkChangeId: string; requestId: string | null; autoApproved: boolean; policy: { name: string; version: number } }> {
+const STRUCTURAL_LABEL: Record<Structural["kind"], string> = { split: "Split", merge: "Merge", end: "End", reintroduce: "Reintroduce" };
+
+export async function routeStructural(tx: Tx, auth: AuthContext, s: Structural): Promise<{ bulkChangeId: string; requestId: string | null; autoApproved: boolean; policy: { name: string; version: number } }> {
   const bulkChangeId = newId();
-  await insertBulkChange(tx, { id: bulkChangeId, workspaceId: s.workspaceId, kind: s.kind, versionIds: s.versionIds, archiveIds: s.archiveIds, createdIds: s.createdIds, createdBy: auth.user.id });
-  // Structural change: the total is unchanged (parts sum to the source; the merge holds the sum).
+  await insertBulkChange(tx, { id: bulkChangeId, workspaceId: s.workspaceId, kind: s.kind, versionIds: s.versionIds, archiveIds: s.archiveIds, createdIds: s.createdIds, createdBy: auth.user.id, ...(s.payload ? { payload: s.payload } : {}) });
+  // Split and merge leave the total unchanged (parts sum to the source; the merge holds the sum).
   const policy = await matchPolicy(tx, s.workspaceId, {
     entityType: "bulk_change",
     amountAbs: s.amountReporting,
-    deltaAbs: new Decimal(0),
-    deltaPct: new Decimal(0),
+    deltaAbs: s.deltaAbs ?? new Decimal(0),
+    deltaPct: s.deltaPct ?? new Decimal(0),
     isOverAllocation: false,
     level: 0,
     dimensionValues: {},
@@ -158,13 +168,13 @@ async function routeStructural(tx: Tx, auth: AuthContext, s: Structural): Promis
       policyId: policy.id,
       policyVersion: policy.version,
       policySnapshot: snapshot as unknown as Prisma.InputJsonObject,
-      summary: `${s.kind === "split" ? "Split" : "Merge"}: ${s.versionIds.length} versions, ${s.amountReporting.toFixed(2)} (reporting). ${s.rationale.slice(0, 200)}`,
+      summary: `${STRUCTURAL_LABEL[s.kind]}: ${s.versionIds.length} versions, ${s.amountReporting.toFixed(2)} (reporting). ${s.rationale.slice(0, 200)}`,
       requestedBy: auth.user.id,
       dueAt: addHours(new Date(), policy.chain[0]?.timeoutHours ?? 48),
     },
   });
   await tx.envelopeVersion.updateMany({ where: { id: { in: s.versionIds } }, data: { status: "PENDING" } });
-  await tx.envelope.updateMany({ where: { id: { in: [...s.archiveIds, ...s.createdIds] } }, data: { status: "PENDING" } });
+  await tx.envelope.updateMany({ where: { id: { in: [...s.archiveIds, ...s.createdIds, ...(s.holdIds ?? [])] } }, data: { status: "PENDING" } });
   return { bulkChangeId, requestId, autoApproved: false, policy: { name: policy.name, version: policy.version } };
 }
 

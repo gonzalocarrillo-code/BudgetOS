@@ -305,7 +305,7 @@ model EnvelopeLineage {
   workspaceId    String   @map("workspace_id") @db.Uuid
   fromEnvelopeId String   @map("from_envelope_id") @db.Uuid
   toEnvelopeId   String   @map("to_envelope_id") @db.Uuid
-  kind           String // move | split | merge
+  kind           String // move | split | merge | continues (H-012)
   versionId      String?  @map("version_id") @db.Uuid
   actorId        String   @map("actor_id") @db.Uuid
   at             DateTime @default(now()) @db.Timestamptz

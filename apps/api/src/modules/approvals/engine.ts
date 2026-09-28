@@ -1,5 +1,5 @@
 import { DomainError, newId } from "@budget/domain";
-import { archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
+import { applyEnd, archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { clock } from "../../common/clock.js";
 import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
 import { approveVersion } from "./commands/approve-version.js";
@@ -45,13 +45,16 @@ export async function finalizeBulk(tx: Tx, ctx: TenantContext, bulkChangeId: str
   const bulk = await loadBulkChange(tx, bulkChangeId);
   if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
   const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { id: true, envelopeId: true } });
-  const archive = new Set(bulk.archiveIds);
+  // Sources that give their amount back (split / merge sources, an ended budget) go first, so the
+  // new siblings (parts, the merge, a successor) fit the parent's cap; then parents before children.
+  const release = new Set([...bulk.archiveIds, ...(bulk.payload.end ? [bulk.payload.end.envelopeId] : [])]);
   const d = await depths(tx, versions.map((v) => v.envelopeId));
-  const rank = (v: { envelopeId: string }) => (archive.has(v.envelopeId) ? -1 : (d.get(v.envelopeId) ?? 0));
+  const rank = (v: { envelopeId: string }) => (release.has(v.envelopeId) ? -1 : (d.get(v.envelopeId) ?? 0));
   for (const v of versions.slice().sort((a, b) => rank(a) - rank(b))) {
     await approveVersion(tx, ctx, v.id, requestId, `${reason} (${bulk.kind} ${bulkChangeId})`);
   }
   await archiveEnvelopes(tx, bulk.archiveIds);
+  if (bulk.payload.end) await applyEnd(tx, bulk.payload.end, bulk.createdBy); // H-011
 }
 
 /** Envelope depth (0 = root) so bulk approvals run parents first and child caps see the parent's new amount. */
