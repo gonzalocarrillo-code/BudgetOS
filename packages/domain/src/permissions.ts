@@ -194,8 +194,9 @@ export function readScopeFilter(assignments: ScopedRole[], action: Action): Filt
 
 /**
  * Approver eligibility for a step (spec §5.4): has the step's role, the scope matches, and
- * blockSelfApproval ⇒ not the version author. An org admin may decide any step, their own
- * changes included (product decision 2026-09-28). Same rule as SQL eligible_approver().
+ * blockSelfApproval ⇒ not the version author. An org admin, or a workspace admin in scope, may
+ * decide any step, their own changes included, and their approval is final (product decisions
+ * 2026-09-28, ADR-048). Same rule as SQL eligible_approver().
  */
 export function eligibleApprover(args: {
   assignments: ScopedRole[];
@@ -206,6 +207,7 @@ export function eligibleApprover(args: {
   blockSelfApproval: boolean;
 }): boolean {
   if (args.assignments.some((a) => a.role === "ORG_ADMIN")) return true;
+  if (args.assignments.some((a) => a.role === "WORKSPACE_ADMIN" && matchesScope(a.scope, args.target))) return true;
   if (args.blockSelfApproval && args.userId === args.authorId) return false;
   return args.assignments.some((a) => a.role === args.stepRole && matchesScope(a.scope, args.target));
 }

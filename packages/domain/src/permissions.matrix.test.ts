@@ -163,4 +163,13 @@ describe("separation of duties", () => {
     expect(eligibleApprover({ ...base, assignments: [{ role: "ORG_ADMIN", scope: {} }], authorId: base.userId })).toBe(true);
     expect(can(["ORG_ADMIN"], "approval.force")).toBe(true);
   });
+  it("so may a workspace admin, within their scope (ADR-048)", () => {
+    expect(eligibleApprover({ ...base, assignments: [{ role: "WORKSPACE_ADMIN", scope: {} }], authorId: base.userId })).toBe(true);
+    expect(
+      eligibleApprover({
+        ...base,
+        assignments: [{ role: "WORKSPACE_ADMIN", scope: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "de" }] } }],
+      }),
+    ).toBe(false);
+  });
 });

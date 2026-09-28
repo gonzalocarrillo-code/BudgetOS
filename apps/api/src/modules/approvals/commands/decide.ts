@@ -3,12 +3,14 @@ import { eligibleApproverSql, lockApprovalRequest, withTenant } from "@budget/db
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
+import { DIRECT_ROLES } from "../policy-matcher.js";
 import { advanceIfComplete, assertEnvelopeRequest, assertNotLocked, assertOpen, closeRequest, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
 
 /**
  * POST /approvals/:id/decisions (spec §9.3). Eligibility = SQL eligible_approver() (step role,
  * step group, blockSelfApproval vs the requester) AND the app check: the step role's scope covers
- * the envelope and the decider is not the version's author (spec §5.4).
+ * the envelope and the decider is not the version's author (spec §5.4). An admin's approval is
+ * final: the request is approved, whatever steps remain (ADR-048).
  */
 export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequestId: string, raw: unknown) {
   const requestId = parseId(rawRequestId);
@@ -53,7 +55,8 @@ export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequest
       threadId = await openBlockingThread(tx, auth.ctx, r, input.comment ?? "");
       outcome = "CHANGES_REQUESTED";
     } else {
-      const advanced = await advanceIfComplete(tx, auth.ctx, r, snapshot);
+      const admin = auth.isOrgAdmin || auth.roles.some((role) => (DIRECT_ROLES as readonly string[]).includes(role));
+      const advanced = await advanceIfComplete(tx, auth.ctx, r, snapshot, admin);
       outcome = advanced === "approved" ? "APPROVED" : advanced === "advanced" ? "PENDING" : r.status;
     }
     await recordRequestChange(tx, auth.ctx, r, `approval.${input.decision}`, { step: r.currentStep, comment: input.comment ?? null, status: outcome, threadId });
