@@ -86,3 +86,44 @@ test("templates: a workspace from the template is usable in under 60 s; its demo
   await expect(page.getByTestId("demo-count")).toHaveText("This workspace has no demo data.");
   await expect(page.getByTestId("demo-purge")).toBeDisabled();
 });
+
+/** Product feedback 2026-09-28: a blank workspace says "Add your first budgets", and that works end to end. */
+test("home: a blank workspace starts with its first budgets; the greeting is the person's name", async ({ page }) => {
+  await signIn(page, "orgAdmin");
+  await page.goto(`/w/${state().workspaceId}/admin/templates`);
+  await expect(page.getByTestId("template-card").first()).toBeVisible();
+  await page.getByTestId("workspace-name").fill(`E2E Blank ${Date.now()}`);
+  await page.getByTestId("workspace-demo").uncheck();
+  await page.getByTestId("workspace-create-submit").click();
+  await expect(page).toHaveURL(/\/w\/[0-9a-f-]{36}\/home$/, { timeout: 60_000 });
+
+  await expect(page.getByTestId("page-title")).toHaveText(/^Good (morning|afternoon|evening), Golden$/);
+  await expect(page.getByTestId("home-first-budgets")).toHaveText("Add your first budgets");
+  await expect(page.getByTestId("home-step")).toHaveCount(5);
+  await expect(page.getByTestId("home-step").first()).toHaveAttribute("data-done", "false");
+
+  await page.getByTestId("home-new-budget").click();
+  const dialog = page.getByTestId("new-budget-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId("new-budget-name").fill("FY media");
+  await dialog.getByTestId("new-budget-amount").fill("250000");
+  await dialog.getByTestId("new-budget-create").click();
+  await expect(dialog).toHaveCount(0);
+  const drawer = page.getByTestId("envelope-drawer");
+  await expect(drawer).toContainText("FY media");
+  await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "draft");
+
+  // Home now shows the year's numbers instead of the first steps.
+  await page.getByRole("link", { name: "Home" }).click();
+  await expect(page.getByTestId("home-getting-started")).toHaveCount(0);
+});
+
+test("profile: a person renames themselves and Home greets them by it", async ({ page }) => {
+  await signIn(page, "finance2");
+  await page.goto(`/w/${state().workspaceId}/home`);
+  await page.getByTestId("profile-button").click();
+  await page.getByTestId("profile-name").fill("Priya Raman");
+  await page.getByTestId("profile-save").click();
+  await expect(page.getByTestId("user-name")).toHaveText("Priya Raman");
+  await expect(page.getByTestId("page-title")).toHaveText(/^Good (morning|afternoon|evening), Priya$/);
+});

@@ -7,6 +7,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 export interface MeWorkspace {
   workspaceId: string;
   name: string;
+  currency: string;
   roles: Role[];
   permissions: Action[];
 }
@@ -29,7 +30,7 @@ export async function getMe(prisma: PrismaClient, access: AccessRepository, auth
     const roles = [...new Set(a.assignments.map((x) => x.role))].sort() as Role[];
     if (roles.length === 0) continue;
     const granted = new Set<Action>(roles.flatMap((r) => [...permissions[r]]));
-    out.push({ workspaceId: ws.id, name: ws.name, roles, permissions: [...granted].sort() });
+    out.push({ workspaceId: ws.id, name: ws.name, currency: ws.reportingCurrency, roles, permissions: [...granted].sort() });
   }
   return { user: auth.user, isOrgAdmin: orgWide.isOrgAdmin, workspaces: out };
 }

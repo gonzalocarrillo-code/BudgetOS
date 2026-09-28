@@ -83,6 +83,7 @@ import {
   UpdatePeriodInput,
   AddPersonInput,
   PeopleResponse,
+  UpdateMeInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -106,6 +107,7 @@ export function openApiDocument(): Record<string, unknown> {
     paths: {
       "/api/v1/me": {
         get: { operationId: "getMe", responses: { "200": { description: "Caller, roles per workspace and permissions" } } },
+        patch: { operationId: "updateMe", parameters: [workspaceHeader], requestBody: json(UpdateMeInput), responses: { "200": { description: "The caller's new display name" } } },
       },
       "/api/v1/workspaces/{ws}/roles": {
         get: { operationId: "listRoleAssignments", parameters: [workspaceParam], responses: { "200": { description: "Role assignments in the workspace" } } },

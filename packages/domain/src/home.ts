@@ -85,5 +85,15 @@ export const HomeResponse = z.object({
   scopes: z.array(HomeScope),
   recents: z.array(z.object({ entityType: z.string(), entityId: z.string().uuid(), title: z.string(), at: z.string() })),
   pinnedViews: z.array(z.object({ id: z.string().uuid(), name: z.string(), screen: z.string(), definition: z.record(z.string(), z.unknown()) })),
+  /** The workspace and its fiscal year so far (Home's header). */
+  workspace: z.object({ name: z.string(), currency: z.string(), period: z.object({ start: z.string(), end: z.string(), elapsed: z.string().nullable() }) }).optional(),
+  /** This fiscal year over the budgets the caller may read; null when there are none. */
+  totals: z.object({ budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), openAlerts: z.number().int() }).nullable().optional(),
+  /** What the workspace has set up (Home's getting-started steps). */
+  setup: z.object({ budgets: z.number().int(), sources: z.number().int(), people: z.number().int(), spend: z.boolean(), tags: z.number().int() }).optional(),
 });
 export type HomeResponse = z.infer<typeof HomeResponse>;
+
+/** PATCH /me: the caller's own display name (what Home greets them by). */
+export const UpdateMeInput = z.object({ name: z.string().trim().min(1).max(120) });
+export type UpdateMeInput = z.infer<typeof UpdateMeInput>;

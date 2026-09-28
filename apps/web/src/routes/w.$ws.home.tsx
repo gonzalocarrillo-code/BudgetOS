@@ -4,7 +4,7 @@ import { cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { AtSign, Bell, CircleCheck, Clock, Database, Eye, Sparkles } from "lucide-react";
+import { AtSign, Bell, CircleCheck, Clock, Database, Eye, Plus, Sparkles, Users, Wallet } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -19,19 +19,34 @@ import { meQuery } from "../lib/queries.js";
  */
 export const Route = createFileRoute("/w/$ws/home")({ component: HomePage });
 
-const CURRENCY = "USD";
+const CURRENCY = "USD"; // when the response has no workspace currency
 const homeQuery = (ws: string) => ({ queryKey: ["home", ws], queryFn: async () => HomeResponse.parse(await unwrap(api.GET("/api/v1/me/home", { params: { header: { "X-Workspace-Id": ws } } }))) });
 const pct = (v: string | null) => (v === null ? "—" : `${Math.round(Number(v) * 100)}%`);
+
+/** The person's first name for the greeting: the first word of their name, else their email's. */
+export function firstName(name: string | undefined, email: string | undefined): string {
+  const n = (name ?? "").trim();
+  if (n) return n.split(/\s+/)[0] as string;
+  const local = (email ?? "").split("@")[0] ?? "";
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
+}
+
+const greetingKey = (hour: number): MessageKey => (hour < 12 ? "home.greeting.morning" : hour < 18 ? "home.greeting.afternoon" : "home.greeting.evening");
 
 function HomePage(): ReactElement {
   const { ws } = Route.useParams();
   const { data: me } = useQuery(meQuery);
   const { data: home, isPending, error } = useQuery(homeQuery(ws));
   const { data: demo } = useQuery({ queryKey: ["demo-data", ws], queryFn: async () => z.object({ envelopes: z.number() }).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/demo-data", { params: { path: { ws } } }))) });
-  const first = (me?.user.name ?? "").split(" ").at(-1) ?? "";
+  const name = firstName(me?.user.name, me?.user.email);
+  const today = new Date();
+  const dateLine = today.toLocaleDateString("en", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <Page title={t("home.title", { name: first })}>
+    <Page title={name ? t(greetingKey(today.getHours()), { name }) : t("home.titleNoName")}>
+      <p className="-mt-3 text-sm text-muted-foreground" data-testid="home-subtitle">
+        {home?.workspace ? t("home.subtitle", { workspace: home.workspace.name, date: dateLine, elapsed: pct(home.workspace.period.elapsed) }) : dateLine}
+      </p>
       {demo && demo.envelopes > 0 ? (
         <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2.5 text-sm" data-testid="home-demo">
           <Sparkles className="size-4 text-primary" aria-hidden />
@@ -42,16 +57,104 @@ function HomePage(): ReactElement {
         </div>
       ) : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
-      {isPending || !home ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : <HomeBlocks ws={ws} home={home} />}
+      {isPending || !home ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : home.setup && home.setup.budgets === 0 ? <GettingStarted ws={ws} home={home} /> : <HomeBlocks ws={ws} home={home} />}
     </Page>
+  );
+}
+
+/** An empty workspace: the first budgets, then what makes them useful (product feedback 2026-09-28). */
+function GettingStarted({ ws, home }: { ws: string; home: HomeResponse }): ReactElement {
+  const setup = home.setup ?? { budgets: 0, sources: 0, people: 0, spend: false, tags: 0 };
+  const steps: Array<{ key: string; title: MessageKey; body: MessageKey; done: boolean; to: string; search?: Record<string, unknown>; cta: MessageKey; icon: ReactNode }> = [
+    { key: "budgets", title: "home.start.budgets", body: "home.start.budgetsBody", done: setup.budgets > 0, to: "/w/$ws/budgets", search: { new: true }, cta: "home.start.budgetsCta", icon: <Wallet className="size-4" aria-hidden /> },
+    { key: "data", title: "home.start.data", body: "home.start.dataBody", done: setup.sources > 0 || setup.spend, to: "/w/$ws/admin/sources", cta: "home.start.dataCta", icon: <Database className="size-4" aria-hidden /> },
+    { key: "people", title: "home.start.people", body: "home.start.peopleBody", done: setup.people > 0, to: "/w/$ws/admin/roles", cta: "home.start.peopleCta", icon: <Users className="size-4" aria-hidden /> },
+    { key: "approvals", title: "home.start.approvals", body: "home.start.approvalsBody", done: false, to: "/w/$ws/admin/policies", cta: "home.start.approvalsCta", icon: <CircleCheck className="size-4" aria-hidden /> },
+    { key: "alerts", title: "home.start.alerts", body: "home.start.alertsBody", done: false, to: "/w/$ws/admin/rules", cta: "home.start.alertsCta", icon: <Bell className="size-4" aria-hidden /> },
+  ];
+  return (
+    <div className="flex flex-col gap-5" data-testid="home-getting-started">
+      <section className="flex flex-col gap-4 rounded-2xl border border-primary/25 bg-gradient-to-br from-secondary to-card p-6 sm:flex-row sm:items-center">
+        <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <Wallet className="size-6" aria-hidden />
+        </div>
+        <div className="flex-1">
+          <h2 className="text-xl font-semibold tracking-[-0.02em]" data-testid="home-first-budgets">{t("home.start.title")}</h2>
+          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t("home.start.body")}</p>
+        </div>
+        <Link to="/w/$ws/budgets" params={{ ws }} search={{ new: true } as never} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90" data-testid="home-new-budget">
+          <Plus className="size-4" aria-hidden />
+          {t("home.start.budgetsCta")}
+        </Link>
+      </section>
+      <Card title={t("home.start.steps", { done: steps.filter((s) => s.done).length, total: steps.length })}>
+        <ol className="flex flex-col divide-y divide-border" data-testid="home-steps">
+          {steps.map((s, i) => (
+            <li key={s.key} className="flex items-center gap-4 py-3" data-testid="home-step" data-done={s.done}>
+              <span className={cn("grid size-8 shrink-0 place-items-center rounded-full border text-sm font-semibold", s.done ? "border-success bg-success/15 text-success" : "border-border text-muted-foreground")}>
+                {s.done ? <CircleCheck className="size-4" aria-hidden /> : i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <span className="text-muted-foreground">{s.icon}</span>
+                  {t(s.title)}
+                </p>
+                <p className="text-xs text-muted-foreground">{t(s.body)}</p>
+              </div>
+              <Link to={s.to as never} params={{ ws } as never} search={(s.search ?? {}) as never} className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                {s.done ? t("home.start.open") : t(s.cta)}
+              </Link>
+            </li>
+          ))}
+        </ol>
+      </Card>
+    </div>
+  );
+}
+
+/** The year so far in four numbers, each opening its screen. */
+function Summary({ ws, home }: { ws: string; home: HomeResponse }): ReactElement | null {
+  const totals = home.totals;
+  if (!totals) return null;
+  const currency = home.workspace?.currency ?? CURRENCY;
+  const waiting = home.waitingOnMe.approvals.length + home.waitingOnMe.mentions.length + home.waitingOnMe.alerts.length;
+  const spent = totals.spentPct === null ? null : Number(totals.spentPct);
+  const elapsed = home.workspace?.period.elapsed === null || home.workspace?.period.elapsed === undefined ? null : Number(home.workspace.period.elapsed);
+  const stat = "flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 shadow-xs hover:border-primary/50";
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3" data-testid="home-summary">
+      <Link to="/w/$ws/budgets" params={{ ws }} search={{ period: { kind: "relative", preset: "current_year" } } as never} className={stat}>
+        <span className="text-xs text-muted-foreground">{t("home.sum.budget")}</span>
+        <span className="tabular whitespace-nowrap text-lg font-semibold tracking-[-0.02em]">{totals.budget ? formatMoney(totals.budget, currency) : "—"}</span>
+      </Link>
+      <Link to="/w/$ws" params={{ ws }} className={stat} data-testid="home-sum-spent">
+        <span className="text-xs text-muted-foreground">{t("home.sum.spent")}</span>
+        <span className="tabular text-lg font-semibold tracking-[-0.02em]">{pct(totals.spentPct)}</span>
+        <span className="relative h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+          <span className={cn("absolute inset-y-0 left-0 rounded-full", spent !== null && elapsed !== null && spent > elapsed * 1.1 ? "bg-warning" : "bg-primary")} style={{ width: `${Math.round(Math.min(1, spent ?? 0) * 100)}%` }} />
+          {elapsed !== null ? <span className="absolute inset-y-0 w-0.5 bg-foreground/60" style={{ left: `${Math.round(Math.min(1, elapsed) * 100)}%` }} /> : null}
+        </span>
+        <span className="text-xs text-muted-foreground">{t("home.sum.spentOf", { actual: totals.actual ? formatMoney(totals.actual, currency) : "—", elapsed: pct(home.workspace?.period.elapsed ?? null) })}</span>
+      </Link>
+      <Link to="/w/$ws/alerts" params={{ ws }} className={stat}>
+        <span className="text-xs text-muted-foreground">{t("home.sum.alerts")}</span>
+        <span className="tabular text-lg font-semibold tracking-[-0.02em]">{totals.openAlerts}</span>
+      </Link>
+      <Link to="/w/$ws/approvals" params={{ ws }} search={{ tab: "mine" } as never} className={stat}>
+        <span className="text-xs text-muted-foreground">{t("home.sum.waiting")}</span>
+        <span className="tabular text-lg font-semibold tracking-[-0.02em]">{waiting}</span>
+      </Link>
+    </div>
   );
 }
 
 function HomeBlocks({ ws, home }: { ws: string; home: HomeResponse }): ReactElement {
   const w = home.waitingOnMe;
+  const currency = home.workspace?.currency ?? CURRENCY;
   const total = w.approvals.length + w.mentions.length + w.alerts.length + (w.unmatched > 0 ? 1 : 0);
   return (
     <div className="flex flex-col gap-5">
+      <Summary ws={ws} home={home} />
       <Card title={t("home.waiting", { count: total })} tour="home-waiting">
         {total === 0 ? (
           <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground" data-testid="home-waiting-empty">
@@ -121,8 +224,8 @@ function HomeBlocks({ ws, home }: { ws: string; home: HomeResponse }): ReactElem
                     <div className={cn("h-full rounded-full", tone)} style={{ width: `${Math.round((spent / 1.2) * 100)}%` }} />
                   </div>
                   <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-                    <span>{t("home.spentOf", { actual: s.actual ? formatMoney(s.actual, CURRENCY) : "—", budget: s.budget ? formatMoney(s.budget, CURRENCY) : "—" })}</span>
-                    <span>{s.projected && Number(s.projected) > 0 ? t("home.projected", { amount: formatMoney(s.projected, CURRENCY) }) : ""}</span>
+                    <span>{t("home.spentOf", { actual: s.actual ? formatMoney(s.actual, currency) : "—", budget: s.budget ? formatMoney(s.budget, currency) : "—" })}</span>
+                    <span>{s.projected && Number(s.projected) > 0 ? t("home.projected", { amount: formatMoney(s.projected, currency) }) : ""}</span>
                   </div>
                 </Link>
               );
