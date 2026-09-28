@@ -49,8 +49,16 @@ Amounts already have history, because `envelope_version` is immutable and the pl
 - **The compare measures need `compareTo`.** The planner refuses them without it. A query with `compareTo` stays on Postgres, not the warehouse, and the roll-up cache (`/tree`) does not accept them.
 - **A subtree snapshot compared with the whole workspace** shows every budget outside it as new. Screens that compare with a subtree snapshot filter to that subtree, which comes in Phase E4.
 
+## Decision: the screens (Phase E4)
+
+- **Budgets.** "Compare to" picks a snapshot, which is kept in the URL as `compareTo`. The columns become Snapshot · Now · Change · Change % · Actual, and the totals row compares too. A banner names the snapshot, and says so when it holds only one budget's subtree. "Save snapshot" opens the save dialog, with a name, a kind, the scope (the workspace, the current filter or the selected budget), a period and a note.
+- **Drawer.** While Budgets compares, Details says what the snapshot held for the budget and what it holds now. History lists the snapshots that hold the budget, and offers "Save a snapshot of this budget". The list route takes `?envelopeId=` and returns each snapshot's frozen row for that budget.
+- **Overview.** A "Since the plan" tile shows the change since the latest plan snapshot, from the change report (decision E4). It opens Budgets comparing with that snapshot, and people can hide it like the other tiles.
+- **Closures.** A period's report offers "Save as close", a snapshot with kind `close` and the period key. It shows "Plan → close" once the period has both.
+- **Settings › Fiscal calendar › Snapshots** lists every snapshot. People can rename, archive and restore them, and open one in Budgets. Snapshots are never deleted.
+- **Ended budgets** read `ENDED` in the planner's flat rows, and the grid shows "Ended". Filters still see status `APPROVED`.
+
 ## Consequences
 
 - A snapshot of a large workspace copies one row per budget. At the planned sizes of up to 50,000 budgets, that is one INSERT…SELECT inside the request transaction.
 - Moves, renames and granularity changes made after a snapshot don't change it. That is the point, and it is also why the report can show a budget as moved.
-- The grid and the planner don't know about `ended_at` yet, so the "Ended" chip shows in the drawer only. The Budgets grid gets it with the compare columns in Phase E4.

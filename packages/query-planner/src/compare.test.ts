@@ -108,6 +108,17 @@ describe("compareTo (H-004)", () => {
     expect(dec(rows.get(ids.A)?.["budget_change_abs"])).toBe("300.0000");
   });
 
+  it("an ended budget's row reads ENDED; filters still see it as approved", async () => {
+    await owner.query(`UPDATE envelope SET ended_at = now() WHERE id = $1`, [ids.B]);
+    try {
+      const rows = byId(await run(request({ compareTo: { baselineId }, filter: { logic: "and", children: [{ field: { kind: "attr", key: "status" }, op: "eq", value: "APPROVED" }] } })));
+      expect(rows.get(ids.B)?.["status"]).toBe("ENDED");
+      expect(rows.get(ids.A)?.["status"]).toBe("APPROVED");
+    } finally {
+      await owner.query(`UPDATE envelope SET ended_at = NULL WHERE id = $1`, [ids.B]);
+    }
+  });
+
   it("sorts and pages by the change", async () => {
     const q = request({ compareTo: { baselineId }, sort: [{ key: "budget_change_abs", dir: "desc" }], limit: 2 });
     const c1 = compileQuery(q, PERIOD, TODAY);

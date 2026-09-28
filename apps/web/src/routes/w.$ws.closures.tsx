@@ -9,6 +9,7 @@ import { Card, Page } from "../components/page.js";
 import { can, closureReportQuery, closuresQuery, type Closure } from "../features/ops/queries.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
+import { ClosureSnapshots } from "../features/snapshots/closure-snapshots.js";
 
 /**
  * Closures (spec §18.5, §15): closing a fiscal period locks every live budget in it and freezes
@@ -209,6 +210,7 @@ function Report({ ws, closure, canRestate, onChanged }: { ws: string; closure: C
             ))}
           </>
         )}
+        <ClosureSnapshots ws={ws} periodKey={closure.period.key} />
         <div className="flex flex-col gap-2 border-t border-border pt-3">
           <label className="flex flex-col gap-1 text-sm font-medium">
             {t("closures.restateReason")}

@@ -5790,6 +5790,15 @@ export interface operations {
                             archivedAt: string | null;
                             rowCount: number;
                             total: string;
+                            row?: {
+                                /** Format: uuid */
+                                versionId: string | null;
+                                amount: string;
+                                currency: string;
+                                name: string;
+                                /** Format: uuid */
+                                parentId: string | null;
+                            } | null;
                         }[];
                     };
                 };

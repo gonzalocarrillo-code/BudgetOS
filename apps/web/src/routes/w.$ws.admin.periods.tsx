@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, periodsQuery } from "../lib/queries.js";
+import { SnapshotsCard } from "../features/snapshots/snapshots-card.js";
 
 /**
  * The fiscal calendar (product feedback 7, ADR-041): what a year, a quarter and a month are for
@@ -103,6 +104,7 @@ function PeriodsPage(): ReactElement {
           </ul>
         </Card>
       ) : null}
+      <SnapshotsCard ws={ws} currency={me?.workspaces.find((w) => w.workspaceId === ws)?.currency ?? "USD"} />
     </Page>
   );
 }

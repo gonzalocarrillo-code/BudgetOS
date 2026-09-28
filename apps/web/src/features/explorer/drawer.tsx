@@ -17,6 +17,7 @@ import type { StructureOp } from "../structure/structure-dialog.js";
 import { StructureActions } from "../structure/structure-actions.js";
 import { SendForApproval } from "./send-for-approval.js";
 import { FamilySumLine, familyQuery } from "./family-editor.js";
+import { DrawerSnapshots, SnapshotCompareLine } from "../snapshots/drawer-snapshots.js";
 
 type Tab = "details" | "history" | "comments";
 
@@ -24,7 +25,7 @@ type Tab = "details" | "history" | "comments";
  * The envelope drawer (`select` search param): Details (approved budget, open draft, dimensions,
  * tags), History (every change, T-029) and Comments (threads, T-030). Every budget always has all three.
  */
-export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChanged }: { ws: string; id: string; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void; onChanged?: () => void }): ReactElement {
+export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFamily, onChanged }: { ws: string; id: string; compareTo?: string | undefined; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void; onChanged?: () => void }): ReactElement {
   const client = useQueryClient();
   const { data, error } = useQuery(envelopeQuery(ws, id));
   const [renaming, setRenaming] = useState(false);
@@ -158,6 +159,7 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
       {tab === "history" ? (
         <div role="tabpanel" id="drawer-panel-history" aria-labelledby="drawer-tab-history" className="flex flex-col gap-3">
           {data ? <LineageLinks ws={ws} env={data} /> : null}
+          {data ? <DrawerSnapshots ws={ws} env={data} /> : null}
           <HistoryList ws={ws} envelopeId={id} currency={data?.currency ?? "USD"} />
         </div>
       ) : null}
@@ -172,6 +174,11 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
           <dd className="tabular text-right font-medium" data-testid="drawer-approved">
             {data.current ? formatMoney(data.current.amount, data.currency) : "—"}
           </dd>
+          {compareTo ? (
+            <dd className="col-span-2">
+              <SnapshotCompareLine ws={ws} env={data} compareTo={compareTo} />
+            </dd>
+          ) : null}
           <dt className="text-muted-foreground">{t("drawer.draft")}</dt>
           <dd className="tabular text-right" data-testid="drawer-draft">
             {data.draft ? formatMoney(data.draft.amount, data.currency) : "—"}

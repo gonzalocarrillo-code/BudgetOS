@@ -1,4 +1,5 @@
-import { formatMoney } from "@budget/grid";
+import { formatChange, formatMoney, formatPctChange } from "@budget/grid";
+import { savedOn, snapshotReportQuery, snapshotsQuery } from "../features/snapshots/queries.js";
 import { cn, Button, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,7 +61,7 @@ type Overview = z.infer<typeof Overview>;
  * they turned off, kept on the server as their private `overview` saved view. A view the
  * workspace shares is everyone's default until they save their own.
  */
-const SECTIONS = ["tile.budget", "tile.actual", "tile.spent", "tile.projected", "tile.alerts", "tile.approvals", "heatmap", "overPace", "underPace", "kpi", "alerts", "approvals", "freshness"] as const;
+const SECTIONS = ["tile.budget", "tile.actual", "tile.spent", "tile.projected", "tile.alerts", "tile.approvals", "tile.sincePlan", "heatmap", "overPace", "underPace", "kpi", "alerts", "approvals", "freshness"] as const;
 type Section = (typeof SECTIONS)[number];
 const LAYOUT_NAME = "Overview layout";
 const Layout = z.object({ hidden: z.array(z.string()).default([]) });
@@ -177,6 +178,8 @@ function OverviewPage(): ReactElement {
     layout.shows("tile.projected") ? <Tile key="p" label={t("overview.projectedClose")} value={o ? (Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])) : ""} hint={o && Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} /> : null,
     layout.shows("tile.alerts") ? <Tile key="al" label={t("overview.openAlerts")} value={o ? String(o.alerts.open) : ""} to="alerts" ws={ws} testId="tile-alerts" /> : null,
     layout.shows("tile.approvals") ? <Tile key="ap" label={t("overview.approvalsMine")} value={o ? String(o.approvals.mine) : ""} hint={o?.approvals.overdue ? t("overview.overdue", { n: o.approvals.overdue }) : undefined} to="approvals" ws={ws} testId="tile-approvals" /> : null,
+    // Phase E (H-007, decision E4): the change since the latest plan snapshot.
+    layout.shows("tile.sincePlan") ? <SincePlanTile key="sp" ws={ws} /> : null,
   ].filter((x) => x !== null);
 
   return (
@@ -378,6 +381,32 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
     <div className={cls} data-testid={testId}>
       {body}
     </div>
+  );
+}
+
+/** "Since the plan": how the budgets moved from the latest plan snapshot to now; opens Budgets comparing with it. */
+function SincePlanTile({ ws }: { ws: string }): ReactElement {
+  const { data: snapshots, isPending } = useQuery(snapshotsQuery(ws));
+  const plan = snapshots?.find((s) => s.kind === "plan") ?? null;
+  const { data: report } = useQuery({ ...snapshotReportQuery(ws, plan?.id ?? ""), enabled: plan !== null });
+  const cls = "flex min-w-0 flex-col gap-0.5";
+  if (isPending) return <div className={cls} data-testid="tile-since-plan" />;
+  if (plan === null)
+    return (
+      <div className={cls} data-testid="tile-since-plan" data-empty="true">
+        <span className="text-xs text-muted-foreground">{t("overview.sincePlan")}</span>
+        <TileValue value="—" />
+        <span className="text-xs text-muted-foreground">{t("overview.sincePlanNone")}</span>
+      </div>
+    );
+  const value = report ? `${formatChange(report.change.abs, report.currency)}${report.change.pct === null ? "" : ` (${formatPctChange(report.change.pct)})`}` : "";
+  return (
+    <Link to="/w/$ws/budgets" params={{ ws }} search={{ compareTo: plan.id } as never} className={cn(cls, "hover:border-primary")} data-testid="tile-since-plan" title={t("overview.sincePlanOpen")}>
+      <span className="text-xs text-muted-foreground">{t("overview.sincePlan")}</span>
+      <TileValue value={value} />
+      <span className="text-xs text-muted-foreground">{t("overview.sincePlanBody", { name: plan.name, date: savedOn(plan.asOf) })}</span>
+      {report ? <span className="text-xs text-muted-foreground" data-testid="since-plan-counts">{t("overview.sincePlanCounts", report.counts)}</span> : null}
+    </Link>
   );
 }
 

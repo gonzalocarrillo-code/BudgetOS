@@ -74,6 +74,7 @@ export const QueryRow = z.object({
       }),
     )
     .default({}),
+  /** Flat rows: the envelope's status; an ended budget (H-011) reads ENDED, though it stays APPROVED underneath. */
   status: z.string().nullable(),
   pendingCount: z.number().int().default(0),
   openAlerts: z.number().int().default(0),
