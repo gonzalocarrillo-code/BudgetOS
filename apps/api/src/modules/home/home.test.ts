@@ -162,6 +162,18 @@ describe("home (T-040)", () => {
     expect(home.body["workspace"]).toMatchObject({ name: "Blank" });
   });
 
+  it("Settings › Workspace: what identifies it, and an admin renames it (audited)", async () => {
+    const got = await as("planner", "GET", `/workspaces/${golden.workspaceId}/general`);
+    expect(got.body).toMatchObject({ name: "Golden", reportingCurrency: "USD", fiscalYearStartMonth: 1 });
+    expect((await as("planner", "PATCH", `/workspaces/${golden.workspaceId}/general`, { name: "Nope" })).status).toBe(403);
+    const renamed = await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/general`, { name: "Golden Co" });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    expect(renamed.body).toMatchObject({ name: "Golden Co" });
+    const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'workspace.renamed'`, golden.workspaceId);
+    expect(Number(a?.n)).toBe(1);
+    await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/general`, { name: "Golden" });
+  });
+
   it("a person renames themselves: only their name, audited (feedback 2026-09-28)", async () => {
     const bad = await as("planner", "PATCH", "/me", { name: "  " });
     expect(bad.status).toBe(422);

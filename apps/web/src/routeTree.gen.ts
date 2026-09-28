@@ -27,11 +27,13 @@ import { Route as WWsAdminPoliciesRouteImport } from './routes/w.$ws.admin.polic
 import { Route as WWsAdminRegistryRouteImport } from './routes/w.$ws.admin.registry'
 import { Route as WWsAdminRolesRouteImport } from './routes/w.$ws.admin.roles'
 import { Route as WWsAdminRulesRouteImport } from './routes/w.$ws.admin.rules'
+import { Route as WWsAdminSettingsRouteImport } from './routes/w.$ws.admin.settings'
 import { Route as WWsAdminSlackRouteImport } from './routes/w.$ws.admin.slack'
 import { Route as WWsAdminSourcesRouteImport } from './routes/w.$ws.admin.sources'
 import { Route as WWsAdminTagsRouteImport } from './routes/w.$ws.admin.tags'
 import { Route as WWsAdminTemplatesRouteImport } from './routes/w.$ws.admin.templates'
 import { Route as WWsAdminToursRouteImport } from './routes/w.$ws.admin.tours'
+import { Route as WWsAdminWorkspaceRouteImport } from './routes/w.$ws.admin.workspace'
 import { Route as WWsApprovalsIndexRouteImport } from './routes/w.$ws.approvals.index'
 import { Route as WWsApprovalsIdRouteImport } from './routes/w.$ws.approvals.$id'
 import { Route as WWsExperimentsIndexRouteImport } from './routes/w.$ws.experiments.index'
@@ -129,6 +131,11 @@ const WWsAdminRulesRoute = WWsAdminRulesRouteImport.update({
   path: '/admin/rules',
   getParentRoute: () => WWsRoute,
 } as any)
+const WWsAdminSettingsRoute = WWsAdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
+  getParentRoute: () => WWsRoute,
+} as any)
 const WWsAdminSlackRoute = WWsAdminSlackRouteImport.update({
   id: '/admin/slack',
   path: '/admin/slack',
@@ -152,6 +159,11 @@ const WWsAdminTemplatesRoute = WWsAdminTemplatesRouteImport.update({
 const WWsAdminToursRoute = WWsAdminToursRouteImport.update({
   id: '/admin/tours',
   path: '/admin/tours',
+  getParentRoute: () => WWsRoute,
+} as any)
+const WWsAdminWorkspaceRoute = WWsAdminWorkspaceRouteImport.update({
+  id: '/admin/workspace',
+  path: '/admin/workspace',
   getParentRoute: () => WWsRoute,
 } as any)
 const WWsApprovalsIndexRoute = WWsApprovalsIndexRouteImport.update({
@@ -204,11 +216,13 @@ export interface FileRoutesByFullPath {
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
   '/w/$ws/admin/rules': typeof WWsAdminRulesRoute
+  '/w/$ws/admin/settings': typeof WWsAdminSettingsRoute
   '/w/$ws/admin/slack': typeof WWsAdminSlackRoute
   '/w/$ws/admin/sources': typeof WWsAdminSourcesRoute
   '/w/$ws/admin/tags': typeof WWsAdminTagsRoute
   '/w/$ws/admin/templates': typeof WWsAdminTemplatesRoute
   '/w/$ws/admin/tours': typeof WWsAdminToursRoute
+  '/w/$ws/admin/workspace': typeof WWsAdminWorkspaceRoute
   '/w/$ws/approvals/$id': typeof WWsApprovalsIdRoute
   '/w/$ws/experiments/$id': typeof WWsExperimentsIdRoute
   '/w/$ws/sources/manual': typeof WWsSourcesManualRoute
@@ -231,11 +245,13 @@ export interface FileRoutesByTo {
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
   '/w/$ws/admin/rules': typeof WWsAdminRulesRoute
+  '/w/$ws/admin/settings': typeof WWsAdminSettingsRoute
   '/w/$ws/admin/slack': typeof WWsAdminSlackRoute
   '/w/$ws/admin/sources': typeof WWsAdminSourcesRoute
   '/w/$ws/admin/tags': typeof WWsAdminTagsRoute
   '/w/$ws/admin/templates': typeof WWsAdminTemplatesRoute
   '/w/$ws/admin/tours': typeof WWsAdminToursRoute
+  '/w/$ws/admin/workspace': typeof WWsAdminWorkspaceRoute
   '/w/$ws/approvals/$id': typeof WWsApprovalsIdRoute
   '/w/$ws/experiments/$id': typeof WWsExperimentsIdRoute
   '/w/$ws/sources/manual': typeof WWsSourcesManualRoute
@@ -263,11 +279,13 @@ export interface FileRoutesById {
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
   '/w/$ws/admin/rules': typeof WWsAdminRulesRoute
+  '/w/$ws/admin/settings': typeof WWsAdminSettingsRoute
   '/w/$ws/admin/slack': typeof WWsAdminSlackRoute
   '/w/$ws/admin/sources': typeof WWsAdminSourcesRoute
   '/w/$ws/admin/tags': typeof WWsAdminTagsRoute
   '/w/$ws/admin/templates': typeof WWsAdminTemplatesRoute
   '/w/$ws/admin/tours': typeof WWsAdminToursRoute
+  '/w/$ws/admin/workspace': typeof WWsAdminWorkspaceRoute
   '/w/$ws/approvals/$id': typeof WWsApprovalsIdRoute
   '/w/$ws/experiments/$id': typeof WWsExperimentsIdRoute
   '/w/$ws/sources/manual': typeof WWsSourcesManualRoute
@@ -296,11 +314,13 @@ export interface FileRouteTypes {
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
     | '/w/$ws/admin/rules'
+    | '/w/$ws/admin/settings'
     | '/w/$ws/admin/slack'
     | '/w/$ws/admin/sources'
     | '/w/$ws/admin/tags'
     | '/w/$ws/admin/templates'
     | '/w/$ws/admin/tours'
+    | '/w/$ws/admin/workspace'
     | '/w/$ws/approvals/$id'
     | '/w/$ws/experiments/$id'
     | '/w/$ws/sources/manual'
@@ -323,11 +343,13 @@ export interface FileRouteTypes {
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
     | '/w/$ws/admin/rules'
+    | '/w/$ws/admin/settings'
     | '/w/$ws/admin/slack'
     | '/w/$ws/admin/sources'
     | '/w/$ws/admin/tags'
     | '/w/$ws/admin/templates'
     | '/w/$ws/admin/tours'
+    | '/w/$ws/admin/workspace'
     | '/w/$ws/approvals/$id'
     | '/w/$ws/experiments/$id'
     | '/w/$ws/sources/manual'
@@ -354,11 +376,13 @@ export interface FileRouteTypes {
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
     | '/w/$ws/admin/rules'
+    | '/w/$ws/admin/settings'
     | '/w/$ws/admin/slack'
     | '/w/$ws/admin/sources'
     | '/w/$ws/admin/tags'
     | '/w/$ws/admin/templates'
     | '/w/$ws/admin/tours'
+    | '/w/$ws/admin/workspace'
     | '/w/$ws/approvals/$id'
     | '/w/$ws/experiments/$id'
     | '/w/$ws/sources/manual'
@@ -500,6 +524,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WWsAdminRulesRouteImport
       parentRoute: typeof WWsRoute
     }
+    '/w/$ws/admin/settings': {
+      id: '/w/$ws/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/w/$ws/admin/settings'
+      preLoaderRoute: typeof WWsAdminSettingsRouteImport
+      parentRoute: typeof WWsRoute
+    }
     '/w/$ws/admin/slack': {
       id: '/w/$ws/admin/slack'
       path: '/admin/slack'
@@ -533,6 +564,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/tours'
       fullPath: '/w/$ws/admin/tours'
       preLoaderRoute: typeof WWsAdminToursRouteImport
+      parentRoute: typeof WWsRoute
+    }
+    '/w/$ws/admin/workspace': {
+      id: '/w/$ws/admin/workspace'
+      path: '/admin/workspace'
+      fullPath: '/w/$ws/admin/workspace'
+      preLoaderRoute: typeof WWsAdminWorkspaceRouteImport
       parentRoute: typeof WWsRoute
     }
     '/w/$ws/approvals/': {
@@ -639,11 +677,13 @@ interface WWsRouteChildren {
   WWsAdminRegistryRoute: typeof WWsAdminRegistryRoute
   WWsAdminRolesRoute: typeof WWsAdminRolesRoute
   WWsAdminRulesRoute: typeof WWsAdminRulesRoute
+  WWsAdminSettingsRoute: typeof WWsAdminSettingsRoute
   WWsAdminSlackRoute: typeof WWsAdminSlackRoute
   WWsAdminSourcesRoute: typeof WWsAdminSourcesRoute
   WWsAdminTagsRoute: typeof WWsAdminTagsRoute
   WWsAdminTemplatesRoute: typeof WWsAdminTemplatesRoute
   WWsAdminToursRoute: typeof WWsAdminToursRoute
+  WWsAdminWorkspaceRoute: typeof WWsAdminWorkspaceRoute
 }
 
 const WWsRouteChildren: WWsRouteChildren = {
@@ -663,11 +703,13 @@ const WWsRouteChildren: WWsRouteChildren = {
   WWsAdminRegistryRoute: WWsAdminRegistryRoute,
   WWsAdminRolesRoute: WWsAdminRolesRoute,
   WWsAdminRulesRoute: WWsAdminRulesRoute,
+  WWsAdminSettingsRoute: WWsAdminSettingsRoute,
   WWsAdminSlackRoute: WWsAdminSlackRoute,
   WWsAdminSourcesRoute: WWsAdminSourcesRoute,
   WWsAdminTagsRoute: WWsAdminTagsRoute,
   WWsAdminTemplatesRoute: WWsAdminTemplatesRoute,
   WWsAdminToursRoute: WWsAdminToursRoute,
+  WWsAdminWorkspaceRoute: WWsAdminWorkspaceRoute,
 }
 
 const WWsRouteWithChildren = WWsRoute._addFileChildren(WWsRouteChildren)

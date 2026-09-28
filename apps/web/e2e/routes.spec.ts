@@ -27,6 +27,8 @@ const ROUTES: Array<[path: string, title: string | RegExp]> = [
   ["/admin/policies", "Approval policies"],
   ["/admin/rules", "Pacing rules"],
   ["/admin/slack", "Slack"],
+  ["/admin/settings", "Settings"],
+  ["/admin/workspace", "Workspace"],
   ["/admin/roles", "Roles"],
   ["/admin/tags", "Tags"],
   ["/admin/sources", "Data sources"],
