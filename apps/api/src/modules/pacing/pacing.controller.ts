@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { CreateRuleDto, ListAlertsQueryDto, UpdateAlertDto, UpdateRuleDto } from "./dto.js";
 import { listAlerts, pacingView } from "./queries.js";
-import { createRule, listRules, updateAlert, updateRule } from "./rules.js";
+import { createRule, deleteRule, listRules, updateAlert, updateRule } from "./rules.js";
 
 /** Pacing view, rules and alerts (spec §11, §17 `pacing`). Entity routes take the workspace from X-Workspace-Id. */
 @Controller()
@@ -33,6 +33,12 @@ export class PacingController {
   @Permission("rule.manage")
   updateRule(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateRuleDto) {
     return updateRule(this.prisma, auth, id, body);
+  }
+
+  @Delete("rules/:id")
+  @Permission("rule.manage")
+  deleteRule(@Tenant() auth: AuthContext, @Param("id") id: string) {
+    return deleteRule(this.prisma, auth, id);
   }
 
   @Get("alerts")

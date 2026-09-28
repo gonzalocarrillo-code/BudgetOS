@@ -28,6 +28,44 @@
             "description": "Caller, roles per workspace and permissions"
           }
         }
+      },
+      "patch": {
+        "operationId": "updateMe",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The caller's new display name"
+          }
+        }
       }
     },
     "/api/v1/workspaces/{ws}/roles": {
@@ -7848,6 +7886,96 @@
                           "definition"
                         ]
                       }
+                    },
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "period": {
+                          "type": "object",
+                          "properties": {
+                            "start": {
+                              "type": "string"
+                            },
+                            "end": {
+                              "type": "string"
+                            },
+                            "elapsed": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "end",
+                            "elapsed"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "currency",
+                        "period"
+                      ]
+                    },
+                    "totals": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "actual": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "spentPct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "openAlerts": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "budget",
+                        "actual",
+                        "spentPct",
+                        "openAlerts"
+                      ],
+                      "nullable": true
+                    },
+                    "setup": {
+                      "type": "object",
+                      "properties": {
+                        "budgets": {
+                          "type": "integer"
+                        },
+                        "sources": {
+                          "type": "integer"
+                        },
+                        "people": {
+                          "type": "integer"
+                        },
+                        "spend": {
+                          "type": "boolean"
+                        },
+                        "tags": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "budgets",
+                        "sources",
+                        "people",
+                        "spend",
+                        "tags"
+                      ]
                     }
                   },
                   "required": [
@@ -11375,11 +11503,19 @@
                           "type": "string",
                           "format": "email"
                         }
+                      },
+                      "assignTo": {
+                        "type": "string",
+                        "format": "uuid"
                       }
                     },
                     "default": {
                       "inApp": true
                     }
+                  },
+                  "isActive": {
+                    "type": "boolean",
+                    "default": true
                   }
                 },
                 "required": [
@@ -11582,6 +11718,10 @@
                           "type": "string",
                           "format": "email"
                         }
+                      },
+                      "assignTo": {
+                        "type": "string",
+                        "format": "uuid"
                       }
                     }
                   },
@@ -11596,6 +11736,34 @@
         "responses": {
           "200": {
             "description": "Updated rule"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule stops and is kept for its alerts' history; its open alerts are resolved"
           }
         }
       }

@@ -23,11 +23,12 @@ import {
   Type,
   Users,
   type LucideIcon, CalendarRange } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, type ReactElement, type ReactNode } from "react";
 import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
 import { TourLauncher } from "../features/home/tour-launcher.js";
 import { clearToken } from "../lib/auth.js";
+import { api, unwrap } from "../lib/api.js";
 import { registryQuery, type Me } from "../lib/queries.js";
 
 /**
@@ -123,9 +124,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
         </button>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <TourLauncher ws={ws} />
-          <span className="hidden max-w-64 truncate whitespace-nowrap text-sm text-muted-foreground lg:inline" title={me.user.email} data-testid="user-email">
-            {me.user.email}
-          </span>
+          <Profile ws={ws} name={me.user.name} email={me.user.email} />
           <Button variant="ghost" size="sm" onClick={() => clearToken()}>
             <LogOut className="size-4" aria-hidden />
             {t("shell.signOut")}
@@ -149,6 +148,55 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
       </div>
       <GlobalSearch ws={ws} dimensions={dimensions} open={searching} onOpenChange={setSearching} />
       <div role="status" aria-live="polite" className="sr-only" data-testid="toasts" />
+    </div>
+  );
+}
+
+/** The signed-in person: their name (editable; what Home greets them by) and email. */
+function Profile({ ws, name, email }: { ws: string; name: string; email: string }): ReactElement {
+  const client = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: async (n: string) => unwrap(api.PATCH("/api/v1/me", { params: { header: { "X-Workspace-Id": ws } }, body: { name: n } as never })),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["me"] });
+      setOpen(false);
+    },
+    onError: (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+  });
+  return (
+    <div className="relative">
+      <button type="button" className="flex max-w-64 flex-col items-end rounded-md px-2 py-0.5 text-right hover:bg-accent" onClick={() => (setDraft(name), setError(null), setOpen((v) => !v))} aria-expanded={open} data-testid="profile-button">
+        <span className="max-w-60 truncate text-sm font-medium" data-testid="user-name">{name}</span>
+        <span className="hidden max-w-60 truncate text-[11px] text-muted-foreground lg:inline" data-testid="user-email">{email}</span>
+      </button>
+      {open ? (
+        <form
+          className="absolute right-0 top-12 z-40 flex w-72 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-lg"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (draft.trim()) save.mutate(draft.trim());
+          }}
+          data-testid="profile-form"
+        >
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            {t("profile.edit")}
+            <input className="h-9 rounded-md border border-input bg-card px-2.5 text-sm font-normal" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus data-testid="profile-name" />
+          </label>
+          <p className="text-xs text-muted-foreground">{t("profile.help")}</p>
+          {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>{t("profile.cancel")}</Button>
+            {draft.trim() && !save.isPending ? (
+              <Button type="submit" size="sm" data-testid="profile-save">{t("profile.save")}</Button>
+            ) : (
+              <Button type="button" size="sm" disabled reason={save.isPending ? t("shell.loading") : t("profile.needName")}>{t("profile.save")}</Button>
+            )}
+          </div>
+        </form>
+      ) : null}
     </div>
   );
 }

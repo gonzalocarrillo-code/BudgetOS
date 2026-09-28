@@ -13,7 +13,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["updateMe"];
         trace?: never;
     };
     "/api/v1/workspaces/{ws}/roles": {
@@ -1514,7 +1514,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["deleteRule"];
         options?: never;
         head?: never;
         patch: operations["updateRule"];
@@ -1798,6 +1798,32 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Caller, roles per workspace and permissions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The caller's new display name */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4925,6 +4951,28 @@ export interface operations {
                                 [key: string]: unknown;
                             };
                         }[];
+                        workspace?: {
+                            name: string;
+                            currency: string;
+                            period: {
+                                start: string;
+                                end: string;
+                                elapsed: string | null;
+                            };
+                        };
+                        totals?: {
+                            budget: string | null;
+                            actual: string | null;
+                            spentPct: string | null;
+                            openAlerts: number;
+                        } | null;
+                        setup?: {
+                            budgets: number;
+                            sources: number;
+                            people: number;
+                            spend: boolean;
+                            tags: number;
+                        };
                     };
                 };
             };
@@ -6475,13 +6523,39 @@ export interface operations {
                         inApp?: boolean;
                         slackChannel?: string;
                         emails?: string[];
+                        /** Format: uuid */
+                        assignTo?: string;
                     };
+                    /** @default true */
+                    isActive?: boolean;
                 };
             };
         };
         responses: {
             /** @description Created rule (workspace-wide rule.manage role) */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteRule: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule stops and is kept for its alerts' history; its open alerts are resolved */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6537,6 +6611,8 @@ export interface operations {
                         inApp?: boolean;
                         slackChannel?: string;
                         emails?: string[];
+                        /** Format: uuid */
+                        assignTo?: string;
                     };
                     isActive?: boolean;
                 };

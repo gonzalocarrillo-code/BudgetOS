@@ -21,9 +21,11 @@ import { SavedViews } from "../features/explorer/saved-views.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
 import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
-import { envelopeQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
+import { Plus } from "lucide-react";
 
 /** Explorer search params are the source of truth for filter / grouping state (spec §18.1). */
 const ExplorerSearch = z.object({
@@ -41,6 +43,8 @@ const ExplorerSearch = z.object({
   savedViewId: z.string().uuid().optional(),
   /** Expanded tree nodes (lz-string in the URL, spec §18.2). */
   expanded: z.array(z.string()).default([]),
+  /** Opens the New budget dialog (Home's "Add your first budgets"). */
+  new: z.boolean().optional(),
 });
 type ExplorerSearchT = z.infer<typeof ExplorerSearch>;
 
@@ -84,6 +88,8 @@ function ExplorerPage(): ReactElement {
   const { data: selected } = useQuery({ ...envelopeQuery(ws, search.select ?? ""), enabled: search.select !== undefined });
 
   const setSearch = (patch: Partial<ExplorerSearchT>) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, ...patch }), replace: false });
+  const { data: me } = useQuery(meQuery);
+  const currency = me?.workspaces.find((w) => w.workspaceId === ws)?.currency ?? "USD";
   const template = templates.find((x) => x.id === search.templateId) ?? templates.find((x) => x.isDefault) ?? templates[0];
   const isTimeline = search.view === "timeline";
   // The timeline groups like the tree (hierarchy template); it has its own data source.
@@ -188,6 +194,10 @@ function ExplorerPage(): ReactElement {
             </button>
           ))}
         </div>
+        <Button size="sm" onClick={() => setSearch({ new: true })} data-testid="new-budget" data-tour="new-budget">
+          <Plus className="size-4" aria-hidden />
+          {t("newBudget.button")}
+        </Button>
         <StructureActions env={search.select ? (selected ?? null) : null} onPick={setStructure} />
         {view === "tree" ? (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -337,6 +347,18 @@ function ExplorerPage(): ReactElement {
             onReview={(preview) => {
               setFamilyOf(null);
               setPasted(preview);
+            }}
+          />
+        ) : null}
+        {search.new ? (
+          <NewBudgetDialog
+            ws={ws}
+            currency={currency}
+            onCancel={() => setSearch({ new: undefined })}
+            onCreated={(id) => {
+              // The new budget opens in the drawer, where Send for approval is.
+              setSearch({ new: undefined, select: id, view: "tree" });
+              setReload((n) => n + 1);
             }}
           />
         ) : null}
