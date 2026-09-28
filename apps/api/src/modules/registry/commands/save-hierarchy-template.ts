@@ -65,7 +65,11 @@ export async function saveHierarchyTemplate(
   });
 }
 
-/** Every key is an active dimension, and each adjacent pair satisfies the child's allowedParents (or it is free). */
+/**
+ * Every key is an active dimension, once. Levels nest in any order (product feedback 2026-09-28,
+ * ADR-049): a dimension's allowedParents is about its *values* (a country value under a region
+ * value), not where its level sits in a tree.
+ */
 async function assertPath(
   tx: Tx,
   orgId: string,
@@ -73,35 +77,16 @@ async function assertPath(
   path: readonly string[],
 ): Promise<void> {
   const visible = await loadDimensions(tx, orgId, workspaceId);
-  const byKey = new Map(
-    visible
-      .filter((dimension) => dimension.isActive)
-      .map((dimension) => [dimension.key, dimension]),
+  const active = new Set(
+    visible.filter((dimension) => dimension.isActive).map((dimension) => dimension.key),
   );
   for (const key of path) {
-    if (!byKey.has(key)) {
+    if (!active.has(key)) {
       throw new DomainError("VALIDATION", `Unknown dimension ${key}`);
     }
   }
-  for (let index = 1; index < path.length; index += 1) {
-    const parentKey = path[index - 1];
-    const childKey = path[index];
-    if (parentKey === undefined || childKey === undefined) {
-      throw new DomainError("VALIDATION", "Hierarchy path is incomplete");
-    }
-    const child = byKey.get(childKey);
-    if (child === undefined) {
-      throw new DomainError("VALIDATION", `Unknown dimension ${childKey}`);
-    }
-    if (
-      child.allowedParents.length > 0 &&
-      !child.allowedParents.includes(parentKey)
-    ) {
-      throw new DomainError(
-        "VALIDATION",
-        `${childKey} cannot nest under ${parentKey}`,
-      );
-    }
+  if (new Set(path).size !== path.length) {
+    throw new DomainError("VALIDATION", "A granularity can appear only once in a hierarchy");
   }
 }
 

@@ -11,7 +11,10 @@ import { api, unwrap } from "../../lib/api.js";
  *   under its prefix (eq on each ancestor, is_empty for "none"); below the last key, the envelopes.
  *   With no filter and no as-of, the levels come from the roll-up cache (POST /tree, ADR-038);
  *   when the server says it cannot serve them (a scoped caller, a period it does not hold), /query.
- *   Expanded node keys live in the URL (`expanded`).
+ *   Expanded node keys live in the URL (`expanded`). A group with no value for its level ("No
+ *   client") is not a row: what it holds sits one level up, first (product feedback 2026-09-28,
+ *   ADR-049) — a budget without a client shows no Client level, a budget with no granularities
+ *   sits at the top. Only rows move; every number is still the server's.
  * - pivot: the groups of `groupBy`, or the envelopes themselves when groupBy is empty.
  */
 
@@ -99,6 +102,17 @@ export class ExplorerRowSource implements RowSource {
     return this.all(keys, prefix(this.q.levels.slice(0, depth), segments), []);
   }
 
+  /** Rows at display `level`, with each no-value group replaced by its own children, first. */
+  private async collapse(rows: ExplorerRow[], level: number): Promise<ExplorerRow[]> {
+    const inline: ExplorerRow[] = [];
+    const kept: ExplorerRow[] = [];
+    for (const r of rows) {
+      if (r.hasChildren && r.path.at(-1) === NONE) inline.push(...(await this.childrenOf(r, level)));
+      else kept.push({ ...r, level });
+    }
+    return [...inline, ...kept];
+  }
+
   private groupRows(rows: QueryRow[], keys: string[], parentSegments: string[]): ExplorerRow[] {
     const depth = keys.length;
     const key = keys[depth - 1] as string;
@@ -114,13 +128,13 @@ export class ExplorerRowSource implements RowSource {
     return rows.map((r) => ({ ...r, key: r.envelopeId ?? r.key, level, name: r.path.at(-1) ?? "", hasChildren: false, expanded: false }));
   }
 
-  private async childrenOf(node: ExplorerRow): Promise<ExplorerRow[]> {
+  private async childrenOf(node: ExplorerRow, level = node.level + 1): Promise<ExplorerRow[]> {
     const segments = node.path;
     const depth = segments.length;
     const levels = this.q.levels;
     const extra = prefix(levels.slice(0, depth), segments);
-    if (depth < levels.length) return this.groupRows((await this.level(segments)).rows, levels.slice(0, depth + 1), segments);
-    return this.envelopeRows((await this.all([], extra, [{ key: "name", dir: "asc" }])).rows, depth);
+    if (depth < levels.length) return this.collapse(this.groupRows((await this.level(segments)).rows, levels.slice(0, depth + 1), segments), level);
+    return this.envelopeRows((await this.all([], extra, [{ key: "name", dir: "asc" }])).rows, level);
   }
 
   private async load(): Promise<void> {
@@ -140,7 +154,7 @@ export class ExplorerRowSource implements RowSource {
       const res = await this.level([]);
       this.totals = res.totals;
       this.dataVersion = String(res.dataVersion);
-      this.roots = this.groupRows(res.rows, keys, []);
+      this.roots = await this.collapse(this.groupRows(res.rows, keys, []), 0);
       // Re-open what the URL says is expanded, parents first.
       const open = async (rows: ExplorerRow[]) => {
         for (const r of rows) {
