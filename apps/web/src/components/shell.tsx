@@ -91,7 +91,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-card px-4">
-        <label className="flex h-10 w-60 items-center gap-2 rounded-lg border border-border bg-card px-3 shadow-xs" data-tour="workspace-switcher">
+        <label className="flex h-10 w-40 shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-3 shadow-xs lg:w-60" data-tour="workspace-switcher">
           <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground" aria-hidden>
             {(current?.name ?? "?").slice(0, 1).toUpperCase()}
           </span>
@@ -112,7 +112,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
         <button
           type="button"
           onClick={openSearch}
-          className="flex h-10 max-w-xl flex-1 items-center gap-2 rounded-full border border-border bg-muted/60 px-4 text-left text-sm text-muted-foreground hover:border-input"
+          className="flex h-10 min-w-0 max-w-xl flex-1 items-center gap-2 rounded-full border border-border bg-muted/60 px-4 text-left text-sm text-muted-foreground hover:border-input"
           data-tour="global-search"
           data-testid="global-search"
           aria-label={t("search.palette")}
@@ -121,9 +121,9 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
           <span className="flex-1 truncate">{t("shell.search.placeholder")}</span>
           <kbd className="rounded border border-border bg-card px-1.5 text-[11px]">{t("search.shortcut")}</kbd>
         </button>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <TourLauncher ws={ws} />
-          <span className="max-w-64 truncate whitespace-nowrap text-sm text-muted-foreground" data-testid="user-email">
+          <span className="hidden max-w-64 truncate whitespace-nowrap text-sm text-muted-foreground lg:inline" title={me.user.email} data-testid="user-email">
             {me.user.email}
           </span>
           <Button variant="ghost" size="sm" onClick={() => clearToken()}>

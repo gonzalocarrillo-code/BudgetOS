@@ -179,10 +179,10 @@ function OverviewPage(): ReactElement {
     <Page
       title={t("nav.overview")}
       actions={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("overview.period")}
-            <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={period} onChange={(e) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, period: e.target.value }) })} data-testid="overview-period">
+            <select className="h-8 max-w-64 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={period} onChange={(e) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, period: e.target.value }) })} data-testid="overview-period">
               {PRESETS.map((p) => (
                 <option key={p} value={p}>
                   {t(`explorer.period.${p}` as MessageKey)}
@@ -210,7 +210,7 @@ function OverviewPage(): ReactElement {
       {isPending || !o ? (
         <p className="text-sm text-muted-foreground" data-testid="overview-loading">{t("shell.loading")}</p>
       ) : (
-        <div className="flex flex-col gap-5" data-testid="overview" data-ready="true" data-period={period}>
+        <div className="flex min-w-0 flex-col gap-5" data-testid="overview" data-ready="true" data-period={period}>
           {tiles.length ? (
             // Wide enough for a seven-figure amount: tiles wrap instead of cutting it off.
             <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-3" data-testid="overview-tiles">
