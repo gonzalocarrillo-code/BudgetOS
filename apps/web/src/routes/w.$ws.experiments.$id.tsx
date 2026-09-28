@@ -7,13 +7,14 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useMemo, useState, type ReactElement } from "react";
 import { Card, Page } from "../components/page.js";
+import { useExplorerLabels } from "../features/explorer/labels.js";
 import { ExplorerRowSource } from "../features/explorer/row-source.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
 import { ConcludeDialog, CriterionBadge, LinkPicker, ReadoutCards, StatusBadge } from "../features/experiments/components.js";
 import { experimentQuery, type Experiment } from "../features/experiments/queries.js";
 import { can } from "../features/ops/queries.js";
 import { api, unwrap } from "../lib/api.js";
-import { meQuery, registryQuery } from "../lib/queries.js";
+import { meQuery } from "../lib/queries.js";
 
 /**
  * One experiment (spec §25, T-038): the hypothesis, status actions, the criterion badge, test vs
@@ -134,13 +135,9 @@ function ExperimentPage(): ReactElement {
 /** The linked budgets of one role: the Explorer's grid over a fixed filter (`experiment` = `<id>:<role>`). */
 function LinkedGrid({ ws, experiment, role }: { ws: string; experiment: Experiment; role: "TEST" | "CONTROL" }): ReactElement {
   const navigate = useNavigate();
-  const { data: dimensions = [] } = useQuery(registryQuery(ws));
   const [loaded, setLoaded] = useState<{ total: number; totals: Record<string, string | null> } | null>(null);
   const count = experiment.envelopes.filter((e) => e.role === role).length;
-  const labels = useMemo(() => {
-    const m = new Map(dimensions.map((d) => [d.key, new Map(d.values.map((v) => [v.code, v.label]))]));
-    return (dim: string, code: string) => m.get(dim)?.get(code) ?? code;
-  }, [dimensions]);
+  const labels = useExplorerLabels(ws);
   const filter: FilterGroupT = { logic: "and", children: [{ field: { kind: "attr", key: "experiment" }, op: "eq", value: `${experiment.id}:${role}` }] };
   const key = JSON.stringify([experiment.id, role, count, experiment.startDate, experiment.endDate]);
   const source = useMemo(

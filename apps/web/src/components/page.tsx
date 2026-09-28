@@ -1,4 +1,3 @@
-import { t, type MessageKey } from "@budget/ui/i18n";
 import type { ReactElement, ReactNode } from "react";
 
 /** A page: its title, then content in white rounded cards on the surface (ADR-021). */
@@ -16,24 +15,11 @@ export function Page({ title, actions, children }: { title: string; actions?: Re
   );
 }
 
-export function Card({ title, children }: { title?: string; children: ReactNode }): ReactElement {
+export function Card({ title, children, tour }: { title?: string; children: ReactNode; tour?: string }): ReactElement {
   return (
-    <div className="rounded-xl border border-border bg-card shadow-xs">
+    <div className="rounded-xl border border-border bg-card shadow-xs" {...(tour ? { "data-tour": tour } : {})}>
       {title ? <div className="border-b border-border px-5 py-4 text-[15px] font-semibold">{title}</div> : null}
       <div className="px-5 py-4">{children}</div>
     </div>
-  );
-}
-
-/** A §18.1 route whose screen is built by a later task: the route, auth and shell are real. */
-export function Pending({ title, task }: { title: MessageKey; task: string }): ReactElement {
-  return (
-    <Page title={t(title)}>
-      <Card>
-        <p className="text-sm text-muted-foreground" data-testid="page-pending">
-          {t("page.pending", { task })}
-        </p>
-      </Card>
-    </Page>
   );
 }

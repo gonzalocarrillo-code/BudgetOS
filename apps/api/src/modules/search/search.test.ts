@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { SETTINGS } from "@budget/domain";
 import { handleSearchEvent, reindexWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -86,6 +87,7 @@ afterAll(async () => {
   const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
   for (const sql of [
     `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
+    `DELETE FROM search_term WHERE workspace_id = $1::uuid`,
     `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
     `DELETE FROM notification WHERE workspace_id = $1::uuid`,
     `DELETE FROM subscription WHERE workspace_id = $1::uuid`,
@@ -124,6 +126,33 @@ describe("search", () => {
     expect(titles(await search(planner, "owner:@me status:approved region:emea"), "envelope")).toEqual(["Europe launch"]);
   });
 
+  it("a misspelling finds by similarity only when nothing matches the words exactly (T-034)", async () => {
+    expect(titles(await search(planner, "brazl type:envelope"), "envelope")).toEqual(["Brazil always-on"]);
+    // "europe" matches exactly, so near misses by similarity are not added
+    expect(titles(await search(planner, "europe type:envelope"), "envelope")).toEqual(["Europe launch"]);
+  });
+
+  it("a common word ranks and counts at most 1,000 matches per type and says there are more (T-034)", async () => {
+    await owner.$executeRawUnsafe(
+      `INSERT INTO search_document (workspace_id, entity_type, entity_id, title, path, body, updated_at)
+       SELECT $1::uuid, 'comment', gen_random_uuid(), 'note ' || g, '', 'zebracrossing plan ' || g, now() FROM generate_series(1, 1001) g`,
+      ws,
+    );
+    try {
+      const res = await call(planner, "GET", `/workspaces/${ws}/search?q=zebracrossing&limit=5`);
+      const g = (res.body["groups"] as Array<{ type: string; count: number; more: boolean; hits: unknown[] }>).find((x) => x.type === "comment");
+      expect(g).toMatchObject({ count: 1000, more: true });
+      expect(g?.hits).toHaveLength(5);
+      // the word list learned the new word: a misspelling of it is corrected
+      expect((await search(planner, "zebracrosing")).find((x) => x.type === "comment")?.count).toBe(1000);
+      // under the cap the count is exact
+      const envelopes = (await search(planner, "brazil")).find((x) => x.type === "envelope") as { count: number; more: boolean } | undefined;
+      expect(envelopes).toMatchObject({ count: 1, more: false });
+    } finally {
+      await owner.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND body LIKE 'zebracrossing plan %'`, ws);
+    }
+  });
+
   it("applies the caller's dimension scope; tags and registry values stay visible", async () => {
     expect(titles(await search(scoped, "type:envelope"), "envelope")).toEqual(["Brazil always-on", "LATAM brand"]); // descends_from latam
     expect(titles(await search(planner, "type:envelope"), "envelope")).toHaveLength(3);
@@ -158,6 +187,37 @@ describe("search", () => {
     expect((await call(planner, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent("budget:lots")}`)).status).toBe(422);
     expect((await call(planner, "GET", `/workspaces/${ws}/search?q=x&types=bogus`)).status).toBe(422);
     expect((await call(planner, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent("updated:<soon")}`)).status).toBe(422);
+  });
+});
+
+describe("settings (T-041: typing a setting name in ⌘K opens the right admin page)", () => {
+  it("indexes the settings catalog; a setting's name leads the results and deep-links to its admin page", async () => {
+    const count = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws);
+    expect(Number(count[0]?.n)).toBe(SETTINGS.length);
+    for (const [q, title, link] of [
+      ["pacing rules", "Pacing rules", "/admin/rules"],
+      ["approval pol", "Approval policies", "/admin/policies"],
+      ["match keys", "Match keys", `/admin/naming?kind=${encodeURIComponent('"match_key"')}`],
+      ["metric library", "Metric library", `/admin/registry?tab=${encodeURIComponent('"metrics"')}`],
+      ["guided tours", "Guided tours", "/admin/tours"],
+    ] as const) {
+      const groups = await search(planner, q);
+      expect(groups[0]?.type, q).toBe("setting");
+      expect(groups[0]?.hits[0]?.title, q).toBe(title);
+      expect(groups[0]?.hits[0]?.deepLink, q).toBe(`/w/${ws}${link}`);
+    }
+    // Keywords find a setting too ("snowflake" → Data sources); settings are for every role.
+    expect(titles(await search(scoped, "snowflake"), "setting")).toContain("Data sources");
+    expect(titles(await search(planner, "type:settings"), "setting")).toHaveLength(SETTINGS.length);
+  });
+
+  it("a created workspace gets the catalog from its workspace.created event", async () => {
+    await owner.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws);
+    expect(await search(planner, "type:settings")).toEqual([]);
+    const payload = { workspaceId: ws };
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, 'workspace.created', $2::jsonb) RETURNING id::text`, ws, JSON.stringify(payload));
+    await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "workspace.created" }, messageId: `t041-${row?.id}` }, subscription: "search-indexer" });
+    expect(titles(await search(planner, "type:settings"), "setting")).toHaveLength(SETTINGS.length);
   });
 });
 

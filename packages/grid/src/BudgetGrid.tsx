@@ -60,6 +60,14 @@ function committedValue(cell: EditableGridCell): string {
   return "";
 }
 
+/** The path cell indents 16 px a level; its marker sits within the padding + ~18 px (cells.tsx). */
+const INDENT_PX = 16;
+const MARKER_HIT_PX = 26;
+function levelOf(row: QueryRow): number {
+  const level = (row as QueryRow & { level?: unknown }).level;
+  return typeof level === "number" ? level : 0;
+}
+
 function treeHasChildren(row: QueryRow): boolean {
   return (row as QueryRow & { hasChildren?: unknown }).hasChildren === true;
 }
@@ -169,12 +177,17 @@ export function BudgetGrid({
           const current = next.current;
           events.onSelect(current ? (cache.get(current.cell[1]) ?? null) : null);
         }}
-        onCellClicked={([col, row]) => {
+        onCellClicked={([col, row], event) => {
           const record = cache.get(row);
-          if (col === 0 && record !== undefined && treeHasChildren(record)) {
+          if (col !== 0 || record === undefined) return;
+          // A group's marker (▸/▾) expands it; its name opens it when an envelope is the group
+          // (a parent budget), like a leaf. A group with no envelope expands from anywhere.
+          const opens = record.envelopeId !== null || (record.nodeEnvelopeId ?? null) !== null;
+          const onMarker = event.localEventX < MARKER_HIT_PX + levelOf(record) * INDENT_PX;
+          if (treeHasChildren(record) && (onMarker || !opens)) {
             void source.toggle(record.key).then(({ total }) => cache.setTotal(total));
             events.onExpand?.(record);
-          } else if (col === 0 && record !== undefined) {
+          } else if (opens) {
             events.onOpen?.(record);
           }
         }}

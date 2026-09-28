@@ -10,12 +10,15 @@ import { Card, Page } from "../components/page.js";
 import { EnvelopeDrawer } from "../features/explorer/drawer.js";
 import { FilterBar } from "../features/explorer/filter-bar.js";
 import { PasteDialog } from "../features/explorer/paste-dialog.js";
+import { useExplorerLabels } from "../features/explorer/labels.js";
+import { SendForApproval } from "../features/explorer/send-for-approval.js";
+import { FamilyEditor } from "../features/explorer/family-editor.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
 import { SavedViews } from "../features/explorer/saved-views.js";
 import { GRID_THEME } from "../features/explorer/grid-theme.js";
 import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
-import { envelopeQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { envelopeQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
 
@@ -55,7 +58,7 @@ const MEASURE_COLUMNS: Array<{ key: "budget" | "actual" | "projected" | "remaini
   { key: "pace_index", label: "explorer.col.pace" },
 ];
 
-type Notice = { kind: "ok" | "error"; text: string; requestId?: string } | { kind: "conflict"; name: string; amount: string };
+type Notice = { kind: "ok" | "error"; text: string; requestId?: string; envelopeId?: string } | { kind: "conflict"; name: string; amount: string };
 
 function ExplorerPage(): ReactElement {
   const { ws } = Route.useParams();
@@ -64,10 +67,12 @@ function ExplorerPage(): ReactElement {
   const client = useQueryClient();
   const { data: dimensions = [] } = useQuery(registryQuery(ws));
   const { data: templates = [] } = useQuery(templatesQuery(ws));
+  const { data: periods = [] } = useQuery(periodsQuery(ws));
   const [reload, setReload] = useState(0);
   const [loaded, setLoaded] = useState<{ totals: Record<string, string | null>; total: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pasted, setPasted] = useState<BulkPreview | null>(null);
+  const [familyOf, setFamilyOf] = useState<string | null>(null);
   const [structure, setStructure] = useState<StructureOp | null>(null);
   const { data: selected } = useQuery({ ...envelopeQuery(ws, search.select ?? ""), enabled: search.select !== undefined });
 
@@ -78,18 +83,15 @@ function ExplorerPage(): ReactElement {
   const view = search.view === "timeline" ? "tree" : search.view;
   const measures = useMemo(() => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures])], [search.measures]);
 
-  const labels = useMemo(() => {
-    const m = new Map(dimensions.map((d) => [d.key, new Map(d.values.map((v) => [v.code, v.label]))]));
-    return (dim: string, code: string) => m.get(dim)?.get(code) ?? code;
-  }, [dimensions]);
+  const labels = useExplorerLabels(ws);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
   const source = useMemo(
     () =>
       !isTimeline && (template || view === "pivot")
         ? new ExplorerRowSource(
-            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
+            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
             // Only the current source reports: a replaced one (older filter) whose response lands
@@ -119,7 +121,9 @@ function ExplorerPage(): ReactElement {
   const events: GridEvents = {
     onSelect: () => undefined,
     onOpen: (row) => {
-      if (row.envelopeId && row.envelopeId !== search.select) setSearch({ select: row.envelopeId });
+      // A leaf, or a parent budget from its group row (the envelope that is the group).
+      const id = row.envelopeId ?? row.nodeEnvelopeId ?? null;
+      if (id && id !== search.select) setSearch({ select: id });
     },
     // A pasted range never writes cells: its Budget column becomes a bulk `paste` preview (T-013).
     onPaste: ({ anchor, cells }) => {
@@ -158,7 +162,7 @@ function ExplorerPage(): ReactElement {
         const e = (res.error ?? {}) as { message?: string };
         return setNotice({ kind: "error", text: t("explorer.error", { message: e.message ?? String(res.response.status) }) });
       }
-      setNotice({ kind: "ok", text: t("explorer.edit.saved", { amount: formatMoney(amount, "USD") }) });
+      setNotice({ kind: "ok", text: t("explorer.edit.saved", { amount: formatMoney(amount, "USD") }), envelopeId: r.envelopeId });
       await client.invalidateQueries({ queryKey: ["envelope", ws, r.envelopeId] });
       setReload((n) => n + 1);
     },
@@ -168,7 +172,7 @@ function ExplorerPage(): ReactElement {
   return (
     <Page title={t("nav.budgets")}>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-lg border border-border bg-card p-0.5" role="tablist" data-testid="view-toggle">
+        <div className="inline-flex rounded-lg border border-border bg-card p-0.5" role="tablist" data-testid="view-toggle" data-tour="view-toggle">
           {(["tree", "pivot", "timeline"] as const).map((v) => (
             <button key={v} type="button" role="tab" aria-selected={search.view === v} className={cn(toggle, search.view === v ? "bg-primary text-primary-foreground" : "text-foreground/80 hover:bg-accent")} onClick={() => setSearch({ view: v, expanded: [], select: undefined })} data-testid={`view-${v}`}>
               {t(v === "tree" ? "explorer.view.tree" : v === "pivot" ? "explorer.view.pivot" : "explorer.view.timeline")}
@@ -202,13 +206,34 @@ function ExplorerPage(): ReactElement {
         )}
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           {t("explorer.period")}
-          <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={search.period.kind === "relative" ? search.period.preset : ""} onChange={(e) => setSearch({ period: { kind: "relative", preset: e.target.value as (typeof PRESETS)[number] } })} data-testid="period-picker">
+          <select
+            className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+            value={search.period.kind === "relative" ? search.period.preset : search.period.kind === "fiscal" ? `fiscal:${search.period.key}` : ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              // The workspace's own periods (quarters as defined, custom partitions) next to the relative ones.
+              setSearch({ period: v.startsWith("fiscal:") ? { kind: "fiscal", key: v.slice(7) } : { kind: "relative", preset: v as (typeof PRESETS)[number] } });
+            }}
+            data-testid="period-picker"
+          >
             {search.period.kind === "relative" ? null : <option value="">{search.period.kind === "range" ? `${search.period.start} – ${search.period.end}` : search.period.key}</option>}
             {PRESETS.map((p) => (
               <option key={p} value={p}>
                 {t(`explorer.period.${p}` as MessageKey)}
               </option>
             ))}
+          
+            {periods.length ? (
+              <optgroup label={t("explorer.period.calendar")}>
+                {periods
+                  .filter((p) => p.kind !== "month")
+                  .map((p) => (
+                    <option key={p.id} value={`fiscal:${p.key}`}>
+                      {p.key} · {p.start} – {p.end}
+                    </option>
+                  ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
         {isTimeline ? (
@@ -236,7 +261,7 @@ function ExplorerPage(): ReactElement {
           </Button>
         </div>
       ) : null}
-      {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} /> : null}
+      {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} onOpen={(id) => setSearch({ select: id })} /> : null}
       <div className="flex min-h-0 gap-0">
         <div className="min-w-0 flex-1">
           <Card>
@@ -270,11 +295,24 @@ function ExplorerPage(): ReactElement {
             onDone={(count) => {
               setPasted(null);
               setNotice({ kind: "ok", text: t("paste.committed", { count }) });
+              void client.invalidateQueries({ queryKey: ["family"] });
+              void client.invalidateQueries({ queryKey: ["envelope"] });
               setReload((n) => n + 1);
             }}
           />
         ) : null}
-        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} /> : null}
+        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} /> : null}
+        {familyOf ? (
+          <FamilyEditor
+            ws={ws}
+            id={familyOf}
+            onClose={() => setFamilyOf(null)}
+            onReview={(preview) => {
+              setFamilyOf(null);
+              setPasted(preview);
+            }}
+          />
+        ) : null}
         {structure && selected && selected.id === search.select ? (
           <StructureDialog
             ws={ws}
@@ -297,7 +335,7 @@ function ExplorerPage(): ReactElement {
   );
 }
 
-function NoticeBar({ ws, notice, onDismiss, onReload }: { ws: string; notice: Notice; onDismiss: () => void; onReload: () => void }): ReactElement {
+function NoticeBar({ ws, notice, onDismiss, onReload, onOpen }: { ws: string; notice: Notice; onDismiss: () => void; onReload: () => void; onOpen?: (envelopeId: string) => void }): ReactElement {
   if (notice.kind === "conflict") {
     return (
       <div role="alert" className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm" data-testid="edit-conflict">
@@ -316,6 +354,12 @@ function NoticeBar({ ws, notice, onDismiss, onReload }: { ws: string; notice: No
   return (
     <div role="status" className={cn("flex items-center gap-3 rounded-lg border px-4 py-2 text-sm", notice.kind === "ok" ? "border-success/40 bg-success/10" : "border-destructive/40 bg-destructive/10")} data-testid={notice.kind === "ok" ? "notice-ok" : "notice-error"}>
       <span className="flex-1">{notice.text}</span>
+      {notice.envelopeId ? <SendForApproval ws={ws} envelopeId={notice.envelopeId} compact /> : null}
+      {notice.envelopeId && onOpen ? (
+        <Button size="sm" variant="ghost" onClick={() => onOpen(notice.envelopeId as string)} data-testid="notice-open">
+          {t("explorer.open")}
+        </Button>
+      ) : null}
       {notice.requestId ? (
         <Link to="/w/$ws/approvals/$id" params={{ ws, id: notice.requestId }} className="font-medium text-primary hover:underline" data-testid="notice-request">
           {t("structure.openRequest")}

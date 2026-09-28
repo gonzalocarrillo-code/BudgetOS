@@ -13,7 +13,7 @@ import {
   type TimelineBar,
   type TimelineResponse,
 } from "@budget/domain";
-import { ganttKeyDates, ganttMarkers, ganttTargets, plannerOptions, withTenant, type Tx } from "@budget/db";
+import { ganttKeyDates, ganttMarkers, ganttTargets, plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf, sanitize, type CompileOptions } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import LZString from "lz-string";
@@ -94,7 +94,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
     const fy = ws.fiscalYearStartMonth;
-    const spec = resolvePeriod(parsePeriodParam(q.period), today, fy);
+    const spec = resolvePeriod(parsePeriodParam(q.period), today, fy, await fiscalCalendar(tx, workspaceId));
     const period = { start: q.from ?? spec.start, end: q.to ?? spec.end };
     if (period.start > period.end) throw new DomainError("VALIDATION", "from is after to");
 
@@ -235,6 +235,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
     }
 
     return {
+      levels,
       bars,
       nextCursor: page.nextCursor,
       calendar: {

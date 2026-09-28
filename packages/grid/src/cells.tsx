@@ -47,6 +47,8 @@ interface PaceCellData {
   kind: "pace";
   value: string | null;
   ratio: number | null;
+  /** Two decimals, like the totals row ("0.80"); "—" when there is no pace. */
+  display: string;
 }
 
 interface TargetCellData {
@@ -173,7 +175,7 @@ export const pathCellRenderer: CustomRenderer<PathCell> = {
     const marker = cell.data.hasChildren ? (cell.data.expanded ? "▾" : "▸") : "";
     const label = marker.length > 0 ? `${marker} ${cell.data.name}` : cell.data.name;
     const pending = cell.data.chips.pending > 0 ? ` ${cell.data.chips.pending}` : "";
-    drawText(ctx, theme, rect, `${label}${pending}`, "left", cell.data.level * 16);
+    drawText(ctx, theme, rect, `${label}${pending}`, "left", cell.data.level * 16); // INDENT_PX in BudgetGrid.tsx
   },
 };
 
@@ -192,28 +194,32 @@ export const moneyCellRenderer: CustomRenderer<MoneyCell> = {
   },
 };
 
+const PACE_GAP_PX = 8;
+const PACE_MIN_BAR_PX = 16;
+
 export const paceCellRenderer: CustomRenderer<PaceCell> = {
   kind: GridCellKind.Custom,
   isMatch: (cell): cell is PaceCell => kindOf(cell) === "pace",
   draw: (args, cell) => {
     const { ctx, theme, rect } = args;
+    // The value on the right; the bar (0–2, a tick at 1.0 = on pace) only in the space left of it.
+    ctx.font = theme.baseFontFull;
+    const textWidth = measureTextCached(cell.data.display, ctx, theme.baseFontFull).width;
     const barX = rect.x + theme.cellHorizontalPadding;
-    const barWidth = Math.max(0, rect.width - theme.cellHorizontalPadding * 2);
-    const barY = rect.y + rect.height / 2 - 3;
-    ctx.save();
-    ctx.fillStyle = theme.bgBubble;
-    ctx.fillRect(barX, barY, barWidth, 6);
+    const barWidth = rect.width - theme.cellHorizontalPadding * 2 - textWidth - PACE_GAP_PX;
     const ratio = cell.data.ratio;
-    if (ratio !== null && barWidth > 0) {
-      const clamped = Math.min(Math.max(ratio, 0), 2);
+    if (ratio !== null && barWidth >= PACE_MIN_BAR_PX) {
+      const barY = rect.y + rect.height / 2 - 3;
+      ctx.save();
+      ctx.fillStyle = theme.bgBubble;
+      ctx.fillRect(barX, barY, barWidth, 6);
       ctx.fillStyle = theme.accentColor;
-      ctx.fillRect(barX, barY, (clamped / 2) * barWidth, 6);
-      const tick = barX + barWidth / 2;
+      ctx.fillRect(barX, barY, (Math.min(Math.max(ratio, 0), 2) / 2) * barWidth, 6);
       ctx.fillStyle = theme.textDark;
-      ctx.fillRect(tick, barY - 3, 1, 12);
+      ctx.fillRect(barX + barWidth / 2, barY - 3, 1, 12);
+      ctx.restore();
     }
-    ctx.restore();
-    if (cell.data.value !== null) drawText(ctx, theme, rect, cell.data.value, "right");
+    drawText(ctx, theme, rect, cell.data.display, "right");
   },
 };
 
@@ -313,7 +319,8 @@ export function buildCell(row: QueryRow, column: ColumnSpec, options: { currency
     case "measure": {
       const raw = row.measures[column.key] ?? null;
       if (column.key === "pace_index") {
-        const data: PaceCellData = { kind: "pace", value: raw, ratio: ratioOf(raw) };
+        const ratio = ratioOf(raw);
+        const data: PaceCellData = { kind: "pace", value: raw, ratio, display: ratio === null ? "—" : ratio.toFixed(2) };
         return {
           kind: GridCellKind.Custom,
           allowOverlay: false,

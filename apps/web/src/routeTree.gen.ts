@@ -17,10 +17,12 @@ import { Route as WWsApprovalsRouteImport } from './routes/w.$ws.approvals'
 import { Route as WWsBudgetsRouteImport } from './routes/w.$ws.budgets'
 import { Route as WWsClosuresRouteImport } from './routes/w.$ws.closures'
 import { Route as WWsExperimentsRouteImport } from './routes/w.$ws.experiments'
+import { Route as WWsHomeRouteImport } from './routes/w.$ws.home'
 import { Route as WWsSearchRouteImport } from './routes/w.$ws.search'
 import { Route as WWsSourcesRouteImport } from './routes/w.$ws.sources'
 import { Route as WWsTargetsRouteImport } from './routes/w.$ws.targets'
 import { Route as WWsAdminNamingRouteImport } from './routes/w.$ws.admin.naming'
+import { Route as WWsAdminPeriodsRouteImport } from './routes/w.$ws.admin.periods'
 import { Route as WWsAdminPoliciesRouteImport } from './routes/w.$ws.admin.policies'
 import { Route as WWsAdminRegistryRouteImport } from './routes/w.$ws.admin.registry'
 import { Route as WWsAdminRolesRouteImport } from './routes/w.$ws.admin.roles'
@@ -76,6 +78,11 @@ const WWsExperimentsRoute = WWsExperimentsRouteImport.update({
   path: '/experiments',
   getParentRoute: () => WWsRoute,
 } as any)
+const WWsHomeRoute = WWsHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => WWsRoute,
+} as any)
 const WWsSearchRoute = WWsSearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -94,6 +101,11 @@ const WWsTargetsRoute = WWsTargetsRouteImport.update({
 const WWsAdminNamingRoute = WWsAdminNamingRouteImport.update({
   id: '/admin/naming',
   path: '/admin/naming',
+  getParentRoute: () => WWsRoute,
+} as any)
+const WWsAdminPeriodsRoute = WWsAdminPeriodsRouteImport.update({
+  id: '/admin/periods',
+  path: '/admin/periods',
   getParentRoute: () => WWsRoute,
 } as any)
 const WWsAdminPoliciesRoute = WWsAdminPoliciesRouteImport.update({
@@ -175,11 +187,13 @@ export interface FileRoutesByFullPath {
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
   '/w/$ws/experiments': typeof WWsExperimentsRouteWithChildren
+  '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
   '/w/$ws/sources': typeof WWsSourcesRouteWithChildren
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws/': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
+  '/w/$ws/admin/periods': typeof WWsAdminPeriodsRoute
   '/w/$ws/admin/policies': typeof WWsAdminPoliciesRoute
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
@@ -200,10 +214,12 @@ export interface FileRoutesByTo {
   '/w/$ws/alerts': typeof WWsAlertsRoute
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
+  '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
+  '/w/$ws/admin/periods': typeof WWsAdminPeriodsRoute
   '/w/$ws/admin/policies': typeof WWsAdminPoliciesRoute
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
@@ -228,11 +244,13 @@ export interface FileRoutesById {
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
   '/w/$ws/experiments': typeof WWsExperimentsRouteWithChildren
+  '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
   '/w/$ws/sources': typeof WWsSourcesRouteWithChildren
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws/': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
+  '/w/$ws/admin/periods': typeof WWsAdminPeriodsRoute
   '/w/$ws/admin/policies': typeof WWsAdminPoliciesRoute
   '/w/$ws/admin/registry': typeof WWsAdminRegistryRoute
   '/w/$ws/admin/roles': typeof WWsAdminRolesRoute
@@ -258,11 +276,13 @@ export interface FileRouteTypes {
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
     | '/w/$ws/experiments'
+    | '/w/$ws/home'
     | '/w/$ws/search'
     | '/w/$ws/sources'
     | '/w/$ws/targets'
     | '/w/$ws/'
     | '/w/$ws/admin/naming'
+    | '/w/$ws/admin/periods'
     | '/w/$ws/admin/policies'
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
@@ -283,10 +303,12 @@ export interface FileRouteTypes {
     | '/w/$ws/alerts'
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
+    | '/w/$ws/home'
     | '/w/$ws/search'
     | '/w/$ws/targets'
     | '/w/$ws'
     | '/w/$ws/admin/naming'
+    | '/w/$ws/admin/periods'
     | '/w/$ws/admin/policies'
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
@@ -310,11 +332,13 @@ export interface FileRouteTypes {
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
     | '/w/$ws/experiments'
+    | '/w/$ws/home'
     | '/w/$ws/search'
     | '/w/$ws/sources'
     | '/w/$ws/targets'
     | '/w/$ws/'
     | '/w/$ws/admin/naming'
+    | '/w/$ws/admin/periods'
     | '/w/$ws/admin/policies'
     | '/w/$ws/admin/registry'
     | '/w/$ws/admin/roles'
@@ -394,6 +418,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WWsExperimentsRouteImport
       parentRoute: typeof WWsRoute
     }
+    '/w/$ws/home': {
+      id: '/w/$ws/home'
+      path: '/home'
+      fullPath: '/w/$ws/home'
+      preLoaderRoute: typeof WWsHomeRouteImport
+      parentRoute: typeof WWsRoute
+    }
     '/w/$ws/search': {
       id: '/w/$ws/search'
       path: '/search'
@@ -420,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/naming'
       fullPath: '/w/$ws/admin/naming'
       preLoaderRoute: typeof WWsAdminNamingRouteImport
+      parentRoute: typeof WWsRoute
+    }
+    '/w/$ws/admin/periods': {
+      id: '/w/$ws/admin/periods'
+      path: '/admin/periods'
+      fullPath: '/w/$ws/admin/periods'
+      preLoaderRoute: typeof WWsAdminPeriodsRouteImport
       parentRoute: typeof WWsRoute
     }
     '/w/$ws/admin/policies': {
@@ -571,11 +609,13 @@ interface WWsRouteChildren {
   WWsBudgetsRoute: typeof WWsBudgetsRoute
   WWsClosuresRoute: typeof WWsClosuresRoute
   WWsExperimentsRoute: typeof WWsExperimentsRouteWithChildren
+  WWsHomeRoute: typeof WWsHomeRoute
   WWsSearchRoute: typeof WWsSearchRoute
   WWsSourcesRoute: typeof WWsSourcesRouteWithChildren
   WWsTargetsRoute: typeof WWsTargetsRoute
   WWsIndexRoute: typeof WWsIndexRoute
   WWsAdminNamingRoute: typeof WWsAdminNamingRoute
+  WWsAdminPeriodsRoute: typeof WWsAdminPeriodsRoute
   WWsAdminPoliciesRoute: typeof WWsAdminPoliciesRoute
   WWsAdminRegistryRoute: typeof WWsAdminRegistryRoute
   WWsAdminRolesRoute: typeof WWsAdminRolesRoute
@@ -592,11 +632,13 @@ const WWsRouteChildren: WWsRouteChildren = {
   WWsBudgetsRoute: WWsBudgetsRoute,
   WWsClosuresRoute: WWsClosuresRoute,
   WWsExperimentsRoute: WWsExperimentsRouteWithChildren,
+  WWsHomeRoute: WWsHomeRoute,
   WWsSearchRoute: WWsSearchRoute,
   WWsSourcesRoute: WWsSourcesRouteWithChildren,
   WWsTargetsRoute: WWsTargetsRoute,
   WWsIndexRoute: WWsIndexRoute,
   WWsAdminNamingRoute: WWsAdminNamingRoute,
+  WWsAdminPeriodsRoute: WWsAdminPeriodsRoute,
   WWsAdminPoliciesRoute: WWsAdminPoliciesRoute,
   WWsAdminRegistryRoute: WWsAdminRegistryRoute,
   WWsAdminRolesRoute: WWsAdminRolesRoute,

@@ -202,31 +202,35 @@ enum AmountType {
 }
 
 model Envelope {
-  id                  String              @id @db.Uuid
-  workspaceId         String              @map("workspace_id") @db.Uuid
-  parentId            String?             @map("parent_id") @db.Uuid
-  parent              Envelope?           @relation("EnvelopeTree", fields: [parentId], references: [id])
-  children            Envelope[]          @relation("EnvelopeTree")
+  id                  String               @id @db.Uuid
+  workspaceId         String               @map("workspace_id") @db.Uuid
+  parentId            String?              @map("parent_id") @db.Uuid
+  parent              Envelope?            @relation("EnvelopeTree", fields: [parentId], references: [id])
+  children            Envelope[]           @relation("EnvelopeTree")
   name                String
-  dimensionValues     Json                @map("dimension_values") // {"country":"BR","platform":"meta"} — denormalised copy
-  periodId            String?             @map("period_id") @db.Uuid
-  startDate           DateTime            @map("start_date") @db.Date
-  endDate             DateTime            @map("end_date") @db.Date
-  currency            String              @db.Char(3)
-  status              EnvelopeStatus      @default(DRAFT)
-  ownerId             String?             @map("owner_id") @db.Uuid
-  allowOverAllocation Boolean             @default(false) @map("allow_over_allocation")
-  currentVersionId    String?             @map("current_version_id") @db.Uuid // latest APPROVED
-  draftVersionId      String?             @map("draft_version_id") @db.Uuid // open draft, if any
-  rowVersion          Int                 @default(1) @map("row_version") // optimistic concurrency for metadata edits
+  dimensionValues     Json                 @map("dimension_values") // {"country":"BR","platform":"meta"} — denormalised copy
+  periodId            String?              @map("period_id") @db.Uuid
+  startDate           DateTime             @map("start_date") @db.Date
+  endDate             DateTime             @map("end_date") @db.Date
+  currency            String               @db.Char(3)
+  status              EnvelopeStatus       @default(DRAFT)
+  ownerId             String?              @map("owner_id") @db.Uuid
+  allowOverAllocation Boolean              @default(false) @map("allow_over_allocation")
+  currentVersionId    String?              @map("current_version_id") @db.Uuid // latest APPROVED
+  draftVersionId      String?              @map("draft_version_id") @db.Uuid // open draft, if any
+  rowVersion          Int                  @default(1) @map("row_version") // optimistic concurrency for metadata edits
   /// T-036: rendered by the active naming templates (§24.2); the tuple stays the identity.
-  displayName         String?             @map("display_name")
-  matchKey            String?             @map("match_key")
-  createdBy           String              @map("created_by") @db.Uuid
-  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  displayName         String?              @map("display_name")
+  matchKey            String?              @map("match_key")
+  createdBy           String               @map("created_by") @db.Uuid
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
   versions            EnvelopeVersion[]
   dims                EnvelopeDimension[]
+  /// T-040: written by the demo dataset; the purge deletes these rows.
+  demo                Boolean              @default(false)
+  allocationsAsParent EnvelopeAllocation[] @relation("AllocationParent")
+  allocationsAsChild  EnvelopeAllocation[] @relation("AllocationChild")
 
   @@index([workspaceId, parentId])
   @@index([workspaceId, startDate, endDate])
@@ -264,6 +268,8 @@ model EnvelopeVersion {
   approvedAt       DateTime?         @map("approved_at") @db.Timestamptz
   supersededAt     DateTime?         @map("superseded_at") @db.Timestamptz
   phasing          EnvelopePhasing[]
+  /// T-040: written by the demo dataset; the purge deletes these rows.
+  demo             Boolean           @default(false)
 
   @@unique([envelopeId, versionNo])
   @@index([envelopeId, status, approvedAt])
@@ -339,6 +345,8 @@ model Target {
   currentVersionId String?         @map("current_version_id") @db.Uuid
   draftVersionId   String?         @map("draft_version_id") @db.Uuid
   versions         TargetVersion[]
+  /// T-040: written by the demo dataset; the purge deletes these rows.
+  demo             Boolean         @default(false)
 
   @@index([workspaceId, envelopeId, metricKey])
   @@map("target")
@@ -360,6 +368,8 @@ model TargetVersion {
   createdBy         String        @map("created_by") @db.Uuid
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
   approvedAt        DateTime?     @map("approved_at") @db.Timestamptz
+  /// T-040: written by the demo dataset; the purge deletes these rows.
+  demo              Boolean       @default(false)
 
   @@unique([targetId, versionNo])
   @@map("target_version")
@@ -732,4 +742,111 @@ enum ExperimentStatus {
 enum ExperimentRole {
   TEST
   CONTROL
+}
+
+/// T-039 (spec §26.1, plan §6.1): offline / non-integrated actuals entered by hand, one batch per channel and period.
+model ManualEntryBatch {
+  id                String            @id @db.Uuid
+  workspaceId       String            @map("workspace_id") @db.Uuid
+  channel           String // dimension_value.code of `channel` (tv, ooh, dooh, print, radio, sponsorship, other)
+  periodStart       DateTime          @map("period_start") @db.Date
+  periodEnd         DateTime          @map("period_end") @db.Date
+  status            ManualEntryStatus @default(DRAFT)
+  rows              Json              @default("[]") // [{ rowNo, dimensionValues, periodDate, currency, amount, kpis, note? }]
+  totals            Json              @default("{}") // { amount, byCurrency, rows }
+  approvalRequestId String?           @map("approval_request_id") @db.Uuid
+  createdBy         String            @map("created_by") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  submittedAt       DateTime?         @map("submitted_at") @db.Timestamptz
+  facts             ManualEntryFact[]
+
+  @@index([workspaceId, status])
+  @@map("manual_entry_batch")
+}
+
+/// Lineage of the facts an approved batch wrote: who entered and who approved each (spec §26.2).
+model ManualEntryFact {
+  workspaceId   String           @map("workspace_id") @db.Uuid
+  batchId       String           @map("batch_id") @db.Uuid
+  batch         ManualEntryBatch @relation(fields: [batchId], references: [id])
+  rowNo         Int              @map("row_no")
+  factTable     String           @map("fact_table") // spend_fact | kpi_fact
+  metric        String?
+  sourceRowHash String           @map("source_row_hash")
+  periodDate    DateTime         @map("period_date") @db.Date
+  enteredBy     String           @map("entered_by") @db.Uuid
+  approvedBy    String           @map("approved_by") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([batchId, sourceRowHash, periodDate])
+  @@index([workspaceId, sourceRowHash, periodDate], map: "manual_entry_fact_hash_idx")
+  @@map("manual_entry_fact")
+}
+
+enum ManualEntryStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+/// T-040 (spec §27): a role's guided tour. workspaceId NULL = the built-in default; a workspace's own row overrides it.
+model Tour {
+  id          String           @id @db.Uuid
+  workspaceId String?          @map("workspace_id") @db.Uuid
+  role        String // planner | approver | finance | data_admin
+  name        String
+  steps       Json // [{ path?, element: '[data-tour="…"]', title, description }]
+  version     Int              @default(1)
+  updatedAt   DateTime         @default(now()) @map("updated_at") @db.Timestamptz
+  completions TourCompletion[]
+
+  @@map("tour")
+}
+
+model TourCompletion {
+  userId      String   @map("user_id") @db.Uuid
+  tourId      String   @map("tour_id") @db.Uuid
+  tour        Tour     @relation(fields: [tourId], references: [id])
+  version     Int
+  completedAt DateTime @default(now()) @map("completed_at") @db.Timestamptz
+
+  @@id([userId, tourId, version])
+  @@map("tour_completion")
+}
+
+/// T-040 (spec §27): what a new workspace starts from. orgId NULL = built in (default_agency).
+model WorkspaceTemplate {
+  id                 String   @id @db.Uuid
+  orgId              String?  @map("org_id") @db.Uuid
+  key                String
+  name               String
+  description        String?
+  registry           Json     @default("[]")
+  hierarchyTemplates Json     @default("[]") @map("hierarchy_templates")
+  policies           Json     @default("[]")
+  rules              Json     @default("[]")
+  savedViews         Json     @default("[]") @map("saved_views")
+  tours              Json     @default("[]")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("workspace_template")
+}
+
+/// How a child budget follows its parent (ADR-039): a % of the parent's amount or its own (manual). One current rule per child.
+model EnvelopeAllocation {
+  id               String    @id @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  parentEnvelopeId String    @map("parent_envelope_id") @db.Uuid
+  parent           Envelope  @relation("AllocationParent", fields: [parentEnvelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "envelope_allocation_parent_fkey")
+  childEnvelopeId  String    @map("child_envelope_id") @db.Uuid
+  child            Envelope  @relation("AllocationChild", fields: [childEnvelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "envelope_allocation_child_fkey")
+  mode             String
+  pct              Decimal?  @db.Decimal(9, 6)
+  createdBy        String    @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  supersededAt     DateTime? @map("superseded_at") @db.Timestamptz
+
+  // Partial indexes (current rule per child, by parent) live in the migration's SQL only.
+  @@map("envelope_allocation")
 }

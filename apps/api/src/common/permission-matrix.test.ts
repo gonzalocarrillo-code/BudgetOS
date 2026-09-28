@@ -121,6 +121,13 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/workspaces/{ws}/dimensions", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/dimensions` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/dimensions", permission: "registry.manage", url: () => `/api/v1/workspaces/${wsA}/dimensions`, body: {} },
   { method: "PATCH", path: "/api/v1/dimensions/{id}", permission: "registry.manage", url: () => `/api/v1/dimensions/${rid}`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/periods", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/periods` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/periods", permission: "registry.manage", url: () => `/api/v1/workspaces/${wsA}/periods`, body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/periods/generate", permission: "registry.manage", url: () => `/api/v1/workspaces/${wsA}/periods/generate`, body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/fiscal-year", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/fiscal-year` },
+  { method: "PATCH", path: "/api/v1/workspaces/{ws}/fiscal-year", permission: "registry.manage", url: () => `/api/v1/workspaces/${wsA}/fiscal-year`, body: {} },
+  { method: "PATCH", path: "/api/v1/periods/{id}", permission: "registry.manage", url: () => `/api/v1/periods/${randomUUID()}`, headers: X(), body: {} },
+  { method: "DELETE", path: "/api/v1/periods/{id}", permission: "registry.manage", url: () => `/api/v1/periods/${randomUUID()}`, headers: X() },
   { method: "POST", path: "/api/v1/dimensions/{id}/values", permission: "registry.manage", url: () => `/api/v1/dimensions/${rid}/values`, headers: X(), body: {} },
   { method: "PATCH", path: "/api/v1/values/{id}", permission: "registry.manage", url: () => `/api/v1/values/${rid}`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/values/{id}/merge", permission: "registry.manage", url: () => `/api/v1/values/${rid}/merge`, headers: X(), body: {} },
@@ -155,6 +162,19 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/experiments/{id}/evaluate", permission: "envelope.edit_draft", url: () => `/api/v1/experiments/${rid}/evaluate`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/experiments/{id}/abandon", permission: "envelope.edit_draft", url: () => `/api/v1/experiments/${rid}/abandon`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/experiments/{id}/conclude", permission: "envelope.edit_draft", url: () => `/api/v1/experiments/${rid}/conclude`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/manual-entries", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/manual-entries` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/manual-entries", permission: "envelope.edit_draft", url: () => `/api/v1/workspaces/${wsA}/manual-entries`, body: {} },
+  { method: "GET", path: "/api/v1/manual-entries/{id}", permission: "envelope.read", url: () => `/api/v1/manual-entries/${rid}`, headers: X() },
+  { method: "PATCH", path: "/api/v1/manual-entries/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/manual-entries/${rid}`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/manual-entries/{id}/submit", permission: "envelope.edit_draft", url: () => `/api/v1/manual-entries/${rid}/submit`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/me/home", permission: "workspace.member", url: () => "/api/v1/me/home", headers: X() },
+  { method: "GET", path: "/api/v1/tours", permission: "workspace.member", url: () => "/api/v1/tours", headers: X() },
+  { method: "POST", path: "/api/v1/tours/{id}/complete", permission: "workspace.member", url: () => `/api/v1/tours/${rid}/complete`, headers: X(), body: {} },
+  { method: "PATCH", path: "/api/v1/tours/{id}", permission: "org.admin", url: () => `/api/v1/tours/${rid}`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspace-templates", permission: "org.admin", url: () => "/api/v1/workspace-templates" },
+  { method: "POST", path: "/api/v1/workspaces", permission: "org.admin", url: () => "/api/v1/workspaces", body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/demo-data", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/demo-data` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/demo-data/purge", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/demo-data/purge`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/overview", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/overview` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/timeline", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/timeline` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/pacing", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/pacing` },
@@ -181,6 +201,7 @@ const ROUTES: RouteCase[] = [
   { method: "DELETE", path: "/api/v1/comments/{id}/reactions", permission: "thread.comment", url: () => `/api/v1/comments/${rid}/reactions`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/people", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/people` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/query", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/query`, body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/tree", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/tree`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/saved-views", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/saved-views` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/saved-views", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/saved-views`, body: {} },
   { method: "PATCH", path: "/api/v1/saved-views/{id}", permission: "workspace.member", url: () => `/api/v1/saved-views/${rid}`, headers: X(), body: {} },
@@ -199,6 +220,8 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/assets", permission: "registry.manage", url: () => "/api/v1/assets", headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/roles", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/roles` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/roles", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/roles`, body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/members", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/members` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/members", permission: "org.admin", url: () => `/api/v1/workspaces/${wsA}/members`, body: {} },
   { method: "DELETE", path: "/api/v1/roles/{id}", permission: "user.manage", url: () => `/api/v1/roles/${rid}`, headers: X() },
   { method: "POST", path: "/api/v1/workspaces/{ws}/groups/sync", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/groups/sync`, body: {} },
   { method: "POST", path: "/api/v1/workspaces/{ws}/envelopes", permission: "envelope.create", url: () => `/api/v1/workspaces/${wsA}/envelopes`, body: {} },
@@ -219,6 +242,9 @@ const ROUTES: RouteCase[] = [
   { method: "POST", path: "/api/v1/workspaces/{ws}/envelopes/csv-export", permission: "export.run", url: () => `/api/v1/workspaces/${wsA}/envelopes/csv-export`, body: {} },
   { method: "POST", path: "/api/v1/workspaces/{ws}/envelopes/csv-import", permission: "envelope.bulk", url: () => `/api/v1/workspaces/${wsA}/envelopes/csv-import`, body: {} },
   { method: "POST", path: "/api/v1/envelopes/{id}/submit", permission: "envelope.submit", url: () => `/api/v1/envelopes/${rid}/submit`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/envelopes/{id}/family", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}/family`, headers: X() },
+  { method: "POST", path: "/api/v1/envelopes/{id}/family/preview", permission: "envelope.read", url: () => `/api/v1/envelopes/${rid}/family/preview`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/envelopes/{id}/family", permission: "envelope.edit_draft", url: () => `/api/v1/envelopes/${rid}/family`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/envelopes/{id}/withdraw", permission: "envelope.submit", url: () => `/api/v1/envelopes/${rid}/withdraw`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/approvals", permission: "workspace.member", url: () => "/api/v1/approvals?assignee=me", headers: X() },
   { method: "GET", path: "/api/v1/approvals/{id}", permission: "envelope.read", url: () => `/api/v1/approvals/${rid}`, headers: X() },
@@ -232,6 +258,7 @@ const ROUTES: RouteCase[] = [
 
 function allowed(role: Role | "OUTSIDER", permission: RoutePermission): boolean {
   if (permission === "authenticated") return true;
+  if (permission === "org.admin") return role === "ORG_ADMIN";
   if (role === "OUTSIDER") return false;
   if (permission === "workspace.member") return true;
   return can([role], permission);

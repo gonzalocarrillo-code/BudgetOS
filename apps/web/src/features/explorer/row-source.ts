@@ -1,6 +1,5 @@
-import { LIVE_LEAVES, type FilterGroupT, type Predicate, type QueryResponse, type QueryRow } from "@budget/domain";
+import { LIVE_LEAVES, type FilterGroupT, type Predicate, type QueryResponse, type QueryRow, type TreeResponse } from "@budget/domain";
 import type { RowSource } from "@budget/grid";
-import { t } from "@budget/ui/i18n";
 import { api, unwrap } from "../../lib/api.js";
 
 /**
@@ -10,6 +9,8 @@ import { api, unwrap } from "../../lib/api.js";
  *
  * - tree: one level per hierarchy-template key. A node's children are the next level's groups
  *   under its prefix (eq on each ancestor, is_empty for "none"); below the last key, the envelopes.
+ *   With no filter and no as-of, the levels come from the roll-up cache (POST /tree, ADR-038);
+ *   when the server says it cannot serve them (a scoped caller, a period it does not hold), /query.
  *   Expanded node keys live in the URL (`expanded`).
  * - pivot: the groups of `groupBy`, or the envelopes themselves when groupBy is empty.
  */
@@ -24,7 +25,8 @@ export interface ExplorerQuery {
   period: unknown;
   measures: string[];
   asOf?: string | undefined;
-  /** tree: the hierarchy template's path. */
+  /** tree: the hierarchy template (its id for the roll-up cache, its path for the levels). */
+  templateId?: string | undefined;
   levels: string[];
   /** pivot: grouping keys (empty = envelopes). */
   groupBy: string[];
@@ -32,7 +34,11 @@ export interface ExplorerQuery {
   sort: Array<{ key: string; dir: "asc" | "desc" }>;
 }
 
-type Labels = (dimension: string, code: string) => string;
+/** A value's label, and the label of a group with no value for `dimension` at tree `level` (0 = first). */
+export interface Labels {
+  value(dimension: string, code: string): string;
+  none(dimension: string, level: number): string;
+}
 
 const PAGE = 1000;
 const prefix = (keys: string[], segments: string[]): Predicate[] =>
@@ -47,6 +53,8 @@ export class ExplorerRowSource implements RowSource {
   private ready: Promise<void>;
   totals: QueryResponse["totals"] = {};
   dataVersion = "0";
+  /** Whether tree levels are read from the roll-up cache; false after the server declines once. */
+  private cached: boolean;
 
   constructor(
     private readonly q: ExplorerQuery,
@@ -55,6 +63,7 @@ export class ExplorerRowSource implements RowSource {
     private readonly onLoaded: (s: ExplorerRowSource) => void = () => undefined,
   ) {
     this.expanded = new Set(q.expanded);
+    this.cached = q.view === "tree" && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf;
     this.ready = this.load();
   }
 
@@ -77,6 +86,19 @@ export class ExplorerRowSource implements RowSource {
     return { rows, totals: last?.totals ?? {}, dataVersion: last?.dataVersion ?? 0 };
   }
 
+  /** One tree level (the groups under `segments`): from the roll-up cache when it can serve it, else /query. */
+  private async level(segments: string[]): Promise<{ rows: QueryRow[]; totals: QueryResponse["totals"]; dataVersion: number }> {
+    const depth = segments.length;
+    const keys = this.q.levels.slice(0, depth + 1);
+    if (this.cached && this.q.templateId) {
+      const body = { workspaceId: this.q.ws, templateId: this.q.templateId, period: this.q.period, parentPath: segments.join("/"), measures: this.q.measures };
+      const res = (await unwrap(api.POST("/api/v1/workspaces/{ws}/tree", { params: { path: { ws: this.q.ws } }, body: body as never }))) as TreeResponse;
+      if (res.available) return { rows: res.rows, totals: res.totals, dataVersion: res.dataVersion };
+      this.cached = false;
+    }
+    return this.all(keys, prefix(this.q.levels.slice(0, depth), segments), []);
+  }
+
   private groupRows(rows: QueryRow[], keys: string[], parentSegments: string[]): ExplorerRow[] {
     const depth = keys.length;
     const key = keys[depth - 1] as string;
@@ -84,7 +106,7 @@ export class ExplorerRowSource implements RowSource {
       const segment = r.dimensions[key] ?? NONE;
       const segments = [...parentSegments, segment];
       const nodeKey = segments.join("/");
-      return { ...r, key: nodeKey, path: segments, level: depth - 1, name: segment === NONE ? t("explorer.none") : this.labels(key, segment), hasChildren: true, expanded: this.expanded.has(nodeKey) };
+      return { ...r, key: nodeKey, path: segments, level: depth - 1, name: segment === NONE ? this.labels.none(key, depth - 1) : this.labels.value(key, segment), hasChildren: true, expanded: this.expanded.has(nodeKey) };
     });
   }
 
@@ -97,10 +119,7 @@ export class ExplorerRowSource implements RowSource {
     const depth = segments.length;
     const levels = this.q.levels;
     const extra = prefix(levels.slice(0, depth), segments);
-    if (depth < levels.length) {
-      const keys = levels.slice(0, depth + 1);
-      return this.groupRows((await this.all(keys, extra, [])).rows, keys, segments);
-    }
+    if (depth < levels.length) return this.groupRows((await this.level(segments)).rows, levels.slice(0, depth + 1), segments);
     return this.envelopeRows((await this.all([], extra, [{ key: "name", dir: "asc" }])).rows, depth);
   }
 
@@ -110,7 +129,7 @@ export class ExplorerRowSource implements RowSource {
       this.totals = res.totals;
       this.dataVersion = String(res.dataVersion);
       this.roots = this.q.groupBy.length
-        ? res.rows.map((r) => ({ ...r, level: 0, name: this.q.groupBy.map((k) => (r.dimensions[k] ?? NONE) === NONE ? t("explorer.none") : this.labels(k, r.dimensions[k] as string)).join(" · "), hasChildren: false, expanded: false }))
+        ? res.rows.map((r) => ({ ...r, level: 0, name: this.q.groupBy.map((k) => ((r.dimensions[k] ?? NONE) === NONE ? this.labels.none(k, 1) : this.labels.value(k, r.dimensions[k] as string))).join(" · "), hasChildren: false, expanded: false }))
         : this.envelopeRows(res.rows, 0);
     } else if (this.q.levels.length === 0) {
       const res = await this.all([], [], [{ key: "name", dir: "asc" }]);
@@ -118,7 +137,7 @@ export class ExplorerRowSource implements RowSource {
       this.roots = this.envelopeRows(res.rows, 0);
     } else {
       const keys = this.q.levels.slice(0, 1);
-      const res = await this.all(keys, [], []);
+      const res = await this.level([]);
       this.totals = res.totals;
       this.dataVersion = String(res.dataVersion);
       this.roots = this.groupRows(res.rows, keys, []);

@@ -1,5 +1,5 @@
-import { DomainError, LIVE_LEAVES, PeriodSpec, type QueryResponse } from "@budget/domain";
-import { withTenant } from "@budget/db";
+import { DomainError, LIVE_LEAVES, PeriodSpec, elapsedFraction, resolvePeriod, type QueryResponse } from "@budget/domain";
+import { fiscalCalendar, withTenant } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
@@ -12,32 +12,44 @@ import { runQuery } from "../query/queries/run-query.js";
  * GET /workspaces/:ws/overview?period (T-033, plan §11.1 / Epic 1.11): everything the Overview
  * shows, in one round trip and with zero configuration. Every number comes from the planner cut to
  * the caller's read scope (live leaves, so nothing is counted twice); nothing is summed in the
- * browser. Market × platform are the registry's `country` × `platform`, or the first of
- * region / channel when a workspace has no such granularity.
+ * browser. The heatmap's axes are any two granularities of the registry the caller picks
+ * (`rows`, `cols`; product feedback 8), by default `country` × `platform` or the first of
+ * region / channel when a workspace has no such granularity. Every column comes back (platforms
+ * are registry values: a new one shows up at once); the page shows the top ones first.
  */
 const PRESETS = ["current_month", "current_quarter", "current_year", "last_30_days", "last_90_days", "ytd", "next_90_days"] as const;
 const leaves = { logic: "and" as const, children: LIVE_LEAVES };
 
-export async function overview(prisma: PrismaClient, auth: AuthContext, rawPeriod: string | undefined) {
+export async function overview(prisma: PrismaClient, auth: AuthContext, rawPeriod: string | undefined, axes: { rows?: string | undefined; cols?: string | undefined } = {}) {
   const started = performance.now();
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const preset = rawPeriod ?? "current_year";
   if (!(PRESETS as readonly string[]).includes(preset)) throw new DomainError("VALIDATION", `period must be one of ${PRESETS.join(", ")}`);
   const period = parseInput(PeriodSpec, { kind: "relative", preset });
 
-  const { dims, labels, currency, cpa, hasProjections } = await withTenant(prisma, auth.ctx, async (tx) => {
+  const { dims, labels, currency, cpa, hasProjections, dimensions, range } = await withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true, reportingCurrency: true } });
     const dimensions = await tx.dimension.findMany({ where: { orgId: ws.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, label: true } });
     const byKey = new Map(dimensions.map((d) => [d.key, d]));
     const pick = (...keys: string[]) => keys.map((k) => byKey.get(k)).find((d) => d !== undefined) ?? null;
-    const rows = pick("country", "market", "region");
-    const cols = pick("platform", "channel");
+    const chosen = (key: string | undefined) => {
+      if (key === undefined || key === "") return undefined;
+      const d = byKey.get(key);
+      if (!d) throw new DomainError("VALIDATION", `unknown granularity ${key}`, { key });
+      return d;
+    };
+    const rows = chosen(axes.rows) ?? pick("country", "market", "region");
+    const cols = chosen(axes.cols) ?? pick("platform", "channel");
+    if (rows && cols && rows.key === cols.key) throw new DomainError("VALIDATION", "rows and cols must be two different granularities");
     const values = await tx.dimensionValue.findMany({ where: { dimensionId: { in: [rows?.id, cols?.id].filter((x): x is string => x !== undefined) } }, select: { dimensionId: true, code: true, label: true } });
     const label = (d: typeof rows) => Object.fromEntries(values.filter((v) => v.dimensionId === d?.id).map((v) => [v.code, v.label]));
+    const wsCal = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
+    const today = new Date().toISOString().slice(0, 10);
+    const range = resolvePeriod(period, today, wsCal.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
     const metric = await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: ws.orgId, key: "cpa" } }, select: { id: true } });
     // The projection measures are the planner's costly ones; ask for them only when there are projections.
     const [projection] = await tx.$queryRaw<Array<{ one: number }>>`SELECT 1 AS one FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid LIMIT 1`;
-    return { dims: { rows, cols }, labels: { rows: label(rows), cols: label(cols) }, currency: ws.reportingCurrency, cpa: metric !== null, hasProjections: projection !== undefined };
+    return { dims: { rows, cols }, labels: { rows: label(rows), cols: label(cols) }, currency: ws.reportingCurrency, cpa: metric !== null, hasProjections: projection !== undefined, range: { ...range, elapsed: elapsedFraction(range, today).toDecimalPlaces(4).toString() }, dimensions: dimensions.map((d) => ({ key: d.key, label: d.label })).sort((a, b) => a.label.localeCompare(b.label)) };
   });
 
   const q = (body: Record<string, unknown>) => runQuery(prisma, auth, { workspaceId, period, filter: leaves, ...body });
@@ -72,11 +84,11 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   const now = Date.now();
   const severities = ["critical", "warning", "info", "data"] as const;
   return {
-    period: { preset },
+    period: { preset, ...range },
     currency,
     dataAsOf: over.dataAsOf,
     totals: { ...(heat?.totals ?? over.totals), projected: projected?.totals["projected"] ?? null, projected_close_pct: projected?.totals["projected_close_pct"] ?? null },
-    heatmap: dims.rows && dims.cols ? { rowDimension: { key: dims.rows.key, label: dims.rows.label }, colDimension: { key: dims.cols.key, label: dims.cols.label }, rows: top("row", 12), cols: top("col", 8), labels, cells } : null,
+    heatmap: dims.rows && dims.cols ? { rowDimension: { key: dims.rows.key, label: dims.rows.label }, colDimension: { key: dims.cols.key, label: dims.cols.label }, rows: top("row", 50), cols: top("col", 50), labels, cells, dimensions } : null,
     variances: { over: variance(over, 1), under: variance(under, -1) },
     kpi: kpi && dims.rows
       ? {

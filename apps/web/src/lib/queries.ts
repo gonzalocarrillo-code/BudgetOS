@@ -1,3 +1,5 @@
+import { PeriodRow } from "@budget/domain";
+import { t } from "@budget/ui/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, unwrap } from "./api.js";
@@ -94,6 +96,10 @@ export const EnvelopeDetail = z
     rowVersion: z.number().default(1),
     currentVersionId: z.string().uuid().nullable().default(null),
     draftVersionId: z.string().uuid().nullable().default(null),
+    /** The draft's pending approval request, when it has been sent. */
+    openRequest: z.object({ id: z.string().uuid(), status: z.string(), summary: z.string() }).nullable().default(null),
+    /** The policy the open draft would match if sent now: no steps = set at once. */
+    draftPolicy: z.object({ name: z.string(), autoApprove: z.boolean(), firstRole: z.string().nullable(), steps: z.number() }).nullable().default(null),
     structure: z
       .object({ parent: StructureNode.nullable(), children: z.array(StructureNode), siblings: z.array(StructureNode) })
       .default({ parent: null, children: [], siblings: [] }),
@@ -108,7 +114,9 @@ export const envelopeQuery = (ws: string, id: string) =>
   });
 
 export const SearchHit = z.object({ id: z.string(), title: z.string(), path: z.string().nullable(), status: z.string().nullable(), facets: z.record(z.string(), z.unknown()).nullable().optional(), deepLink: z.string() });
-export const SearchResult = z.object({ groups: z.array(z.object({ type: z.string(), count: z.number(), hits: z.array(SearchHit) })) }).passthrough();
+export const SearchResult = z.object({ groups: z.array(z.object({ type: z.string(), count: z.number(), more: z.boolean().optional(), hits: z.array(SearchHit) })) }).passthrough();
+/** A group's count; "1000+" when the server stopped counting (T-034). */
+export const searchCount = (g: { count: number; more?: boolean | undefined }): string => (g.more ? t("search.countMore", { count: g.count }) : String(g.count));
 export type SearchResult = z.infer<typeof SearchResult>;
 export const SuggestResult = z.object({ keys: z.array(z.object({ key: z.string(), label: z.string(), kind: z.string() })), values: z.array(z.object({ value: z.string(), label: z.string() })) });
 
@@ -175,6 +183,18 @@ export const ApprovalDetail = z
     people: z.record(z.string(), z.string()),
     decision: z.object({ canDecide: z.boolean(), reason: z.string().nullable(), stepRole: z.string().nullable() }),
     decisions: z.array(z.object({ id: z.string().uuid(), stepIndex: z.number(), decidedBy: z.string().uuid(), decision: z.string(), comment: z.string().nullable(), decidedAt: z.string() }).passthrough()),
+    /** T-039: a manual result batch waiting for approval — what it would load. */
+    manualEntry: z
+      .object({
+        id: z.string().uuid(),
+        channel: z.string(),
+        periodStart: z.string(),
+        periodEnd: z.string(),
+        totals: z.object({ amount: z.string().nullable(), byCurrency: z.record(z.string(), z.string()), rows: z.number() }).passthrough(),
+        rows: z.array(z.object({ rowNo: z.number(), dimensionValues: z.record(z.string(), z.string()), periodDate: z.string(), currency: z.string(), amount: z.string(), kpis: z.record(z.string(), z.string()), note: z.string().optional() }).passthrough()),
+      })
+      .nullable()
+      .optional(),
   })
   .passthrough();
 export type ApprovalDetail = z.infer<typeof ApprovalDetail>;
@@ -200,3 +220,11 @@ export const timelinePage = async (ws: string, id: string, cursor: string | null
   z.object({ rows: z.array(TimelineEntry), nextCursor: z.string().nullable() }).parse(
     await unwrap(api.GET("/api/v1/envelopes/{id}/timeline", { params: { path: { id }, header: { "X-Workspace-Id": ws }, query: { limit: 50, ...(cursor ? { cursor } : {}) } as never } })),
   );
+
+/** The workspace's fiscal calendar (ADR-041): years, quarters, months as defined, custom partitions. */
+export const periodsQuery = (ws: string) =>
+  queryOptions({
+    queryKey: ["periods", ws],
+    queryFn: async () => z.array(PeriodRow).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/periods", { params: { path: { ws } } }))),
+    staleTime: 60_000,
+  });

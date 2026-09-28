@@ -199,6 +199,193 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/members": {
+      "get": {
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The org's people and groups, each with its role assignments in this workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "signedIn": {
+                            "type": "boolean"
+                          },
+                          "orgAdmin": {
+                            "type": "boolean"
+                          },
+                          "roles": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "scope": {}
+                              },
+                              "required": [
+                                "id",
+                                "role",
+                                "scope"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "email",
+                          "name",
+                          "isActive",
+                          "signedIn",
+                          "orgAdmin",
+                          "roles"
+                        ]
+                      }
+                    },
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "googleGroup": {
+                            "type": "string"
+                          },
+                          "memberCount": {
+                            "type": "integer"
+                          },
+                          "roles": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "scope": {}
+                              },
+                              "required": [
+                                "id",
+                                "role",
+                                "scope"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "googleGroup",
+                          "memberCount",
+                          "roles"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "users",
+                    "groups"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addMember",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 320
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "email",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added to the org by email (or the existing person); they sign in with Google later"
+          },
+          "409": {
+            "description": "The email belongs to another organisation"
+          }
+        }
+      }
+    },
     "/api/v1/roles/{id}": {
       "delete": {
         "operationId": "revokeRole",
@@ -2233,6 +2420,594 @@
         }
       }
     },
+    "/api/v1/envelopes/{id}/family": {
+      "get": {
+        "operationId": "getEnvelopeFamily",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The parent, its children (each % of the parent or manual) and how they add up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "level": {
+                          "type": "integer"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ],
+                          "nullable": true
+                        },
+                        "pct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "before": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "after": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        },
+                        "childCount": {
+                          "type": "integer"
+                        },
+                        "sameCurrency": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "name",
+                        "parentId",
+                        "level",
+                        "currency",
+                        "status",
+                        "mode",
+                        "pct",
+                        "before",
+                        "after",
+                        "changed",
+                        "childCount",
+                        "sameCurrency"
+                      ]
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "level": {
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "percent",
+                              "manual"
+                            ],
+                            "nullable": true
+                          },
+                          "pct": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "before": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changed": {
+                            "type": "boolean"
+                          },
+                          "childCount": {
+                            "type": "integer"
+                          },
+                          "sameCurrency": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "name",
+                          "parentId",
+                          "level",
+                          "currency",
+                          "status",
+                          "mode",
+                          "pct",
+                          "before",
+                          "after",
+                          "changed",
+                          "childCount",
+                          "sameCurrency"
+                        ]
+                      }
+                    },
+                    "sums": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "parentAmount": {
+                            "type": "string"
+                          },
+                          "childrenTotal": {
+                            "type": "string"
+                          },
+                          "unallocated": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "balanced",
+                              "under",
+                              "over"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "parentId",
+                          "parentAmount",
+                          "childrenTotal",
+                          "unallocated",
+                          "status"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "parent",
+                    "members",
+                    "sums"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveEnvelopeFamily",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parentAmount": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                  },
+                  "children": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ]
+                        },
+                        "pct": {
+                          "type": "string",
+                          "pattern": "^\\d{1,3}(\\.\\d{1,6})?$"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "mode"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000,
+                    "default": "Family edit"
+                  }
+                },
+                "required": [
+                  "parentAmount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rules saved (audited); { plan, preview }: the bulk preview of every amount the plan changes, to commit (null when no amount changes)"
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/family/preview": {
+      "post": {
+        "operationId": "previewEnvelopeFamily",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parentAmount": {
+                    "type": "string",
+                    "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                  },
+                  "children": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ]
+                        },
+                        "pct": {
+                          "type": "string",
+                          "pattern": "^\\d{1,3}(\\.\\d{1,6})?$"
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d{1,16}(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "mode"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000,
+                    "default": "Family edit"
+                  }
+                },
+                "required": [
+                  "parentAmount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The family as the change leaves it, down the tree; writes nothing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "level": {
+                          "type": "integer"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "percent",
+                            "manual"
+                          ],
+                          "nullable": true
+                        },
+                        "pct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "before": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "after": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        },
+                        "childCount": {
+                          "type": "integer"
+                        },
+                        "sameCurrency": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "envelopeId",
+                        "name",
+                        "parentId",
+                        "level",
+                        "currency",
+                        "status",
+                        "mode",
+                        "pct",
+                        "before",
+                        "after",
+                        "changed",
+                        "childCount",
+                        "sameCurrency"
+                      ]
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "level": {
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "percent",
+                              "manual"
+                            ],
+                            "nullable": true
+                          },
+                          "pct": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "before": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changed": {
+                            "type": "boolean"
+                          },
+                          "childCount": {
+                            "type": "integer"
+                          },
+                          "sameCurrency": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "name",
+                          "parentId",
+                          "level",
+                          "currency",
+                          "status",
+                          "mode",
+                          "pct",
+                          "before",
+                          "after",
+                          "changed",
+                          "childCount",
+                          "sameCurrency"
+                        ]
+                      }
+                    },
+                    "sums": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "parentAmount": {
+                            "type": "string"
+                          },
+                          "childrenTotal": {
+                            "type": "string"
+                          },
+                          "unallocated": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "balanced",
+                              "under",
+                              "over"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "parentId",
+                          "parentAmount",
+                          "childrenTotal",
+                          "unallocated",
+                          "status"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "parent",
+                    "members",
+                    "sums"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/envelopes/{id}/submit": {
       "post": {
         "operationId": "submitEnvelopeVersion",
@@ -2663,7 +3438,8 @@
                         "enum": [
                           "envelope_version",
                           "target_version",
-                          "bulk_change"
+                          "bulk_change",
+                          "manual_entry"
                         ]
                       },
                       "amountAbs": {
@@ -2734,6 +3510,36 @@
                         "type": "array",
                         "items": {
                           "type": "string"
+                        }
+                      },
+                      "requester": {
+                        "type": "object",
+                        "properties": {
+                          "roles": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "VIEWER",
+                                "PLANNER",
+                                "BUDGET_OWNER",
+                                "APPROVER",
+                                "FINANCE",
+                                "DATA_ADMIN",
+                                "WORKSPACE_ADMIN",
+                                "ORG_ADMIN"
+                              ]
+                            }
+                          },
+                          "userIds": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
                         }
                       },
                       "any": {
@@ -2865,7 +3671,8 @@
                         "enum": [
                           "envelope_version",
                           "target_version",
-                          "bulk_change"
+                          "bulk_change",
+                          "manual_entry"
                         ]
                       },
                       "amountAbs": {
@@ -2936,6 +3743,36 @@
                         "type": "array",
                         "items": {
                           "type": "string"
+                        }
+                      },
+                      "requester": {
+                        "type": "object",
+                        "properties": {
+                          "roles": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "VIEWER",
+                                "PLANNER",
+                                "BUDGET_OWNER",
+                                "APPROVER",
+                                "FINANCE",
+                                "DATA_ADMIN",
+                                "WORKSPACE_ADMIN",
+                                "ORG_ADMIN"
+                              ]
+                            }
+                          },
+                          "userIds": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
                         }
                       },
                       "any": {
@@ -5801,6 +6638,11 @@
                           "depth": {
                             "type": "integer"
                           },
+                          "nodeEnvelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
                           "path": {
                             "type": "array",
                             "items": {
@@ -5892,6 +6734,14 @@
                     "dataVersion": {
                       "type": "integer"
                     },
+                    "engine": {
+                      "type": "string",
+                      "enum": [
+                        "postgres",
+                        "warehouse",
+                        "cache"
+                      ]
+                    },
                     "elapsedMs": {
                       "type": "number"
                     }
@@ -5907,6 +6757,1390 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/tree": {
+      "post": {
+        "operationId": "tree",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "templateId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "period": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "fiscal"
+                            ]
+                          },
+                          "key": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "key"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "range"
+                            ]
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "start",
+                          "end"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "relative"
+                            ]
+                          },
+                          "preset": {
+                            "type": "string",
+                            "enum": [
+                              "current_month",
+                              "current_quarter",
+                              "current_year",
+                              "last_30_days",
+                              "last_90_days",
+                              "ytd",
+                              "next_90_days"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "preset"
+                        ]
+                      }
+                    ]
+                  },
+                  "parentPath": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "default": ""
+                  },
+                  "measures": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "budget",
+                        "actual",
+                        "projected",
+                        "remaining",
+                        "variance_abs",
+                        "variance_pct",
+                        "pace_index",
+                        "projected_close_pct",
+                        "spend_to_date_pct"
+                      ]
+                    },
+                    "default": [
+                      "budget",
+                      "actual",
+                      "projected",
+                      "pace_index"
+                    ]
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "templateId",
+                  "period"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "One level of a hierarchy template's tree from rollup_cache, with the root as totals; available: false (scoped caller or period not cached) means ask /query; X-Data-Version header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "scoped",
+                        "not_cached"
+                      ],
+                      "nullable": true
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "versionId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "depth": {
+                            "type": "integer"
+                          },
+                          "nodeEnvelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "path": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "dimensions": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "measures": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "targets": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "object",
+                              "properties": {
+                                "target": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "actual": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "vsTargetPct": {
+                                  "type": "string",
+                                  "nullable": true
+                                }
+                              },
+                              "required": [
+                                "target",
+                                "actual",
+                                "vsTargetPct"
+                              ]
+                            },
+                            "default": {}
+                          },
+                          "status": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "pendingCount": {
+                            "type": "integer",
+                            "default": 0
+                          },
+                          "openAlerts": {
+                            "type": "integer",
+                            "default": 0
+                          },
+                          "openThreads": {
+                            "type": "integer",
+                            "default": 0
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "envelopeId",
+                          "path",
+                          "dimensions",
+                          "measures",
+                          "status"
+                        ]
+                      }
+                    },
+                    "totals": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "dataAsOf": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "dataVersion": {
+                      "type": "integer"
+                    },
+                    "cacheVersion": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "elapsedMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "available",
+                    "reason",
+                    "rows",
+                    "totals",
+                    "dataAsOf",
+                    "dataVersion",
+                    "cacheVersion",
+                    "elapsedMs"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/manual-entries": {
+      "get": {
+        "operationId": "listManualEntries",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED"
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batches, newest first (rows omitted, rowCount)"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createManualEntry",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "periodStart": {
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 2000,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "rowNo": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false
+                        },
+                        "dimensionValues": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "default": {}
+                        },
+                        "periodDate": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "default": ""
+                        },
+                        "currency": {
+                          "type": "string",
+                          "maxLength": 10,
+                          "default": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "default": ""
+                        },
+                        "kpis": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "default": {}
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      }
+                    },
+                    "default": []
+                  }
+                },
+                "required": [
+                  "channel",
+                  "periodStart",
+                  "periodEnd"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A DRAFT batch, its rows' issues (validated like ingestion) and warnings (rows no budget would take)"
+          }
+        }
+      }
+    },
+    "/api/v1/manual-entries/{id}": {
+      "get": {
+        "operationId": "getManualEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The batch, its issues and warnings, the latest approval decision and, once approved, the lineage of its facts"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateManualEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "periodStart": {
+                    "type": "string"
+                  },
+                  "periodEnd": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 2000,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "rowNo": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false
+                        },
+                        "dimensionValues": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "default": {}
+                        },
+                        "periodDate": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "default": ""
+                        },
+                        "currency": {
+                          "type": "string",
+                          "maxLength": 10,
+                          "default": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "default": ""
+                        },
+                        "kpis": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "default": {}
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows saved as typed, with their issues; only while DRAFT"
+          }
+        }
+      }
+    },
+    "/api/v1/manual-entries/{id}/submit": {
+      "post": {
+        "operationId": "submitManualEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue"
+          }
+        }
+      }
+    },
+    "/api/v1/me/home": {
+      "get": {
+        "operationId": "getHome",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Waiting on me (approvals I can decide, mentions in open threads, alerts assigned to me, unmatched spend), then pacing per top-level budget, recents and saved views",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "waitingOnMe": {
+                      "type": "object",
+                      "properties": {
+                        "approvals": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "summary": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "entityType": {
+                                "type": "string"
+                              },
+                              "requestedAt": {
+                                "type": "string"
+                              },
+                              "dueAt": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "summary",
+                              "entityType",
+                              "requestedAt",
+                              "dueAt"
+                            ]
+                          }
+                        },
+                        "mentions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "commentId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "threadId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "anchorType": {
+                                "type": "string"
+                              },
+                              "anchorId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "body": {
+                                "type": "string"
+                              },
+                              "author": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "commentId",
+                              "threadId",
+                              "anchorType",
+                              "anchorId",
+                              "body",
+                              "author",
+                              "createdAt"
+                            ]
+                          }
+                        },
+                        "alerts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "envelopeName": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "openedAt": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "envelopeId",
+                              "envelopeName",
+                              "severity",
+                              "openedAt"
+                            ]
+                          }
+                        },
+                        "unmatched": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "approvals",
+                        "mentions",
+                        "alerts",
+                        "unmatched"
+                      ]
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "filter": {
+                            "type": "object",
+                            "properties": {
+                              "logic": {
+                                "type": "string",
+                                "enum": [
+                                  "and",
+                                  "or"
+                                ]
+                              },
+                              "not": {
+                                "type": "boolean"
+                              },
+                              "children": {
+                                "type": "array",
+                                "maxItems": 200,
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "field": {
+                                          "oneOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "dimension"
+                                                  ]
+                                                },
+                                                "key": {
+                                                  "type": "string",
+                                                  "minLength": 1
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "key"
+                                              ]
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "measure"
+                                                  ]
+                                                },
+                                                "key": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "budget",
+                                                    "actual",
+                                                    "projected",
+                                                    "remaining",
+                                                    "variance_abs",
+                                                    "variance_pct",
+                                                    "pace_index",
+                                                    "projected_close_pct",
+                                                    "spend_to_date_pct"
+                                                  ]
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "key"
+                                              ]
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "target"
+                                                  ]
+                                                },
+                                                "metric": {
+                                                  "type": "string",
+                                                  "minLength": 1
+                                                },
+                                                "field": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "value",
+                                                    "actual",
+                                                    "vs_target_pct",
+                                                    "exists"
+                                                  ]
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "metric",
+                                                "field"
+                                              ]
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "attr"
+                                                  ]
+                                                },
+                                                "key": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "status",
+                                                    "owner_id",
+                                                    "approver_id",
+                                                    "requested_by",
+                                                    "tag",
+                                                    "currency",
+                                                    "source_system",
+                                                    "has_open_thread",
+                                                    "mentions_user",
+                                                    "commented_by",
+                                                    "created_at",
+                                                    "updated_at",
+                                                    "start_date",
+                                                    "end_date",
+                                                    "name",
+                                                    "has_attachments",
+                                                    "alert_severity",
+                                                    "is_leaf",
+                                                    "experiment"
+                                                  ]
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "key"
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "op": {
+                                          "type": "string",
+                                          "enum": [
+                                            "eq",
+                                            "neq",
+                                            "in",
+                                            "nin",
+                                            "contains",
+                                            "starts_with",
+                                            "is_empty",
+                                            "not_empty",
+                                            "between",
+                                            "gt",
+                                            "gte",
+                                            "lt",
+                                            "lte",
+                                            "descends_from",
+                                            "within"
+                                          ]
+                                        },
+                                        "value": {
+                                          "oneOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "boolean"
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "oneOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "number"
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "oneOf": [
+                                                  {
+                                                    "oneOf": [
+                                                      {
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "number"
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "oneOf": [
+                                                      {
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "number"
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "unit": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "day",
+                                                    "week",
+                                                    "month",
+                                                    "quarter",
+                                                    "year"
+                                                  ]
+                                                },
+                                                "amount": {
+                                                  "type": "integer"
+                                                },
+                                                "anchor": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "today",
+                                                    "period_start",
+                                                    "period_end"
+                                                  ],
+                                                  "default": "today"
+                                                }
+                                              },
+                                              "required": [
+                                                "unit",
+                                                "amount"
+                                              ]
+                                            },
+                                            {}
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "op"
+                                      ]
+                                    },
+                                    {}
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "logic",
+                              "children"
+                            ]
+                          },
+                          "budget": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "actual": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "projected": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "paceIndex": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "spentPct": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "filter",
+                          "budget",
+                          "actual",
+                          "projected",
+                          "paceIndex",
+                          "spentPct"
+                        ]
+                      }
+                    },
+                    "recents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "entityType": {
+                            "type": "string"
+                          },
+                          "entityId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "entityType",
+                          "entityId",
+                          "title",
+                          "at"
+                        ]
+                      }
+                    },
+                    "pinnedViews": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "screen": {
+                            "type": "string"
+                          },
+                          "definition": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "screen",
+                          "definition"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "waitingOnMe",
+                    "scopes",
+                    "recents",
+                    "pinnedViews"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tours": {
+      "get": {
+        "operationId": "listTours",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "planner",
+                "approver",
+                "finance",
+                "data_admin"
+              ]
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's role tours not completed at their current version (all=true: every one, with `completed`)"
+          }
+        }
+      }
+    },
+    "/api/v1/tours/{id}/complete": {
+      "post": {
+        "operationId": "completeTour",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recorded for the caller (idempotent)"
+          }
+        }
+      }
+    },
+    "/api/v1/tours/{id}": {
+      "patch": {
+        "operationId": "updateTour",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "steps": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "pattern": "^\\/[a-z0-9/_-]*$"
+                        },
+                        "element": {
+                          "type": "string",
+                          "pattern": "^\\[data-tour=\"[a-z0-9-]+\"\\]$"
+                        },
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 600
+                        }
+                      },
+                      "required": [
+                        "element",
+                        "title",
+                        "description"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Org admins: a new version (a default becomes the workspace's copy)"
+          }
+        }
+      }
+    },
+    "/api/v1/workspace-templates": {
+      "get": {
+        "operationId": "listWorkspaceTemplates",
+        "responses": {
+          "200": {
+            "description": "Org admins: the built-in default_agency template and the org's"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces": {
+      "post": {
+        "operationId": "createWorkspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+                  },
+                  "templateId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "withDemoData": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "reportingCurrency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$",
+                    "default": "USD"
+                  },
+                  "fiscalYearStartMonth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 12,
+                    "exclusiveMaximum": false,
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "name",
+                  "templateId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/demo-data": {
+      "get": {
+        "operationId": "getDemoData",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Demo rows left: envelopes and targets"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/demo-data/purge": {
+      "post": {
+        "operationId": "purgeDemoData",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Every demo row deleted in one transaction; the template's configuration stays"
           }
         }
       }
@@ -6781,6 +9015,13 @@
                         ]
                       }
                     },
+                    "levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    },
                     "nextCursor": {
                       "type": "string",
                       "nullable": true
@@ -7064,6 +9305,348 @@
         "responses": {
           "200": {
             "description": "Removed; the audit row keeps what it was"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/periods": {
+      "get": {
+        "operationId": "listPeriods",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The fiscal calendar: years, quarters, months as defined and custom partitions, each with its closure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "type": "string"
+                      },
+                      "closure": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status"
+                        ],
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "key",
+                      "kind",
+                      "start",
+                      "end",
+                      "closure"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPeriod",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "year",
+                      "quarter",
+                      "month",
+                      "custom"
+                    ],
+                    "default": "custom"
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "key",
+                  "start",
+                  "end"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created; 409 when the key exists or it overlaps another period of its kind"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/periods/generate": {
+      "post": {
+        "operationId": "generatePeriods",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fiscalYear": {
+                    "type": "integer",
+                    "minimum": 2000,
+                    "exclusiveMinimum": false,
+                    "maximum": 2100,
+                    "exclusiveMaximum": false
+                  },
+                  "pattern": {
+                    "type": "string",
+                    "enum": [
+                      "calendar",
+                      "445",
+                      "454",
+                      "544"
+                    ],
+                    "default": "calendar"
+                  }
+                },
+                "required": [
+                  "fiscalYear"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ created, kept }: a fiscal year's periods in a pattern (calendar, 4-4-5, 4-5-4, 5-4-4); existing keys are kept"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/fiscal-year": {
+      "get": {
+        "operationId": "getFiscalYearStart",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ startMonth }: the month the fiscal year starts in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "startMonth": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "startMonth"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "setFiscalYearStart",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startMonth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 12,
+                    "exclusiveMaximum": false
+                  }
+                },
+                "required": [
+                  "startMonth"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The month the fiscal year starts in; computed periods follow, rows stay"
+          }
+        }
+      }
+    },
+    "/api/v1/periods/{id}": {
+      "patch": {
+        "operationId": "updatePeriod",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated; 409 when it has a closure (its dates are frozen in the report)"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePeriod",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted; 409 when it has a closure or budgets aligned to it"
           }
         }
       }
@@ -8521,11 +11104,29 @@
                 "next_90_days"
               ]
             }
+          },
+          {
+            "name": "rows",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Heatmap rows: a registry granularity key (default country)"
+          },
+          {
+            "name": "cols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Heatmap columns: another granularity key (default platform)"
           }
         ],
         "responses": {
           "200": {
-            "description": "The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness"
+            "description": "The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness"
           }
         }
       }
@@ -9888,7 +12489,7 @@
         ],
         "responses": {
           "200": {
-            "description": "{ groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed }"
+            "description": "{ groups: [{ type, count, more (count is a lower bound), hits: [{ id, title, path, status, facets, deepLink }] }], parsed }"
           }
         }
       }

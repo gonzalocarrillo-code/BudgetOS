@@ -15,9 +15,9 @@ export {
 } from "./filter-ast.js";
 export type { FilterGroupT } from "./filter-ast.js";
 
-export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow } from "./query.js";
-export { resolvePeriod } from "./period.js";
-export type { DateRange } from "./period.js";
+export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow, TreeRequest, TreeResponse } from "./query.js";
+export { fiscalYearPeriods, resolvePeriod } from "./period.js";
+export type { CalendarPeriod, DateRange, PeriodPattern } from "./period.js";
 export {
   CreateRuleInput,
   ListAlertsQuery,
@@ -33,7 +33,7 @@ export {
 export { RoleEnum, ScopeFilter, can, canInScope, eligibleApprover, matchesScope, permissions, readScopeFilter } from "./permissions.js";
 export type { Action, Role, ScopeTarget, ScopedRole } from "./permissions.js";
 
-export { AssignRoleInput, GroupsSyncInput } from "./access.js";
+export { AddPersonInput, AssignRoleInput, GroupsSyncInput, PeopleResponse } from "./access.js";
 
 export {
   BULK_MAX_ROWS,
@@ -55,6 +55,13 @@ export {
   SplitEnvelopeInput,
   UpdateEnvelopeInput,
   UpdatePhasingInput,
+  AllocationMode,
+  FamilyChildInput,
+  FamilyInput,
+  FamilyMember,
+  FamilyPlan,
+  FamilySum,
+  PercentString,
 } from "./envelopes.js";
 
 export {
@@ -80,7 +87,7 @@ export {
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
 
-export { CloseInput, ClosureStatus, ClosureView, FiscalPeriodKey, RestateInput, RunSourceInput, fiscalPeriodKind } from "./closures.js";
+export { CloseInput, ClosureStatus, ClosureView, CreatePeriodInput, FiscalPeriodKey, GeneratePeriodsInput, PeriodKind, PeriodRow, RestateInput, RunSourceInput, UpdatePeriodInput, fiscalPeriodKind } from "./closures.js";
 
 export { CreateExportInput, EXPORT_MAX_ROWS, ExportJobView, ExportKind, ExportRequested, ExportStatus } from "./exports.js";
 
@@ -172,3 +179,21 @@ export {
   UpdateExperimentInput,
   criterionMet,
 } from "./experiments.js";
+
+export {
+  CreateManualEntryInput,
+  ListManualEntriesQuery,
+  MANUAL_ENTRY_MAX_ROWS,
+  ManualEntryIssue,
+  ManualEntryRowInput,
+  ManualEntryStatus,
+  ManualEntryTotals,
+  UpdateManualEntryInput,
+  issueSummary,
+} from "./manual-entry.js";
+
+export { CompleteTourInput, CreateWorkspaceInput, HomeResponse, HomeScope, ListToursQuery, TemplateSavedView, TourRole, TourStep, UpdateTourInput, tourRolesFor } from "./home.js";
+export { SETTINGS, settingById } from "./settings.js";
+export type { SettingEntry } from "./settings.js";
+export { elapsedFraction, groupRatios } from "./rollup-measures.js";
+export type { GroupSums } from "./rollup-measures.js";

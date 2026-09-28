@@ -1,4 +1,5 @@
 import { TimelineResponse, type FilterGroupT, type PeriodSpec, type TimelineZoom } from "@budget/domain";
+import { useExplorerLabels } from "../explorer/labels.js";
 import { formatMoney } from "@budget/grid";
 import { BudgetTimeline, type BudgetTimelineLabels } from "@budget/timeline";
 import { t } from "@budget/ui/i18n";
@@ -68,8 +69,12 @@ export function TimelineView({
 }): ReactElement {
   const today = new Date().toISOString().slice(0, 10);
   const { data, isPending, error, isFetching } = useQuery(timelineQuery(ws, search));
+  const explorer = useExplorerLabels(ws);
+  const levels = data?.levels;
   const labels: BudgetTimelineLabels = useMemo(
     () => ({
+      // A group with no value: the account at the first level, "No <granularity>" deeper (feedback 2).
+      noneAt: (level: number) => explorer.none(levels?.[level] ?? "", level),
       name: t("timeline.col.name"),
       budget: t("timeline.col.budget"),
       spent: t("timeline.col.spent"),
@@ -79,7 +84,7 @@ export function TimelineView({
       none: t("explorer.none"),
       marker: { approval: t("timeline.marker.approval"), alert: t("timeline.marker.alert"), closure: t("timeline.marker.closure"), comment: t("timeline.marker.comment"), version: t("timeline.marker.version") },
     }),
-    [],
+    [explorer, levels],
   );
 
   if (error) return <p role="alert" className="text-sm text-destructive">{t("explorer.error", { message: error.message })}</p>;

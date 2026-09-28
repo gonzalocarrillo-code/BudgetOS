@@ -1,6 +1,6 @@
-import { DomainError, can, parseSearch, type ScopeFilter } from "@budget/domain";
+import { DomainError, can, parseSearch, settingById, type ScopeFilter } from "@budget/domain";
 import { withTenant } from "@budget/db";
-import { SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
+import { SEARCH_CANDIDATES, SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
@@ -32,6 +32,8 @@ export function deepLink(workspaceId: string, type: string, id: string, title: s
       return `${w}/threads?comment=${id}`;
     case "experiment":
       return `${w}/experiments/${id}`;
+    case "setting":
+      return `${w}${settingById(id)?.path ?? "/admin/registry"}`;
     case "tag":
       return `${w}/budgets?filter=${encodeURIComponent(JSON.stringify({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: title }] }))}`;
     default:
@@ -39,7 +41,7 @@ export function deepLink(workspaceId: string, type: string, id: string, title: s
   }
 }
 
-/** GET /workspaces/:ws/search?q&types&limit: top hits per type with per-type counts. */
+/** GET /workspaces/:ws/search?q&types&limit: top hits per type with per-type counts (`more`: at least that many, T-034). */
 export async function search(prisma: PrismaClient, auth: AuthContext, query: { q?: string | undefined; types?: string | undefined; limit?: string | undefined }) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const q = (query.q ?? "").slice(0, 500);
@@ -49,13 +51,17 @@ export async function search(prisma: PrismaClient, auth: AuthContext, query: { q
   if (query.types) parsed.types.push(...query.types.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean));
   const c = compileSearch(parsed, { workspaceId, userId: auth.user.id, scopes: readScopes(auth), limitPerType: limit });
   const rows = await withTenant(prisma, auth.ctx, (tx) => tx.$queryRawUnsafe<Hit[]>(c.sql, ...c.values));
-  const groups = new Map<string, { type: string; count: number; hits: unknown[] }>();
+  const groups = new Map<string, { type: string; count: number; more: boolean; hits: unknown[] }>();
   for (const r of rows) {
-    const g = groups.get(r.entity_type) ?? { type: r.entity_type, count: Number(r.type_count), hits: [] };
+    const g = groups.get(r.entity_type) ?? { type: r.entity_type, count: Math.min(Number(r.type_count), SEARCH_CANDIDATES), more: Number(r.type_count) > SEARCH_CANDIDATES, hits: [] };
     g.hits.push({ id: r.entity_id, title: r.title, path: r.path, status: r.status, facets: r.numeric_facets, deepLink: deepLink(workspaceId, r.entity_type, r.entity_id, r.title) });
     groups.set(r.entity_type, g);
   }
-  const order = SEARCH_TYPES as readonly string[];
+  // Settings are listed last, except when the text names one ("pacing rules", "match keys"): then
+  // they lead, so Enter in ⌘K opens that admin page (T-041).
+  const text = parsed.text.trim().toLowerCase();
+  const namesSetting = text.length >= 2 && (groups.get("setting")?.hits as Array<{ title: string }> | undefined)?.some((h) => h.title.toLowerCase().startsWith(text));
+  const order = (namesSetting ? ["setting", ...SEARCH_TYPES] : SEARCH_TYPES) as readonly string[];
   return { groups: [...groups.values()].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type)), parsed: { ...parsed, types: c.types } };
 }
 

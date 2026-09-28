@@ -79,6 +79,7 @@ export async function listApprovals(prisma: PrismaClient, auth: AuthContext, que
             ? await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { versionNo: true, amount: true } })
             : null;
         const targetVersion = r.entityType === "target_version" ? await tx.targetVersion.findUnique({ where: { id: r.entityId }, select: { versionNo: true, targetId: true, value: true } }) : null;
+        const batch = r.entityType === "manual_entry" ? await tx.manualEntryBatch.findUnique({ where: { id: r.entityId }, select: { rows: true, totals: true } }) : null;
         out.push({
           id: r.id,
           entityType: r.entityType,
@@ -87,10 +88,11 @@ export async function listApprovals(prisma: PrismaClient, auth: AuthContext, que
           envelopeId: r.entityType === "envelope_version" ? (targets.versions[0]?.envelopeId ?? null) : null,
           versionId: r.entityType === "envelope_version" ? r.entityId : null,
           versionNo: single?.versionNo ?? targetVersion?.versionNo ?? null,
-          amount: single?.amount.toFixed(2) ?? null,
+          amount: single?.amount.toFixed(2) ?? ((batch?.totals as { amount?: string | null } | undefined)?.amount ?? null),
+          manualEntryId: r.entityType === "manual_entry" ? r.entityId : null,
           targetId: targetVersion?.targetId ?? null,
           targetValue: targetVersion?.value.toString() ?? null,
-          rows: r.entityType === "target_version" ? 1 : targets.versions.length,
+          rows: r.entityType === "target_version" ? 1 : batch ? (Array.isArray(batch.rows) ? batch.rows.length : 0) : targets.versions.length,
           currentStep: r.currentStep,
           policyId: r.policyId,
           policyVersion: r.policyVersion,
@@ -152,6 +154,7 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
       envelope: r.entityType === "envelope_version" && first ? { id: first.envelope.id, name: first.envelope.name, currency: first.envelope.currency, dimensionValues: first.envelope.dimensionValues } : null,
       diff: r.entityType === "envelope_version" && rows[0] ? { ...rows[0] } : null,
       target: r.entityType === "target_version" ? await targetDiff(tx, r.entityId) : null,
+      manualEntry: r.entityType === "manual_entry" ? await manualEntrySummary(tx, r.entityId) : null,
       rows,
       /** Display names of the requester and every decider (each decision is by one account). */
       people: Object.fromEntries(people),
@@ -169,6 +172,13 @@ export async function getApproval(prisma: PrismaClient, auth: AuthContext, rawId
       })),
     };
   });
+}
+
+/** T-039: what a manual entry request would load — the batch's channel, period, totals and rows. */
+async function manualEntrySummary(tx: Tx, batchId: string) {
+  const b = await tx.manualEntryBatch.findUnique({ where: { id: batchId } });
+  if (b === null) return null;
+  return { id: b.id, channel: b.channel, periodStart: b.periodStart.toISOString().slice(0, 10), periodEnd: b.periodEnd.toISOString().slice(0, 10), status: b.status, totals: b.totals, rows: b.rows, createdBy: b.createdBy };
 }
 
 async function userNames(tx: Tx, ids: string[]): Promise<Map<string, string>> {

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_EXPERIMENT, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -34,6 +34,8 @@ import { addReaction } from "../modules/threads/commands/reactions.js";
 import { addComment, createThread, resolveThread } from "../modules/threads/commands/threads.js";
 import { createNamingTemplate } from "../modules/naming/naming.js";
 import { createExperiment, linkEnvelope, transitionExperiment } from "../modules/experiments/commands/experiments.js";
+import { createManualEntry } from "../modules/manual-entry/commands/manual-entry.js";
+import { syncDefaultTours } from "../modules/tours/tours.js";
 import { seedDefaultRegistry } from "../modules/registry/commands/seed-registry.js";
 import { uploadAsset } from "../modules/registry/commands/upload-asset.js";
 import { createTarget } from "../modules/targets/commands/create-target.js";
@@ -331,6 +333,14 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   await transitionExperiment(app, auth("planner"), experiment.id, "start");
   log(`golden: experiment '${x.name}' running`);
 
+  // ---- T-039: a DRAFT manual entry batch (TV results), through the command. ----
+  const m = GOLDEN_MANUAL_ENTRY;
+  await createManualEntry(app, auth(m.enteredBy), { channel: m.channel, periodStart: m.periodStart, periodEnd: m.periodEnd, rows: m.rows.map((r) => ({ ...r, dimensionValues: { ...r.dimensionValues }, kpis: { ...r.kpis } })) });
+  log(`golden: manual entry batch (${m.channel}, ${m.rows.length} rows) in draft`);
+
+  // ---- T-040: the built-in tours (one per role; the golden workspace uses the defaults). ----
+  await syncDefaultTours(app, auth("orgAdmin"));
+
   // ---- T-020: full search re-index (facets for the pacing day, so the documents are deterministic). ----
   const indexed = await reindexWorkspace(app, { workspaceId, orgId }, GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1]);
   log(`golden: search indexed ${Object.values(indexed).reduce((n, c) => n + c, 0)} documents`);
@@ -338,6 +348,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   // ---- T-022: roll-up trees for every hierarchy template, FY2026, as of the pacing day. ----
   const trees = await rebuildWorkspace(app, { workspaceId, orgId }, { today: GOLDEN_PACING.days[GOLDEN_PACING.days.length - 1] as string, periods: [GOLDEN_FY] });
   log(`golden: rollup cache built (${Object.values(trees).reduce((n, c) => n + c, 0)} nodes)`);
+  // Every event so far is applied by the re-index and the rebuild above: mark it delivered, so a
+  // local runner does not replay it (ADR-038). What follows is delivered as usual.
+  await markOutboxDelivered(owner, workspaceId);
 
   // ---- T-023: Finance exports the live LATAM leaves; the worker writes the CSV to the seed's store. ----
   const exportJob = await createExport(app, auth(GOLDEN_EXPORT.persona), {

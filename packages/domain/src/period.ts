@@ -25,9 +25,37 @@ function fiscalYearStart(today: string, startMonth: number): Date {
   return utc(m >= startMonth ? y : y - 1, startMonth - 1, 1);
 }
 
-export function resolvePeriod(spec: PeriodSpec, today: string, fiscalYearStartMonth = 1): DateRange {
+/**
+ * A workspace's own periods (the `fiscal_period` rows, product feedback 7 / ADR-041): its quarters
+ * (4-4-5 or any boundaries), months, years and custom partitions ("Black Friday 2026").
+ */
+export interface CalendarPeriod {
+  key: string;
+  kind: string; // month | quarter | year | custom
+  start: string;
+  end: string;
+}
+
+/**
+ * With a `calendar`, the workspace's own periods win: a fiscal key resolves to its row, and "this
+ * month / quarter / year" to the row of that kind that contains `today`. Without one (or when no
+ * row applies), the computed rule: calendar months, quarters of three months from the fiscal year
+ * start.
+ */
+export function resolvePeriod(spec: PeriodSpec, today: string, fiscalYearStartMonth = 1, calendar: readonly CalendarPeriod[] = []): DateRange {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error(`today must be yyyy-MM-dd, got ${today}`);
   if (!Number.isInteger(fiscalYearStartMonth) || fiscalYearStartMonth < 1 || fiscalYearStartMonth > 12) throw new Error("fiscalYearStartMonth must be 1..12");
+  if (calendar.length) {
+    if (spec.kind === "fiscal") {
+      const row = calendar.find((c) => c.key === spec.key);
+      if (row) return { start: row.start, end: row.end };
+    }
+    if (spec.kind === "relative" && (spec.preset === "current_month" || spec.preset === "current_quarter" || spec.preset === "current_year" || spec.preset === "ytd")) {
+      const kind = spec.preset === "current_month" ? "month" : spec.preset === "current_quarter" ? "quarter" : "year";
+      const row = calendar.find((c) => c.kind === kind && c.start <= today && c.end >= today);
+      if (row) return spec.preset === "ytd" ? { start: row.start, end: today } : { start: row.start, end: row.end };
+    }
+  }
   const fyStart = fiscalYearStart(today, fiscalYearStartMonth);
   switch (spec.kind) {
     case "range":
@@ -73,4 +101,45 @@ export function resolvePeriod(spec: PeriodSpec, today: string, fiscalYearStartMo
       throw new Error(`unknown period preset ${String(spec.preset)}`);
     }
   }
+}
+
+/**
+ * The fiscal periods of one year (ADR-041), keyed as `resolvePeriod` reads them: `FY2027`,
+ * `2027-Q1`…`2027-Q4` (the year the fiscal year starts in), and months — calendar months
+ * (`2027-07`) for the `calendar` pattern, fiscal months `FY2027-P01`…`P12` for the week-based
+ * 4-4-5 / 4-5-4 / 5-4-4 patterns (13-week quarters from the first day of the start month; the last
+ * quarter runs to the day before the next fiscal year).
+ */
+export type PeriodPattern = "calendar" | "445" | "454" | "544";
+
+export function fiscalYearPeriods(fiscalYear: number, startMonth: number, pattern: PeriodPattern): CalendarPeriod[] {
+  const start = utc(fiscalYear, startMonth - 1, 1);
+  const end = utc(fiscalYear + 1, startMonth - 1, 0);
+  const out: CalendarPeriod[] = [{ key: `FY${fiscalYear}`, kind: "year", start: iso(start), end: iso(end) }];
+  if (pattern === "calendar") {
+    for (let q = 0; q < 4; q += 1) {
+      const qs = utc(fiscalYear, startMonth - 1 + q * 3, 1);
+      out.push({ key: `${fiscalYear}-Q${q + 1}`, kind: "quarter", start: iso(qs), end: iso(utc(qs.getUTCFullYear(), qs.getUTCMonth() + 3, 0)) });
+    }
+    for (let m = 0; m < 12; m += 1) {
+      const ms = utc(fiscalYear, startMonth - 1 + m, 1);
+      out.push({ key: `${ms.getUTCFullYear()}-${String(ms.getUTCMonth() + 1).padStart(2, "0")}`, kind: "month", start: iso(ms), end: iso(utc(ms.getUTCFullYear(), ms.getUTCMonth() + 1, 0)) });
+    }
+    return out;
+  }
+  const weeks = pattern.split("").map(Number); // weeks per month within a quarter
+  let cursor = iso(start);
+  let month = 1;
+  for (let q = 0; q < 4; q += 1) {
+    const qStart = cursor;
+    for (const [i, w] of weeks.entries()) {
+      const last = q === 3 && i === weeks.length - 1;
+      const mEnd = last ? iso(end) : addDays(cursor, w * 7 - 1);
+      out.push({ key: `FY${fiscalYear}-P${String(month).padStart(2, "0")}`, kind: "month", start: cursor, end: mEnd });
+      cursor = addDays(mEnd, 1);
+      month += 1;
+    }
+    out.push({ key: `${fiscalYear}-Q${q + 1}`, kind: "quarter", start: qStart, end: addDays(cursor, -1) });
+  }
+  return out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.kind === "year" ? -1 : b.kind === "year" ? 1 : a.kind === "quarter" ? -1 : 1));
 }

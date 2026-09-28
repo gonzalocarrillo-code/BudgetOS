@@ -25,6 +25,8 @@ export interface BudgetTimelineLabels {
   asOf: string;
   inherited: string;
   none: string;
+  /** The label of a group with no value at `level` (0 = first); falls back to `none`. */
+  noneAt?: (level: number) => string;
   marker: Record<TimelineMarker["kind"], string>;
 }
 
@@ -78,7 +80,7 @@ function BarTemplate({ data }: { data: ITask }): ReactElement {
     <div className={`bt-bar bt-${bar.kind}`} data-bar-key={bar.key} data-pace={bar.paceState} data-kind={bar.kind}>
       <span className="bt-fill" style={style} />
       {bar.projectedPct !== undefined && bar.projectedPct > 0 ? <span className="bt-projected" style={{ left: `min(${pct(bar.projectedPct)}, calc(100% - 2px))` }} title={pct(bar.projectedPct)} /> : null}
-      <span className="bt-bar-label">{bar.kind === "group" && bar.name === "∅" ? ctx.labels.none : bar.kind === "experiment" && bar.status ? `${bar.name} · ${bar.status.toLowerCase()}` : bar.name}</span>
+      <span className="bt-bar-label">{bar.kind === "group" && bar.name === "∅" ? (ctx.labels.noneAt?.(bar.level) ?? ctx.labels.none) : bar.kind === "experiment" && bar.status ? `${bar.name} · ${bar.status.toLowerCase()}` : bar.name}</span>
     </div>
   );
 }
@@ -90,7 +92,7 @@ function NameCell({ row }: { row: ITask }): ReactElement {
     bar.kind === "target"
       ? `${ctx.metricLabel(bar.metric ?? "")} ${comparatorSign[bar.comparator ?? ""] ?? ""} ${bar.value ? Number(bar.value).toString() : ""}${bar.inheritedFrom ? ` · ${ctx.labels.inherited}` : ""}`
       : bar.name === "∅"
-        ? ctx.labels.none
+        ? (ctx.labels.noneAt?.(bar.level) ?? ctx.labels.none)
         : bar.name;
   return (
     <span className={`bt-cell-name bt-cell-${bar.kind}`} title={text} data-row-key={bar.key}>

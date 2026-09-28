@@ -60,6 +60,8 @@ export type TimelinePeriod = z.infer<typeof TimelinePeriod>;
 
 export const TimelineResponse = z.object({
   bars: z.array(TimelineBar),
+  /** The dimension key of each group level (level 0 first), for labelling groups with no value. */
+  levels: z.array(z.string()).default([]),
   nextCursor: z.string().nullable(),
   calendar: z.object({
     fiscalYearStartMonth: z.number().int().min(1).max(12),

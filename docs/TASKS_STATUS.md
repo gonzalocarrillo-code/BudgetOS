@@ -3,7 +3,7 @@
 Source of truth for scope: `BUDGET_OS_BUILD_SPEC.md` §22 (version 0.5).
 Source of truth for order and gates: `docs/LOCAL_BUILD_PHASES.md`.
 
-Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-033, T-036, T-037, T-038, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
+Repo on 2026-09-26: T-001 through T-007, T-009, T-010, T-011, T-012, T-013, T-014, T-015, T-019, T-022, T-027, T-028, T-029, T-030, T-031, T-031b, T-033, T-036, T-037, T-038, T-039, T-040, T-041, T-026a, T-026b, and T-026c are done. T-016, T-017, T-018, T-020, T-021, T-023, T-024, T-025, T-026 and T-032 are `blocked` on their cloud or load clauses with the local gates green. Later tasks are `pending`.
 
 Bench maintenance (`task/bench-macos`, 2026-09-23, not a §22 task): `pnpm bench` runs on macOS through `CHROME_PATH` or the default Chrome location. turbo runs the grid, timeline and query-planner benches one after another. ADR-002 `## Notes` has the details.
 
@@ -54,13 +54,13 @@ A task is `done` only when its §22 "Done when" test is green and the phase gate
 | T-031b | 16 | T-014, T-027 | done | plan 0.6: Playwright add child, move under and split from the tree / drawer, through preview and approval — green (`web/e2e/structure.spec.ts`: add child → budget owner → approver; move refused over cap then to top level; split auto-approved, source archived); `POST /envelopes/structure/preview` (real command, rolled back), `POST /envelopes/:id/children`, `structure` on `GET /envelopes/:id`, ADR-027 | — |
 | T-032 | 16 | T-017, T-018, T-024, T-026 | blocked | each screen's acceptance test — green locally (`web/e2e/alerts.spec.ts`, `rules.spec.ts`, `closures.spec.ts`, `sources.spec.ts`: CSV → mapping wizard → source → finished run with coverage; unmatched assigned); `POST /workspaces/:ws/mapping-suggestions`, local ingest runner, `CLOSURE_SINK=memory` for local stacks, ADR-028 | live source connectors (Snowflake / Sheets / BigQuery need Secret Manager); BigQuery closure sink |
 | T-033 | 16 | T-018, T-026 | done | overview < 1.5 s on small golden — green (`web/e2e/overview.spec.ts`: every widget ~0.85 s for an unfetched period, route already loaded; `overview.test.ts`: heatmap = live-leaf totals, endpoint < 1.5 s); `GET /workspaces/:ws/overview`, ADR-029 | — |
-| T-034 | 17 | T-022, T-027, T-033 | blocked | Appendix C targets at 100k leaves in the CI load job — job and generator in place (`scripts/load-test.ts`, `.github/workflows/load.yml`: 100,553 leaves, 20 dims, 5 templates, ~31M facts, ~1M comments), ADR-030; small scale: search p95 70 ms, edit 25 ms, search lag 0.2 s pass; grid 461–622 ms (projected measure), roll-up lag 12.6 s fail; full roll-up build > 18 min at 11.8k leaves | red, merged as recorded (2026-09-26): the nightly `load` job tracks it (first spec-scale run: actions run 36250221735); grid needs the planner projection speed-up, roll-up needs a faster refresh |
+| T-034 | 17 | T-022, T-027, T-033 | blocked | Appendix C targets at 100k leaves in the CI load job — job and generator in place (`scripts/load-test.ts`, `.github/workflows/load.yml`: 100,553 leaves, 20 dims, 5 templates, ~31M facts, ~1M comments), ADR-030; small scale: search p95 70 ms, edit 25 ms, search lag 0.2 s pass; grid 461–622 ms (projected measure), roll-up lag 12.6 s fail; full roll-up build > 18 min at 11.8k leaves | red, merged as recorded (2026-09-26): the nightly `load` job tracks it (first spec-scale run: actions run 36250221735); grid needs the planner projection speed-up, roll-up needs a faster refresh. Phase 19 re-run (2026-09-27, main `10da495`, actions run 36292069357): red, the same profile as run 36250221735, so no regression from phase 18 |
 | T-036 | 18 | T-017, T-034 | done | preview renders 5 samples; `match_method` on 100% of matched golden facts — green (`naming.test.ts` preview of 5, `seed/golden.test.ts` 100% of matched facts, `match-order.test.ts` external_id / match_key / parse pattern / tuple, `byMethod` on the run summary, `web/e2e/naming.spec.ts`), ADR-031 | — |
 | T-037 | 18 | T-026b, T-015, T-026 | done | 5k bars < 500 ms p95; targets as lanes with the effective target per date; as-of matches `/query`; no `@svar/*` PRO — green (`bench/render-budget.tsx` BudgetTimeline 5k bars 100.8 ms p95 with an absolute < 500 ms assertion, `query/timeline.test.ts` on the golden: group totals = /query, as-of envelope by envelope = /query?asOf, annual inherited CPA + Q4 override lanes and `effective` ranges, markers, closures, lz-string filter, paging; `domain/timeline.test.ts`; `timeline/no-pro.test.ts` eslint + license-check names; `web/e2e/timeline.spec.ts` drawer, lanes, scrubber = /query?asOf), ADR-032 | — |
 | T-038 | 18 | T-015, T-019, T-037 | done | weighted CPA test vs control; conclude requires a decision and posts a thread comment — green (`experiments/experiments.test.ts` on the golden: read-out = `golden.assertions.ts` = planner `compileTotals` per scope, not the mean of leaf CPAs; conclude 422 without / short decision, one thread + decision comment per linked envelope, in the Decision Timeline, `experiment.concluded` audit, outbox; lifecycle 409s; `experiment` tag, `experiment:running` search, timeline lanes, `experiment` filter attr; `web/e2e/experiments.spec.ts`), ADR-033 | — |
-| T-039 | 18 | T-011, T-017, T-026c | pending | approved batch in `/query` with `source_system='manual'`; rejected batch reopens as draft | — |
-| T-040 | 18 | T-026, T-033 | pending | template workspace usable < 60 s; four role tours in Playwright; eslint fails a bare `disabled` | — |
-| T-041 | 18 | T-020, T-040 | pending | setting name in ⌘K opens the admin page | — |
+| T-039 | 18 | T-011, T-017, T-026c | done | approved batch appears in `/query` actuals with `source_system='manual'` and lineage; rejected batch reopens as draft — green (`manual-entry/manual-entry.test.ts` on the golden: registry validation with reasons, submit refused while a row has an issue, Finance approval → `/query` actual + 1000.00, spend and KPI facts `source_system='manual'` / `source_run_id` = batch / `match_method='tuple'`, lineage entered by / approved by, `facts.loaded`; rejection → DRAFT with the decision comment, no facts, resubmit; closed-period rows refused; `web/e2e/manual-entry.spec.ts` paste → issues → reason-bearing disabled submit → approval → actuals), ADR-034 | — |
+| T-040 | 18 | T-026, T-033 | done | new workspace from the template usable < 60 s; each role's tour end-to-end in Playwright; eslint rule fails a bare `disabled` — green (`home/home.test.ts`: `POST /workspaces` from `default_agency` with demo data in ~0.5 s, registry / policies / rules / view / tours there, `/query` budget = the demo budget, purge in one call; tours per role, completion, org-admin edit = new version; home blocks in order, scope totals = `/query`; `web/e2e/home-tours.spec.ts`: planner, approver, finance and data_admin tours end-to-end, home, workspace from the template in the UI + demo purge; `ui/no-bare-disabled.test.ts`), ADR-035 | — |
+| T-041 | 18 | T-020, T-040 | done | setting name in ⌘K opens the admin page — green (`search/search.test.ts`: 19 catalog documents, "pacing rules", "approval pol", "match keys", "metric library", "guided tours" lead with the right deep link, keywords find a setting for a scoped role, `workspace.created` indexes the catalog; `web/e2e/settings-search.spec.ts`: ⌘K → name → Enter opens Pacing rules, Registry on the Metrics tab and Naming on Match keys; a keyword finds Data sources for a planner), ADR-036 | — |
 | T-008 | 20 | T-001 | pending | — | GCP project, Terraform state, WIF, IAP, Identity Platform. Done when `/healthz` is reachable behind IAP in dev |
 | T-035 | 21 | T-034, T-041, phase 20 | pending | — | plan §16 questions 1, 2, 4, 5, 6, 8, 9, 15; human pen test; staging → prod |
 
@@ -176,3 +176,145 @@ Phase 2 (plan epics 2.1–2.7) and Phase 3 (epics 3.1–3.2) have no §22 tasks.
 - **Scope of a side:** its filter OR the envelopes linked in that role, restricted to live leaves, for the experiment's window. The new FilterGroup attribute `experiment` (a status, an id, or `<id>:TEST|CONTROL`) expresses it.
 - **Concluding** needs at least one linked envelope, so the decision lands in their Decision Timeline. It posts one thread per linked envelope.
 - **Absolute criterion:** the reference is the criterion's `value`, and the control side is not read.
+
+## T-039 assumptions
+
+- **Default policy:** "Manual results" (priority 0, `entityType: manual_entry`) needs one FINANCE approval. §26.2's "finance or budget_owner" needs a two-role step, which chain steps do not have (ADR-034).
+- **Permissions:** entering, saving and submitting need `envelope.edit_draft`, and submit checks the enterer's scope covers every row. Reading needs `envelope.read`.
+- **Rows are saved as typed:** each save returns issues (blocking) and warnings (no budget would take the row; it waits in the unmatched queue).
+- **Offline channels:** the default registry gains `tv`, `ooh`, `dooh`, `print`, `radio` and `sponsorship`. Channel colours come from a palette by position, because `dimension_value` has no colour field.
+- **Lineage** is `manual_entry_fact`: one row per fact, keyed by batch, row hash and date, with `entered_by` and `approved_by` (the last approver).
+- **Golden:** one DRAFT TV batch, so no golden fact totals move.
+
+## T-040 assumptions
+
+- **Home** is `/w/:ws/home`, first in the nav. The Overview stays at `/`. Scopes show % spent (product owner).
+- **Tour steps** carry an optional `path`, so a tour can span pages. Defaults per role are written on first use by an org admin.
+- **Org-level routes:** `org.admin` is a new route permission, for `GET /workspace-templates`, `POST /workspaces` and `PATCH /tours/:id`.
+- **Demo data** is a small generator, not the full golden seed: 9 budgets, 3 CPA targets, and facts to date. `demo = true` is set on envelope, envelope_version, target, target_version, spend_fact and kpi_fact.
+- **Purge:** `POST /workspaces/:ws/demo-data/purge` needs `user.manage`.
+- **`budget/no-bare-disabled`:** a native element may state its reason in `title`.
+
+## T-041 assumptions
+
+- **Catalog in code:** `SETTINGS` in `@budget/domain`, with fixed ids. These are pages, not tenant data.
+- **Visible to every role**, as the admin nav is. Each page enforces its own permissions.
+- **Ordering:** settings lead only when a title starts with the typed text.
+- **Existing workspaces** get settings on their next re-index.
+- **Palette fix:** a single word is searched unless it starts a qualifier key; a new result set highlights its first hit.
+
+## T-034 phase 19 re-run (2026-09-27)
+
+This is the Appendix C job re-run on main `10da495` (after phase 18), at the same scale. Actions run: 36292069357. The dataset was not changed.
+
+**Scale:**
+
+- 100,746 leaves and 172,783 envelopes;
+- 24.4M spend facts and 7.0M KPI facts;
+- 1.0M comments;
+- 20 dimensions and 5 templates;
+- a 20 GB database.
+
+**Results:**
+
+| measure | phase 19 | phase 17 (run 36250221735) | target | |
+|---|---|---|---|---|
+| gridQueryP95Ms | — (500: transaction > 15 s timeout) | — (same) | < 400 | FAIL |
+| searchP95Ms | — (500: transaction > 15 s timeout) | — (same) | < 150 | FAIL |
+| inlineEditP95Ms | 27 | 27 | < 300 | pass |
+| bulkCommit10kMs | 5791 | 5414 | < 10000 | pass |
+| rollupLagP95Ms | — (handler transaction expired, ~122 s) | — (same) | < 5000 | FAIL |
+| searchLagP95Ms | — (handler transaction expired, ~122 s) | — (same) | < 5000 | FAIL |
+
+**Phases:**
+
+| phase | phase 19 | phase 17 |
+|---|---|---|
+| scale (bulk SQL) | 19.7 min | 18.9 min |
+| search index | 48.3 min | 40.8 min |
+| 10k bulk commit | 8.7 s | 8.8 s |
+
+**Read:** no regression from T-036 to T-041. The phase gate ("green on the post-phase-18 code") stays red on the same four measures.
+
+**The fix is outside phase 19:**
+
+- The grid query and search at 1M+ documents exceed the 15 s interactive transaction. They need the planner projection speed-up and a look at search query plans at scale.
+- The roll-up and search-lag handlers need a faster, incremental refresh.
+
+## T-034 speed-up run (2026-09-27, PR #51)
+
+This is the spec-scale job on the speed-up branch: `8cbf40c`, actions run 36310988660. The dataset is the same as phase 19: 100,746 leaves and 24.4M spend facts. Every measurement completed. The job then hung in its final cleanup (deleting 24M facts ran into the `spend_month` delete trigger) and was cancelled. That is fixed in `32e3f83`: a 4.7M-row delete now takes 25 s instead of more than 85 minutes. Run 36330340457 re-runs the job on the fix.
+
+| measure | phase 19 (36292069357) | speed-up (36310988660) | target | |
+|---|---|---|---|---|
+| tree levels via `/tree` (root, country, deep) | 500 (timeout) | 32, 20, 14 ms | < 400 | pass |
+| leaf page (`/query`) | 500 | 985 ms | < 400 | FAIL |
+| pivot country × platform (`/query`) | 500 | 9,463 ms | < 400 | FAIL |
+| gridQueryP95Ms (all scenarios) | — | 9,195 | < 400 | FAIL (the pivot) |
+| searchP95Ms | 500 | 500 (timeout) | < 150 | FAIL |
+| inlineEditP95Ms | 27 | 30 | < 300 | pass |
+| bulkCommit10kMs | 5,791 | 5,944 | < 10,000 | pass |
+| rollupLagP95Ms | expired | expired | < 5,000 | FAIL |
+| searchLagP95Ms | expired | expired | < 5,000 | FAIL |
+
+**Phases:**
+
+| phase | this run |
+|---|---|
+| scale | 21.3 min |
+| search index | 33.7 min |
+| full roll-up rebuild, 5 templates × 2 periods | **5.9 min** (phase 19: did not finish within its 15 min bound) |
+
+**Still to do:**
+
+- **The pivot and large filtered pages** still compute every leaf on read. They need a pre-aggregated cube or a set-based planner path.
+- **Search** at about 1M documents still exceeds 15 s.
+- **Roll-up lag:** one change's refresh (5 templates × 2 periods, run for each of the change's `budget.changed` events) exceeds the 15 s handler transaction at spec scale. It measured 8.1 s p95 at 19.5k leaves. The next steps are skipping the draft events, which change no cached measure, and coalescing events for the same envelope.
+
+## Product feedback (product owner, 2026-09-26)
+
+Not spec tasks. They are built one PR each, in this order, after phase 19. Phase 20 waits for GCP access.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Parent budgets open the right-hand drawer from their group row, on every level and hierarchy | done: `nodeEnvelopeId` on group rows; the marker expands, the name opens |
+| 2 | The "(none)" root shows the account name (e.g. Golden) | done: a first-level group with no value is the workspace; deeper, pivot and timeline groups read "No <granularity>" |
+| 3 | "Send for approval" is easy to find | done: there was no way to submit a budget draft from Budgets; now a card at the top of the drawer (draft → Send for approval; waiting → open the request or withdraw) and the same action in the notice after an inline edit |
+| 4 | Pace in the Budgets tree | done: the cell showed the raw ratio (`0.99032675996…`) with its bar drawn over it; now two decimals like the totals row, with the bar left of the value |
+| 5 | Edit the budget family top-down: children as % of the parent (auto-update) or manual (flagged when they do not add up) | done: family card in the drawer, the family editor (% or amount per child, live results down the tree, sum flag), one bulk change for approval; ADR-039 |
+| 6 | Roles that set budgets without approval | done: policies match "who is asking" (roles or people); the Approval policies admin page (was a placeholder); the drawer says "Apply now" when a draft needs no approval; ADR-040; the Roles admin page (people and groups, scoped roles, add a person by email) |
+| 7 | Dynamic quarters, partitions, views; end and reopen a quarter | done: the fiscal calendar is the workspace's rows (calendar or 4-4-5 / 4-5-4 / 5-4-4, custom partitions) and every "this quarter" follows it; Admin › Fiscal calendar (start month, generate a year, custom periods, close / reopen); the Explorer picks any period; ADR-041 |
+| 8 | Overview: % of budget spent, user-picked groupings, platforms from the registry | done: the Spent tile (% of budget, % of the period gone) replaces the pace number; heatmap cells show % spent (colour: spend against time); rows × columns are any two granularities, in the URL; every column comes back (top 8 first, "Show all") |
+
+No placeholder screens are left (2026-09-27):
+
+- **Admin › Roles:** everyone in the org and every group, with their roles here. Give a role for the whole workspace or only some values of one granularity, or revoke it. An org admin adds a person by email (`GET`/`POST /workspaces/:ws/members`).
+- **Admin › Tags:** usage counts; create, rename, recolour, merge; each tag opens its budgets.
+- The `Pending` component is removed.
+
+## Heavy queries: spec §6.2 routing rule (T-007b, 2026-09-27)
+
+Deferred from T-007 and now built (ADR-042).
+
+- **BigQuery routing:** with `BIGQUERY_DATASET` set, heavy grouped queries (over 13 months, or more than 200k estimated rows) run in BigQuery SQL on the warehouse replica. Everything else stays on Postgres.
+- **Query cache:** `/query` results are cached in Redis, keyed by data version. Every response names its `engine`.
+- **Tried and dropped: a set-based Postgres planner.** It returned the same answer as the per-envelope planner. Measured at 100 shards, it was either fragile or no faster:
+  - with joins it was fast on analysed data (pivot 460 ms), but took 118 s on a freshly loaded workspace;
+  - with per-envelope lookups it matched the per-envelope planner (pivot about 950 ms), and the roll-up rebuild was 32–42 s against 25.5 s before.
+- **Still open:** Postgres grid p95 at scale, and loading the warehouse replica (T-017, needs client credentials).
+
+## T-034 search at scale (2026-09-27, ADR-043)
+
+**Changes:**
+
+- Exact matching (full text or substring) comes first.
+- Typos are corrected against the workspace's word list (`search_term`), only when nothing matches exactly.
+- Each type ranks and counts at most 1,000 matches, reported as "1000+".
+
+**Measured at 100 shards (227k documents):**
+
+- the load job's text searches: 2.0–2.2 s → 26–78 ms;
+- qualifier-only searches: 4–129 ms;
+- typos: about 2 s with 0–1 results → 180–265 ms with results.
+
+The spec-scale load job re-measures this on this branch.

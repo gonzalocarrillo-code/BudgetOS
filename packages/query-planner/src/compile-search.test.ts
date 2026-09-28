@@ -28,7 +28,7 @@ describe("compileSearch", () => {
     const scope = { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "descends_from", value: "latam" }] } as ScopeFilter;
     const scoped = compile("x", { scopes: [scope] });
     expect(scoped.sql).toContain("dv.path <@ x.path");
-    expect(scoped.values).toContainEqual(["tag", "dimension_value", "experiment"]);
+    expect(scoped.values).toContainEqual(["tag", "dimension_value", "experiment", "setting"]);
     const none = compile("x", { scopes: [] });
     expect(none.sql).toContain("OR FALSE");
   });

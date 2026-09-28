@@ -11,21 +11,21 @@ export type { DimensionValuePathRow, DimensionValueStateRow, UpsertDimensionValu
 export { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "../seed/defaults.registry.js";
 export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.registry.js";
 export { audit, bumpDataVersion, outbox } from "./sql.js";
-export { claimOutbox, markOutboxPublished, markProcessed } from "./outbox.js";
+export { claimOutbox, markOutboxDelivered, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
 export { closedPeriods, lockPeriodEnvelopes, unlockClosureEnvelopes } from "./closures.js";
 export type { ClosedPeriod } from "./closures.js";
-export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, upsertRollupNodes } from "./rollup.js";
+export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, lockRollup, rollupChildren, upsertRollupNodes } from "./rollup.js";
 export type { RollupNode, RollupScope } from "./rollup.js";
 export type { SearchDoc } from "./search.js";
 export { openAlert, saveRuleStates } from "./alerts.js";
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
-export { currentFilterTargets, hasProjections, metricLibrary, plannerOptions } from "./planner-options.js";
+export { currentFilterTargets, fiscalCalendar, hasProjections, metricLibrary, plannerOptions } from "./planner-options.js";
 export type { CurrentFilterTarget } from "./planner-options.js";
-export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
+export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, tuplesWithEnvelope, runCoverage, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
@@ -41,6 +41,7 @@ export {
   GOLDEN_COLLAB,
   GOLDEN_NAMING,
   GOLDEN_EXPERIMENT,
+  GOLDEN_MANUAL_ENTRY,
   GOLDEN_CLOSURE,
   GOLDEN_EXPORT,
   GOLDEN_SAVED_VIEW,
@@ -80,3 +81,8 @@ export type { LockedEnvelopeRow } from "./envelopes.js";
 export { withIdentity, withTenant } from "./tenant.js";
 export type { IdentityLookup, TenantContext } from "./tenant.js";
 export { activeNamingTemplates, dimensionLabels, fiscalLabel, recomputeNames } from "./naming.js";
+export { DEFAULT_TOURS } from "../seed/defaults.tours.js";
+export type { DefaultTourSeed } from "../seed/defaults.tours.js";
+export { DEFAULT_TEMPLATE_KEY, defaultAgencyTemplate, ensureDefaultTemplate, ensureDefaultTours } from "./templates.js";
+export { purgeDemoData, seedDemoData } from "./demo.js";
+export type { DemoSummary } from "./demo.js";

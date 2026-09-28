@@ -1,5 +1,5 @@
 import { CreateExportInput, DomainError, QueryRequest, newId, readScopeFilter, resolvePeriod, type FilterGroupT } from "@budget/domain";
-import { audit, outbox, plannerOptions, withTenant } from "@budget/db";
+import { audit, outbox, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals } from "@budget/query-planner";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -27,7 +27,7 @@ export async function createExport(prisma: PrismaClient, auth: AuthContext, raw:
   const filename = input.filename ?? `budget-os-export-${day}`;
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
-    const period = resolvePeriod(query.period, day, ws.fiscalYearStartMonth);
+    const period = resolvePeriod(query.period, day, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, query.targets, period);
     compileQuery(query, period, day, opts);
     compileTotals(query, period, day, opts);

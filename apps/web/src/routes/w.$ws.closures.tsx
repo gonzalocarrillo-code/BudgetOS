@@ -43,7 +43,7 @@ function ClosuresPage(): ReactElement {
     <Page title={t("nav.closures")}>
       <div className="grid gap-5 lg:grid-cols-[1fr_24rem]">
         <div className="flex flex-col gap-5">
-          <Card>
+          <Card tour="closures-list">
             {isPending ? (
               <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
             ) : closures.length === 0 ? (
@@ -82,7 +82,7 @@ function ClosuresPage(): ReactElement {
           </Card>
           {selected ? <Report ws={ws} closure={selected} canRestate={can(perms, isOrgAdmin, "closure.restate")} onChanged={refresh} /> : null}
         </div>
-        <Card title={t("closures.close")}>
+        <Card title={t("closures.close")} tour="closures-close">
           <CloseForm ws={ws} canClose={can(perms, isOrgAdmin, "closure.close")} onClosed={async (id) => (await refresh(), set({ select: id }))} />
         </Card>
       </div>

@@ -1,4 +1,5 @@
-import { rephase } from "@budget/domain";
+import { DEFAULT_TOURS } from "./defaults.tours.js";
+import { SETTINGS, rephase } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "./defaults.registry.js";
 
@@ -261,6 +262,23 @@ export const GOLDEN_EXPERIMENT = {
   linkControl: "EMEA/DE/meta/conversion/prospecting",
 } as const;
 
+/**
+ * T-039's row: one DRAFT manual entry batch of TV results for September (an offline channel no
+ * integration covers). A draft writes no facts, so the golden totals do not move; the tests submit
+ * and approve their own batches.
+ */
+export const GOLDEN_MANUAL_ENTRY = {
+  channel: "tv",
+  periodStart: "2026-09-01",
+  periodEnd: "2026-09-30",
+  enteredBy: "planner",
+  rows: [
+    { dimensionValues: { country: "BR" }, periodDate: "2026-09-07", currency: "USD", amount: "12000.00", kpis: { conversions: "300" }, note: "Globo prime time" },
+    { dimensionValues: { country: "MX" }, periodDate: "2026-09-14", currency: "USD", amount: "8500.50", kpis: { conversions: "190" } },
+    { dimensionValues: { country: "AR" }, periodDate: "2026-09-21", currency: "USD", amount: "4300.00", kpis: {} },
+  ],
+} as const;
+
 export const GOLDEN_NAMING = [
   {
     kind: "match_key",
@@ -453,9 +471,13 @@ export interface GoldenTotals {
   /** T-019: threads, comments and tag counts (GOLDEN_COLLAB). */
   collab: { tags: Record<string, number>; threads: { open: number; resolved: number; blocking: number }; comments: number; reactions: number; envelopesWithOpenThreads: number };
   /** T-020: search documents per type after the seed's full re-index (approvals are counted against the request table). */
-  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment", number>;
+  search: Record<"envelope" | "target" | "alert" | "comment" | "tag" | "dimension_value" | "experiment" | "setting", number>;
   /** T-036: naming templates seeded (GOLDEN_NAMING). */
   naming: { templates: number };
+  /** T-040: the built-in tours (one per role) and their steps. */
+  tours: { roles: string[]; steps: number };
+  /** T-039: GOLDEN_MANUAL_ENTRY: one DRAFT batch, its rows and its per-currency total. */
+  manualEntry: { batches: number; status: string; rows: number; byCurrency: Record<string, string> };
   /** T-038: GOLDEN_EXPERIMENT's read-out: live leaves and weighted CPA (Σspend / Σconversions, 4 dp) per side. */
   experiments: { count: number; test: { leaves: number; cpa: string }; control: { leaves: number; cpa: string } };
   /** T-022: rollup_cache nodes per template and depth (0 = root) for GOLDEN_FY; root budget and actual over the live leaves. */
@@ -600,8 +622,16 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       tag: GOLDEN_COLLAB.tags.length + 1, // + the system tag `experiment` (T-038)
       dimension_value: DEFAULT_DIMENSIONS.reduce((n, d) => n + d.values.length, 0) + GOLDEN_CUSTOM_DIMENSIONS.reduce((n, d) => n + d.values.length, 0),
       experiment: 1,
+      setting: SETTINGS.length, // the settings catalog (T-041)
     },
     naming: { templates: GOLDEN_NAMING.length },
+    tours: { roles: DEFAULT_TOURS.map((t) => t.role), steps: DEFAULT_TOURS.reduce((n, t) => n + t.steps.length, 0) },
+    manualEntry: {
+      batches: 1,
+      status: "DRAFT",
+      rows: GOLDEN_MANUAL_ENTRY.rows.length,
+      byCurrency: { USD: GOLDEN_MANUAL_ENTRY.rows.reduce((s, r) => s.plus(r.amount), new Decimal(0)).toFixed(2) },
+    },
     experiments: (() => {
       const side = (want: Record<string, string>) => {
         const match = (e: PlannedEnvelope) => Object.entries(want).every(([k, v]) => e.dimensionValues[k] === v);

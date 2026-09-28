@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   AddValuesInput,
   AssignRoleInput,
@@ -57,15 +58,31 @@ import {
   RunSourceInput,
   QueryRequest,
   QueryResponse,
+  CompleteTourInput,
+  CreateWorkspaceInput,
+  HomeResponse,
+  UpdateTourInput,
+  CreateManualEntryInput,
+  UpdateManualEntryInput,
   CreateExperimentInput,
   UpdateExperimentInput,
   LinkEnvelopeInput,
   ConcludeExperimentInput,
   ExperimentReadout,
   TimelineResponse,
+  TreeRequest,
+  TreeResponse,
   CreateSavedViewInput,
   UpdateSavedViewInput,
   ReactionInput,
+  FamilyInput,
+  FamilyPlan,
+  CreatePeriodInput,
+  GeneratePeriodsInput,
+  PeriodRow,
+  UpdatePeriodInput,
+  AddPersonInput,
+  PeopleResponse,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
 
@@ -93,6 +110,10 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/workspaces/{ws}/roles": {
         get: { operationId: "listRoleAssignments", parameters: [workspaceParam], responses: { "200": { description: "Role assignments in the workspace" } } },
         post: { operationId: "assignRole", parameters: [workspaceParam], requestBody: json(AssignRoleInput), responses: { "200": { description: "Created role assignment" } } },
+      },
+      "/api/v1/workspaces/{ws}/members": {
+        get: { operationId: "listMembers", parameters: [workspaceParam], responses: { "200": { description: "The org's people and groups, each with its role assignments in this workspace", ...json(PeopleResponse) } } },
+        post: { operationId: "addMember", parameters: [workspaceParam], requestBody: json(AddPersonInput), responses: { "201": { description: "Added to the org by email (or the existing person); they sign in with Google later" }, "409": { description: "The email belongs to another organisation" } } },
       },
       "/api/v1/roles/{id}": {
         delete: { operationId: "revokeRole", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Revoked role assignment" } } },
@@ -168,6 +189,13 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/envelopes/csv-import": {
         post: { operationId: "importEnvelopesCsv", parameters: [workspaceParam], requestBody: json(CsvImportInput), responses: { "200": { description: "CsvImportReport: line errors plus a paste preview of the valid rows" } } },
+      },
+      "/api/v1/envelopes/{id}/family": {
+        get: { operationId: "getEnvelopeFamily", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The parent, its children (each % of the parent or manual) and how they add up", ...json(FamilyPlan) } } },
+        post: { operationId: "saveEnvelopeFamily", parameters: [idParam, workspaceHeader], requestBody: json(FamilyInput), responses: { "201": { description: "Rules saved (audited); { plan, preview }: the bulk preview of every amount the plan changes, to commit (null when no amount changes)" } } },
+      },
+      "/api/v1/envelopes/{id}/family/preview": {
+        post: { operationId: "previewEnvelopeFamily", parameters: [idParam, workspaceHeader], requestBody: json(FamilyInput), responses: { "201": { description: "The family as the change leaves it, down the tree; writes nothing", ...json(FamilyPlan) } } },
       },
       "/api/v1/envelopes/{id}/submit": {
         post: { operationId: "submitEnvelopeVersion", parameters: [idParam, workspaceHeader], requestBody: json(SubmitVersionInput), responses: { "200": { description: "Approval request created, or auto-approved by policy" }, "409": { description: "Not the open draft, request already open, or blocking threads" }, "500": { description: "POLICY_NOT_FOUND" } } },
@@ -309,6 +337,44 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/workspaces/{ws}/query": {
         post: { operationId: "query", parameters: [workspaceParam], requestBody: json(QueryRequest), responses: { "201": { description: "One page of planner rows, the totals and the data version; the caller's read scope is ANDed into the filter", ...json(QueryResponse) } } },
       },
+      "/api/v1/workspaces/{ws}/tree": {
+        post: { operationId: "tree", parameters: [workspaceParam], requestBody: json(TreeRequest), responses: { "201": { description: "One level of a hierarchy template's tree from rollup_cache, with the root as totals; available: false (scoped caller or period not cached) means ask /query; X-Data-Version header", ...json(TreeResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/manual-entries": {
+        get: { operationId: "listManualEntries", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED" }, { name: "channel", in: "query", required: false, schema: { type: "string" } }], responses: { "200": { description: "Batches, newest first (rows omitted, rowCount)" } } },
+        post: { operationId: "createManualEntry", parameters: [workspaceParam], requestBody: json(CreateManualEntryInput), responses: { "201": { description: "A DRAFT batch, its rows' issues (validated like ingestion) and warnings (rows no budget would take)" } } },
+      },
+      "/api/v1/manual-entries/{id}": {
+        get: { operationId: "getManualEntry", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The batch, its issues and warnings, the latest approval decision and, once approved, the lineage of its facts" } } },
+        patch: { operationId: "updateManualEntry", parameters: [idParam, workspaceHeader], requestBody: json(UpdateManualEntryInput), responses: { "200": { description: "Rows saved as typed, with their issues; only while DRAFT" } } },
+      },
+      "/api/v1/manual-entries/{id}/submit": {
+        post: { operationId: "submitManualEntry", parameters: [idParam, workspaceHeader], responses: { "201": { description: "An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue" } } },
+      },
+      "/api/v1/me/home": {
+        get: { operationId: "getHome", parameters: [workspaceHeader], responses: { "200": { description: "Waiting on me (approvals I can decide, mentions in open threads, alerts assigned to me, unmatched spend), then pacing per top-level budget, recents and saved views", ...json(HomeResponse) } } },
+      },
+      "/api/v1/tours": {
+        get: { operationId: "listTours", parameters: [workspaceHeader, { name: "role", in: "query", required: false, schema: { type: "string", enum: ["planner", "approver", "finance", "data_admin"] } }, { name: "all", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] } }], responses: { "200": { description: "The caller's role tours not completed at their current version (all=true: every one, with `completed`)" } } },
+      },
+      "/api/v1/tours/{id}/complete": {
+        post: { operationId: "completeTour", parameters: [idParam, workspaceHeader], requestBody: json(CompleteTourInput), responses: { "201": { description: "Recorded for the caller (idempotent)" } } },
+      },
+      "/api/v1/tours/{id}": {
+        patch: { operationId: "updateTour", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTourInput), responses: { "200": { description: "Org admins: a new version (a default becomes the workspace's copy)" } } },
+      },
+      "/api/v1/workspace-templates": {
+        get: { operationId: "listWorkspaceTemplates", responses: { "200": { description: "Org admins: the built-in default_agency template and the org's" } } },
+      },
+      "/api/v1/workspaces": {
+        post: { operationId: "createWorkspace", requestBody: json(CreateWorkspaceInput), responses: { "201": { description: "Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked" } } },
+      },
+      "/api/v1/workspaces/{ws}/demo-data": {
+        get: { operationId: "getDemoData", parameters: [workspaceParam], responses: { "200": { description: "Demo rows left: envelopes and targets" } } },
+      },
+      "/api/v1/workspaces/{ws}/demo-data/purge": {
+        post: { operationId: "purgeDemoData", parameters: [workspaceParam], responses: { "201": { description: "Every demo row deleted in one transaction; the template's configuration stays" } } },
+      },
       "/api/v1/workspaces/{ws}/experiments": {
         get: { operationId: "listExperiments", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED)" }], responses: { "200": { description: "Experiments, newest first, with their linked envelopes" } } },
         post: { operationId: "createExperiment", parameters: [workspaceParam], requestBody: json(CreateExperimentInput), responses: { "201": { description: "The experiment, PLANNED" } } },
@@ -352,6 +418,21 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/saved-views/{id}": {
         patch: { operationId: "updateSavedView", parameters: [idParam, workspaceHeader], requestBody: json(UpdateSavedViewInput), responses: { "200": { description: "Updated view (owner, or an admin for a shared view)" } } },
         delete: { operationId: "deleteSavedView", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Removed; the audit row keeps what it was" } } },
+      },
+      "/api/v1/workspaces/{ws}/periods": {
+        get: { operationId: "listPeriods", parameters: [workspaceParam], responses: { "200": { description: "The fiscal calendar: years, quarters, months as defined and custom partitions, each with its closure", ...json(z.array(PeriodRow)) } } },
+        post: { operationId: "createPeriod", parameters: [workspaceParam], requestBody: json(CreatePeriodInput), responses: { "201": { description: "Created; 409 when the key exists or it overlaps another period of its kind" } } },
+      },
+      "/api/v1/workspaces/{ws}/periods/generate": {
+        post: { operationId: "generatePeriods", parameters: [workspaceParam], requestBody: json(GeneratePeriodsInput), responses: { "201": { description: "{ created, kept }: a fiscal year's periods in a pattern (calendar, 4-4-5, 4-5-4, 5-4-4); existing keys are kept" } } },
+      },
+      "/api/v1/workspaces/{ws}/fiscal-year": {
+        get: { operationId: "getFiscalYearStart", parameters: [workspaceParam], responses: { "200": { description: "{ startMonth }: the month the fiscal year starts in", ...json(z.object({ startMonth: z.number().int() })) } } },
+        patch: { operationId: "setFiscalYearStart", parameters: [workspaceParam], requestBody: json(z.object({ startMonth: z.number().int().min(1).max(12) })), responses: { "200": { description: "The month the fiscal year starts in; computed periods follow, rows stay" } } },
+      },
+      "/api/v1/periods/{id}": {
+        patch: { operationId: "updatePeriod", parameters: [idParam, workspaceHeader], requestBody: json(UpdatePeriodInput), responses: { "200": { description: "Updated; 409 when it has a closure (its dates are frozen in the report)" } } },
+        delete: { operationId: "deletePeriod", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Deleted; 409 when it has a closure or budgets aligned to it" } } },
       },
       "/api/v1/workspaces/{ws}/closures": {
         get: { operationId: "listClosures", parameters: [workspaceParam], responses: { "200": { description: "Closures, newest first (restated ones included)" } } },
@@ -398,7 +479,7 @@ export function openApiDocument(): Record<string, unknown> {
         patch: { operationId: "updateNamingTemplate", parameters: [idParam, workspaceHeader], requestBody: json(UpdateNamingTemplateInput), responses: { "200": { description: "A new version of the template" } } },
       },
       "/api/v1/workspaces/{ws}/overview": {
-        get: { operationId: "getOverview", parameters: [workspaceParam, { name: "period", in: "query", required: false, schema: { type: "string", enum: ["current_month", "current_quarter", "current_year", "last_30_days", "last_90_days", "ytd", "next_90_days"] } }], responses: { "200": { description: "The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness" } } },
+        get: { operationId: "getOverview", parameters: [workspaceParam, { name: "period", in: "query", required: false, schema: { type: "string", enum: ["current_month", "current_quarter", "current_year", "last_30_days", "last_90_days", "ytd", "next_90_days"] } }, { name: "rows", in: "query", required: false, schema: { type: "string" }, description: "Heatmap rows: a registry granularity key (default country)" }, { name: "cols", in: "query", required: false, schema: { type: "string" }, description: "Heatmap columns: another granularity key (default platform)" }], responses: { "200": { description: "The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness" } } },
       },
       "/api/v1/workspaces/{ws}/pacing": {
         get: {
@@ -486,7 +567,7 @@ export function openApiDocument(): Record<string, unknown> {
             { name: "types", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated entity types" },
             { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50 }, description: "Hits per type (default 5)" },
           ],
-          responses: { "200": { description: "{ groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed }" } },
+          responses: { "200": { description: "{ groups: [{ type, count, more (count is a lower bound), hits: [{ id, title, path, status, facets, deepLink }] }], parsed }" } },
         },
       },
       "/api/v1/workspaces/{ws}/search/suggest": {

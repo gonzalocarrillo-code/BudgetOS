@@ -34,6 +34,22 @@ const pick = async (page: Page, testId: string, option: { label: string } | stri
   await expect(opt.first()).toBeAttached();
   await select.selectOption(option);
 };
+/**
+ * Opens a cell's editor with a double click and types into it once it has focus. The overlay
+ * opens asynchronously (and a click during a redraw can miss), so typing blind lost keystrokes —
+ * 1240.73 became 240.73. Retries the double click until the editor is open.
+ */
+async function editCell(page: Page, x: number, y: number, value: string) {
+  const input = page.locator("#portal input");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.mouse.dblclick(x, y);
+    if (await input.isVisible().catch(() => false)) break;
+    await page.waitForTimeout(400);
+  }
+  await expect(input).toBeVisible(); // fill() focuses it: something else may hold focus after a reload
+  await input.fill(value);
+  await input.press("Enter");
+}
 const totalBudget = (page: Page) => page.getByTestId("explorer-grid").getAttribute("data-budget-total");
 
 test.describe("Explorer (T-027)", () => {
@@ -75,6 +91,138 @@ test.describe("Explorer (T-027)", () => {
     expect(body.totals.budget).toBe(treeTotal);
   });
 
+  test("the tree's levels come from the roll-up cache, with /query's totals (ADR-038)", async ({ page }) => {
+    const token = await signIn(page);
+    const trees: Array<{ parentPath: string; available: boolean }> = [];
+    page.on("response", (r) => {
+      if (r.url().endsWith("/tree") && r.request().method() === "POST") void r.json().then((b: { available: boolean }) => trees.push({ parentPath: (JSON.parse(r.request().postData() ?? "{}") as { parentPath: string }).parentPath, available: b.available }));
+    });
+    await page.goto(budgetsUrl({ period: FY }));
+    await pick(page, "template-picker", { label: "Region first" });
+    await expect.poll(() => trees.some((t) => t.parentPath === "" && t.available)).toBe(true);
+    const live = await api(token, "POST", `/workspaces/${state().workspaceId}/query`, { workspaceId: state().workspaceId, period: FY, filter: { logic: "and", children: LIVE_LEAVES }, groupBy: ["region"], measures: ["budget"], limit: 1 });
+    await expect.poll(() => totalBudget(page)).toBe((live.body["totals"] as { budget: string }).budget);
+
+    await page.goto(`${page.url()}&expanded=${enc(["LATAM"])}`);
+    await expect.poll(() => trees.some((t) => t.parentPath === "LATAM" && t.available)).toBe(true);
+    await expect(page.getByTestId("explorer-grid")).toBeVisible();
+  });
+
+  test("a parent budget opens in the drawer from its group row; the marker still expands it", async ({ page }) => {
+    const token = await signIn(page);
+    const ws = state().workspaceId;
+    await page.goto(budgetsUrl({ period: FY }));
+    await pick(page, "template-picker", { label: "Region first" });
+    await expect.poll(() => page.getByTestId("explorer-grid").getAttribute("data-rows")).not.toBe("");
+    const templateId = new URL(page.url()).searchParams.get("templateId")?.replace(/"/g, "") ?? "";
+    const tree = await api(token, "POST", `/workspaces/${ws}/tree`, { workspaceId: ws, templateId, period: FY, measures: ["budget"] });
+    const rows = tree.body["rows"] as Array<{ key: string; nodeEnvelopeId: string | null }>;
+    const index = rows.findIndex((r) => r.nodeEnvelopeId !== null);
+    expect(index, "a first-level group that is a parent budget").toBeGreaterThanOrEqual(0);
+    const parent = await api(token, "GET", `/envelopes/${rows[index]?.nodeEnvelopeId}`);
+    const before = Number(await page.getByTestId("explorer-grid").getAttribute("data-rows"));
+
+    const box = await page.getByTestId("explorer-grid").locator("canvas").first().boundingBox();
+    if (!box) throw new Error("grid canvas not rendered");
+    const y = box.y + 40 + index * 36 + 18; // header 40 px, row 36 px
+    await page.mouse.click(box.x + 80, y); // the name
+    await expect(page.getByTestId("drawer-name")).toHaveText(String(parent.body["displayName"] ?? parent.body["name"]));
+    await expect(page).toHaveURL(new RegExp(`select=${rows[index]?.nodeEnvelopeId}`));
+    await expect(page.getByTestId("drawer-children")).toBeVisible();
+
+    await page.getByRole("button", { name: /close/i }).first().click();
+    await page.mouse.click(box.x + 14, y); // the marker
+    await expect.poll(async () => Number(await page.getByTestId("explorer-grid").getAttribute("data-rows"))).toBeGreaterThan(before);
+  });
+
+  test("send for approval: from the notice after an edit (auto-approved), and from the drawer (waiting, then withdrawn)", async ({ page }) => {
+    const token = await signIn(page);
+    const s = state();
+    const found = await api(token, "POST", `/workspaces/${s.workspaceId}/query`, { workspaceId: s.workspaceId, period: FY, filter: { logic: "and", children: [...LIVE_LEAVES, { field: { kind: "dimension", key: "country" }, op: "eq", value: "DE" }] }, measures: ["budget"], sort: [{ key: "name", dir: "asc" }], limit: 20 });
+    // Two leaves with no open draft (the golden data has some).
+    const clean: Array<{ envelopeId: string; path: string[]; measures: { budget: string } }> = [];
+    for (const r of found.body["rows"] as Array<{ envelopeId: string; path: string[]; measures: { budget: string } }>) {
+      if (clean.length < 2 && (await api(token, "GET", `/envelopes/${r.envelopeId}`)).body["draft"] === null) clean.push(r);
+    }
+    const [small, large] = clean;
+    expect(large, "two German leaves without a draft").toBeDefined();
+    const edit = async (leaf: typeof small, amount: string) => {
+      await page.goto(budgetsUrl({ period: FY, view: "pivot", filter: { logic: "and", children: [{ field: { kind: "attr", key: "name" }, op: "eq", value: leaf?.path.at(-1) }] } }));
+      await expect.poll(() => page.getByTestId("explorer-grid").getAttribute("data-rows")).toBe("1");
+      await page.waitForTimeout(300);
+      const box = await page.getByTestId("explorer-grid").locator("canvas").first().boundingBox();
+      if (!box) throw new Error("grid canvas not rendered");
+      await editCell(page, box.x + 340 + 75, box.y + 40 + 18, amount);
+      await expect(page.getByTestId("notice-ok")).toBeVisible();
+    };
+
+    // +0.5 %: the notice offers Send for approval; the minor-change policy approves it at once.
+    await edit(small, (Number(small?.measures.budget) * 1.005).toFixed(2));
+    const notice = page.getByTestId("notice-ok");
+    await expect(notice.getByTestId("approval-state")).toHaveAttribute("data-state", "draft");
+    await notice.getByTestId("approval-send").click();
+    await expect(notice.getByTestId("approval-state")).toHaveAttribute("data-state", "approved");
+    await expect.poll(async () => ((await api(token, "GET", `/envelopes/${small?.envelopeId}`)).body["draft"] ?? null)).toBeNull();
+
+    // ×3: sent from the drawer it waits for an approver, links to the request, and can be withdrawn
+    // (the version is kept as WITHDRAWN; the budget is back to its approved amount).
+    await edit(large, (Number(large?.measures.budget) * 3).toFixed(2));
+    await page.getByTestId("notice-open").click();
+    const drawer = page.getByTestId("envelope-drawer");
+    await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "draft");
+    await drawer.getByTestId("approval-send").click();
+    await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "waiting");
+    await expect(drawer.getByTestId("approval-open-request")).toHaveAttribute("href", /\/approvals\/[0-9a-f-]{36}$/);
+    await drawer.getByTestId("approval-withdraw").click();
+    await expect(drawer.getByTestId("approval-state")).toHaveAttribute("data-state", "withdrawn");
+    expect((await api(token, "GET", `/envelopes/${large?.envelopeId}`)).body["draft"]).toBeNull();
+  });
+
+  test("edit a budget family top-down: the parent +10 %, a child follows by %, one approval for all", async ({ page }) => {
+    const token = await signIn(page);
+    const ws = state().workspaceId;
+    const templates = (await api(token, "GET", `/workspaces/${ws}/hierarchy-templates`)).body as unknown as Array<{ id: string; name: string }>;
+    const regionFirst = templates.find((x) => x.name === "Region first");
+    const tree = await api(token, "POST", `/workspaces/${ws}/tree`, { workspaceId: ws, templateId: regionFirst?.id, period: FY, parentPath: "EMEA", measures: ["budget"] });
+    // A country budget with no open draft of its own.
+    let parentId = "";
+    for (const r of tree.body["rows"] as Array<{ nodeEnvelopeId: string | null }>) {
+      if (!parentId && r.nodeEnvelopeId && (await api(token, "GET", `/envelopes/${r.nodeEnvelopeId}`)).body["draft"] === null) parentId = r.nodeEnvelopeId;
+    }
+    expect(parentId, "an EMEA country budget without a draft").not.toBe("");
+    const family = (await api(token, "GET", `/envelopes/${parentId}/family`)).body as { parent: { before: string }; members: Array<{ envelopeId: string; before: string }> };
+    let row = -1;
+    for (const [i, m] of family.members.entries()) if (row < 0 && (await api(token, "GET", `/envelopes/${m.envelopeId}`)).body["draft"] === null) row = i;
+    expect(row, "a child without a draft").toBeGreaterThanOrEqual(0);
+
+    await page.goto(`${budgetsUrl({ period: FY })}&select=${parentId}`);
+    await expect(page.getByTestId("drawer-family-sum")).toBeVisible();
+    await page.getByTestId("drawer-family-edit").click();
+    const editor = page.getByTestId("family-editor");
+    await expect(editor.getByTestId("family-row")).toHaveCount(family.members.length);
+    const newParent = (Number(family.parent.before) * 1.1).toFixed(2);
+    await editor.getByTestId("family-parent").fill(newParent);
+    const child = editor.getByTestId("family-row").nth(row);
+    await child.getByTestId("family-mode-percent").click();
+    await expect(child).toHaveAttribute("data-mode", "percent");
+    // The child keeps its share, so its result grows with the parent.
+    const share = Number(family.members[row]?.before) / Number(family.parent.before);
+    await expect.poll(async () => Math.abs(Number((await child.getByTestId("family-after").textContent())?.replace(/[^\d.]/g, "")) - Number(newParent) * share)).toBeLessThan(0.5); // the share is shown to 4 decimals
+    await expect(editor.getByTestId("family-sum")).toHaveAttribute("data-status", /under|balanced/);
+    await editor.getByTestId("family-rationale").fill("Top-down +10 %");
+    await editor.getByTestId("family-review").click();
+
+    const dialog = page.getByTestId("paste-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("paste-row")).toHaveCount(2);
+    await dialog.getByTestId("paste-commit").click();
+    await expect(page.getByTestId("notice-ok")).toBeVisible();
+    const parent = await api(token, "GET", `/envelopes/${parentId}`);
+    expect((parent.body["draft"] as { amount: string }).amount).toBe(newParent);
+    const after = (await api(token, "GET", `/envelopes/${parentId}/family`)).body as { members: Array<{ envelopeId: string; mode: string | null }> };
+    expect(after.members[row]?.mode).toBe("percent");
+  });
+
   test("inline edit conflict: a stale edit shows the current value; reload, then the edit saves", async ({ page }) => {
     const token = await signIn(page);
     const s = state();
@@ -94,9 +242,7 @@ test.describe("Explorer (T-027)", () => {
       const canvas = page.getByTestId("explorer-grid").locator("canvas").first();
       const box = await canvas.boundingBox();
       if (!box) throw new Error("grid canvas not rendered");
-      await page.mouse.dblclick(box.x + 340 + 75, box.y + 40 + 18); // name column is 340 px, header 40 px, row 36 px
-      await page.keyboard.type(value);
-      await page.keyboard.press("Enter");
+      await editCell(page, box.x + 340 + 75, box.y + 40 + 18, value); // name column is 340 px, header 40 px, row 36 px
     };
     await editBudget("999.99");
     await expect(page.getByTestId("edit-conflict")).toBeVisible();

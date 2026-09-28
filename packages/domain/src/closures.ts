@@ -41,3 +41,30 @@ export type ClosureView = z.infer<typeof ClosureView>;
 /** Optional body of POST /sources/:id/run: load facts into the period of a closed closure (spec §15). */
 export const RunSourceInput = z.object({ restatementOf: z.string().uuid().optional() }).strict();
 export type RunSourceInput = z.infer<typeof RunSourceInput>;
+
+/**
+ * The workspace's fiscal calendar (product feedback 7, ADR-041): its periods — years, quarters,
+ * months as defined, and custom partitions — each with its closure state.
+ */
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const PeriodKind = z.enum(["year", "quarter", "month", "custom"]);
+export const CreatePeriodInput = z
+  .object({ key: z.string().trim().min(1).max(80), kind: PeriodKind.default("custom"), start: IsoDate, end: IsoDate })
+  .refine((p) => p.start <= p.end, { message: "A period starts on or before it ends", path: ["end"] });
+export type CreatePeriodInput = z.infer<typeof CreatePeriodInput>;
+export const UpdatePeriodInput = z
+  .object({ key: z.string().trim().min(1).max(80).optional(), start: IsoDate.optional(), end: IsoDate.optional() })
+  .strict()
+  .refine((p) => p.start === undefined || p.end === undefined || p.start <= p.end, { message: "A period starts on or before it ends", path: ["end"] });
+export type UpdatePeriodInput = z.infer<typeof UpdatePeriodInput>;
+export const GeneratePeriodsInput = z.object({ fiscalYear: z.number().int().min(2000).max(2100), pattern: z.enum(["calendar", "445", "454", "544"]).default("calendar") });
+export type GeneratePeriodsInput = z.infer<typeof GeneratePeriodsInput>;
+export const PeriodRow = z.object({
+  id: z.string().uuid(),
+  key: z.string(),
+  kind: z.string(),
+  start: z.string(),
+  end: z.string(),
+  closure: z.object({ id: z.string().uuid(), status: z.string() }).nullable(),
+});
+export type PeriodRow = z.infer<typeof PeriodRow>;

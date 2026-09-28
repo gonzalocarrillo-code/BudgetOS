@@ -96,6 +96,13 @@ const specs: ReadonlyArray<Omit<RegistryDimensionSeed, "sortOrder">> = [
       ["retail_media", "Retail media"],
       ["video", "Video"],
       ["affiliate", "Affiliate"],
+      // Offline channels, entered by hand (T-039, spec §26.1).
+      ["tv", "TV"],
+      ["ooh", "Out of home"],
+      ["dooh", "Digital out of home"],
+      ["print", "Print"],
+      ["radio", "Radio"],
+      ["sponsorship", "Sponsorship"],
       ["other", "Other"],
     ]),
   },

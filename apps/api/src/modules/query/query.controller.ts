@@ -2,9 +2,10 @@ import { Body, Controller, Get, Inject, Post, Query, Res } from "@nestjs/common"
 import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { QueryRequestDto, TimelineQueryDto } from "./dto.js";
+import { QueryRequestDto, TimelineQueryDto, TreeRequestDto } from "./dto.js";
 import { runQuery } from "./queries/run-query.js";
 import { timelineQuery } from "./queries/timeline.query.js";
+import { treeQuery } from "./queries/tree.query.js";
 
 /** POST /workspaces/:ws/query (spec §6, §17 `query`): the planner, cut to the caller's read scope. */
 @Controller()
@@ -15,6 +16,15 @@ export class QueryController {
   @Permission("envelope.read")
   query(@Tenant() auth: AuthContext, @Body() body: QueryRequestDto) {
     return runQuery(this.prisma, auth, body);
+  }
+
+  /** POST /workspaces/:ws/tree (ADR-038): one level of a template's tree from rollup_cache; X-Data-Version as on /query. */
+  @Post("workspaces/:ws/tree")
+  @Permission("envelope.read")
+  async tree(@Tenant() auth: AuthContext, @Body() body: TreeRequestDto, @Res({ passthrough: true }) reply: { header(name: string, value: string): unknown }) {
+    const res = await treeQuery(this.prisma, auth, body);
+    reply.header("x-data-version", String(res.dataVersion));
+    return res;
   }
 
   /** GET /workspaces/:ws/timeline (spec §23.1): the Gantt's bars on the fiscal calendar; X-Data-Version as on /query. */

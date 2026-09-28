@@ -1,6 +1,7 @@
 import { DomainError, QueryRequest, readScopeFilter, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
-import { envelopePaths, plannerOptions, withTenant } from "@budget/db";
-import { compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
+import { envelopePaths, envelopesByTuple, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
+import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
+import { HEAVY_MONTHS, HEAVY_ROWS, QUERY_CACHE_TTL_SECONDS, cacheKey, engineFromEnv, maxPlanRows, monthsSpanned, type QueryEngine } from "./engine.js";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -25,22 +26,66 @@ export function scopedQuery(auth: AuthContext, raw: unknown): QueryRequest {
   return { ...q, ...(filter ? { filter } : {}) };
 }
 
-export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unknown, now: Date = new Date()): Promise<QueryResponse> {
+export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unknown, now: Date = new Date(), engine: QueryEngine = engineFromEnv()): Promise<QueryResponse> {
   const started = performance.now();
   const q = scopedQuery(auth, raw);
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: q.workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
     const today = now.toISOString().slice(0, 10);
-    const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth);
+    const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period);
-    const c = compileQuery(q, period, today, opts);
-    const page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
-    const t = compileTotals(q, period, today, opts);
-    const [totals] = await tx.$queryRawUnsafe<Row[]>(t.sql, ...t.values);
+    const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
+    const key = engine.cache ? cacheKey(q, dataVersion, today) : null;
+    if (key && engine.cache) {
+      const hit = await engine.cache.get(key);
+      if (hit) return { ...(JSON.parse(hit) as QueryResponse), engine: "cache" as const, elapsedMs: Math.round(performance.now() - started) };
+    }
     const grouped = q.groupBy.length > 0;
+    // Heavy grouped queries run on the warehouse replica when one is configured (spec §6.2, ADR-042);
+    // everything else on Postgres.
+    const c = compileQuery(q, period, today, opts);
+    const heavy = async () => {
+      if (monthsSpanned(period) > HEAVY_MONTHS) return true;
+      const [plan] = await tx.$queryRawUnsafe<Array<{ "QUERY PLAN": unknown }>>(`EXPLAIN (FORMAT JSON) ${c.sql}`, ...c.values);
+      return maxPlanRows(plan?.["QUERY PLAN"]) > HEAVY_ROWS;
+    };
+    const warehouse = engine.warehouse && grouped && bigQuerySupported(q, opts) && (await heavy()) ? engine.warehouse : null;
+    let page: { rows: Row[]; nextCursor: string | null };
+    let totals: Row | undefined;
+    if (warehouse) {
+      const w = compileAggregateBq(q, period, today, warehouse.dataset, opts);
+      page = pageOf({ sql: w.sql, values: [], orderKeys: w.orderKeys }, await warehouse.query(w.sql, w.params, w.types), q.limit);
+      const wt = compileAggregateTotalsBq(q, period, today, warehouse.dataset, opts);
+      [totals] = await warehouse.query(wt.sql, wt.params, wt.types);
+    } else {
+      page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
+      const t = compileTotals(q, period, today, opts);
+      [totals] = await tx.$queryRawUnsafe<Row[]>(t.sql, ...t.values);
+    }
     const paths = grouped ? new Map<string, string[]>() : await envelopePaths(tx, page.rows.map((r) => String(r["envelope_id"])));
     const measures = [...new Set(q.measures)];
-    const rows = page.rows.map((r) => {
+    // Group rows: the envelope whose tuple is exactly the group's (a parent), when there is one.
+    const nodeOf = new Map<number, string>();
+    if (grouped) {
+      // Only groups with a value for every key can be an envelope's exact tuple.
+      const tuples: Array<Record<string, string>> = [];
+      const rowOf: number[] = [];
+      page.rows.forEach((r, i) => {
+        // Leading keys with no value are "above" the group (e.g. no client): skip them, as the cache does.
+        const values = q.groupBy.map((k) => text(r[`dim_${sanitize(k)}`]));
+        const first = values.findIndex((v) => v !== null);
+        if (first < 0 || values.slice(first).some((v) => v === null)) return;
+        tuples.push(Object.fromEntries(q.groupBy.slice(first).map((k, j) => [k, values[first + j] as string])));
+        rowOf.push(i);
+      });
+      const hits = new Map<number, string[]>();
+      for (const h of await envelopesByTuple(tx, q.workspaceId, tuples)) {
+        const i = rowOf[h.i] as number;
+        hits.set(i, [...(hits.get(i) ?? []), h.id]);
+      }
+      for (const [i, ids] of hits) if (ids.length === 1) nodeOf.set(i, ids[0] as string);
+    }
+    const rows = page.rows.map((r, index) => {
       const dims: Record<string, string | null> = grouped
         ? Object.fromEntries(q.groupBy.map((k) => [k, text(r[`dim_${sanitize(k)}`])]))
         : Object.fromEntries(Object.entries((r["dimension_values"] ?? {}) as Record<string, unknown>).map(([k, v]) => [k, text(v)]));
@@ -54,7 +99,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       return {
         key: grouped ? q.groupBy.map((k) => dims[k] ?? "∅").join("/") : (id as string),
         envelopeId: id,
-        ...(grouped ? {} : { versionId: text(r["head_version_id"]) }),
+        ...(grouped ? { nodeEnvelopeId: nodeOf.get(index) ?? null } : { versionId: text(r["head_version_id"]) }),
         path: grouped ? q.groupBy.map((k) => dims[k] ?? "∅") : (paths.get(id as string) ?? [String(r["name"])]),
         dimensions: dims,
         measures: Object.fromEntries(measures.map((m) => [m, measure(m, r[m])])),
@@ -65,13 +110,16 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
         openThreads: Number(r["open_threads"] ?? 0),
       };
     });
-    return {
+    const response: QueryResponse = {
       rows,
       nextCursor: page.nextCursor,
       totals: Object.fromEntries([...measures.map((m) => [m, measure(m, totals?.[m])]), ["leafCount", text(totals?.["leaf_count"])]]),
       dataAsOf: now.toISOString(),
-      dataVersion: Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0),
+      dataVersion,
+      engine: warehouse ? ("warehouse" as const) : ("postgres" as const),
       elapsedMs: Math.round(performance.now() - started),
     };
+    if (key && engine.cache) await engine.cache.set(key, JSON.stringify(response), QUERY_CACHE_TTL_SECONDS);
+    return response;
   });
 }

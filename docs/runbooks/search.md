@@ -11,3 +11,10 @@
 - **Service:** `apps/workers/src/rollup/main.ts` is a push subscriber for `budget.changed`, `facts.loaded` and `registry.changed`.
 - **Full rebuild of a workspace:** `pnpm --filter @budget/workers rollup:rebuild --workspace <id> --org <id>` covers every template for the current fiscal year and the cached periods.
 - **A node looks wrong:** compare it with the live pivot, which is a planner `groupBy` of the template path over `is_leaf = true AND status <> ARCHIVED`. They are computed the same way. A mismatch means an event was missed, and a rebuild converges.
+- **Settings (T-041, ADR-036):** admin pages come from `SETTINGS` in `@budget/domain/settings.ts`. They are indexed on `workspace.created` and on every full re-index. After adding an entry, or for a workspace created before T-041, re-index the workspace.
+
+## At scale (ADR-043)
+
+- Each type ranks and counts at most 1,000 matches. Beyond that the response says `more: true` and ⌘K shows "1000+".
+- Typos are corrected against `search_term`, the workspace's distinct words, which a trigger on `search_document` keeps current. The correction only runs when nothing matches exactly.
+- `search_term` is derived data. If it is ever lost, rebuild it with the backfill statement in migration `20260929000000_search_term`.

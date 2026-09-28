@@ -1,5 +1,5 @@
 import { FilterGroup, QueryRequest, RuleMetricArgs, newId, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { audit, openAlert, outbox, plannerOptions, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx } from "@budget/db";
+import { audit, openAlert, outbox, plannerOptions, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PacingRule, PrismaClient } from "@prisma/client";
@@ -107,7 +107,7 @@ function queryKey(rule: PacingRule, args: RuleMetricArgs): string {
 }
 
 async function rowsFor(tx: Tx, tenant: { workspaceId: string; orgId: string }, rule: PacingRule, args: RuleMetricArgs, targets: string[], today: string, fiscalStart: number): Promise<Row[]> {
-  const period = resolvePeriod(args.period ?? { kind: "relative", preset: "current_year" }, today, fiscalStart);
+  const period = resolvePeriod(args.period ?? { kind: "relative", preset: "current_year" }, today, fiscalStart, await fiscalCalendar(tx, tenant.workspaceId));
   const scope = FilterGroup.safeParse(rule.scope);
   const children: Array<Predicate | FilterGroupT> = [{ field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" }];
   if (scope.success && scope.data.children.length > 0) children.push(scope.data);

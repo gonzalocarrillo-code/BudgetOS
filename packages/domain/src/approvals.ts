@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export interface PolicyConditions {
-  entityType?: "envelope_version" | "target_version" | "bulk_change" | undefined;
+  entityType?: "envelope_version" | "target_version" | "bulk_change" | "manual_entry" | undefined;
   amountAbs?: { gte?: number | undefined; lt?: number | undefined } | undefined;
   deltaAbs?: { gte?: number | undefined; lt?: number | undefined } | undefined;
   deltaPct?: { gte?: number | undefined; lt?: number | undefined } | undefined;
@@ -10,12 +10,18 @@ export interface PolicyConditions {
   dimension?: Record<string, string[]> | undefined;
   daysRemaining?: { lt?: number | undefined } | undefined;
   metricKey?: string[] | undefined;
+  /**
+   * Who is asking (product feedback 6): the requester holds one of `roles` in the workspace (direct
+   * or through a group) or is one of `userIds`. With an empty chain, "these people set budgets
+   * without approval".
+   */
+  requester?: { roles?: string[] | undefined; userIds?: string[] | undefined } | undefined;
   any?: PolicyConditions[] | undefined;
 }
 
 export const PolicyConditions: z.ZodType<PolicyConditions> = z.lazy(() =>
   z.object({
-    entityType: z.enum(["envelope_version", "target_version", "bulk_change"]).optional(),
+    entityType: z.enum(["envelope_version", "target_version", "bulk_change", "manual_entry"]).optional(),
     amountAbs: z.object({ gte: z.number().optional(), lt: z.number().optional() }).optional(),
     deltaAbs: z.object({ gte: z.number().optional(), lt: z.number().optional() }).optional(),
     deltaPct: z.object({ gte: z.number().optional(), lt: z.number().optional() }).optional(),
@@ -24,6 +30,10 @@ export const PolicyConditions: z.ZodType<PolicyConditions> = z.lazy(() =>
     dimension: z.record(z.string(), z.array(z.string())).optional(),
     daysRemaining: z.object({ lt: z.number().int().optional() }).optional(),
     metricKey: z.array(z.string()).optional(),
+    requester: z
+      .object({ roles: z.array(z.enum(["VIEWER", "PLANNER", "BUDGET_OWNER", "APPROVER", "FINANCE", "DATA_ADMIN", "WORKSPACE_ADMIN", "ORG_ADMIN"])).min(1).optional(), userIds: z.array(z.string().uuid()).min(1).optional() })
+      .refine((r) => r.roles !== undefined || r.userIds !== undefined, "requester needs roles or userIds")
+      .optional(),
     any: z.array(PolicyConditions).optional(),
   }),
 );

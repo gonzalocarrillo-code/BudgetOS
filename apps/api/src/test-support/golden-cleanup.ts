@@ -7,11 +7,34 @@ import type { GoldenResult } from "../seed/golden.js";
  * Statements for tables a test never wrote are no-ops.
  */
 export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): Promise<void> {
-  const ws = golden.workspaceId;
+  // Every workspace of the org: a test may have created more (T-040: a workspace from a template).
+  // The e2e teardown passes only the workspace id, so the org comes from the workspace; never an unfiltered query.
+  const orgId = golden.orgId ?? (await owner.workspace.findUnique({ where: { id: golden.workspaceId }, select: { orgId: true } }))?.orgId;
+  if (orgId) {
+    const others = await owner.workspace.findMany({ where: { orgId, id: { not: golden.workspaceId } }, select: { id: true } });
+    for (const w of others) await cleanupWorkspace(owner, w.id);
+  }
+  await cleanupWorkspace(owner, golden.workspaceId);
+  if (!orgId) return;
+  for (const sql of [
+    `DELETE FROM metric_definition WHERE org_id = $1::uuid`,
+    `DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`,
+    `DELETE FROM dimension WHERE org_id = $1::uuid`,
+    `DELETE FROM role_assignment WHERE principal_id IN (SELECT id FROM app_user WHERE org_id = $1::uuid)`,
+    `DELETE FROM app_user WHERE org_id = $1::uuid`,
+  ]) {
+    await owner.$executeRawUnsafe(sql, orgId);
+  }
+  await owner.$executeRawUnsafe(`DELETE FROM organization WHERE id = $1::uuid`, orgId);
+}
+
+/** The workspace's own rows and the workspace (T-040: a test's extra workspace in the golden org). */
+export async function cleanupWorkspace(owner: PrismaClient, ws: string): Promise<void> {
   const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
   for (const sql of [
     `DELETE FROM notification WHERE workspace_id = $1::uuid`,
     `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
+    `DELETE FROM search_term WHERE workspace_id = $1::uuid`,
     `DELETE FROM rollup_cache WHERE workspace_id = $1::uuid`,
     `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
     `DELETE FROM saved_view WHERE workspace_id = $1::uuid`,
@@ -26,6 +49,10 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM naming_template WHERE workspace_id = $1::uuid`,
     `DELETE FROM experiment_envelope WHERE workspace_id = $1::uuid`,
     `DELETE FROM experiment WHERE workspace_id = $1::uuid`,
+    `DELETE FROM tour_completion WHERE user_id IN (SELECT id FROM app_user WHERE org_id = (SELECT org_id FROM workspace WHERE id = $1::uuid))`,
+    `DELETE FROM tour WHERE workspace_id = $1::uuid`,
+    `DELETE FROM manual_entry_fact WHERE workspace_id = $1::uuid`,
+    `DELETE FROM manual_entry_batch WHERE workspace_id = $1::uuid`,
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
     `DELETE FROM thread WHERE workspace_id = $1::uuid`,
     `DELETE FROM alert WHERE workspace_id = $1::uuid`,
@@ -47,6 +74,7 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
     `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_phasing WHERE version_id IN (SELECT id FROM envelope_version WHERE envelope_id IN ${envs})`,
     `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
+    `DELETE FROM envelope_allocation WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
     `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
     `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
@@ -57,15 +85,5 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
   ]) {
     await owner.$executeRawUnsafe(sql, ws);
   }
-  for (const sql of [
-    `DELETE FROM metric_definition WHERE org_id = $1::uuid`,
-    `DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`,
-    `DELETE FROM dimension WHERE org_id = $1::uuid`,
-    `DELETE FROM role_assignment WHERE principal_id IN (SELECT id FROM app_user WHERE org_id = $1::uuid)`,
-    `DELETE FROM app_user WHERE org_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, golden.orgId);
-  }
   await owner.$executeRawUnsafe(`DELETE FROM workspace WHERE id = $1::uuid`, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM organization WHERE id = $1::uuid`, golden.orgId);
 }

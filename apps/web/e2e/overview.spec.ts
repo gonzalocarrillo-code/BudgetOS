@@ -42,6 +42,14 @@ test("overview: every widget, in under 1.5 s", async ({ page }) => {
   await expect(page.getByTestId("overview-freshness")).toContainText("Actuals through 2026-08-01");
   await expect(page.getByTestId("freshness-source").first()).toContainText("Golden actuals (CSV)");
 
+  // Cells read as % of the budget spent; the axes are the user's pick, kept in the URL (feedback 8).
+  await expect(page.getByTestId("heatmap-spent").first()).toHaveText(/^\d+%$/);
+  await expect(page.getByTestId("tile-spent")).toContainText("of the period gone");
+  await page.getByTestId("heatmap-cols").selectOption("objective");
+  await expect(page).toHaveURL(/cols=%22objective%22|cols=objective/);
+  await expect(page.getByTestId("heatmap-col").first()).toBeVisible();
+  await page.getByTestId("heatmap-cols").selectOption("platform");
+
   await page.getByTestId("heatmap-row").and(page.locator('[data-code="BR"]')).getByTestId("heatmap-cell").first().click();
   await expect(page).toHaveURL(/\/budgets\?.*view=pivot/);
   await expect(page.getByTestId("filter-chip")).toHaveCount(2);

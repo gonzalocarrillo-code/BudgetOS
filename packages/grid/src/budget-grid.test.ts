@@ -163,6 +163,12 @@ it("builds path, money, pace, target, status, chips, and dimension cells", () =>
   expect(money?.copyData).toBe("1200000.00");
   const pace = cells[2];
   expect(pace?.copyData).toBe("1.10");
+  expect((pace as unknown as { data: { display: string } }).data.display).toBe("1.10");
+  // A raw planner ratio is shown to two decimals, like the totals row (product feedback 4).
+  const long = buildCell({ ...sample, measures: { pace_index: "0.99032675996390000000" } }, { kind: "measure", key: "pace_index" }, { currency: "USD" });
+  expect((long as unknown as { data: { display: string } }).data.display).toBe("0.99");
+  const none = buildCell({ ...sample, measures: { pace_index: null } }, { kind: "measure", key: "pace_index" }, { currency: "USD" });
+  expect((none as unknown as { data: { display: string } }).data.display).toBe("—");
   const chips = cells[5];
   expect(chips?.copyData).toBe("");
   const dimension = cells[6];

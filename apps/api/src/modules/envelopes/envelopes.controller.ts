@@ -3,7 +3,7 @@ import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { AddChildDto, BulkRequestDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { AddChildDto, BulkRequestDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -56,6 +56,27 @@ export class EnvelopesController {
   @Permission("envelope.edit_draft")
   restore(@Tenant() auth: AuthContext, @Param("id") id: string, @Param("versionId") versionId: string, @Body() body: RestoreVersionDto) {
     return this.envelopes.restore(auth, id, versionId, body);
+  }
+
+  /** GET /envelopes/:id/family (ADR-039): the parent, its children and how each follows it. */
+  @Get("envelopes/:id/family")
+  @Permission("envelope.read")
+  family(@Tenant() auth: AuthContext, @Param("id") id: string) {
+    return this.envelopes.family(auth, id);
+  }
+
+  /** POST /envelopes/:id/family/preview: what a family change does, down the tree; writes nothing. */
+  @Post("envelopes/:id/family/preview")
+  @Permission("envelope.read")
+  familyPreview(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: FamilyInputDto) {
+    return this.envelopes.familyPreview(auth, id, body);
+  }
+
+  /** POST /envelopes/:id/family: saves how the children follow and opens the amounts as a bulk preview. */
+  @Post("envelopes/:id/family")
+  @Permission("envelope.edit_draft")
+  familySave(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: FamilyInputDto) {
+    return this.envelopes.familySave(auth, id, body);
   }
 
   @Post("envelopes/:id/submit")

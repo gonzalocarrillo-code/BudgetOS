@@ -1,5 +1,5 @@
 import { DomainError, EXPORT_MAX_ROWS, ExportRequested, QueryRequest, resolvePeriod } from "@budget/domain";
-import { audit, envelopePaths, outbox, plannerOptions, withTenant, type TenantContext, type Tx } from "@budget/db";
+import { audit, envelopePaths, outbox, plannerOptions, withTenant, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce } from "../consumer.js";
@@ -29,7 +29,7 @@ export async function exportTable(tx: Tx, tenant: { workspaceId: string; orgId: 
   const q: QueryRequest = { ...parsed, limit: PAGE };
   delete q.cursor;
   const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { name: true, reportingCurrency: true, fiscalYearStartMonth: true, settings: true } });
-  const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth);
+  const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, tenant.workspaceId));
   const opts = await plannerOptions(tx, tenant, q.targets, period);
   const rows: Row[] = [];
   let cursor: string | null = null;

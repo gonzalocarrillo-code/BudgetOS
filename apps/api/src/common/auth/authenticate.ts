@@ -43,6 +43,11 @@ export async function authenticate(deps: AuthDeps, input: { authorization: strin
 /** The route's (or tool's) declared permission, against the caller's roles in the workspace. */
 export function authorize(auth: AuthContext, permission: RoutePermission): void {
   if (permission === "authenticated") return;
+  // T-040: org-level administration (workspaces, templates, tours); with or without a workspace.
+  if (permission === "org.admin") {
+    if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin can do this", { permission });
+    return;
+  }
   if (auth.ctx.workspaceId === null) throw new DomainError("VALIDATION", "Workspace required (route :ws or X-Workspace-Id)");
   if (auth.roles.length === 0) throw new DomainError("FORBIDDEN", "No role in this workspace");
   if (permission !== "workspace.member" && !can(auth.roles, permission)) throw new DomainError("FORBIDDEN", `Missing permission ${permission}`, { permission });

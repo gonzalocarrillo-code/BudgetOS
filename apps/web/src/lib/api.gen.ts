@@ -32,6 +32,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMembers"];
+        put?: never;
+        post: operations["addMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles/{id}": {
         parameters: {
             query?: never;
@@ -298,6 +314,38 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["importEnvelopesCsv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/family": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEnvelopeFamily"];
+        put?: never;
+        post: operations["saveEnvelopeFamily"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/family/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewEnvelopeFamily"];
         delete?: never;
         options?: never;
         head?: never;
@@ -864,6 +912,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["tree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/manual-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listManualEntries"];
+        put?: never;
+        post: operations["createManualEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manual-entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getManualEntry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateManualEntry"];
+        trace?: never;
+    };
+    "/api/v1/manual-entries/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submitManualEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getHome"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTours"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tours/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["completeTour"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tours/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateTour"];
+        trace?: never;
+    };
+    "/api/v1/workspace-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWorkspaceTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/demo-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDemoData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/demo-data/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["purgeDemoData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/experiments": {
         parameters: {
             query?: never;
@@ -1022,6 +1262,70 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["updateSavedView"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listPeriods"];
+        put?: never;
+        post: operations["createPeriod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/periods/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["generatePeriods"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/fiscal-year": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getFiscalYearStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["setFiscalYearStart"];
+        trace?: never;
+    };
+    "/api/v1/periods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deletePeriod"];
+        options?: never;
+        head?: never;
+        patch: operations["updatePeriod"];
         trace?: never;
     };
     "/api/v1/workspaces/{ws}/closures": {
@@ -1546,6 +1850,92 @@ export interface operations {
         responses: {
             /** @description Created role assignment */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The org's people and groups, each with its role assignments in this workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        users: {
+                            /** Format: uuid */
+                            id: string;
+                            email: string;
+                            name: string;
+                            isActive: boolean;
+                            signedIn: boolean;
+                            orgAdmin: boolean;
+                            roles: {
+                                /** Format: uuid */
+                                id: string;
+                                role: string;
+                                scope: unknown;
+                            }[];
+                        }[];
+                        groups: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            googleGroup: string;
+                            memberCount: number;
+                            roles: {
+                                /** Format: uuid */
+                                id: string;
+                                role: string;
+                                scope: unknown;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    addMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Added to the org by email (or the existing person); they sign in with Google later */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The email belongs to another organisation */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2335,6 +2725,202 @@ export interface operations {
             };
         };
     };
+    getEnvelopeFamily: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The parent, its children (each % of the parent or manual) and how they add up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        parent: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        };
+                        members: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        }[];
+                        sums: {
+                            /** Format: uuid */
+                            parentId: string;
+                            parentAmount: string;
+                            childrenTotal: string;
+                            unallocated: string;
+                            /** @enum {string} */
+                            status: "balanced" | "under" | "over";
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    saveEnvelopeFamily: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    parentAmount: string;
+                    /** @default [] */
+                    children?: {
+                        /** Format: uuid */
+                        envelopeId: string;
+                        /** @enum {string} */
+                        mode: "percent" | "manual";
+                        pct?: string;
+                        amount?: string;
+                    }[];
+                    /** @default Family edit */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Rules saved (audited); { plan, preview }: the bulk preview of every amount the plan changes, to commit (null when no amount changes) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewEnvelopeFamily: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    parentAmount: string;
+                    /** @default [] */
+                    children?: {
+                        /** Format: uuid */
+                        envelopeId: string;
+                        /** @enum {string} */
+                        mode: "percent" | "manual";
+                        pct?: string;
+                        amount?: string;
+                    }[];
+                    /** @default Family edit */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The family as the change leaves it, down the tree; writes nothing */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        parent: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        };
+                        members: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            level: number;
+                            currency: string;
+                            status: string;
+                            /** @enum {string|null} */
+                            mode: "percent" | "manual" | null;
+                            pct: string | null;
+                            before: string | null;
+                            after: string | null;
+                            changed: boolean;
+                            childCount: number;
+                            sameCurrency: boolean;
+                        }[];
+                        sums: {
+                            /** Format: uuid */
+                            parentId: string;
+                            parentAmount: string;
+                            childrenTotal: string;
+                            unallocated: string;
+                            /** @enum {string} */
+                            status: "balanced" | "under" | "over";
+                        }[];
+                    };
+                };
+            };
+        };
+    };
     submitEnvelopeVersion: {
         parameters: {
             query?: never;
@@ -2599,7 +3185,7 @@ export interface operations {
                     priority: number;
                     conditions: {
                         /** @enum {string} */
-                        entityType?: "envelope_version" | "target_version" | "bulk_change";
+                        entityType?: "envelope_version" | "target_version" | "bulk_change" | "manual_entry";
                         amountAbs?: {
                             gte?: number;
                             lt?: number;
@@ -2624,6 +3210,10 @@ export interface operations {
                             lt?: number;
                         };
                         metricKey?: string[];
+                        requester?: {
+                            roles?: ("VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN" | "ORG_ADMIN")[];
+                            userIds?: string[];
+                        };
                         any?: unknown[];
                     };
                     chain: {
@@ -2674,7 +3264,7 @@ export interface operations {
                     priority?: number;
                     conditions?: {
                         /** @enum {string} */
-                        entityType?: "envelope_version" | "target_version" | "bulk_change";
+                        entityType?: "envelope_version" | "target_version" | "bulk_change" | "manual_entry";
                         amountAbs?: {
                             gte?: number;
                             lt?: number;
@@ -2699,6 +3289,10 @@ export interface operations {
                             lt?: number;
                         };
                         metricKey?: string[];
+                        requester?: {
+                            roles?: ("VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN" | "ORG_ADMIN")[];
+                            userIds?: string[];
+                        };
                         any?: unknown[];
                     };
                     chain?: {
@@ -3897,6 +4491,8 @@ export interface operations {
                             /** Format: uuid */
                             versionId?: string | null;
                             depth?: number;
+                            /** Format: uuid */
+                            nodeEnvelopeId?: string | null;
                             path: string[];
                             dimensions: {
                                 [key: string]: string | null;
@@ -3927,9 +4523,570 @@ export interface operations {
                         /** Format: date-time */
                         dataAsOf: string;
                         dataVersion: number;
+                        /** @enum {string} */
+                        engine?: "postgres" | "warehouse" | "cache";
                         elapsedMs: number;
                     };
                 };
+            };
+        };
+    };
+    tree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    workspaceId: string;
+                    /** Format: uuid */
+                    templateId: string;
+                    period: {
+                        /** @enum {string} */
+                        kind: "fiscal";
+                        key: string;
+                    } | {
+                        /** @enum {string} */
+                        kind: "range";
+                        start: string;
+                        end: string;
+                    } | {
+                        /** @enum {string} */
+                        kind: "relative";
+                        /** @enum {string} */
+                        preset: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+                    };
+                    /** @default  */
+                    parentPath?: string;
+                    /**
+                     * @default [
+                     *       "budget",
+                     *       "actual",
+                     *       "projected",
+                     *       "pace_index"
+                     *     ]
+                     */
+                    measures?: ("budget" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct")[];
+                };
+            };
+        };
+        responses: {
+            /** @description One level of a hierarchy template's tree from rollup_cache, with the root as totals; available: false (scoped caller or period not cached) means ask /query; X-Data-Version header */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        /** @enum {string|null} */
+                        reason: "scoped" | "not_cached" | null;
+                        rows: {
+                            key: string;
+                            /** Format: uuid */
+                            envelopeId: string | null;
+                            /** Format: uuid */
+                            versionId?: string | null;
+                            depth?: number;
+                            /** Format: uuid */
+                            nodeEnvelopeId?: string | null;
+                            path: string[];
+                            dimensions: {
+                                [key: string]: string | null;
+                            };
+                            measures: {
+                                [key: string]: string | null;
+                            };
+                            /** @default {} */
+                            targets: {
+                                [key: string]: {
+                                    target: string | null;
+                                    actual: string | null;
+                                    vsTargetPct: string | null;
+                                };
+                            };
+                            status: string | null;
+                            /** @default 0 */
+                            pendingCount: number;
+                            /** @default 0 */
+                            openAlerts: number;
+                            /** @default 0 */
+                            openThreads: number;
+                        }[];
+                        totals: {
+                            [key: string]: string | null;
+                        };
+                        /** Format: date-time */
+                        dataAsOf: string;
+                        dataVersion: number;
+                        cacheVersion: number | null;
+                        elapsedMs: number;
+                    };
+                };
+            };
+        };
+    };
+    listManualEntries: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: DRAFT,SUBMITTED,APPROVED,REJECTED */
+                status?: string;
+                channel?: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Batches, newest first (rows omitted, rowCount) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createManualEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    channel: string;
+                    periodStart: string;
+                    periodEnd: string;
+                    /** @default [] */
+                    rows?: {
+                        rowNo?: number;
+                        /** @default {} */
+                        dimensionValues?: {
+                            [key: string]: string;
+                        };
+                        /** @default  */
+                        periodDate?: string;
+                        /** @default  */
+                        currency?: string;
+                        /** @default  */
+                        amount?: string;
+                        /** @default {} */
+                        kpis?: {
+                            [key: string]: string;
+                        };
+                        note?: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description A DRAFT batch, its rows' issues (validated like ingestion) and warnings (rows no budget would take) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getManualEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batch, its issues and warnings, the latest approval decision and, once approved, the lineage of its facts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateManualEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    channel?: string;
+                    periodStart?: string;
+                    periodEnd?: string;
+                    rows?: {
+                        rowNo?: number;
+                        /** @default {} */
+                        dimensionValues?: {
+                            [key: string]: string;
+                        };
+                        /** @default  */
+                        periodDate?: string;
+                        /** @default  */
+                        currency?: string;
+                        /** @default  */
+                        amount?: string;
+                        /** @default {} */
+                        kpis?: {
+                            [key: string]: string;
+                        };
+                        note?: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Rows saved as typed, with their issues; only while DRAFT */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    submitManualEntry: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An approval request (entity_type manual_entry), or approved at once by an empty chain; 422 while a row has an issue */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getHome: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Waiting on me (approvals I can decide, mentions in open threads, alerts assigned to me, unmatched spend), then pacing per top-level budget, recents and saved views */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        waitingOnMe: {
+                            approvals: {
+                                /** Format: uuid */
+                                id: string;
+                                summary: string | null;
+                                entityType: string;
+                                requestedAt: string;
+                                dueAt: string | null;
+                            }[];
+                            mentions: {
+                                /** Format: uuid */
+                                commentId: string;
+                                /** Format: uuid */
+                                threadId: string;
+                                anchorType: string;
+                                /** Format: uuid */
+                                anchorId: string;
+                                body: string;
+                                author: string | null;
+                                createdAt: string;
+                            }[];
+                            alerts: {
+                                /** Format: uuid */
+                                id: string;
+                                /** Format: uuid */
+                                envelopeId: string;
+                                envelopeName: string;
+                                severity: string;
+                                openedAt: string;
+                            }[];
+                            unmatched: number;
+                        };
+                        scopes: {
+                            label: string;
+                            filter: {
+                                /** @enum {string} */
+                                logic: "and" | "or";
+                                not?: boolean;
+                                children: ({
+                                    field: {
+                                        /** @enum {string} */
+                                        kind: "dimension";
+                                        key: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        kind: "measure";
+                                        /** @enum {string} */
+                                        key: "budget" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct";
+                                    } | {
+                                        /** @enum {string} */
+                                        kind: "target";
+                                        metric: string;
+                                        /** @enum {string} */
+                                        field: "value" | "actual" | "vs_target_pct" | "exists";
+                                    } | {
+                                        /** @enum {string} */
+                                        kind: "attr";
+                                        /** @enum {string} */
+                                        key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                    };
+                                    /** @enum {string} */
+                                    op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
+                                    value?: string | number | boolean | (string | number)[] | ((string | number) | (string | number))[] | {
+                                        /** @enum {string} */
+                                        unit: "day" | "week" | "month" | "quarter" | "year";
+                                        amount: number;
+                                        /**
+                                         * @default today
+                                         * @enum {string}
+                                         */
+                                        anchor: "today" | "period_start" | "period_end";
+                                    } | unknown;
+                                } | unknown)[];
+                            };
+                            budget: string | null;
+                            actual: string | null;
+                            projected: string | null;
+                            paceIndex: string | null;
+                            spentPct: string | null;
+                        }[];
+                        recents: {
+                            entityType: string;
+                            /** Format: uuid */
+                            entityId: string;
+                            title: string;
+                            at: string;
+                        }[];
+                        pinnedViews: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            screen: string;
+                            definition: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    listTours: {
+        parameters: {
+            query?: {
+                role?: "planner" | "approver" | "finance" | "data_admin";
+                all?: "true" | "false";
+            };
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's role tours not completed at their current version (all=true: every one, with `completed`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    completeTour: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Recorded for the caller (idempotent) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateTour: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    steps?: {
+                        path?: string;
+                        element: string;
+                        title: string;
+                        description: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Org admins: a new version (a default becomes the workspace's copy) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listWorkspaceTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Org admins: the built-in default_agency template and the org's */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    slug?: string;
+                    /** Format: uuid */
+                    templateId: string;
+                    /** @default false */
+                    withDemoData?: boolean;
+                    /** @default USD */
+                    reportingCurrency?: string;
+                    /** @default 1 */
+                    fiscalYearStartMonth?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getDemoData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demo rows left: envelopes and targets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    purgeDemoData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every demo row deleted in one transaction; the template's configuration stays */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -4306,6 +5463,8 @@ export interface operations {
                                 end: string;
                             }[];
                         }[];
+                        /** @default [] */
+                        levels: string[];
                         nextCursor: string | null;
                         calendar: {
                             fiscalYearStartMonth: number;
@@ -4445,6 +5604,206 @@ export interface operations {
         };
         responses: {
             /** @description Updated view (owner, or an admin for a shared view) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPeriods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fiscal calendar: years, quarters, months as defined and custom partitions, each with its closure */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        key: string;
+                        kind: string;
+                        start: string;
+                        end: string;
+                        closure: {
+                            /** Format: uuid */
+                            id: string;
+                            status: string;
+                        } | null;
+                    }[];
+                };
+            };
+        };
+    };
+    createPeriod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    key: string;
+                    /**
+                     * @default custom
+                     * @enum {string}
+                     */
+                    kind?: "year" | "quarter" | "month" | "custom";
+                    start: string;
+                    end: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created; 409 when the key exists or it overlaps another period of its kind */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    generatePeriods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    fiscalYear: number;
+                    /**
+                     * @default calendar
+                     * @enum {string}
+                     */
+                    pattern?: "calendar" | "445" | "454" | "544";
+                };
+            };
+        };
+        responses: {
+            /** @description { created, kept }: a fiscal year's periods in a pattern (calendar, 4-4-5, 4-5-4, 5-4-4); existing keys are kept */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getFiscalYearStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { startMonth }: the month the fiscal year starts in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        startMonth: number;
+                    };
+                };
+            };
+        };
+    };
+    setFiscalYearStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    startMonth: number;
+                };
+            };
+        };
+        responses: {
+            /** @description The month the fiscal year starts in; computed periods follow, rows stay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deletePeriod: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted; 409 when it has a closure or budgets aligned to it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updatePeriod: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    key?: string;
+                    start?: string;
+                    end?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated; 409 when it has a closure (its dates are frozen in the report) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4977,6 +6336,10 @@ export interface operations {
         parameters: {
             query?: {
                 period?: "current_month" | "current_quarter" | "current_year" | "last_30_days" | "last_90_days" | "ytd" | "next_90_days";
+                /** @description Heatmap rows: a registry granularity key (default country) */
+                rows?: string;
+                /** @description Heatmap columns: another granularity key (default platform) */
+                cols?: string;
             };
             header?: never;
             path: {
@@ -4986,7 +6349,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The Overview dashboard: heatmap (market × platform), top variances, KPI vs target, open alerts, approvals due, data freshness */
+            /** @description The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5635,7 +6998,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description { groups: [{ type, count, hits: [{ id, title, path, status, facets, deepLink }] }], parsed } */
+            /** @description { groups: [{ type, count, more (count is a lower bound), hits: [{ id, title, path, status, facets, deepLink }] }], parsed } */
             200: {
                 headers: {
                     [name: string]: unknown;

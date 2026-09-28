@@ -11,7 +11,7 @@ async function recordPolicyChange(tx: Tx, ctx: TenantContext, workspaceId: strin
   await outbox(tx, { workspaceId, topic: "policy.changed", payload: { policyId, action, version: after["version"] } });
 }
 
-async function insertPolicy(tx: Tx, ctx: TenantContext, workspaceId: string, input: CreatePolicyInput) {
+export async function insertPolicy(tx: Tx, ctx: TenantContext, workspaceId: string, input: CreatePolicyInput) {
   const clash = await tx.approvalPolicy.findFirst({ where: { workspaceId, name: input.name }, select: { id: true } });
   if (clash) throw new DomainError("CONFLICT", "A policy with this name exists", { policyId: clash.id });
   const row = await tx.approvalPolicy.create({

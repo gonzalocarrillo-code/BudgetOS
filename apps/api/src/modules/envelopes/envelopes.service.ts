@@ -15,6 +15,7 @@ import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
 import { updateEnvelope } from "./commands/update-envelope.js";
 import { updatePhasing } from "./commands/update-phasing.js";
 import { getEnvelope, listVersions, versionDto } from "./queries/get-envelope.js";
+import { getFamily, previewFamily, saveFamily } from "./family/family.js";
 import { getTimeline, type TimelineParams } from "./queries/timeline.js";
 
 @Injectable()
@@ -38,6 +39,15 @@ export class EnvelopesService {
   }
   previewStructure(auth: AuthContext, body: unknown) {
     return previewStructure(this.prisma, auth, body);
+  }
+  family(auth: AuthContext, id: string) {
+    return getFamily(this.prisma, auth, id);
+  }
+  familyPreview(auth: AuthContext, id: string, body: unknown) {
+    return previewFamily(this.prisma, auth, id, body);
+  }
+  familySave(auth: AuthContext, id: string, body: unknown) {
+    return saveFamily(this.prisma, auth, id, body, this.previews);
   }
   bulkPreview(auth: AuthContext, body: unknown) {
     return buildPreview(this.prisma, auth, body, this.previews);
