@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post } from "@nestjs/common";
+import { PrismaClient } from "@prisma/client";
+import { getWorkspaceGeneral, updateWorkspaceGeneral } from "./commands/workspace-general.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { AdminService } from "./admin.service.js";
@@ -6,7 +8,22 @@ import { AddPersonDto, AssignRoleDto, GroupsSyncDto } from "./dto.js";
 
 @Controller()
 export class AdminController {
-  constructor(@Inject(AdminService) private readonly admin: AdminService) {}
+  constructor(
+    @Inject(AdminService) private readonly admin: AdminService,
+    @Inject(PrismaClient) private readonly prisma: PrismaClient,
+  ) {}
+
+  @Get("workspaces/:ws/general")
+  @Permission("workspace.member")
+  general(@Tenant() auth: AuthContext) {
+    return getWorkspaceGeneral(this.prisma, auth);
+  }
+
+  @Patch("workspaces/:ws/general")
+  @Permission("user.manage")
+  renameWorkspace(@Tenant() auth: AuthContext, @Body() body: unknown) {
+    return updateWorkspaceGeneral(this.prisma, auth, body);
+  }
 
   @Get("workspaces/:ws/roles")
   @Permission("user.manage")

@@ -97,3 +97,7 @@ export type HomeResponse = z.infer<typeof HomeResponse>;
 /** PATCH /me: the caller's own display name (what Home greets them by). */
 export const UpdateMeInput = z.object({ name: z.string().trim().min(1).max(120) });
 export type UpdateMeInput = z.infer<typeof UpdateMeInput>;
+
+/** PATCH /workspaces/:ws/general: the workspace's name (Settings › Workspace). */
+export const UpdateWorkspaceInput = z.object({ name: z.string().trim().min(1).max(120) });
+export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceInput>;

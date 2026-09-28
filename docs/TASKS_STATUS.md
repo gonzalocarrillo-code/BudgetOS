@@ -368,6 +368,11 @@ The spec-scale load job re-measures this on this branch.
 - **Local runner:** now delivers notifications (in-app and Slack), and every workspace of the local stack's org.
 - **Needs a real Slack app to use:** the bot token and signing secret, plus a public URL for buttons and /budget.
 
+## Product feedback, round 4: Settings section (2026-09-28)
+
+- **The sidebar's Admin section** keeps Registry, Pacing rules, Roles and Tags, plus **Settings**.
+- **Settings** is a hub page with: Workspace, Approval policies, Slack, Data sources, Naming templates, Fiscal calendar, Workspace templates, Tours. On any of them, a strip above the page moves between them, and the sidebar's Settings item stays active.
+- **New Settings › Workspace:** rename the workspace (`GET`/`PATCH /workspaces/:ws/general`, `user.manage`, audited), and see its currency, fiscal-year start, slug and id.
 ## Product feedback, round 4: Budgets (2026-09-28)
 
 - **Pace:** the period's spend against the budget's share of the period (`budget_in_period`, ADR-047). A year-long budget viewed over one quarter no longer reads 0.15.

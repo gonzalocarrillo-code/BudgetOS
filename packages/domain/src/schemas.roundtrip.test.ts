@@ -351,6 +351,7 @@ const samples: Record<string, readonly unknown[]> = {
     { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [], workspace: { name: "OpenAI", currency: "USD", period: { start: "2026-01-01", end: "2026-12-31", elapsed: "0.74" } }, totals: null, setup: { budgets: 0, sources: 0, people: 1, spend: false, tags: 0 } },
   ],
   UpdateMeInput: [{ name: "Maya Chen" }],
+  UpdateWorkspaceInput: [{ name: "OpenAI" }],
   AppliedTagsQuery: [{ type: "alert", ids: "01927a00-0000-7000-8000-0000000000a1,01927a00-0000-7000-8000-0000000000a2" }],
   SlackSettings: [{}, { teamId: "T0GOLDEN1", teamName: "Golden", defaultChannel: "#budget-ops", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], approvals: false }],
   UpdateSlackSettingsInput: [{ defaultChannel: "#budget-ops" }, { alertChannel: null, alertSeverities: ["critical"], link: true }],
