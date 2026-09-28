@@ -37,6 +37,8 @@ function useSettled<T>(value: T, ms = 350): T {
 }
 
 const MONEY = /^\d{1,16}(\.\d{1,2})?$/;
+/** "50,000,000" or " 1200.50 " as typed; the API gets plain digits. */
+const plain = (v: string) => v.replace(/[,\s]/g, "");
 const field = "h-9 w-full rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring";
 const TITLES: Record<StructureOp, MessageKey> = { add_child: "structure.addChild", move: "structure.move", split: "structure.split", merge: "structure.merge" };
 
@@ -78,22 +80,24 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
     return Object.fromEntries(Object.entries(env.dimensionValues).filter(([k, v]) => all.every((d) => d[k] === v)));
   })();
 
+  // The reason is optional (product feedback 2026-09-28): left blank, the history records what was done.
+  const reason = rationale.trim().length >= 3 ? rationale.trim() : t(`structure.defaultReason.${op}` as MessageKey, { name: env.name });
   const why = ((): string | null => {
-    if (rationale.trim().length < 3) return t("structure.needReason");
-    if (op === "add_child") return !childName.trim() ? t("structure.needName") : !MONEY.test(childAmount) ? t("structure.needAmount") : null;
+    if (rationale.trim().length > 0 && rationale.trim().length < 3) return t("structure.needReason");
+    if (op === "add_child") return !childName.trim() ? t("structure.needName") : !MONEY.test(plain(childAmount)) ? t("structure.needAmount") : null;
     if (op === "move") return moveTo === null ? t("structure.needParent") : null;
-    if (op === "split") return parts.some((p) => !p.name.trim() || !MONEY.test(p.amount)) ? t("structure.needParts") : null;
+    if (op === "split") return parts.some((p) => !p.name.trim() || !MONEY.test(plain(p.amount))) ? t("structure.needParts") : null;
     return mergeIds.length === 0 ? t("structure.needSiblings") : !mergeName.trim() ? t("structure.needName") : null;
   })();
   const body = why
     ? null
     : op === "add_child"
-      ? { op, envelopeId: env.id, input: { name: childName.trim(), amount: childAmount, dimensionValues: childDims, rationale: rationale.trim() } }
+      ? { op, envelopeId: env.id, input: { name: childName.trim(), amount: plain(childAmount), dimensionValues: childDims, rationale: reason } }
       : op === "move"
-        ? { op, envelopeId: env.id, input: { parentId: moveTo?.id ?? null, rowVersion: env.rowVersion, rationale: rationale.trim() } }
+        ? { op, envelopeId: env.id, input: { parentId: moveTo?.id ?? null, rowVersion: env.rowVersion, rationale: reason } }
         : op === "split"
-          ? { op, envelopeId: env.id, input: { basedOnVersionId: env.draftVersionId ?? env.currentVersionId, rationale: rationale.trim(), parts: parts.map((p) => ({ name: p.name.trim(), amount: p.amount })) } }
-          : { op, input: { sourceIds: mergeSources, name: mergeName.trim(), dimensionValues: shared, rationale: rationale.trim() } };
+          ? { op, envelopeId: env.id, input: { basedOnVersionId: env.draftVersionId ?? env.currentVersionId, rationale: reason, parts: parts.map((p) => ({ name: p.name.trim(), amount: plain(p.amount) })) } }
+          : { op, input: { sourceIds: mergeSources, name: mergeName.trim(), dimensionValues: shared, rationale: reason } };
   const settled = useSettled(body);
   const pending = JSON.stringify(settled) !== JSON.stringify(body);
   const preview = useQuery({
@@ -308,7 +312,8 @@ function PickButton({ selected, onClick, testId, children }: { selected: boolean
 
 /** What the server said the change would do (or why it would not). */
 function PreviewPanel({ preview: p, stale, waiting }: { preview: Preview | undefined; stale: boolean; waiting: string | null }): ReactElement {
-  if (waiting) return <p className="rounded-lg bg-surface px-3 py-2 text-sm text-muted-foreground" data-testid="structure-preview">{t("structure.previewWaiting")}</p>;
+  // Say what is missing, not just that something is (product feedback 2026-09-28: "it doesn't show why").
+  if (waiting) return <p className="rounded-lg bg-surface px-3 py-2 text-sm text-muted-foreground" data-testid="structure-preview">{t("structure.previewWaitingFor", { what: waiting })}</p>;
   if (!p) return <p className="rounded-lg bg-surface px-3 py-2 text-sm text-muted-foreground" data-testid="structure-preview">{t("structure.checking")}</p>;
   if (!p.ok) {
     return (

@@ -40,11 +40,16 @@ test.describe("envelope structure from the UI (T-031b)", () => {
     const dialog = page.getByTestId("structure-dialog");
     await expect(dialog).toHaveAttribute("data-op", "add_child");
     await expect(page.getByTestId("structure-commit")).toBeDisabled(); // nothing filled in yet
-    await page.getByTestId("child-name").fill("MX meta awareness lookalike");
-    await page.getByTestId("child-amount").fill("500.00");
-    await page.getByTestId("child-dim").and(page.locator('[data-key="audience"]')).selectOption("lookalike");
-    await page.getByTestId("structure-reason").fill("Test a lookalike audience in Q4");
     const preview = page.getByTestId("structure-preview");
+    await expect(preview).toContainText("Give it a name"); // says what is missing
+    await page.getByTestId("child-name").fill("MX meta awareness lookalike");
+    // Amounts as people type them; the reason is optional.
+    await page.getByTestId("child-amount").fill("1,500");
+    await page.getByTestId("child-dim").and(page.locator('[data-key="audience"]')).selectOption("lookalike");
+    await expect(preview).toHaveAttribute("data-ok", "true");
+    await expect(page.getByTestId("structure-commit")).toBeEnabled();
+    await page.getByTestId("child-amount").fill("500.00");
+    await page.getByTestId("structure-reason").fill("Test a lookalike audience in Q4");
     await expect(preview).toHaveAttribute("data-ok", "true");
     await expect(preview.getByTestId("preview-cap")).toContainText("Under LATAM MX meta awareness");
     await expect(page.getByTestId("preview-routing")).toHaveAttribute("data-kind", "approval");
