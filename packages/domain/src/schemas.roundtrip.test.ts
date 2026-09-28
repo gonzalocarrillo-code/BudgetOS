@@ -214,7 +214,7 @@ const samples: Record<string, readonly unknown[]> = {
   ],
   UpdatePhasingInput: [{ phasing: [{ month: "2026-10-01", amount: "10" }], basedOnVersionId: workspaceId }],
   RestoreVersionInput: [{ basedOnVersionId: null }, { basedOnVersionId: workspaceId, rationale: "back to v1" }],
-  UpdateEnvelopeInput: [{ rowVersion: 1, name: "Renamed" }, { rowVersion: 3, ownerId: null, startDate: "2026-10-01" }],
+  UpdateEnvelopeInput: [{ rowVersion: 1, name: "Renamed" }, { rowVersion: 3, ownerId: null, startDate: "2026-10-01" }, { rowVersion: 2, dimensionValues: { fiscal_period: "fy2026" } }],
   SubmitVersionInput: [{ versionId: workspaceId }],
   DecideInput: [{ decision: "approve" }, { decision: "reject", comment: "too high", channel: "slack" }],
   ExternalEvidenceInput: [{ gcsUri: "gs://evidence/po.pdf", sha256: "a".repeat(64), approverName: "Client CFO", approvedOn: "2026-10-02" }],

@@ -64,6 +64,8 @@ export const UpdateEnvelopeInput = z
     periodId: z.string().uuid().nullable().optional(),
     /** Drop a custom name: the display naming template names the budget again. */
     useTemplateName: z.literal(true).optional(),
+    /** The budget's granularities, all of them (a key left out is cleared). Registry rules as on create. */
+    dimensionValues: z.record(z.string().min(1), z.string().min(1)).optional(),
   })
   .strict()
   .refine((v) => !(v.useTemplateName && v.name !== undefined), { message: "Rename, or use the template name, not both", path: ["useTemplateName"] });

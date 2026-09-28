@@ -6,7 +6,7 @@ import { as } from "./ops.js";
 /**
  * Product feedback 2026-09-28: Budgets opens on the fiscal year (pace reads against the budget's
  * share of the period), statuses read as words, a budget is renamed from its drawer, and "New
- * budget" adds a top-level one.
+ * budget" adds a top-level one. Its granularities change from the drawer.
  */
 test("Budgets: the fiscal year by default, readable statuses, rename from the drawer", async ({ page }) => {
   await as(page, "planner");
@@ -31,4 +31,13 @@ test("Budgets: the fiscal year by default, readable statuses, rename from the dr
   await drawer.getByTestId("drawer-rename-save").click();
   await expect(drawer.getByTestId("drawer-name")).toHaveText(name);
   await expect(drawer).toContainText("Renamed by hand");
+
+  // Its granularities change from the drawer too: clear one, save, and it is gone.
+  const before = await drawer.getByTestId("drawer-dimension").count();
+  expect(before).toBeGreaterThan(0);
+  await drawer.getByTestId("drawer-edit-dimensions").click();
+  const set = drawer.getByTestId("drawer-dimension-select").filter({ has: page.locator("option:checked:not([value=''])") });
+  await set.last().selectOption("");
+  await drawer.getByTestId("drawer-dimensions-save").click();
+  await expect(drawer.getByTestId("drawer-dimension")).toHaveCount(before - 1);
 });

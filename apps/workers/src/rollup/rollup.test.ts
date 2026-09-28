@@ -143,6 +143,24 @@ describe("rollup-worker", () => {
     expect(refreshed).toEqual(await snapshot());
   });
 
+  it("a budget whose granularities change leaves its old path: the templates rebuild (product feedback 2026-09-28)", async () => {
+    const id = env["emeaTiktok"] as string;
+    // What PATCH /envelopes/:id does to the tuple: EMEA/tiktok becomes LATAM/tiktok.
+    await owner.$executeRawUnsafe(`UPDATE envelope SET dimension_values = dimension_values || '{"region":"LATAM"}'::jsonb WHERE id = $1::uuid`, id);
+    await owner.$executeRawUnsafe(
+      `UPDATE envelope_dimension ed SET value_id = v.id FROM dimension_value v WHERE ed.envelope_id = $1::uuid AND v.dimension_id = ed.dimension_id AND v.code = 'LATAM'`,
+      id,
+    );
+    const payload = { envelopeId: id, kind: "granularities" };
+    await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload }));
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const body = { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
+    expect(await handleRollupEvent(app, body, TODAY)).toMatchObject({ outcome: "applied", rebuilt: true });
+    const t = await tree();
+    expect(t["EMEA/tiktok"]).toBeUndefined();
+    expect(t["LATAM/tiktok"]).toBe("70.00");
+  });
+
   it("status-only events (approval.changed, period.closed / restated) refresh pendingCount to what a rebuild gives (ADR-044)", async () => {
     const snapshot = async () => (await owner.$queryRawUnsafe<Array<{ k: string; m: unknown }>>(`SELECT period_start::text || '|' || node_path AS k, measures AS m FROM rollup_cache WHERE template_id = $1::uuid ORDER BY 1`, templateId)).map((r) => [r.k, r.m]);
     const pending = async () => Object.fromEntries((await owner.$queryRawUnsafe<Array<{ p: string; n: number }>>(`SELECT node_path AS p, (measures->>'pendingCount')::int AS n FROM rollup_cache WHERE template_id = $1::uuid AND period_start = $2::date AND node_path IN ('', 'LATAM', 'LATAM/meta')`, templateId, period.start)).map((r) => [r.p, r.n]));

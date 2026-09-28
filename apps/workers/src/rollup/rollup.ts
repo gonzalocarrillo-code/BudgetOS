@@ -313,7 +313,8 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
     if (event.topic === "budget.changed" && (event.payload as { kind?: unknown } | null)?.kind === "draft") return;
     const templates = await tx.hierarchyTemplate.findMany({ where: { workspaceId: event.workspaceId } });
     result.templates = templates.length;
-    if (event.topic === "registry.changed") {
+    // A budget's granularities changed: it left one path for another in every template, so rebuild.
+    if (event.topic === "registry.changed" || (event.topic === "budget.changed" && (event.payload as { kind?: unknown } | null)?.kind === "granularities")) {
       // Values merged or re-parented, templates saved: rebuild (spec §19).
       for (const t of templates) for (const p of await periodsFor(tx, ctx, t.id, [])) result.upserted += await buildTemplate(tx, ctx, t, p);
       result = { ...result, rebuilt: true };

@@ -2190,6 +2190,9 @@ export interface operations {
                     /** Format: uuid */
                     periodId?: string | null;
                     useTemplateName?: boolean;
+                    dimensionValues?: {
+                        [key: string]: string;
+                    };
                 };
             };
         };
