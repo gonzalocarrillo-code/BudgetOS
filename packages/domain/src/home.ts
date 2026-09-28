@@ -106,3 +106,13 @@ export type UpdateMeInput = z.infer<typeof UpdateMeInput>;
 /** PATCH /workspaces/:ws/general: the workspace's name (Settings › Workspace). */
 export const UpdateWorkspaceInput = z.object({ name: z.string().trim().min(1).max(120) });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceInput>;
+
+// ---- Notifications (DS-003) -------------------------------------------------------------------
+
+export const NotificationItem = z.object({ id: z.string().uuid(), kind: z.string(), payload: z.record(z.string(), z.unknown()), readAt: z.string().nullable(), createdAt: z.string() });
+export type NotificationItem = z.infer<typeof NotificationItem>;
+export const NotificationsResponse = z.object({ rows: z.array(NotificationItem), unread: z.number().int() });
+export type NotificationsResponse = z.infer<typeof NotificationsResponse>;
+/** POST /me/notifications/read — these ids, or every unread one when `ids` is absent. */
+export const MarkNotificationsReadInput = z.object({ ids: z.array(z.string().uuid()).max(200).optional() });
+export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadInput>;

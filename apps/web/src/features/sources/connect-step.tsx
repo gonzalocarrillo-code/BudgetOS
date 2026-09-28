@@ -1,5 +1,5 @@
 import { SourceConfig } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Textarea } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { Database, FileSpreadsheet, FileUp, Snowflake } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
@@ -60,7 +60,7 @@ export function ConnectStep({ onFile, onWarehouse }: { onFile: (f: File) => void
   const [connector, setConnector] = useState<Connector | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [columns, setColumns] = useState("");
-  const field = "h-9 rounded-lg border border-input bg-card px-2.5 text-sm";
+  const field = "";
 
   const config = (): { ok: true; config: WarehouseConfig } | { ok: false; message: string } => {
     if (connector === null || connector === "csv") return { ok: false, message: t("sources.pickConnector") };
@@ -110,12 +110,12 @@ export function ConnectStep({ onFile, onWarehouse }: { onFile: (f: File) => void
           <div className="grid gap-3 sm:grid-cols-2">
             {FIELDS[connector].map((f) => (
               <Labeled key={f.key} label={`${t(f.label)}${f.optional ? ` ${t("sources.optional")}` : ""}`} hint={f.hint ? t(f.hint) : undefined}>
-                <input className={cn(field, f.key === "secretRef" && "font-mono text-xs")} value={values[f.key] ?? ""} placeholder={f.placeholder} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} data-testid={`source-field-${f.key}`} />
+                <Input className={cn(field, f.key === "secretRef" && "font-mono text-xs")} value={values[f.key] ?? ""} placeholder={f.placeholder} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} data-testid={`source-field-${f.key}`} />
               </Labeled>
             ))}
           </div>
           <Labeled label={t("sources.columnsLabel")} hint={t("sources.columnsHelp")}>
-            <textarea className="min-h-24 rounded-lg border border-input bg-card px-2.5 py-2 font-mono text-xs" value={columns} onChange={(e) => setColumns(e.target.value)} placeholder={"date\ncountry\nplatform\ncampaign\nspend\ncurrency"} data-testid="source-columns" />
+            <Textarea className="min-h-24 font-mono text-xs" value={columns} onChange={(e) => setColumns(e.target.value)} placeholder={"date\ncountry\nplatform\ncampaign\nspend\ncurrency"} data-testid="source-columns" />
           </Labeled>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" disabled reason={t("sources.testLater")} data-testid="source-test">

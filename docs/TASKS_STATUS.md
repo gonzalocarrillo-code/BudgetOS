@@ -416,7 +416,11 @@ The product owner asked for a usability audit of the whole system by a UX/UI spe
 | UX-008 | A | One "budget this fiscal year" definition (ADR-051) | done |
 
 Phase A notes (2026-09-28): tours never start by themselves (Home invites; a close records a skip, migration `20261001000000_tour_dismissed`); only `<main>` scrolls; nav and Settings follow `/me` permissions; branded sign-in, 403 and no-workspace pages; the BudgetOS logo, favicon and per-page tab titles; AA tokens with a contrast test; one `StatusChip`; toasts (`meta.success` / `meta.error` on mutations), skeletons and empty states; Home and the Overview tiles use Budgets' total (ADR-051). The web UI says BudgetOS; Slack messages and exports still say Budget OS until decision D1 is confirmed. The Explorer e2e totals test waited on the wrong load since ADR-050 and now waits for the template's tree.
-| DS-001…005 | B | `@budget/ui` form controls, layers, shell v2, `Table`, Budgets toolbar | pending |
+| DS-001 | B | `Input`, `NumberInput`, `Textarea`, `Select` (native, styled), `FormField`; every hand-styled field migrated (196); lint `budget/no-raw-form-controls` is an error | done |
+| DS-002 | B | Radix `Dialog`, `Modal`, `SheetContent`, `Popover`, `Menu`, `Tabs`; `Avatar`, `Kbd`; the six hand-rolled modals trap focus, close on Escape and a backdrop click | done |
+| DS-003 | B | Shell v2: Help and user menus, the notifications bell (`GET /me/notifications`, `POST /me/notifications/read`), `?` shortcuts and `g` go-to keys, an icon rail below 1280 px and a slide-in panel on phones | done |
+| DS-004 | B | Table primitives; Alerts row selection with a bulk bar; the inbox with avatars and overdue dates; Targets shows Draft only when something is in draft | done (grouping alerts by rule left out: grouping stays server-side, AGENTS §4) |
+| DS-005 | B | Budgets toolbar: the structure actions in one menu; money columns wide enough for their totals, with the full value on hover | done |
 | ORG-001 | C | Superadmin naming and marking (ADR-052): "Superadmin" everywhere, `isSuperadmin` on `/me`, a badge in the workspace, `audit_event.actor_context` | done |
 | ORG-002 | C | Archive and restore: `workspace.status`, 423 on writes, hidden from members, workers skip it, a banner | done |
 | ORG-003 | C | Delete (archived, typed name, reason), undelete within `WORKSPACE_RETENTION_DAYS`, the purge job keeping audit rows | done |

@@ -22,6 +22,6 @@ export default tseslint.config(
     // Spec §27: every disabled control has a reason.
     files: ["**/*.tsx", "**/*.jsx"],
     plugins: { budget },
-    rules: { "budget/no-bare-disabled": "error" },
+    rules: { "budget/no-bare-disabled": "error", "budget/no-raw-form-controls": "error" },
   },
 );

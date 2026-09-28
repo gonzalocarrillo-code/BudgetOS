@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select, Modal } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement, type ReactNode } from "react";
@@ -13,7 +13,7 @@ import { periodsQuery, registryQuery } from "../../lib/queries.js";
  */
 
 const MONEY = /^\d{1,13}(\.\d{1,2})?$/;
-const field = "h-9 w-full rounded-md border border-input bg-card px-2.5 text-sm";
+const field = "w-full";
 
 function thisYear(periods: Array<{ kind: string; start: string; end: string }>): { start: string; end: string } {
   const today = new Date().toISOString().slice(0, 10);
@@ -64,7 +64,7 @@ export function NewBudgetDialog({ ws, currency, onCreated, onCancel }: { ws: str
   };
 
   return (
-    <div className="fixed inset-0 z-30 grid place-items-center bg-inverse/30 p-6" role="dialog" aria-modal="true" aria-labelledby="new-budget-title" data-testid="new-budget-dialog">
+    <Modal onClose={onCancel} labelledBy="new-budget-title" testId="new-budget-dialog">
       <div className="flex max-h-[85vh] w-full max-w-xl flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg">
         <div>
           <h2 id="new-budget-title" className="text-lg font-semibold tracking-[-0.015em]">{t("newBudget.title")}</h2>
@@ -72,16 +72,16 @@ export function NewBudgetDialog({ ws, currency, onCreated, onCancel }: { ws: str
         </div>
         <div className="grid gap-3 sm:grid-cols-[1fr_11rem]">
           <Labeled label={t("newBudget.name")}>
-            <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("newBudget.namePlaceholder")} autoFocus data-testid="new-budget-name" />
+            <Input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("newBudget.namePlaceholder")} autoFocus data-testid="new-budget-name" />
           </Labeled>
           <Labeled label={t("newBudget.amount", { currency })}>
-            <input className={cn(field, "text-right tabular")} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" data-testid="new-budget-amount" />
+            <Input className={cn(field, "text-right tabular")} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" data-testid="new-budget-amount" />
           </Labeled>
           <Labeled label={t("newBudget.start")}>
-            <input type="date" className={field} value={startDate} onChange={(e) => setStart(e.target.value)} data-testid="new-budget-start" />
+            <Input type="date" className={field} value={startDate} onChange={(e) => setStart(e.target.value)} data-testid="new-budget-start" />
           </Labeled>
           <Labeled label={t("newBudget.end")}>
-            <input type="date" className={field} value={endDate} onChange={(e) => setEnd(e.target.value)} data-testid="new-budget-end" />
+            <Input type="date" className={field} value={endDate} onChange={(e) => setEnd(e.target.value)} data-testid="new-budget-end" />
           </Labeled>
         </div>
         {dimensions.length ? (
@@ -94,7 +94,7 @@ export function NewBudgetDialog({ ws, currency, onCreated, onCancel }: { ws: str
                 .map((d) => (
                   <label key={d.key} className="flex flex-col gap-1 text-xs text-muted-foreground">
                     {d.label}
-                    <select className={field} value={dims[d.key] ?? ""} onChange={(e) => setDims((c) => (e.target.value ? { ...c, [d.key]: e.target.value } : Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.key))))} data-testid="new-budget-dim" data-key={d.key}>
+                    <Select className={field} value={dims[d.key] ?? ""} onChange={(e) => setDims((c) => (e.target.value ? { ...c, [d.key]: e.target.value } : Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.key))))} data-testid="new-budget-dim" data-key={d.key}>
                       <option value="">{t("structure.dimNone")}</option>
                       {d.values
                         .filter((v) => v.isActive)
@@ -103,7 +103,7 @@ export function NewBudgetDialog({ ws, currency, onCreated, onCancel }: { ws: str
                             {v.label}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </label>
                 ))}
             </div>
@@ -119,7 +119,7 @@ export function NewBudgetDialog({ ws, currency, onCreated, onCancel }: { ws: str
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

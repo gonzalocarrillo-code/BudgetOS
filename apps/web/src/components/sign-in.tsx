@@ -1,4 +1,4 @@
-import { Button, Logo } from "@budget/ui";
+import { Button, Logo, Textarea } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useState, type FormEvent, type ReactElement } from "react";
 import { setToken } from "../lib/auth.js";
@@ -32,7 +32,7 @@ export function SignIn({ expired = false }: { expired?: boolean }): ReactElement
           <form onSubmit={submit} className="mt-3 flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm font-medium">
               {t("auth.token")}
-              <textarea className="min-h-24 rounded-lg border border-input bg-card p-2 font-mono text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" value={value} onChange={(e) => setValue(e.target.value)} />
+              <Textarea className="min-h-24 font-mono text-xs" value={value} onChange={(e) => setValue(e.target.value)} />
             </label>
             {value.trim() ? <Button type="submit">{t("auth.submit")}</Button> : <Button type="submit" disabled reason={t("auth.token")}>{t("auth.submit")}</Button>}
           </form>

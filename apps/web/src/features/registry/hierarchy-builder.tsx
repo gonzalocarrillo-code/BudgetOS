@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronRight, GripVertical, Star, X } from "lucide-react";
@@ -82,7 +82,7 @@ function TemplateEditor({ ws, dims, template, blocked, onSaved }: { ws: string; 
     <div className="flex flex-col gap-4" data-testid="template-editor">
       <label className="flex max-w-sm flex-col gap-1 text-sm font-medium">
         {t("registry.hierarchy.name")}
-        <input className="h-9 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring" value={name} onChange={(e) => setName(e.target.value)} data-testid="template-name" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="template-name" />
       </label>
       <div>
         <p className="mb-2 text-sm font-medium">{t("registry.hierarchy.levels")}</p>

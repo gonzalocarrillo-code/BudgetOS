@@ -1,5 +1,5 @@
 import { formatMoney } from "@budget/grid";
-import { Button, StatusChip } from "@budget/ui";
+import { Button, StatusChip, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -82,7 +82,7 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
               }}
               data-testid="drawer-rename-form"
             >
-              <input className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm" aria-label={t("drawer.renameLabel")} value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus data-testid="drawer-rename-input" />
+              <Input className="min-w-0 flex-1" size="sm" aria-label={t("drawer.renameLabel")} value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus data-testid="drawer-rename-input" />
               {newName.trim() && !rename.isPending ? (
                 <Button type="submit" size="sm" data-testid="drawer-rename-save">{t("drawer.renameSave")}</Button>
               ) : (
@@ -190,8 +190,8 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
                           <DimensionIcon ws={ws} icon={d.icon} className="size-3.5" />
                           {d.label}
                         </span>
-                        <select
-                          className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                        <Select
+                          className="text-foreground" size="sm"
                           value={editingDims[d.key] ?? ""}
                           onChange={(e) => setEditingDims((c) => (e.target.value ? { ...c, [d.key]: e.target.value } : Object.fromEntries(Object.entries(c ?? {}).filter(([k]) => k !== d.key))))}
                           data-testid="drawer-dimension-select"
@@ -205,7 +205,7 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
                                 {v.label}
                               </option>
                             ))}
-                        </select>
+                        </Select>
                       </label>
                     ))}
                 </div>

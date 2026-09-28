@@ -1,5 +1,5 @@
 import { FilterGroup, type FilterGroupT } from "@budget/domain";
-import { Button, cn, EmptyState, SkeletonRows } from "@budget/ui";
+import { Button, cn, EmptyState, SkeletonRows, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -196,7 +196,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
           ? t("rules.needMetricKey")
           : null;
   const why = blocked ?? invalid ?? (save.isPending ? t("shell.loading") : null);
-  const field = "h-9 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+  const field = "";
   return (
     <form
       className="flex flex-col gap-3"
@@ -207,47 +207,47 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
       data-testid="rule-editor"
     >
       <Field label={t("rules.name")}>
-        <input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="rule-name" />
+        <Input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="rule-name" />
       </Field>
       <div className="grid grid-cols-[1fr_auto_7rem] gap-2">
         <Field label={t("rules.metric")}>
-          <select className={field} value={metric} onChange={(e) => setMetric(e.target.value)} data-testid="rule-metric">
+          <Select className={field} value={metric} onChange={(e) => setMetric(e.target.value)} data-testid="rule-metric">
             {METRICS.map((m) => (
               <option key={m} value={m}>
                 {t(`rules.metric.${m}` as MessageKey)}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label={t("rules.comparator")}>
-          <select className={field} value={comparator} onChange={(e) => setComparator(e.target.value)} data-testid="rule-comparator">
+          <Select className={field} value={comparator} onChange={(e) => setComparator(e.target.value)} data-testid="rule-comparator">
             {COMPARATORS.map((c) => (
               <option key={c} value={c}>
                 {SYMBOL[c]}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label={t("rules.threshold")}>
-          <input className={cn(field, "text-right tabular")} inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} data-testid="rule-threshold" />
+          <Input className={cn(field, "text-right tabular")} inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} data-testid="rule-threshold" />
         </Field>
       </div>
       <p className="text-xs text-muted-foreground">{t(`rules.metricHelp.${metric}` as MessageKey)}</p>
       {metric === "kpi_vs_target_pct" ? (
         <Field label={t("rules.metricKey")}>
-          <input className={field} value={metricKey} onChange={(e) => setMetricKey(e.target.value)} />
+          <Input className={field} value={metricKey} onChange={(e) => setMetricKey(e.target.value)} />
         </Field>
       ) : null}
       <div className="grid grid-cols-2 gap-2">
         <Field label={t("rules.days")} hint={t("rules.daysHelp")}>
-          <input className={field} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} data-testid="rule-days" />
+          <Input className={field} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} data-testid="rule-days" />
         </Field>
         <Field label={t("rules.daysLeft")} hint={t("rules.daysLeftHelp")}>
-          <input className={field} inputMode="numeric" value={daysLeft} onChange={(e) => setDaysLeft(e.target.value.replace(/\D/g, ""))} />
+          <Input className={field} inputMode="numeric" value={daysLeft} onChange={(e) => setDaysLeft(e.target.value.replace(/\D/g, ""))} />
         </Field>
       </div>
       <Field label={t("rules.period")} hint={t("rules.periodHelp")}>
-        <select className={field} value={period} onChange={(e) => setPeriod(e.target.value)} data-testid="rule-period">
+        <Select className={field} value={period} onChange={(e) => setPeriod(e.target.value)} data-testid="rule-period">
           <option value="">{t("rules.periodDefault")}</option>
           {PERIODS.filter((p) => p !== "current_year").map((p) => (
             <option key={p} value={p}>
@@ -265,7 +265,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
                 ))}
             </optgroup>
           ) : null}
-        </select>
+        </Select>
       </Field>
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 text-sm font-medium">{t("rules.severity")}</legend>
@@ -289,10 +289,10 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
           {t("rules.inApp")}
         </label>
         <Field label={t("rules.slack")} hint={t("rules.slackHelp")}>
-          <input className={field} value={slack} onChange={(e) => setSlack(e.target.value)} placeholder="#budget-alerts" data-testid="rule-slack" />
+          <Input className={field} value={slack} onChange={(e) => setSlack(e.target.value)} placeholder="#budget-alerts" data-testid="rule-slack" />
         </Field>
         <Field label={t("rules.assignTo")} hint={t("rules.assignToHelp")}>
-          <select className={field} value={assignTo} onChange={(e) => setAssignTo(e.target.value)} data-testid="rule-assign">
+          <Select className={field} value={assignTo} onChange={(e) => setAssignTo(e.target.value)} data-testid="rule-assign">
             <option value="">{t("rules.assignOwner")}</option>
             {people
               .filter((p) => p.type === "user")
@@ -302,7 +302,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
                   {p.email ? ` · ${p.email}` : ""}
                 </option>
               ))}
-          </select>
+          </Select>
         </Field>
       </fieldset>
       <label className="flex items-center gap-2 text-sm">

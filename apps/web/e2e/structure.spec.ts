@@ -36,7 +36,8 @@ test.describe("envelope structure from the UI (T-031b)", () => {
     const parent = await idOf(token, "LATAM MX meta awareness");
     await page.goto(budgets(parent));
     await expect(page.getByTestId("drawer-name")).toHaveText("LATAM MX meta awareness");
-    await page.getByTestId("structure-actions").getByTestId("structure-add_child").click();
+    await page.getByTestId("structure-actions").click(); // DS-005: the toolbar's Structure menu
+    await page.getByRole("menuitem").and(page.getByTestId("structure-add_child")).click();
     const dialog = page.getByTestId("structure-dialog");
     await expect(dialog).toHaveAttribute("data-op", "add_child");
     await expect(page.getByTestId("structure-commit")).toBeDisabled(); // nothing filled in yet

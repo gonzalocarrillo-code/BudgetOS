@@ -1,9 +1,9 @@
-import { Button, cn } from "@budget/ui";
+import { Button, Kbd, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { CircleHelp, Compass, X } from "lucide-react";
-import { useRef, useState, type ReactElement } from "react";
+import { CircleHelp, Compass, Keyboard, X } from "lucide-react";
+import { useRef, type ReactElement } from "react";
 import { markTour, runTour, toursQuery, type Tour } from "../../lib/tours.js";
 
 /**
@@ -22,29 +22,38 @@ function useStartTour(ws: string) {
     void runTour(ws, tour, (p) => navigate({ to: `/w/$ws${p}` as "/w/$ws", params: { ws } }), () => pathRef.current).then(() => client.invalidateQueries({ queryKey: ["tours", ws] }));
 }
 
-export function TourLauncher({ ws }: { ws: string }): ReactElement {
+export function TourLauncher({ ws, onShortcuts }: { ws: string; onShortcuts?: () => void }): ReactElement {
   const start = useStartTour(ws);
   const { data: all = [] } = useQuery(toursQuery(ws, true));
-  const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" data-testid="help-menu">
-        <CircleHelp className="size-4" aria-hidden />
-        {t("tour.help")}
-      </Button>
-      {open ? (
-        <div role="menu" className="absolute right-0 top-10 z-40 w-72 rounded-xl border border-border bg-card p-2 shadow-lg" data-testid="help-tours">
-          <p className="px-2 pb-1 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("tour.tours")}</p>
-          {all.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted-foreground">{t("tour.none")}</p> : null}
-          {all.map((x) => (
-            <button key={x.id} type="button" role="menuitem" className={cn("flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent")} onClick={() => (setOpen(false), start(x))} data-testid="tour-start" data-role={x.role}>
-              <span>{x.name}</span>
-              <span className="text-xs text-muted-foreground">{x.completed ? t("tour.completed") : x.dismissed ? t("tour.skipped") : t("tour.new")}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <Menu>
+      <MenuTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label={t("tour.help")} data-testid="help-menu">
+          <CircleHelp className="size-4" aria-hidden />
+          <span className="hidden xl:inline">{t("tour.help")}</span>
+        </Button>
+      </MenuTrigger>
+      <MenuContent className="w-72" data-testid="help-tours">
+        <MenuLabel>{t("tour.tours")}</MenuLabel>
+        {all.length === 0 ? <p className="px-2.5 py-1.5 text-sm text-muted-foreground">{t("tour.none")}</p> : null}
+        {all.map((x) => (
+          <MenuItem key={x.id} onSelect={() => start(x)} className="justify-between" data-testid="tour-start" data-role={x.role}>
+            <span>{x.name}</span>
+            <span className="text-xs text-muted-foreground">{x.completed ? t("tour.completed") : x.dismissed ? t("tour.skipped") : t("tour.new")}</span>
+          </MenuItem>
+        ))}
+        {onShortcuts ? (
+          <>
+            <MenuSeparator />
+            <MenuItem onSelect={onShortcuts} data-testid="help-shortcuts">
+              <Keyboard className="size-4 text-muted-foreground" aria-hidden />
+              {t("shortcuts.title")}
+              <Kbd className="ml-auto">?</Kbd>
+            </MenuItem>
+          </>
+        ) : null}
+      </MenuContent>
+    </Menu>
   );
 }
 

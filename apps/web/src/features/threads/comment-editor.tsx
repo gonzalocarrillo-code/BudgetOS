@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Textarea } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Users } from "lucide-react";
@@ -101,7 +101,7 @@ export function CommentEditor({
 
   return (
     <div className="relative flex flex-col gap-2" data-testid={testId}>
-      <textarea
+      <Textarea
         ref={ref}
         role="combobox"
         aria-expanded={options.length > 0}
@@ -110,7 +110,7 @@ export function CommentEditor({
         aria-activedescendant={options[active] ? `${listId}-${options[active].id}` : undefined}
         aria-label={placeholder}
         placeholder={placeholder}
-        className="min-h-16 w-full rounded-lg border border-input bg-card p-2 text-sm outline-none focus:border-ring"
+        className="min-h-16 w-full"
         value={draft.text}
         onChange={(e) => {
           setDraft({ ...draft, text: e.target.value });

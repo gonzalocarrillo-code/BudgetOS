@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select, Textarea } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronRight, CornerDownRight, GripVertical } from "lucide-react";
@@ -56,7 +56,7 @@ export function ValueTree({ ws, dim, blocked, onChanged }: { ws: string; dim: Di
       <div className="flex flex-col gap-2">
         <label className="flex flex-col gap-1 text-sm font-medium">
           {t("registry.values.add")}
-          <textarea className="min-h-20 rounded-lg border border-input bg-card p-2 font-mono text-sm outline-none focus:border-ring" value={adding} onChange={(e) => setAdding(e.target.value)} placeholder={t("registry.values.placeholder")} data-testid="values-input" />
+          <Textarea className="min-h-20 font-mono" value={adding} onChange={(e) => setAdding(e.target.value)} placeholder={t("registry.values.placeholder")} data-testid="values-input" />
           <span className="text-xs font-normal text-muted-foreground">{t("registry.values.help")}</span>
         </label>
         <div className="flex items-center justify-end gap-2">
@@ -135,7 +135,7 @@ function ValueActions({ v, values, blocked, pending, onOp, onMove }: { v: Dimens
   const inside = subtreeIds(values, v.id);
   const targets = values.filter((x) => x.isActive && !inside.has(x.id));
   const why = blocked ?? (pending ? t("shell.loading") : null);
-  const field = "h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+  const field = "min-w-0 flex-1";
   const act = (ok: boolean, run: () => void, text: string, testId: string, variant: "outline" | "destructive" = "outline") =>
     why || !ok ? (
       <Button size="sm" variant={variant} disabled reason={why ?? t("registry.values.fillFirst")} data-testid={testId}>
@@ -149,35 +149,35 @@ function ValueActions({ v, values, blocked, pending, onOp, onMove }: { v: Dimens
   return (
     <div className="mb-2 ml-6 grid gap-2 rounded-lg bg-surface p-3 text-sm" data-testid="value-panel">
       <div className="flex gap-2">
-        <input className={field} value={label} onChange={(e) => setLabel(e.target.value)} aria-label={t("registry.values.rename")} data-testid="value-rename-input" />
+        <Input className={field} value={label} onChange={(e) => setLabel(e.target.value)} aria-label={t("registry.values.rename")} data-testid="value-rename-input" />
         {act(label.trim() !== "" && label.trim() !== v.label, () => onOp({ kind: "patch", id: v.id, body: { label: label.trim() } }), t("registry.values.rename"), "value-rename")}
       </div>
       {v.isActive ? (
         <>
           <div className="flex gap-2">
-            <input className={field} value={child} onChange={(e) => setChild(e.target.value)} placeholder={t("registry.values.childPlaceholder", { name: v.label })} aria-label={t("registry.values.addChild")} data-testid="value-child-input" />
+            <Input className={field} value={child} onChange={(e) => setChild(e.target.value)} placeholder={t("registry.values.childPlaceholder", { name: v.label })} aria-label={t("registry.values.addChild")} data-testid="value-child-input" />
             {act(parseValueLines(child, values).length > 0, () => onOp({ kind: "add", lines: parseValueLines(child, values).map((l) => ({ ...l, parentCode: l.parentCode ?? v.code })) }), t("registry.values.addChild"), "value-child-add")}
           </div>
           <label className="flex items-center gap-2">
             <span className="w-24 shrink-0 text-muted-foreground">{t("registry.values.moveUnder")}</span>
-            <select className={field} value={values.find((x) => x.id === v.parentValueId)?.code ?? ""} disabled={why !== null} aria-disabled={why !== null} title={why ?? undefined} onChange={(e) => onMove(v, e.target.value || null)} data-testid="value-move">
+            <Select className={field} value={values.find((x) => x.id === v.parentValueId)?.code ?? ""} disabled={why !== null} aria-disabled={why !== null} title={why ?? undefined} onChange={(e) => onMove(v, e.target.value || null)} data-testid="value-move">
               <option value="">{t("registry.values.topLevel")}</option>
               {targets.map((x) => (
                 <option key={x.id} value={x.code}>
                   {x.path.split(".").length > 1 ? `${"· ".repeat(x.path.split(".").length - 1)}${x.label}` : x.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <div className="flex gap-2">
-            <select className={field} value={into} onChange={(e) => setInto(e.target.value)} aria-label={t("registry.values.mergeInto")} data-testid="value-merge-into">
+            <Select className={field} value={into} onChange={(e) => setInto(e.target.value)} aria-label={t("registry.values.mergeInto")} data-testid="value-merge-into">
               <option value="">{t("registry.values.mergeInto")}</option>
               {values.filter((x) => x.isActive && x.id !== v.id).map((x) => (
                 <option key={x.id} value={x.code}>
                   {x.label}
                 </option>
               ))}
-            </select>
+            </Select>
             {act(into !== "", () => onOp({ kind: "merge", id: v.id, fromCode: v.code, intoCode: into }), t("registry.values.merge"), "value-merge")}
           </div>
           <div className="flex justify-end">{act(true, () => onOp({ kind: "patch", id: v.id, body: { isActive: false } }), t("registry.values.retire"), "value-retire", "destructive")}</div>

@@ -1,6 +1,6 @@
 import type { ExperimentReadout, FilterGroupT, MetricSet } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
-import { Button, cn, StatusChip } from "@budget/ui";
+import { Button, cn, StatusChip, Input, Select, Textarea, Modal } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, CircleDashed, FlaskConical, XCircle } from "lucide-react";
@@ -97,17 +97,17 @@ export function ReadoutCards({ experiment, readout, currency }: { experiment: Ex
 /** A modal shell in the style of the other dialogs. */
 export function Dialog({ title, testId, onClose, children, footer }: { title: string; testId: string; onClose: () => void; children: ReactNode; footer: ReactNode }): ReactElement {
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-inverse/30 p-6" role="dialog" aria-modal="true" aria-label={title} onKeyDown={(e) => e.key === "Escape" && onClose()} data-testid={testId}>
+    <Modal onClose={onClose} label={title} testId={testId}>
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-card shadow-lg">
         <div className="border-b border-border px-5 py-4 text-[15px] font-semibold">{title}</div>
         <div className="flex flex-col gap-4 overflow-y-auto px-5 py-4">{children}</div>
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-const field = "h-9 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:border-ring";
+const field = "w-full";
 const Label = ({ text, children }: { text: string; children: ReactNode }) => (
   <label className="flex flex-col gap-1.5 text-sm">
     <span className="font-medium">{text}</span>
@@ -188,29 +188,29 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
       }
     >
       <Label text={t("experiments.form.name")}>
-        <input className={field} value={f.name} onChange={(e) => set({ name: e.target.value })} data-testid="experiment-name" />
+        <Input className={field} value={f.name} onChange={(e) => set({ name: e.target.value })} data-testid="experiment-name" />
       </Label>
       <Label text={t("experiments.form.hypothesis")}>
-        <textarea className={cn(field, "h-20 py-2")} value={f.hypothesis} onChange={(e) => set({ hypothesis: e.target.value })} placeholder={t("experiments.form.hypothesisHint")} data-testid="experiment-hypothesis" />
+        <Textarea className={cn(field, "h-20 py-2")} value={f.hypothesis} onChange={(e) => set({ hypothesis: e.target.value })} placeholder={t("experiments.form.hypothesisHint")} data-testid="experiment-hypothesis" />
       </Label>
       <div className="grid grid-cols-2 gap-3">
         <Label text={t("experiments.form.kind")}>
-          <select className={field} value={f.kind} onChange={(e) => set({ kind: e.target.value as (typeof KINDS)[number] })} data-testid="experiment-kind">
+          <Select className={field} value={f.kind} onChange={(e) => set({ kind: e.target.value as (typeof KINDS)[number] })} data-testid="experiment-kind">
             {KINDS.map((k) => (
               <option key={k} value={k}>
                 {t(`experiments.kind.${k}` as MessageKey)}
               </option>
             ))}
-          </select>
+          </Select>
         </Label>
         <Label text={t("experiments.form.metric")}>
-          <select className={field} value={f.primaryMetric} onChange={(e) => set({ primaryMetric: e.target.value })} data-testid="experiment-metric">
+          <Select className={field} value={f.primaryMetric} onChange={(e) => set({ primaryMetric: e.target.value })} data-testid="experiment-metric">
             {(metrics.length ? metrics : [{ key: "cpa", label: "CPA" }]).map((m) => (
               <option key={m.key} value={m.key}>
                 {m.label}
               </option>
             ))}
-          </select>
+          </Select>
         </Label>
       </div>
       <div className="flex flex-col gap-1.5 text-sm">
@@ -227,29 +227,29 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Label text={t("experiments.form.success")}>
-          <select className={field} value={`${f.vs}:${f.comparator}`} onChange={(e) => { const [vs, comparator] = e.target.value.split(":") as ["control" | "absolute", "lte" | "gte"]; set({ vs, comparator }); }} data-testid="experiment-criterion">
+          <Select className={field} value={`${f.vs}:${f.comparator}`} onChange={(e) => { const [vs, comparator] = e.target.value.split(":") as ["control" | "absolute", "lte" | "gte"]; set({ vs, comparator }); }} data-testid="experiment-criterion">
             {(["control:lte", "control:gte", "absolute:lte", "absolute:gte"] as const).map((v) => (
               <option key={v} value={v}>
                 {t(`experiments.form.rule.${v.replace(":", ".")}` as MessageKey)}
               </option>
             ))}
-          </select>
+          </Select>
         </Label>
         {f.vs === "absolute" ? (
           <Label text={t("experiments.form.value")}>
-            <input className={field} inputMode="decimal" value={f.value} onChange={(e) => set({ value: e.target.value })} data-testid="experiment-value" />
+            <Input className={field} inputMode="decimal" value={f.value} onChange={(e) => set({ value: e.target.value })} data-testid="experiment-value" />
           </Label>
         ) : null}
         <Label text={t("experiments.form.minDays")}>
-          <input className={field} inputMode="numeric" value={f.minDays} onChange={(e) => set({ minDays: e.target.value.replace(/\D/g, "") })} data-testid="experiment-min-days" />
+          <Input className={field} inputMode="numeric" value={f.minDays} onChange={(e) => set({ minDays: e.target.value.replace(/\D/g, "") })} data-testid="experiment-min-days" />
         </Label>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Label text={t("experiments.form.start")}>
-          <input type="date" className={field} value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} data-testid="experiment-start" />
+          <Input type="date" className={field} value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} data-testid="experiment-start" />
         </Label>
         <Label text={t("experiments.form.end")}>
-          <input type="date" className={field} value={f.endDate} onChange={(e) => set({ endDate: e.target.value })} data-testid="experiment-end" />
+          <Input type="date" className={field} value={f.endDate} onChange={(e) => set({ endDate: e.target.value })} data-testid="experiment-end" />
         </Label>
       </div>
       {create.error ? <p role="alert" className="text-sm text-destructive">{create.error.message}</p> : null}
@@ -289,7 +289,7 @@ export function ConcludeDialog({ ws, experiment, onClose, onDone }: { ws: string
       }
     >
       <p className="text-sm text-muted-foreground">{t("experiments.conclude.help", { count: experiment.envelopes.length })}</p>
-      <textarea className={cn(field, "h-32 py-2")} value={decision} onChange={(e) => setDecision(e.target.value)} placeholder={t("experiments.conclude.placeholder")} autoFocus data-testid="conclude-decision" />
+      <Textarea className={cn(field, "h-32 py-2")} value={decision} onChange={(e) => setDecision(e.target.value)} placeholder={t("experiments.conclude.placeholder")} autoFocus data-testid="conclude-decision" />
       {conclude.error ? <p role="alert" className="text-sm text-destructive">{conclude.error.message}</p> : null}
     </Dialog>
   );
@@ -319,18 +319,18 @@ export function LinkPicker({ ws, experiment, blocked, onLinked }: { ws: string; 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="link-picker">
       <FlaskConical className="size-4 text-muted-foreground" aria-hidden />
-      <select className="h-8 rounded-md border border-input bg-card px-2 text-sm" value={role} onChange={(e) => (setRole(e.target.value as "TEST" | "CONTROL"), setEnvelopeId(""))} data-testid="link-role">
+      <Select size="sm" value={role} onChange={(e) => (setRole(e.target.value as "TEST" | "CONTROL"), setEnvelopeId(""))} data-testid="link-role">
         <option value="TEST">{t("experiments.role.TEST")}</option>
         <option value="CONTROL">{t("experiments.role.CONTROL")}</option>
-      </select>
-      <select className="h-8 min-w-64 max-w-md rounded-md border border-input bg-card px-2 text-sm" value={envelopeId} onChange={(e) => setEnvelopeId(e.target.value)} data-testid="link-envelope">
+      </Select>
+      <Select wrapperClassName="min-w-64 max-w-md" size="sm" value={envelopeId} onChange={(e) => setEnvelopeId(e.target.value)} data-testid="link-envelope">
         <option value="">{options.length ? t("experiments.link.choose", { count: options.length }) : t("experiments.link.none")}</option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.name}
           </option>
         ))}
-      </select>
+      </Select>
       {why ? (
         <Button size="sm" disabled reason={why} data-testid="link-submit">
           {t("experiments.link.submit")}

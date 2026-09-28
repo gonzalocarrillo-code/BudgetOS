@@ -13,7 +13,8 @@ export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.
 export { audit, bumpDataVersion, outbox } from "./sql.js";
 export { claimOutbox, markOutboxDelivered, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
-export { insertNotification } from "./notifications.js";
+export { insertNotification, listNotifications, markNotificationsRead } from "./notifications.js";
+export type { NotificationRow } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
 export { closedPeriods, lockPeriodEnvelopes, unlockClosureEnvelopes } from "./closures.js";

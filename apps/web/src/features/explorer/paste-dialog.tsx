@@ -1,6 +1,6 @@
 import type { BulkPreview } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
-import { Button } from "@budget/ui";
+import { Button, Modal } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useState, type ReactElement } from "react";
 import { api, unwrap } from "../../lib/api.js";
@@ -24,7 +24,7 @@ export function PasteDialog({ ws, preview, onDone, onCancel, title, body }: { ws
   };
   const money = (v: string | null) => (v === null ? "—" : formatMoney(v, "USD"));
   return (
-    <div className="fixed inset-0 z-30 grid place-items-center bg-inverse/30 p-6" role="dialog" aria-modal="true" aria-labelledby="paste-title" data-testid="paste-dialog">
+    <Modal onClose={onCancel} labelledBy="paste-title" testId="paste-dialog">
       <div className="flex max-h-[80vh] w-full max-w-2xl flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-lg">
         <div>
           <h2 id="paste-title" className="text-lg font-semibold tracking-[-0.015em]">
@@ -76,6 +76,6 @@ export function PasteDialog({ ws, preview, onDone, onCancel, title, body }: { ws
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

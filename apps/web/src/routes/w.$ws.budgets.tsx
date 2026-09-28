@@ -1,6 +1,6 @@
 import { BulkPreview, FilterGroup, Grain, PeriodSpec, type FilterGroupT } from "@budget/domain";
 import { BudgetGrid, parseMoney, formatMoney, type ColumnSpec, type GridEvents } from "@budget/grid";
-import { Button, cn, EmptyState, SkeletonRows } from "@budget/ui";
+import { Button, cn, EmptyState, SkeletonRows, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
@@ -206,14 +206,14 @@ function ExplorerPage(): ReactElement {
         {view === "tree" ? (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("explorer.hierarchy")}
-            <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={template?.id ?? ""} onChange={(e) => setSearch({ templateId: e.target.value || undefined, expanded: [] })} data-testid="template-picker">
+            <Select className="text-foreground" size="sm" value={template?.id ?? ""} onChange={(e) => setSearch({ templateId: e.target.value || undefined, expanded: [] })} data-testid="template-picker">
               <option value="">{t("explorer.structure")}</option>
               {templates.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         ) : (
           <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground" data-testid="group-by">
@@ -230,8 +230,8 @@ function ExplorerPage(): ReactElement {
         )}
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           {t("explorer.period")}
-          <select
-            className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+          <Select
+            size="sm"
             value={search.period.kind === "relative" ? search.period.preset : search.period.kind === "fiscal" ? `fiscal:${search.period.key}` : ""}
             onChange={(e) => {
               const v = e.target.value;
@@ -258,18 +258,18 @@ function ExplorerPage(): ReactElement {
                   ))}
               </optgroup>
             ) : null}
-          </select>
+          </Select>
         </label>
         {isTimeline ? (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("timeline.zoom")}
-            <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={search.zoom} onChange={(e) => setSearch({ zoom: e.target.value as ExplorerSearchT["zoom"] })} data-testid="zoom-picker">
+            <Select className="text-foreground" size="sm" value={search.zoom} onChange={(e) => setSearch({ zoom: e.target.value as ExplorerSearchT["zoom"] })} data-testid="zoom-picker">
               {(["week", "month", "quarter", "fy"] as const).map((z) => (
                 <option key={z} value={z}>
                   {t(`timeline.zoom.${z}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         ) : null}
         <div className="ml-auto">

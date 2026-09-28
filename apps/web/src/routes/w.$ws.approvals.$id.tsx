@@ -1,5 +1,5 @@
 import { formatMoney } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Textarea } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -179,7 +179,7 @@ function DecisionBar({ r, comment, setComment, pending, error, onDecide }: { r: 
   return (
     <Card title={t("approvals.comment")}>
       <div className="flex flex-col gap-3" data-testid="decision-bar">
-        <textarea className="min-h-20 rounded-lg border border-input bg-card p-2 text-sm outline-none focus:border-ring" placeholder={t("approvals.comment.placeholder")} aria-label={t("approvals.comment")} value={comment} onChange={(e) => setComment(e.target.value)} data-testid="decision-comment-input" />
+        <Textarea className="min-h-20" placeholder={t("approvals.comment.placeholder")} aria-label={t("approvals.comment")} value={comment} onChange={(e) => setComment(e.target.value)} data-testid="decision-comment-input" />
         {reason ? <p className="text-sm text-muted-foreground" data-testid="decision-reason">{reason}</p> : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <div className="flex flex-wrap gap-2">

@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -73,7 +73,7 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
     onSuccess: (r) => setNotice(t("slack.testQueued", { channel: String((r as unknown as { channel?: string } | undefined)?.channel ?? "") })),
   });
   const noManage = canManage ? null : t("slack.noPermission");
-  const field = "h-9 rounded-lg border border-input bg-card px-2 text-sm";
+  const field = "";
   const channelOk = (c: string) => c.trim() === "" || /^[#@]?[A-Za-z0-9._-]{1,80}$/.test(c.trim());
   const saveWhy = noManage ?? (!channelOk(defaultChannel) || !channelOk(alertChannel) ? t("slack.badChannel") : save.isPending ? t("shell.loading") : null);
   const linkWhy = noManage ?? (!data.connected.botToken ? t("slack.needToken") : save.isPending ? t("shell.loading") : null);
@@ -117,10 +117,10 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
             data-testid="slack-routing"
           >
             <Field label={t("slack.defaultChannel")} hint={t("slack.defaultChannelHelp")}>
-              <input className={field} value={defaultChannel} onChange={(e) => setDefaultChannel(e.target.value)} placeholder="#budget-ops" data-testid="slack-default-channel" />
+              <Input className={field} value={defaultChannel} onChange={(e) => setDefaultChannel(e.target.value)} placeholder="#budget-ops" data-testid="slack-default-channel" />
             </Field>
             <Field label={t("slack.alertChannel")} hint={t("slack.alertChannelHelp")}>
-              <input className={field} value={alertChannel} onChange={(e) => setAlertChannel(e.target.value)} placeholder="#budget-alerts" data-testid="slack-alert-channel" />
+              <Input className={field} value={alertChannel} onChange={(e) => setAlertChannel(e.target.value)} placeholder="#budget-alerts" data-testid="slack-alert-channel" />
             </Field>
             <fieldset className="flex flex-col gap-1.5">
               <legend className="text-sm font-medium">{t("slack.severities")}</legend>
@@ -153,7 +153,7 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
         <Card title={t("slack.test")}>
           <div className="flex flex-wrap items-end gap-2">
             <Field label={t("slack.testChannel")}>
-              <input className={cn(field, "w-56")} value={testChannel} onChange={(e) => setTestChannel(e.target.value)} placeholder={s.defaultChannel ?? "#budget-ops"} data-testid="slack-test-channel" />
+              <Input className={cn(field, "w-56")} value={testChannel} onChange={(e) => setTestChannel(e.target.value)} placeholder={s.defaultChannel ?? "#budget-ops"} data-testid="slack-test-channel" />
             </Field>
             {testWhy ? (
               <Button variant="outline" disabled reason={testWhy}>

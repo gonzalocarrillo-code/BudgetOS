@@ -1,5 +1,5 @@
 import { PeopleResponse } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/w/$ws/admin/roles")({ component: RolesPag
 
 const ROLES = ["VIEWER", "PLANNER", "BUDGET_OWNER", "APPROVER", "FINANCE", "DATA_ADMIN", "WORKSPACE_ADMIN"] as const;
 const roleLabel = (r: string) => t(`role.${r.toLowerCase()}` as MessageKey);
-const field = "h-8 rounded-md border border-input bg-card px-2 text-sm";
+const field = "";
 type Scope = { logic?: string; children?: Array<{ field?: { key?: string }; value?: string | string[] }> };
 
 const membersQuery = (ws: string) => ({
@@ -135,18 +135,18 @@ function AddRole({ ws, principal, onDone, onError }: { ws: string; principal: { 
   const taken = principal.roles.some((r) => r.role === role);
   return (
     <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2 text-sm" data-testid="role-form">
-      <select className={field} value={role} onChange={(e) => setRole(e.target.value)} aria-label={t("roles.role")} data-testid="role-select">
+      <Select className={field} value={role} onChange={(e) => setRole(e.target.value)} aria-label={t("roles.role")} data-testid="role-select">
         {ROLES.map((r) => (
           <option key={r} value={r}>{roleLabel(r)}</option>
         ))}
-      </select>
+      </Select>
       <span className="text-muted-foreground">{t("roles.for")}</span>
-      <select className={field} value={dim} onChange={(e) => (setDim(e.target.value), setValues([]))} aria-label={t("roles.scope")} data-testid="role-scope-dim">
+      <Select className={field} value={dim} onChange={(e) => (setDim(e.target.value), setValues([]))} aria-label={t("roles.scope")} data-testid="role-scope-dim">
         <option value="">{t("roles.everything")}</option>
         {dims.filter((d) => d.values.length > 0).map((d) => (
           <option key={d.key} value={d.key}>{t("roles.only", { dimension: d.label })}</option>
         ))}
-      </select>
+      </Select>
       {dimension ? (
         <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto" data-testid="role-scope-values">
           {dimension.values.map((v) => (
@@ -193,22 +193,22 @@ function AddPerson({ ws, superadmin, onDone }: { ws: string; superadmin: boolean
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex min-w-56 flex-1 flex-col gap-1">
             <span className="text-muted-foreground">{t("roles.email")}</span>
-            <input className={field} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" data-testid="person-email" />
+            <Input className={field} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" data-testid="person-email" />
           </label>
           <label className="flex min-w-48 flex-1 flex-col gap-1">
             <span className="text-muted-foreground">{t("roles.name")}</span>
-            <input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="person-name" />
+            <Input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="person-name" />
           </label>
           <label className="flex min-w-40 flex-col gap-1">
             <span className="text-muted-foreground">{t("roles.role")}</span>
-            <select className={field} value={role} onChange={(e) => setRole(e.target.value)} data-testid="person-role">
+            <Select className={field} value={role} onChange={(e) => setRole(e.target.value)} data-testid="person-role">
               {superadmin ? <option value="">{t("roles.noRoleYet")}</option> : null}
               {ROLES.map((r) => (
                 <option key={r} value={r}>
                   {roleLabel(r)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {valid && !add.isPending ? (
             <Button onClick={() => add.mutate()} data-testid="person-add"><UserPlus className="size-4" aria-hidden />{t("roles.addButton")}</Button>

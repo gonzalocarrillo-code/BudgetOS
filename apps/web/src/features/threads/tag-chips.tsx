@@ -1,3 +1,4 @@
+import { Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
@@ -73,7 +74,7 @@ export function TagChips({ ws, entity, tags, onChanged, compact = false }: { ws:
       </ul>
       {adding ? (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-2" data-testid="tag-picker">
-          <input className="h-8 rounded-md border border-input bg-card px-2 text-xs" value={text} onChange={(e) => setText(e.target.value)} placeholder={mayCreate ? t("tags.findOrCreate") : t("tags.find")} autoFocus data-testid="tag-find" />
+          <Input className="text-xs" size="sm" value={text} onChange={(e) => setText(e.target.value)} placeholder={mayCreate ? t("tags.findOrCreate") : t("tags.find")} autoFocus data-testid="tag-find" />
           {others.length ? (
             <ul className="flex flex-wrap gap-1.5" aria-label={t("tags.add")} data-testid="tag-options">
               {others.slice(0, 30).map((tag) => (

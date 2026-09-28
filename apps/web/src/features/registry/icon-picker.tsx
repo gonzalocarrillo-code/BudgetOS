@@ -1,4 +1,4 @@
-import { cn } from "@budget/ui";
+import { cn, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
@@ -43,7 +43,7 @@ export function IconPicker({ ws, value, onChange }: { ws: string; value: string;
         <span className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-surface" aria-hidden>
           <DimensionIcon ws={ws} icon={value} className="size-5" />
         </span>
-        <input type="search" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring" placeholder={t("registry.icon.search")} aria-label={t("registry.icon.search")} value={q} onChange={(e) => setQ(e.target.value)} data-testid="icon-search" />
+        <Input type="search" className="min-w-0 flex-1" placeholder={t("registry.icon.search")} aria-label={t("registry.icon.search")} value={q} onChange={(e) => setQ(e.target.value)} data-testid="icon-search" />
         <label className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-input bg-card px-3 text-sm hover:bg-accent">
           <Upload className="size-4" aria-hidden />
           {t("registry.icon.upload")}

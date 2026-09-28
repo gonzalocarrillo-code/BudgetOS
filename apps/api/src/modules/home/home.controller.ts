@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { CompleteTourDto, CreateWorkspaceDto, ListToursQueryDto, UpdateTourDto } from "./dto.js";
+import { CompleteTourDto, CreateWorkspaceDto, ListToursQueryDto, MarkNotificationsReadDto, UpdateTourDto } from "./dto.js";
 import { getHome } from "./home.js";
+import { myNotifications, readNotifications } from "./notifications.js";
 import { completeTour, listTours, updateTour } from "../tours/tours.js";
 import { createWorkspace, demoStatus, listTemplates, purgeDemo } from "../workspaces/workspaces.js";
 
@@ -19,6 +20,19 @@ export class HomeController {
   @Permission("workspace.member")
   home(@Tenant() auth: AuthContext) {
     return getHome(this.prisma, auth);
+  }
+
+  @Get("me/notifications")
+  @Permission("workspace.member")
+  notifications(@Tenant() auth: AuthContext) {
+    return myNotifications(this.prisma, auth);
+  }
+
+  @Post("me/notifications/read")
+  @HttpCode(200)
+  @Permission("workspace.member")
+  readNotifications(@Tenant() auth: AuthContext, @Body() body: MarkNotificationsReadDto) {
+    return readNotifications(this.prisma, auth, body);
   }
 
   @Get("tours")

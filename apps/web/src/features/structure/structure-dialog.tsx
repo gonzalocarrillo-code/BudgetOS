@@ -1,6 +1,6 @@
 import { largestRemainder } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select, Modal } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Decimal } from "decimal.js";
@@ -39,7 +39,7 @@ function useSettled<T>(value: T, ms = 350): T {
 const MONEY = /^\d{1,16}(\.\d{1,2})?$/;
 /** "50,000,000" or " 1200.50 " as typed; the API gets plain digits. */
 const plain = (v: string) => v.replace(/[,\s]/g, "");
-const field = "h-9 w-full rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+const field = "w-full";
 const TITLES: Record<StructureOp, MessageKey> = { add_child: "structure.addChild", move: "structure.move", split: "structure.split", merge: "structure.merge" };
 
 /**
@@ -137,7 +137,7 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
   const commitLabel = p?.ok && p.routing.kind === "approval" ? t("structure.submit") : p?.ok && p.routing.kind === "immediate" ? t("structure.moveNow") : t("structure.apply");
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-inverse/30 p-6" role="dialog" aria-modal="true" aria-labelledby="structure-title" onKeyDown={(e) => e.key === "Escape" && onClose()} data-testid="structure-dialog" data-op={op}>
+    <Modal onClose={onClose} labelledBy="structure-title" testId="structure-dialog" data-op={op}>
       <div ref={dialogRef} className="flex max-h-[88vh] w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg">
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -154,10 +154,10 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
         {op === "add_child" ? (
           <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
             <Labeled label={t("structure.childName")}>
-              <input className={field} value={childName} onChange={(e) => setChildName(e.target.value)} placeholder={`${env.name} · …`} data-testid="child-name" />
+              <Input className={field} value={childName} onChange={(e) => setChildName(e.target.value)} placeholder={`${env.name} · …`} data-testid="child-name" />
             </Labeled>
             <Labeled label={t("structure.amount", { currency: env.currency })}>
-              <input className={cn(field, "text-right tabular")} inputMode="decimal" value={childAmount} onChange={(e) => setChildAmount(e.target.value)} placeholder="0.00" data-testid="child-amount" />
+              <Input className={cn(field, "text-right tabular")} inputMode="decimal" value={childAmount} onChange={(e) => setChildAmount(e.target.value)} placeholder="0.00" data-testid="child-amount" />
             </Labeled>
             <div className="sm:col-span-2">
               <p className="mb-1 text-sm font-medium">{t("structure.dimensions")}</p>
@@ -166,7 +166,7 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
                 {missingDims.map((d) => (
                   <label key={d.key} className="flex flex-col gap-1 text-xs text-muted-foreground">
                     {d.label}
-                    <select className={field} value={childDims[d.key] ?? ""} onChange={(e) => setChildDims((c) => (e.target.value ? { ...c, [d.key]: e.target.value } : Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.key))))} data-testid="child-dim" data-key={d.key}>
+                    <Select className={field} value={childDims[d.key] ?? ""} onChange={(e) => setChildDims((c) => (e.target.value ? { ...c, [d.key]: e.target.value } : Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.key))))} data-testid="child-dim" data-key={d.key}>
                       <option value="">{t("structure.dimNone")}</option>
                       {d.values
                         .filter((v) => v.isActive)
@@ -175,7 +175,7 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
                             {v.label}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </label>
                 ))}
               </div>
@@ -190,8 +190,8 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
             <p className="text-sm">{t("structure.splitApproved", { amount: formatMoney(approved, env.currency) })}</p>
             {parts.map((part, i) => (
               <div key={i} className="flex gap-2" data-testid="split-part">
-                <input className={field} value={part.name} onChange={(e) => setParts(parts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} aria-label={t("structure.partName", { n: i + 1 })} data-testid="split-name" />
-                <input className={cn(field, "w-36 text-right tabular")} inputMode="decimal" value={part.amount} onChange={(e) => setParts(parts.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} aria-label={t("structure.partAmount", { n: i + 1 })} data-testid="split-amount" />
+                <Input className={field} value={part.name} onChange={(e) => setParts(parts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} aria-label={t("structure.partName", { n: i + 1 })} data-testid="split-name" />
+                <Input className={cn(field, "w-36 text-right tabular")} inputMode="decimal" value={part.amount} onChange={(e) => setParts(parts.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} aria-label={t("structure.partAmount", { n: i + 1 })} data-testid="split-amount" />
                 {parts.length > 2 ? (
                   <Button variant="ghost" size="icon" onClick={() => setParts(parts.filter((_, j) => j !== i))} aria-label={t("structure.removePart", { n: i + 1 })}>
                     <X className="size-4" aria-hidden />
@@ -228,14 +228,14 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
               </fieldset>
             )}
             <Labeled label={t("structure.mergedName")}>
-              <input className={field} value={mergeName} onChange={(e) => setMergeName(e.target.value)} data-testid="merge-name" />
+              <Input className={field} value={mergeName} onChange={(e) => setMergeName(e.target.value)} data-testid="merge-name" />
             </Labeled>
             {mergeIds.length ? <p className="text-xs text-muted-foreground">{t("structure.mergedDims", { values: Object.values(shared).join(" · ") || "—" })}</p> : null}
           </div>
         ) : null}
 
         <Labeled label={t("structure.reason")}>
-          <input className={field} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("structure.reasonHint")} data-testid="structure-reason" />
+          <Input className={field} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("structure.reasonHint")} data-testid="structure-reason" />
         </Labeled>
 
         <PreviewPanel preview={p} stale={pending || preview.isFetching} waiting={why} />
@@ -256,7 +256,7 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -279,7 +279,7 @@ function MovePicker({ ws, env, q, setQ, value, onPick }: { ws: string; env: Enve
         {t("structure.currentParent")} <span className="font-medium">{env.structure.parent?.name ?? t("structure.topLevel")}</span>
       </p>
       <Labeled label={t("structure.newParent")}>
-        <input type="search" className={field} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("structure.searchParent")} data-testid="move-search" />
+        <Input type="search" className={field} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("structure.searchParent")} data-testid="move-search" />
       </Labeled>
       <ul className="flex flex-col gap-1" aria-label={t("structure.newParent")} data-testid="move-options">
         {env.parentId !== null ? (

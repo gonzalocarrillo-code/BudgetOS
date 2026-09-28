@@ -1104,6 +1104,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["readNotifications"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/org/people": {
         parameters: {
             query?: never;
@@ -5324,6 +5356,11 @@ export interface operations {
                     reportingCurrency?: string;
                     /** @default 1 */
                     fiscalYearStartMonth?: number;
+                    firstAdmin?: {
+                        /** Format: email */
+                        email: string;
+                        name: string;
+                    };
                 };
             };
         };
@@ -5411,6 +5448,66 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Superadmins: back as archived, within the retention window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    myNotifications: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's latest notifications in the workspace and the unread count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rows: {
+                            /** Format: uuid */
+                            id: string;
+                            kind: string;
+                            payload: {
+                                [key: string]: unknown;
+                            };
+                            readAt: string | null;
+                            createdAt: string;
+                        }[];
+                        unread: number;
+                    };
+                };
+            };
+        };
+    };
+    readNotifications: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    ids?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description How many notifications were marked read */
             200: {
                 headers: {
                     [name: string]: unknown;

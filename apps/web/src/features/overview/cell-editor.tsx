@@ -1,6 +1,6 @@
 import { BulkPreview, LIVE_LEAVES, type FilterGroupT } from "@budget/domain";
 import { formatMoney, parseMoney } from "@budget/grid";
-import { Button } from "@budget/ui";
+import { Button, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -117,7 +117,7 @@ export function CellEditor({ ws, cell, period, currency, onClose }: { ws: string
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
         <label className="text-sm font-medium" htmlFor="cell-change">{t("overview.edit.changeAll", { count: leaves.length })}</label>
         <div className="flex items-center gap-2">
-          <input id="cell-change" inputMode="decimal" className="h-8 w-24 rounded-md border border-input bg-card px-2 text-right text-sm tabular" placeholder="+10" value={change} onChange={(e) => setChange(e.target.value)} data-testid="cell-change" />
+          <Input id="cell-change" inputMode="decimal" className="w-24 text-right tabular" size="sm" placeholder="+10" value={change} onChange={(e) => setChange(e.target.value)} data-testid="cell-change" />
           <span className="text-sm text-muted-foreground">%</span>
           {leaves.length === 0 ? (
             <Button size="sm" disabled reason={t("overview.edit.noLeaves")}>{t("overview.edit.preview")}</Button>
@@ -142,10 +142,10 @@ export function CellEditor({ ws, cell, period, currency, onClose }: { ws: string
                 <span className="tabular text-xs text-muted-foreground">{t("overview.edit.rowLine", { budget: money(r.measures["budget"]), spent: pct(r.measures["spend_to_date_pct"]) })}</span>
               </div>
               <div className="flex items-center gap-2">
-                <input
+                <Input
                   inputMode="decimal"
                   aria-label={t("overview.edit.newAmount", { name: r.path.at(-1) ?? "" })}
-                  className="h-8 w-36 rounded-md border border-input bg-card px-2 text-right text-sm tabular"
+                  className="w-36 text-right tabular" size="sm"
                   placeholder={r.measures["budget"] ?? ""}
                   value={amounts[id] ?? ""}
                   onChange={(e) => setAmounts((a) => ({ ...a, [id]: e.target.value }))}
