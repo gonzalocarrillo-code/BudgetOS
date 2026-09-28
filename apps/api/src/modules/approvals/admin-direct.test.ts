@@ -49,5 +49,21 @@ describe("admins apply directly", () => {
     expect(admin.detail.draftPolicy).toMatchObject({ name: "Admins apply directly" });
     const planner = await raise("planner");
     expect(planner.sent).toMatchObject({ autoApproved: false });
+
+    // ADR-048: an admin's approval is final, however many steps and approvers the policy asks for.
+    const [req] = await owner.$queryRawUnsafe<Array<{ id: string; entity_id: string; steps: number }>>(
+      `SELECT id::text, entity_id::text, jsonb_array_length(policy_snapshot->'chain')::int AS steps FROM approval_request WHERE workspace_id = $1::uuid AND status = 'PENDING' AND requested_by = $2::uuid ORDER BY requested_at DESC LIMIT 1`,
+      golden.workspaceId,
+      golden.users.planner,
+    );
+    expect(req?.steps).toBeGreaterThan(1);
+    const decided = await as("admin", "POST", `/approvals/${req!.id}/decisions`, { decision: "approve" });
+    expect(decided.status, JSON.stringify(decided.body)).toBeLessThan(300);
+    expect(decided.body).toMatchObject({ status: "APPROVED" });
+    const [v] = await owner.$queryRawUnsafe<Array<{ status: string; current: boolean }>>(
+      `SELECT v.status::text, (e.current_version_id = v.id) AS current FROM envelope_version v JOIN envelope e ON e.id = v.envelope_id WHERE v.id = $1::uuid`,
+      req!.entity_id,
+    );
+    expect(v).toEqual({ status: "APPROVED", current: true });
   });
 });

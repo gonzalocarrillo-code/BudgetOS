@@ -69,13 +69,17 @@ export async function countedApprovals(tx: Tx, r: LockedRequestRow, snapshot: Po
   return tx.approvalDecision.count({ where: { requestId: r.id, stepIndex: r.currentStep, decision: { in: decisions } } });
 }
 
-/** After an approving decision: advance when the step has enough approvals; approve the version after the last step. */
-export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedRequestRow, snapshot: PolicySnapshot): Promise<"advanced" | "approved" | "waiting"> {
+/**
+ * After an approving decision: advance when the step has enough approvals; approve the version
+ * after the last step. `final` (an admin's approval, ADR-048) approves the request outright,
+ * whatever steps and approval counts remain.
+ */
+export async function advanceIfComplete(tx: Tx, ctx: TenantContext, r: LockedRequestRow, snapshot: PolicySnapshot, final = false): Promise<"advanced" | "approved" | "waiting"> {
   const step = snapshot.chain[r.currentStep];
   if (step === undefined) throw new DomainError("VALIDATION", "Request is past its last step", { requestId: r.id });
-  if ((await countedApprovals(tx, r, snapshot)) < step.minApprovals) return "waiting";
+  if (!final && (await countedApprovals(tx, r, snapshot)) < step.minApprovals) return "waiting";
   const next = r.currentStep + 1;
-  if (next >= snapshot.chain.length) {
+  if (final || next >= snapshot.chain.length) {
     const reason = `approved via policy ${snapshot.policyName ?? r.policyId} v${r.policyVersion}`;
     if (r.entityType === "bulk_change") {
       await finalizeBulk(tx, ctx, r.entityId, r.id, reason);
