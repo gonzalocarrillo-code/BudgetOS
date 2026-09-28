@@ -22,6 +22,7 @@ test("mapping wizard → source → a finished run with coverage; unmatched spen
   await page.goto(`/w/${state().workspaceId}/admin/sources`);
   await expect(page.getByTestId("admin-source-row").first()).toContainText("Golden actuals (CSV)");
   await page.getByTestId("source-new").click();
+  await page.getByTestId("connector-csv").click();
   await page.getByTestId("wizard-file").setInputFiles({ name: "march-spend.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
   await expect(page.getByTestId("mapping-wizard")).toHaveAttribute("data-step", "2");
   const col = (name: string) => page.getByTestId("wizard-column").and(page.locator(`[data-column="${name}"]`)).getByTestId("wizard-choice");
@@ -55,4 +56,47 @@ test("mapping wizard → source → a finished run with coverage; unmatched spen
   await page.getByTestId("assign-search").fill("LATAM BR meta awareness");
   await page.getByTestId("assign-option").first().click();
   await expect(page.getByTestId("unmatched-row").filter({ hasText: "AMER" })).toHaveCount(0);
+});
+
+/** Product feedback 2026-09-28: BigQuery and Snowflake sources are set up from the UI (the live connection comes later). */
+test("a BigQuery source: connection, the table's columns, mapping, saved", async ({ page }) => {
+  await as(page, "admin");
+  await page.goto(`/w/${state().workspaceId}/admin/sources`);
+  await page.getByTestId("source-new").click();
+  await page.getByTestId("connector-bigquery").click();
+  const form = page.getByTestId("warehouse-form");
+  await expect(form.getByTestId("connect-next")).toBeDisabled();
+  await expect(form.getByTestId("source-test")).toBeDisabled(); // the live connection comes with the connector setup
+  await form.getByTestId("source-field-projectId").fill("acme-analytics");
+  await form.getByTestId("source-field-dataset").fill("marketing");
+  await form.getByTestId("source-field-table").fill("bad-name!");
+  await form.getByTestId("source-columns").fill("date, country, platform, spend, currency");
+  await expect(form.getByTestId("connect-next")).toBeDisabled(); // table must be an identifier
+  await form.getByTestId("source-field-table").fill("daily_spend");
+  await form.getByTestId("connect-next").click();
+
+  await expect(page.getByTestId("mapping-wizard")).toHaveAttribute("data-step", "2");
+  const col = (name: string) => page.getByTestId("wizard-column").and(page.locator(`[data-column="${name}"]`)).getByTestId("wizard-choice");
+  await expect(col("country")).toHaveValue("dim:country");
+  await expect(col("spend")).toHaveValue("role:amount");
+  await page.getByTestId("wizard-next").click();
+  await expect(page.getByTestId("wizard-name")).toHaveValue("daily_spend");
+  await page.getByTestId("wizard-create").click();
+  await expect(page).toHaveURL(/\/sources\?source=/);
+
+  await page.goto(`/w/${state().workspaceId}/admin/sources`);
+  await expect(page.getByTestId("admin-source-row").filter({ hasText: "daily_spend" })).toContainText("BigQuery");
+});
+
+test("a Snowflake source needs its credentials secret", async ({ page }) => {
+  await as(page, "admin");
+  await page.goto(`/w/${state().workspaceId}/admin/sources`);
+  await page.getByTestId("source-new").click();
+  await page.getByTestId("connector-snowflake").click();
+  const form = page.getByTestId("warehouse-form");
+  for (const [k, v] of [["account", "acme-xy12345"], ["username", "BUDGET_OS"], ["warehouse", "WH"], ["database", "MKT"], ["schema", "PUBLIC"], ["view", "DAILY_SPEND"]] as const) await form.getByTestId(`source-field-${k}`).fill(v);
+  await form.getByTestId("source-columns").fill("DATE\nCOUNTRY\nSPEND\nCURRENCY");
+  await expect(form.getByTestId("connect-next")).toBeDisabled();
+  await form.getByTestId("source-field-secretRef").fill("projects/acme/secrets/snowflake-key");
+  await expect(form.getByTestId("connect-next")).toBeEnabled();
 });
