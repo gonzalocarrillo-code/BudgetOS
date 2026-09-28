@@ -64,7 +64,10 @@ function PoliciesPage(): ReactElement {
   return (
     <Page title={t("admin.policies")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-sm text-muted-foreground">{t("policy.intro")}</p>
+        <div className="flex max-w-2xl flex-col gap-1">
+          <p className="text-sm text-muted-foreground">{t("policy.intro")}</p>
+          <p className="text-sm text-muted-foreground" data-testid="policy-admins-direct">{t("policy.adminsDirect")}</p>
+        </div>
         {canManage ? (
           <Button onClick={() => setEditing("new")} data-testid="policy-new">
             <Plus className="size-4" aria-hidden /> {t("policy.new")}
