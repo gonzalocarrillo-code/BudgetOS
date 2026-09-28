@@ -21,6 +21,11 @@ const addDays = (day: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
+/** The person a rule assigns its alerts to (delivery.assignTo), when not the budget's owner. */
+const assignee = (rule: PacingRule): string | null => {
+  const to = (rule.delivery as { assignTo?: unknown } | null)?.assignTo;
+  return typeof to === "string" ? to : null;
+};
 const dec = (v: unknown): Decimal | null => (v === null || v === undefined ? null : new Decimal(String(v)));
 
 /** The KPI a rule reads, so the planner adds its kpi_/tgt_/vs_ columns. */
@@ -136,7 +141,7 @@ export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspac
     ctx,
     async (tx) => {
       const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { fiscalYearStartMonth: true } });
-      const rules = await tx.pacingRule.findMany({ where: { workspaceId: tenant.workspaceId, isActive: true }, orderBy: { id: "asc" } });
+      const rules = await tx.pacingRule.findMany({ where: { workspaceId: tenant.workspaceId, isActive: true, deletedAt: null }, orderBy: { id: "asc" } });
       result.rules = rules.length;
       const parsed: Array<{ rule: PacingRule; args: RuleMetricArgs }> = [];
       for (const rule of rules) {
@@ -211,7 +216,7 @@ export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspac
             dataAsOf: now.toISOString(),
             evaluatedFor: today,
           };
-          const inserted = await openAlert(tx, { id, workspaceId: tenant.workspaceId, ruleId: rule.id, envelopeId, severity: rule.severity, metricValue: value.toDecimalPlaces(4).toFixed(4), threshold: threshold.toFixed(4), context, ownerId: owners.get(envelopeId) ?? null });
+          const inserted = await openAlert(tx, { id, workspaceId: tenant.workspaceId, ruleId: rule.id, envelopeId, severity: rule.severity, metricValue: value.toDecimalPlaces(4).toFixed(4), threshold: threshold.toFixed(4), context, ownerId: assignee(rule) ?? owners.get(envelopeId) ?? null });
           if (!inserted) continue; // another evaluator opened it first
           await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "alert.opened", entityType: "alert", entityId: id, after: { rule: rule.name, envelopeId, value: value.toFixed(4) }, requestId: ctx.requestId });
           await outbox(tx, { workspaceId: tenant.workspaceId, topic: "alert.triggered", payload: { alertId: id, ruleId: rule.id, envelopeId, severity: rule.severity, delivery: rule.delivery } });

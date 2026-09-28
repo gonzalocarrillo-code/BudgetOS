@@ -57,7 +57,7 @@ function assertWorkspaceWide(auth: AuthContext): void {
 }
 
 export async function insertRule(tx: Tx, ctx: TenantContext, workspaceId: string, input: CreateRuleInput) {
-  const clash = await tx.pacingRule.findFirst({ where: { workspaceId, name: input.name }, select: { id: true } });
+  const clash = await tx.pacingRule.findFirst({ where: { workspaceId, name: input.name, deletedAt: null }, select: { id: true } });
   if (clash) throw new DomainError("CONFLICT", "A rule with this name exists", { ruleId: clash.id });
   const row = await tx.pacingRule.create({
     data: {
@@ -72,6 +72,7 @@ export async function insertRule(tx: Tx, ctx: TenantContext, workspaceId: string
       consecutiveDays: input.consecutiveDays,
       severity: input.severity,
       delivery: json(input.delivery),
+      isActive: input.isActive,
     },
   });
   await recordRule(tx, ctx, workspaceId, row.id, "rule.created", null, ruleView(row));
@@ -93,7 +94,11 @@ export async function updateRule(prisma: PrismaClient, auth: AuthContext, rawId:
   assertWorkspaceWide(auth);
   return withTenant(prisma, auth.ctx, async (tx) => {
     const current = await tx.pacingRule.findUnique({ where: { id } });
-    if (current === null) throw new DomainError("NOT_FOUND", "Rule not found");
+    if (current === null || current.deletedAt !== null) throw new DomainError("NOT_FOUND", "Rule not found");
+    if (input.name !== undefined && input.name !== current.name) {
+      const clash = await tx.pacingRule.findFirst({ where: { workspaceId: current.workspaceId, name: input.name, deletedAt: null, id: { not: id } }, select: { id: true } });
+      if (clash) throw new DomainError("CONFLICT", "A rule with this name exists", { ruleId: clash.id });
+    }
     const metric = input.metric ?? current.metric;
     const metricArgs = (input.metricArgs ?? current.metricArgs) as { metricKey?: string };
     if (metric === "kpi_vs_target_pct" && !metricArgs.metricKey) throw new DomainError("VALIDATION", "kpi_vs_target_pct needs metricArgs.metricKey");
@@ -120,7 +125,24 @@ export async function updateRule(prisma: PrismaClient, auth: AuthContext, rawId:
 /** GET /workspaces/:ws/rules. */
 export function listRules(prisma: PrismaClient, auth: AuthContext) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  return withTenant(prisma, auth.ctx, async (tx) => (await tx.pacingRule.findMany({ where: { workspaceId }, orderBy: { name: "asc" } })).map(ruleView));
+  return withTenant(prisma, auth.ctx, async (tx) => (await tx.pacingRule.findMany({ where: { workspaceId, deletedAt: null }, orderBy: { name: "asc" } })).map(ruleView));
+}
+
+/**
+ * DELETE /rules/:id. The rule stops (inactive, deleted) and is kept for the history of the alerts
+ * it raised; its open alerts are resolved, since nothing will re-evaluate them.
+ */
+export async function deleteRule(prisma: PrismaClient, auth: AuthContext, rawId: string) {
+  const id = parseId(rawId);
+  assertWorkspaceWide(auth);
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const current = await tx.pacingRule.findUnique({ where: { id } });
+    if (current === null || current.deletedAt !== null) throw new DomainError("NOT_FOUND", "Rule not found");
+    const row = await tx.pacingRule.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+    const resolved = await tx.alert.updateMany({ where: { ruleId: id, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } }, data: { status: "RESOLVED", resolvedAt: new Date() } });
+    await recordRule(tx, auth.ctx, row.workspaceId, id, "rule.deleted", ruleView(current), { deleted: true, alertsResolved: resolved.count });
+    return { id, deleted: true, alertsResolved: resolved.count };
+  });
 }
 
 /** Plan §8.4's default rules for a workspace; skips names that exist. */

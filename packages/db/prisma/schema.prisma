@@ -454,6 +454,7 @@ model PacingRule {
   severity        String // info | warning | critical | data
   delivery        Json    @default("{\"inApp\":true}") // { inApp, slackChannel?, emails? }
   isActive        Boolean @default(true) @map("is_active")
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
 
   @@map("pacing_rule")
 }

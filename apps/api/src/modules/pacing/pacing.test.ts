@@ -24,7 +24,7 @@ const rid = () => `t018api-${++seq}-${orgId}`;
 const env: Record<string, string> = {};
 let ruleId: string;
 
-async function call(user: TestUser, method: "GET" | "POST" | "PATCH", url: string, body?: unknown, requestId = rid()) {
+async function call(user: TestUser, method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: unknown, requestId = rid()) {
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: { ...X, "x-request-id": requestId }, ...(body === undefined ? {} : { body }) });
 }
 const actions = async (requestId: string) =>
@@ -135,6 +135,34 @@ describe("rules", () => {
     const [a] = await owner.$queryRawUnsafe<Array<{ before: { threshold: string } }>>(`SELECT before FROM audit_event WHERE request_id = $1`, requestId);
     expect(a?.before.threshold).toBe("1.1");
     expect((await call(budgetOwner, "PATCH", `/rules/${ruleId}`, { metric: "kpi_vs_target_pct", metricArgs: {} })).status).toBe(422);
+  });
+
+  it("every part of a rule is editable: created inactive, alerts assigned to a person, deleted with its open alerts resolved (feedback 2026-09-28)", async () => {
+    const created = await call(budgetOwner, "POST", `/workspaces/${ws}/rules`, { ...overPace, name: "Temp rule", isActive: false, metricArgs: { period: { kind: "relative", preset: "current_quarter" } }, delivery: { inApp: false, assignTo: viewer.id } });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body).toMatchObject({ isActive: false, delivery: { inApp: false, assignTo: viewer.id }, metricArgs: { period: { kind: "relative", preset: "current_quarter" } } });
+    const tempId = String(created.body["id"]);
+    const [env] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM envelope WHERE workspace_id = $1::uuid LIMIT 1`, ws);
+    const alertId = randomUUID();
+    await owner.$executeRawUnsafe(`INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'warning', 'OPEN', 1.2, 1.1, '{}'::jsonb)`, alertId, ws, tempId, env?.id);
+
+    expect((await call(planner, "DELETE", `/rules/${tempId}`)).status).toBe(403);
+    const requestId = rid();
+    const del = await call(budgetOwner, "DELETE", `/rules/${tempId}`, undefined, requestId);
+    expect(del.status, JSON.stringify(del.body)).toBe(200);
+    expect(del.body).toMatchObject({ deleted: true, alertsResolved: 1 });
+    expect(await actions(requestId)).toEqual(["rule.deleted"]);
+    const [alert] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alertId);
+    expect(alert?.status).toBe("RESOLVED");
+    const list = (await call(viewer, "GET", `/workspaces/${ws}/rules`)).body as unknown as Array<{ id: string }>;
+    expect(list.map((r) => r.id)).not.toContain(tempId);
+    expect((await call(budgetOwner, "DELETE", `/rules/${tempId}`)).status).toBe(404);
+    expect((await call(budgetOwner, "PATCH", `/rules/${tempId}`, { threshold: "2" })).status).toBe(404);
+    // The name is free again.
+    const again = await call(budgetOwner, "POST", `/workspaces/${ws}/rules`, { ...overPace, name: "Temp rule" });
+    expect(again.status).toBe(201);
+    await call(budgetOwner, "DELETE", `/rules/${String(again.body["id"])}`);
+    await owner.$executeRawUnsafe(`DELETE FROM alert WHERE id = $1::uuid`, alertId);
   });
 });
 

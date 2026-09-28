@@ -345,3 +345,10 @@ The spec-scale load job re-measures this on this branch.
 ## Product feedback, round 3 (2026-09-28)
 
 - **An org admin can approve anything**, their own changes included: `eligible_approver()` (migration `20260930000000_org_admin_approves`) and `eligibleApprover()` let an org-wide ORG_ADMIN decide any step. Everyone else keeps the step role, the group and blockSelfApproval.
+
+## Product feedback, round 3: pacing and alert rules fully editable (2026-09-28)
+
+- **New in the editor:** the period a rule is measured over, whether it shows in the app, who its alerts are assigned to (`delivery.assignTo`, default the budget's owner), active on creation, Duplicate, and Delete.
+- **Delete** (`DELETE /rules/:id`, migration `20260930020000_rule_deleted_at`) keeps the rule for its alerts' history, stops it, and resolves its open alerts. The name can be reused.
+- **Removed:** the email field, which was saved but never delivered; stored emails are kept.
+- **Fixed:** opening a default rule crashed the editor (its empty scope `{}` reached the filter bar).
