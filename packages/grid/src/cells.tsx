@@ -370,8 +370,11 @@ export function buildCell(row: QueryRow, column: ColumnSpec, options: { currency
       };
     }
     case "status": {
-      const status = row.status ?? "";
-      const data: StatusCellData = { kind: "status", status, pending: row.pendingCount };
+      const raw = row.status ?? "";
+      const label = raw ? (column.labels?.[raw] ?? raw) : "";
+      // A group row has no status of its own: it reads how many of its budgets wait for approval.
+      const status = !raw && row.pendingCount > 0 && column.pendingLabel ? column.pendingLabel(row.pendingCount) : label;
+      const data: StatusCellData = { kind: "status", status, pending: raw || !column.pendingLabel ? row.pendingCount : 0 };
       return {
         kind: GridCellKind.Custom,
         allowOverlay: false,

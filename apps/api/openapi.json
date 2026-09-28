@@ -651,6 +651,9 @@
                     "type": "string",
                     "format": "uuid",
                     "nullable": true
+                  },
+                  "useTemplateName": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -1630,6 +1633,7 @@
                                                   "type": "string",
                                                   "enum": [
                                                     "budget",
+                                                    "budget_in_period",
                                                     "actual",
                                                     "projected",
                                                     "remaining",
@@ -2183,6 +2187,7 @@
                                                   "type": "string",
                                                   "enum": [
                                                     "budget",
+                                                    "budget_in_period",
                                                     "actual",
                                                     "projected",
                                                     "remaining",
@@ -6267,6 +6272,7 @@
                                           "type": "string",
                                           "enum": [
                                             "budget",
+                                            "budget_in_period",
                                             "actual",
                                             "projected",
                                             "remaining",
@@ -6489,6 +6495,7 @@
                       "type": "string",
                       "enum": [
                         "budget",
+                        "budget_in_period",
                         "actual",
                         "projected",
                         "remaining",
@@ -6910,6 +6917,7 @@
                       "type": "string",
                       "enum": [
                         "budget",
+                        "budget_in_period",
                         "actual",
                         "projected",
                         "remaining",
@@ -7593,6 +7601,7 @@
                                                   "type": "string",
                                                   "enum": [
                                                     "budget",
+                                                    "budget_in_period",
                                                     "actual",
                                                     "projected",
                                                     "remaining",
@@ -10090,6 +10099,7 @@
                                               "type": "string",
                                               "enum": [
                                                 "budget",
+                                                "budget_in_period",
                                                 "actual",
                                                 "projected",
                                                 "remaining",
@@ -10312,6 +10322,7 @@
                           "type": "string",
                           "enum": [
                             "budget",
+                            "budget_in_period",
                             "actual",
                             "projected",
                             "remaining",

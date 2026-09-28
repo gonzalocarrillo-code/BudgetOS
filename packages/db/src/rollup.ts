@@ -62,6 +62,15 @@ export async function envelopesByTuple(tx: Tx, workspaceId: string, tuples: Arra
   return rows.map((r) => ({ i: Number(r.i) - 1, id: r.id }));
 }
 
+/** The cached root node's measures of a template and period, or null when it is not cached. */
+export async function rollupRoot(tx: Tx, s: Omit<RollupScope, "dataVersion">): Promise<Record<string, unknown> | null> {
+  const rows = await tx.$queryRawUnsafe<Array<{ measures: Record<string, unknown> }>>(
+    `SELECT measures FROM rollup_cache WHERE workspace_id = $1::uuid AND template_id = $2::uuid AND period_start = $3::date AND period_end = $4::date AND node_path = ''`,
+    s.workspaceId, s.templateId, s.periodStart, s.periodEnd,
+  );
+  return rows[0]?.measures ?? null;
+}
+
 /** Cached nodes at `childDepth` whose parent is one of `parentPaths` ('' = the root). */
 export async function rollupChildren(tx: Tx, s: Omit<RollupScope, "dataVersion">, parentPaths: string[], childDepth: number): Promise<Array<{ nodePath: string; measures: Record<string, string | number | null> }>> {
   if (parentPaths.length === 0) return [];

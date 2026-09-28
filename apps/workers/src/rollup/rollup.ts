@@ -1,5 +1,5 @@
 import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { cachedPeriods, deleteRollupNodes, loadBulkChange, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { cachedPeriods, deleteRollupNodes, loadBulkChange, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, rollupRoot, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
@@ -27,7 +27,7 @@ interface Ctx {
 }
 type Period = { start: string; end: string };
 
-const SUMS = ["budget", "actual", "projected", "remaining", "variance_abs"] as const;
+const SUMS = ["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs"] as const;
 const segment = (v: unknown) => (v === null || v === undefined ? NONE_SEGMENT : String(v));
 const depthOf = (path: string) => (path === ROOT_PATH ? 0 : path.split("/").length);
 const parentOf = (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ROOT_PATH);
@@ -40,6 +40,7 @@ const parentOf = (path: string) => (path.includes("/") ? path.slice(0, path.last
  */
 interface Sums {
   budget: Decimal | null;
+  budget_in_period: Decimal | null;
   actual: Decimal | null;
   projected: Decimal | null;
   remaining: Decimal | null;
@@ -47,7 +48,7 @@ interface Sums {
   leafCount: number;
   pendingCount: number;
 }
-const zero = (): Sums => ({ budget: null, actual: null, projected: null, remaining: null, variance_abs: null, leafCount: 0, pendingCount: 0 });
+const zero = (): Sums => ({ budget: null, budget_in_period: null, actual: null, projected: null, remaining: null, variance_abs: null, leafCount: 0, pendingCount: 0 });
 const dec = (v: unknown) => (v === null || v === undefined ? null : new Decimal(String(v)));
 const plus = (a: Decimal | null, b: Decimal | null) => (a === null ? b : b === null ? a : a.plus(b));
 function add(into: Sums, x: Sums): void {
@@ -55,19 +56,21 @@ function add(into: Sums, x: Sums): void {
   into.leafCount += x.leafCount;
   into.pendingCount += x.pendingCount;
 }
-const sumsOfRow = (r: Row): Sums => ({ budget: dec(r["budget"]), actual: dec(r["actual"]), projected: dec(r["projected"]), remaining: dec(r["remaining"]), variance_abs: dec(r["variance_abs"]), leafCount: Number(r["leaf_count"] ?? 0), pendingCount: Number(r["pending_count"] ?? 0) });
-const sumsOfCached = (m: Record<string, unknown>): Sums => ({ budget: dec(m["budget"]), actual: dec(m["actual"]), projected: dec(m["projected"]), remaining: dec(m["remaining"]), variance_abs: dec(m["variance_abs"]), leafCount: Number(m["leafCount"] ?? 0), pendingCount: Number(m["pendingCount"] ?? 0) });
+const sumsOfRow = (r: Row): Sums => ({ budget: dec(r["budget"]), budget_in_period: dec(r["budget_in_period"]), actual: dec(r["actual"]), projected: dec(r["projected"]), remaining: dec(r["remaining"]), variance_abs: dec(r["variance_abs"]), leafCount: Number(r["leaf_count"] ?? 0), pendingCount: Number(r["pending_count"] ?? 0) });
+const sumsOfCached = (m: Record<string, unknown>): Sums => ({ budget: dec(m["budget"]), budget_in_period: dec(m["budget_in_period"]), actual: dec(m["actual"]), projected: dec(m["projected"]), remaining: dec(m["remaining"]), variance_abs: dec(m["variance_abs"]), leafCount: Number(m["leafCount"] ?? 0), pendingCount: Number(m["pendingCount"] ?? 0) });
 
 /** Stored measures: money as NUMERIC(18,2) strings; ratios recomputed from the sums, never averaged. */
 function measuresOf(x: Sums, frac: Decimal): RollupNode["measures"] {
   const money = (v: Decimal | null) => (v === null ? null : v.toFixed(2));
   return {
     budget: money(x.budget),
+    // Unrounded: parents are summed from cached children, and pace divides by it (display rounds).
+    budget_in_period: x.budget_in_period === null ? null : x.budget_in_period.toString(),
     actual: money(x.actual),
     projected: money(x.projected),
     remaining: money(x.remaining),
     variance_abs: money(x.variance_abs),
-    ...groupRatios(x, frac),
+    ...groupRatios({ budget: x.budget, budgetInPeriod: x.budget_in_period, actual: x.actual, projected: x.projected }, frac),
     leafCount: x.leafCount,
     pendingCount: x.pendingCount,
   };
@@ -321,6 +324,13 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
     if (envelopeIds.length === 0) return;
     for (const t of templates) {
       for (const p of await periodsFor(tx, ctx, t.id, [])) {
+        // No cached tree for this period (or one cached before budgets had a share of the period):
+        // a refresh would only fill in these envelopes' paths, so build the whole tree.
+        const root = await rollupRoot(tx, { workspaceId: ctx.workspaceId, templateId: t.id, periodStart: p.start, periodEnd: p.end });
+        if (root === null || !("budget_in_period" in root)) {
+          result.upserted += await buildTemplate(tx, ctx, t, p);
+          continue;
+        }
         const r = await refreshTemplate(tx, ctx, t, p, envelopeIds);
         result.upserted += r.upserted;
         result.deleted += r.deleted;

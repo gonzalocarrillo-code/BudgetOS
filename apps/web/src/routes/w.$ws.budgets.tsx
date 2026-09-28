@@ -13,7 +13,7 @@ import { Card, Page } from "../components/page.js";
 import { EnvelopeDrawer } from "../features/explorer/drawer.js";
 import { FilterBar } from "../features/explorer/filter-bar.js";
 import { PasteDialog } from "../features/explorer/paste-dialog.js";
-import { useExplorerLabels } from "../features/explorer/labels.js";
+import { STATUS_LABELS, useExplorerLabels } from "../features/explorer/labels.js";
 import { SendForApproval } from "../features/explorer/send-for-approval.js";
 import { FamilyEditor } from "../features/explorer/family-editor.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
@@ -34,7 +34,8 @@ const ExplorerSearch = z.object({
   templateId: z.string().uuid().optional(),
   measures: z.array(z.string()).default(["budget", "actual", "projected", "pace_index"]),
   targets: z.array(z.string()).default([]),
-  period: PeriodSpec.default({ kind: "relative", preset: "current_quarter" }),
+  // The fiscal year, as the Overview: budgets are set for it, so Budget and pace read naturally.
+  period: PeriodSpec.default({ kind: "relative", preset: "current_year" }),
   grain: Grain.default("total"),
   asOf: z.string().datetime().optional(),
   view: z.enum(["tree", "pivot", "timeline"]).default("tree"),
@@ -48,7 +49,7 @@ const ExplorerSearch = z.object({
 });
 type ExplorerSearchT = z.infer<typeof ExplorerSearch>;
 
-const DEFAULTS = { filter: { logic: "and" as const, children: [] }, groupBy: [], measures: ["budget", "actual", "projected", "pace_index"], targets: [], period: { kind: "relative" as const, preset: "current_quarter" as const }, grain: "total" as const, view: "tree" as const, zoom: "month" as const, expanded: [] };
+const DEFAULTS = { filter: { logic: "and" as const, children: [] }, groupBy: [], measures: ["budget", "actual", "projected", "pace_index"], targets: [], period: { kind: "relative" as const, preset: "current_year" as const }, grain: "total" as const, view: "tree" as const, zoom: "month" as const, expanded: [] };
 
 export const Route = createFileRoute("/w/$ws/budgets")({
   validateSearch: ExplorerSearch,
@@ -127,7 +128,7 @@ function ExplorerPage(): ReactElement {
     return [
       ...leading,
       ...MEASURE_COLUMNS.map((m): ColumnSpec => ({ kind: "measure", key: m.key, title: t(m.label), width: m.key === "pace_index" ? 110 : 150, ...(m.key === "budget" ? { editable: true } : {}) })),
-      { kind: "status", title: t("explorer.col.status"), width: 130 },
+      { kind: "status", title: t("explorer.col.status"), width: 150, labels: STATUS_LABELS(), pendingLabel: (count: number) => t("status.groupPending", { count }) },
     ];
   }, [view, search.groupBy, dimensions]);
 
@@ -338,7 +339,7 @@ function ExplorerPage(): ReactElement {
             }}
           />
         ) : null}
-        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} /> : null}
+        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} onChanged={() => setReload((n) => n + 1)} /> : null}
         {familyOf ? (
           <FamilyEditor
             ws={ws}

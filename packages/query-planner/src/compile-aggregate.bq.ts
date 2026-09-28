@@ -3,7 +3,7 @@ import { DomainError, elapsedFraction, isPredicate, type FilterGroupT, type Pred
 import { sanitize } from "./compile-filter.js";
 import { RATIO, resolveOrder, type CompileOptions, type OrderKey } from "./compile-query.js";
 
-const SUPPORTED_MEASURES = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct"]);
+const SUPPORTED_MEASURES = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct"]);
 
 /** Grouped or total rows over the base measures: no KPI targets, template, date split or envelope scope. */
 function aggregateShape(q: QueryRequest, opts: CompileOptions): boolean {
@@ -103,7 +103,7 @@ function compilePredicateBq(p: Predicate, b: BqBuilder, t: (name: string) => str
 function ratioBq(mk: string): string {
   switch (mk) {
     case "pace_index":
-      return `SAFE_DIVIDE(SAFE_DIVIDE(SUM(m.actual), SUM(m.budget)), @elapsed)`;
+      return `SAFE_DIVIDE(SAFE_DIVIDE(SUM(m.actual), SUM(m.budget_in_period)), @elapsed)`;
     case "variance_pct":
       return `SAFE_DIVIDE(SUM(m.projected) - SUM(m.budget), SUM(m.budget))`;
     case "projected_close_pct":
@@ -140,7 +140,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
     .join("");
   const ctes = `
     sel AS (
-      SELECT e.id, e.status FROM ${t("envelope")} e
+      SELECT e.id, e.status, e.start_date, e.end_date FROM ${t("envelope")} e
       WHERE e.workspace_id = ${ws} AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart} AND (${where})
     ),
     bud AS (
@@ -169,7 +169,10 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
         : ""
     },
     m AS (
-      SELECT sel.id AS envelope_id, sel.status, b.budget, COALESCE(a.actual, 0) AS actual, ${withProjections ? "COALESCE(p.projected, 0)" : "CAST(0 AS NUMERIC)"} AS projected
+      SELECT sel.id AS envelope_id, sel.status, b.budget,
+        -- The budget's share of the period (days of overlap / days), as the Postgres planner.
+        b.budget * SAFE_DIVIDE(DATE_DIFF(LEAST(sel.end_date, ${pEnd}), GREATEST(sel.start_date, ${pStart}), DAY) + 1, DATE_DIFF(sel.end_date, sel.start_date, DAY) + 1) AS budget_in_period,
+        COALESCE(a.actual, 0) AS actual, ${withProjections ? "COALESCE(p.projected, 0)" : "CAST(0 AS NUMERIC)"} AS projected
       FROM sel LEFT JOIN bud b ON b.envelope_id = sel.id LEFT JOIN act a ON a.envelope_id = sel.id${withProjections ? " LEFT JOIN proj p ON p.envelope_id = sel.id" : ""}
     )${dimCtes}`;
   const measures = [...new Set(q.measures)];
@@ -184,7 +187,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
   return { b, ctes, measureAgg, measures };
 }
 
-const NUMERIC = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count"]);
+const NUMERIC = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count"]);
 
 function keysetAfterBq(order: OrderKey[], values: Array<string | null>, b: BqBuilder): string {
   const typed = (col: string, v: string) => (NUMERIC.has(col) ? `CAST(${b.p(v)} AS BIGNUMERIC)` : b.p(v));

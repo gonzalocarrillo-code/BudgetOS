@@ -52,7 +52,7 @@ export async function recomputeNames(tx: Tx, workspaceId: string, envelopeIds: s
   for (;;) {
     const envs = await tx.envelope.findMany({
       where: { workspaceId, ...(envelopeIds ? { id: { in: envelopeIds } } : {}), ...(cursor ? { id: { gt: cursor } } : {}) },
-      select: { id: true, dimensionValues: true, startDate: true, endDate: true },
+      select: { id: true, dimensionValues: true, startDate: true, endDate: true, nameCustom: true },
       orderBy: { id: "asc" },
       take: 5000,
     });
@@ -67,7 +67,7 @@ export async function recomputeNames(tx: Tx, workspaceId: string, envelopeIds: s
     };
     updated += await tx.$executeRaw`
       UPDATE envelope e SET display_name = t.d, match_key = t.k
-      FROM unnest(${envs.map((e) => e.id)}::uuid[], ${envs.map((e) => render(templates.display, e))}::text[], ${envs.map((e) => render(templates.match_key, e))}::text[]) AS t(id, d, k)
+      FROM unnest(${envs.map((e) => e.id)}::uuid[], ${envs.map((e) => (e.nameCustom ? null : render(templates.display, e)))}::text[], ${envs.map((e) => render(templates.match_key, e))}::text[]) AS t(id, d, k)
       WHERE e.id = t.id AND (e.display_name IS DISTINCT FROM t.d OR e.match_key IS DISTINCT FROM t.k)`;
     cursor = envs[envs.length - 1]?.id;
     if (envelopeIds || envs.length < 5000) break;

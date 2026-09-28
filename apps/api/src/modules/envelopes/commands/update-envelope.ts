@@ -1,5 +1,5 @@
 import { DomainError, UpdateEnvelopeInput } from "@budget/domain";
-import { withTenant } from "@budget/db";
+import { recomputeNames, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
@@ -28,7 +28,9 @@ export async function updateEnvelope(prisma: PrismaClient, auth: AuthContext, ra
     const updated = await tx.envelope.update({
       where: { id: envelopeId },
       data: {
-        ...(input.name !== undefined ? { name: input.name } : {}),
+        // A rename is the budget's name from now on, whatever the display naming template says.
+        ...(input.name !== undefined ? { name: input.name, nameCustom: true, displayName: null } : {}),
+        ...(input.useTemplateName ? { nameCustom: false } : {}),
         ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
         ...(input.periodId !== undefined ? { periodId: input.periodId } : {}),
         ...(input.startDate !== undefined ? { startDate: new Date(`${input.startDate}T00:00:00Z`) } : {}),
@@ -36,6 +38,7 @@ export async function updateEnvelope(prisma: PrismaClient, auth: AuthContext, ra
         rowVersion: { increment: 1 },
       },
     });
+    if (input.useTemplateName) await recomputeNames(tx, env.workspaceId, [envelopeId]);
     const { rowVersion: _rv, ...changes } = input;
     void _rv;
     await recordEnvelopeChange(tx, auth, {

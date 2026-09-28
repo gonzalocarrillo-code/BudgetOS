@@ -18,7 +18,7 @@ export { mergeTag, setSubscription, subscribers } from "./collab.js";
 export { deleteSearchDocuments, searchDocumentIds, upsertSearchDocuments } from "./search.js";
 export { closedPeriods, lockPeriodEnvelopes, unlockClosureEnvelopes } from "./closures.js";
 export type { ClosedPeriod } from "./closures.js";
-export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, lockRollup, rollupChildren, upsertRollupNodes } from "./rollup.js";
+export { cachedPeriods, deleteRollupNodes, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, lockRollup, rollupChildren, rollupRoot, upsertRollupNodes } from "./rollup.js";
 export type { RollupNode, RollupScope } from "./rollup.js";
 export type { SearchDoc } from "./search.js";
 export { openAlert, saveRuleStates } from "./alerts.js";

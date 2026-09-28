@@ -732,6 +732,37 @@ describe.sequential("T-007 query planner", () => {
     ).toThrow(/not supported/);
   });
 
+  it("pace compares the period's spend with the budget's share of the period (product feedback 2026-09-28)", async () => {
+    // A year-long budget read over a 91-day period, 45 days in: its share of the period is 91/365.
+    await insertLeaf({
+      id: newId(),
+      workspaceId: propWs,
+      name: "year-long",
+      status: "APPROVED",
+      ownerId: me,
+      currency: "USD",
+      start: "2026-01-01",
+      end: "2026-12-31",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      regionValueId: bucketB,
+      dimensionId: bucketDim,
+      versions: [{ amount: "3650.00", approvedAt: "2026-01-01T00:00:00.000Z" }],
+      spend: "455.00",
+      projected: "0.00",
+    });
+    const c = compile({ field: { kind: "attr", key: "name" }, op: "eq", value: "year-long", workspaceId: propWs, measures: ["budget", "budget_in_period", "actual", "pace_index"] });
+    const [row] = await queryRows<{ budget: string; budget_in_period: string; actual: string; pace_index: string }>(c.sql, c.values);
+    expect(Number(row?.budget)).toBeCloseTo(3650, 2);
+    expect(Number(row?.budget_in_period)).toBeCloseTo(910, 2);
+    // On pace: 455 spent of 910 with 45 of 91 days gone (the old formula read 455/3650/(45/91) ≈ 0.25).
+    expect(Number(row?.pace_index)).toBeCloseTo(455 / 910 / (45 / 91), 5);
+    await sql(`DELETE FROM spend_fact WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid AND name = 'year-long')`, [propWs]);
+    const ids = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid AND name = 'year-long')`;
+    await sql(`UPDATE envelope SET current_version_id = NULL WHERE id IN ${ids}`, [propWs]);
+    for (const table of ["projection_fact", "envelope_dimension", "envelope_version"]) await sql(`DELETE FROM ${table} WHERE envelope_id IN ${ids}`, [propWs]);
+    await sql(`DELETE FROM envelope WHERE id IN ${ids}`, [propWs]);
+  });
+
   it("recomputes ratio measures from sums and keeps leaf sums equal to group totals", async () => {
     const elapsed = 45 / 91;
     await insertLeaf({
