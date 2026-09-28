@@ -15,7 +15,7 @@ import { log } from "./log.js";
  */
 const prefix = process.env["LOCAL_WORKSPACE_PREFIX"] ?? "e2e-";
 /** ingest.requested → the ingest worker; the rest → the roll-up worker (its subscriptions, spec §19). */
-const TOPICS = ["ingest.requested", "budget.changed", "facts.loaded", "registry.changed", "naming.changed"];
+const TOPICS = ["ingest.requested", "budget.changed", "facts.loaded", "registry.changed", "naming.changed", "approval.changed", "period.closed", "period.restated"];
 const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
 const app = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
 const store = objectStoreFromEnv();

@@ -75,9 +75,13 @@ afterAll(async () => {
     `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
     `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
+    `DELETE FROM closure_envelope WHERE closure_id IN (SELECT id FROM period_closure WHERE workspace_id = $1::uuid)`,
+    `DELETE FROM period_closure WHERE workspace_id = $1::uuid`,
+    `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,
+    `DELETE FROM approval_request WHERE workspace_id = $1::uuid`,
     `DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
-    `UPDATE envelope SET current_version_id = NULL, parent_id = NULL WHERE workspace_id = $1::uuid`,
+    `UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL, parent_id = NULL WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
     `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
   ]) {
@@ -137,5 +141,75 @@ describe("rollup-worker", () => {
     expect(await tree()).toEqual({ "": "420.00", EMEA: "120.00", "EMEA/∅": "50.00", "EMEA/tiktok": "70.00", LATAM: "300.00", "LATAM/meta": "300.00" });
     await rebuildWorkspace(app, { workspaceId: ws, orgId }, { today: TODAY, periods: [period] });
     expect(refreshed).toEqual(await snapshot());
+  });
+
+  it("status-only events (approval.changed, period.closed / restated) refresh pendingCount to what a rebuild gives (ADR-044)", async () => {
+    const snapshot = async () => (await owner.$queryRawUnsafe<Array<{ k: string; m: unknown }>>(`SELECT period_start::text || '|' || node_path AS k, measures AS m FROM rollup_cache WHERE template_id = $1::uuid ORDER BY 1`, templateId)).map((r) => [r.k, r.m]);
+    const pending = async () => Object.fromEntries((await owner.$queryRawUnsafe<Array<{ p: string; n: number }>>(`SELECT node_path AS p, (measures->>'pendingCount')::int AS n FROM rollup_cache WHERE template_id = $1::uuid AND period_start = $2::date AND node_path IN ('', 'LATAM', 'LATAM/meta')`, templateId, period.start)).map((r) => [r.p, r.n]));
+    // The status write happens (as the API does it), then its single outbox row reaches the worker; the cache must equal a rebuild.
+    const step = async (sql: string[], topic: string, payload: Record<string, unknown>) => {
+      for (const q of sql) await owner.$executeRawUnsafe(q);
+      await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic, payload }));
+      const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+      const body = { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
+      const r = await handleRollupEvent(app, body, TODAY);
+      expect(r).toMatchObject({ outcome: "applied", rebuilt: false });
+      expect(r.upserted).toBeGreaterThan(0);
+      const refreshed = await snapshot();
+      const counts = await pending();
+      await rebuildWorkspace(app, { workspaceId: ws, orgId }, { today: TODAY, periods: [period] });
+      expect(refreshed).toEqual(await snapshot());
+      return counts;
+    };
+    const meta = env["latamMeta"] as string;
+    const draft = randomUUID();
+    const requestId = randomUUID();
+    const closureId = randomUUID();
+    const periodId = randomUUID();
+    await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by) VALUES ($1::uuid, $2::uuid, 2, 320, 320, 'DRAFT', $3::uuid)`, draft, meta, userId);
+    expect(await pending()).toEqual({ "": 0, LATAM: 0, "LATAM/meta": 0 });
+
+    // submit-version: version and envelope PENDING, one approval.changed row (action approval.requested).
+    const submitted = await step(
+      [
+        `UPDATE envelope_version SET status = 'PENDING' WHERE id = '${draft}'`,
+        `UPDATE envelope SET status = 'PENDING', draft_version_id = '${draft}' WHERE id = '${meta}'`,
+        `INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by) VALUES ('${requestId}', '${ws}', 'envelope_version', '${draft}', '${randomUUID()}', 1, '{}'::jsonb, 't022', '${userId}')`,
+      ],
+      "approval.changed",
+      { requestId, action: "approval.requested", versionId: draft, envelopeId: meta, status: "PENDING", step: 0 },
+    );
+    expect(submitted).toEqual({ "": 1, LATAM: 1, "LATAM/meta": 1 });
+
+    // close-period locks it (prior status PENDING); restate gives PENDING back.
+    const closed = await step(
+      [
+        `INSERT INTO fiscal_period (id, workspace_id, key, kind, start_date, end_date) VALUES ('${periodId}', '${ws}', 'FY26', 'year', '2026-01-01', '2026-12-31')`,
+        `INSERT INTO period_closure (id, workspace_id, period_id, closed_by, registry_version, bq_table, variance_summary) VALUES ('${closureId}', '${ws}', '${periodId}', '${userId}', '{}'::jsonb, 't022', '{}'::jsonb)`,
+        `INSERT INTO closure_envelope (closure_id, envelope_id, prior_status) SELECT '${closureId}', id, status FROM envelope WHERE workspace_id = '${ws}' AND status <> 'ARCHIVED'`,
+        `UPDATE envelope SET status = 'LOCKED' WHERE workspace_id = '${ws}' AND status <> 'ARCHIVED'`,
+      ],
+      "period.closed",
+      { closureId, periodId, periodKey: "FY26", lockedEnvelopes: 5 },
+    );
+    expect(closed).toEqual({ "": 0, LATAM: 0, "LATAM/meta": 0 });
+    const restated = await step(
+      [`UPDATE period_closure SET status = 'restated' WHERE id = '${closureId}'`, `UPDATE envelope e SET status = ce.prior_status FROM closure_envelope ce WHERE ce.closure_id = '${closureId}' AND e.id = ce.envelope_id`],
+      "period.restated",
+      { closureId, periodId, periodKey: "FY26", unlockedEnvelopes: 5, reason: "t022" },
+    );
+    expect(restated).toEqual({ "": 1, LATAM: 1, "LATAM/meta": 1 });
+
+    // withdraw: the payload names only the request; the worker resolves its envelope.
+    const withdrawn = await step(
+      [
+        `UPDATE envelope_version SET status = 'WITHDRAWN' WHERE id = '${draft}'`,
+        `UPDATE envelope SET status = 'APPROVED', draft_version_id = NULL WHERE id = '${meta}'`,
+        `UPDATE approval_request SET status = 'WITHDRAWN', resolved_at = now() WHERE id = '${requestId}'`,
+      ],
+      "approval.changed",
+      { requestId, action: "approval.withdrawn", comment: null, status: "WITHDRAWN" },
+    );
+    expect(withdrawn).toEqual({ "": 0, LATAM: 0, "LATAM/meta": 0 });
   });
 });
