@@ -9,6 +9,7 @@ import { authenticate, authorize } from "./auth/authenticate.js";
 import { ROLE_CACHE, type RoleCache } from "./auth/role-cache.js";
 import { PERMISSION_KEY, type RoutePermission } from "./permission.decorator.js";
 import type { TenantRequest } from "./tenant.js";
+import { verifySlackSignature } from "../modules/slack/signature.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,6 +39,10 @@ export class TenantInterceptor implements NestInterceptor {
   private async authorize(request: TenantRequest, permission: RoutePermission | undefined): Promise<void> {
     if (permission === undefined) {
       throw new DomainError("FORBIDDEN", "Route declares no permission");
+    }
+    if (permission === "slack.signed") {
+      verifySlackSignature({ rawBody: (request as unknown as { rawBody?: string }).rawBody, timestamp: header(request, "x-slack-request-timestamp"), signature: header(request, "x-slack-signature"), secret: process.env["SLACK_SIGNING_SECRET"] });
+      return;
     }
     const tenant = await authenticate(
       { verifier: this.verifier, access: this.access, cache: this.cache },

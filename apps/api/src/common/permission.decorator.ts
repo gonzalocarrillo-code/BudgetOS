@@ -9,8 +9,10 @@ import { SetMetadata } from "@nestjs/common";
  * - `org.admin`: an ORG_ADMIN of the caller's org, with or without a workspace (T-040).
  * - an `Action`: a role in the workspace that grants it (spec §5.4). Dimension scopes are checked
  *   against the target entity in the service with `assertInScope` (scope.guard.ts).
+ * - `slack.signed`: no JWT; the request carries Slack's signature (SLACK_SIGNING_SECRET). The
+ *   handler acts as the Slack user's Budget OS account, with that account's permissions.
  */
-export type RoutePermission = Action | "workspace.member" | "authenticated" | "org.admin";
+export type RoutePermission = Action | "workspace.member" | "authenticated" | "org.admin" | "slack.signed";
 
 export const PERMISSION_KEY = "budget:permission";
 export const Permission = (permission: RoutePermission) => SetMetadata(PERMISSION_KEY, permission);

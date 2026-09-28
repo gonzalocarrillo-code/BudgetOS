@@ -256,10 +256,17 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/workspaces/{ws}/policies", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/policies` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/policies", permission: "policy.manage", url: () => `/api/v1/workspaces/${wsA}/policies`, body: {} },
   { method: "PATCH", path: "/api/v1/policies/{id}", permission: "policy.manage", url: () => `/api/v1/policies/${rid}`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/integrations/slack", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/integrations/slack` },
+  { method: "PATCH", path: "/api/v1/workspaces/{ws}/integrations/slack", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/integrations/slack`, body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/integrations/slack/test", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/integrations/slack/test`, body: { channel: "#not-sent" } },
+  { method: "POST", path: "/api/v1/slack/interactions", permission: "slack.signed", url: () => "/api/v1/slack/interactions", body: {} },
+  { method: "POST", path: "/api/v1/slack/commands", permission: "slack.signed", url: () => "/api/v1/slack/commands", body: {} },
 ];
 
 function allowed(role: Role | "OUTSIDER", permission: RoutePermission): boolean {
   if (permission === "authenticated") return true;
+  // Slack's routes take Slack's signature, never a JWT: every role is refused without one.
+  if (permission === "slack.signed") return false;
   if (permission === "org.admin") return role === "ORG_ADMIN";
   if (role === "OUTSIDER") return false;
   if (permission === "workspace.member") return true;

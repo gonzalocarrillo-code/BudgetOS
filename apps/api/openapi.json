@@ -12336,6 +12336,144 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/integrations/slack": {
+      "get": {
+        "operationId": "getSlackSettings",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSlackSettings",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "defaultChannel": {
+                    "type": "string",
+                    "pattern": "^[#@]?[A-Za-z0-9._-]{1,80}$",
+                    "nullable": true
+                  },
+                  "alertChannel": {
+                    "type": "string",
+                    "pattern": "^[#@]?[A-Za-z0-9._-]{1,80}$",
+                    "nullable": true
+                  },
+                  "alertSeverities": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "info",
+                        "warning",
+                        "critical",
+                        "data"
+                      ]
+                    }
+                  },
+                  "approvals": {
+                    "type": "boolean"
+                  },
+                  "link": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The workspace's Slack settings"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/integrations/slack/test": {
+      "post": {
+        "operationId": "sendSlackTest",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "pattern": "^[#@]?[A-Za-z0-9._-]{1,80}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A test message is queued for the notify worker"
+          }
+        }
+      }
+    },
+    "/api/v1/slack/interactions": {
+      "post": {
+        "operationId": "slackInteractions",
+        "description": "Called by Slack (signed with SLACK_SIGNING_SECRET; no JWT): button clicks and form submissions",
+        "responses": {
+          "200": {
+            "description": "What Slack expects: {} or form errors"
+          }
+        }
+      }
+    },
+    "/api/v1/slack/commands": {
+      "post": {
+        "operationId": "slackCommands",
+        "description": "Called by Slack (signed; no JWT): the /budget slash command",
+        "responses": {
+          "200": {
+            "description": "An ephemeral reply"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{ws}/tags": {
       "get": {
         "operationId": "listTags",

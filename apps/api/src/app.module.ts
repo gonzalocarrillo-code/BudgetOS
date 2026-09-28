@@ -6,6 +6,7 @@ import { AuthModule } from "./modules/auth/auth.module.js";
 import { ClosuresModule } from "./modules/closures/closures.module.js";
 import { QueryModule } from "./modules/query/query.module.js";
 import { ViewsModule } from "./modules/views/views.module.js";
+import { SlackModule } from "./modules/slack/slack.module.js";
 import { EnvelopesModule } from "./modules/envelopes/envelopes.module.js";
 import { ExportsModule } from "./modules/exports/exports.module.js";
 import { ExperimentsModule } from "./modules/experiments/experiments.module.js";
@@ -22,6 +23,6 @@ import { SourcesModule } from "./modules/sources/sources.module.js";
 import { TargetsModule } from "./modules/targets/targets.module.js";
 
 @Module({
-  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule, ExperimentsModule, ManualEntryModule, HomeModule, ClosuresModule, QueryModule, ViewsModule, OverviewModule, NamingModule, PeriodsModule],
+  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule, ExperimentsModule, ManualEntryModule, HomeModule, ClosuresModule, QueryModule, ViewsModule, OverviewModule, NamingModule, PeriodsModule, SlackModule],
 })
 export class AppModule {}

@@ -158,8 +158,9 @@ describe("separation of duties", () => {
       }),
     ).toBe(false);
   });
-  it("org admin's force approval is a separate action, not step eligibility", () => {
-    expect(eligibleApprover({ ...base, assignments: [{ role: "ORG_ADMIN", scope: {} }] })).toBe(false);
+  it("an org admin may decide any step, their own changes included (product decision 2026-09-28)", () => {
+    expect(eligibleApprover({ ...base, assignments: [{ role: "ORG_ADMIN", scope: {} }] })).toBe(true);
+    expect(eligibleApprover({ ...base, assignments: [{ role: "ORG_ADMIN", scope: {} }], authorId: base.userId })).toBe(true);
     expect(can(["ORG_ADMIN"], "approval.force")).toBe(true);
   });
 });

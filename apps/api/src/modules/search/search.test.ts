@@ -28,8 +28,8 @@ async function call(user: TestUser, method: "GET" | "POST" | "PATCH" | "DELETE",
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: X, ...(body === undefined ? {} : { body }) });
 }
 type Groups = Array<{ type: string; count: number; hits: Array<{ id: string; title: string; path: string; deepLink: string }> }>;
-const search = async (user: TestUser, q: string) => {
-  const res = await call(user, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent(q)}&limit=20`);
+const search = async (user: TestUser, q: string, limit = 20) => {
+  const res = await call(user, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent(q)}&limit=${limit}`);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body["groups"] as Groups;
 };
@@ -208,7 +208,7 @@ describe("settings (T-041: typing a setting name in ⌘K opens the right admin p
     }
     // Keywords find a setting too ("snowflake" → Data sources); settings are for every role.
     expect(titles(await search(scoped, "snowflake"), "setting")).toContain("Data sources");
-    expect(titles(await search(planner, "type:settings"), "setting")).toHaveLength(SETTINGS.length);
+    expect(titles(await search(planner, "type:settings", 50), "setting")).toHaveLength(SETTINGS.length);
   });
 
   it("a created workspace gets the catalog from its workspace.created event", async () => {
@@ -217,7 +217,7 @@ describe("settings (T-041: typing a setting name in ⌘K opens the right admin p
     const payload = { workspaceId: ws };
     const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, 'workspace.created', $2::jsonb) RETURNING id::text`, ws, JSON.stringify(payload));
     await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "workspace.created" }, messageId: `t041-${row?.id}` }, subscription: "search-indexer" });
-    expect(titles(await search(planner, "type:settings"), "setting")).toHaveLength(SETTINGS.length);
+    expect(titles(await search(planner, "type:settings", 50), "setting")).toHaveLength(SETTINGS.length);
   });
 });
 
