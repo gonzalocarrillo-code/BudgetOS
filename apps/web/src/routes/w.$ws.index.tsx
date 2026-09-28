@@ -108,7 +108,7 @@ function Customise({ layout }: { layout: ReturnType<typeof useLayout> }): ReactE
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
-      <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)} aria-expanded={open} data-testid="overview-customise">
+      <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)} aria-expanded={open} data-testid="overview-customise" data-saving={layout.saving}>
         <SlidersHorizontal className="size-4" aria-hidden />
         {layout.hiddenCount ? t("overview.customise.withHidden", { count: layout.hiddenCount }) : t("overview.customise")}
       </Button>
@@ -355,11 +355,11 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
   const body = (
     <>
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="tabular whitespace-nowrap text-lg font-semibold tracking-[-0.02em]" title={value}>{value}</span>
+      <TileValue value={value} />
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </>
   );
-  const cls = "flex flex-col gap-0.5 rounded-xl border border-border bg-card px-4 py-3 shadow-xs";
+  const cls = "flex min-w-0 flex-col gap-0.5 rounded-xl border border-border bg-card px-4 py-3 shadow-xs";
   if (to && ws)
     return to === "alerts" ? (
       <Link to="/w/$ws/alerts" params={{ ws }} className={cn(cls, "hover:border-primary")} data-testid={testId}>
@@ -374,6 +374,23 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
     <div className={cls} data-testid={testId}>
       {body}
     </div>
+  );
+}
+
+/**
+ * A tile's number never leaves its card (product feedback 2026-09-28: "USD 150,000,000.00"
+ * overflowed): the currency sits small before the amount, and an amount wider than the card
+ * shrinks to fit rather than spilling out. The full value is the tooltip.
+ */
+function TileValue({ value }: { value: string }): ReactElement {
+  const m = /^([A-Z]{3}) (.+)$/.exec(value);
+  const amount = m?.[2] ?? value;
+  const size = amount.length > 16 ? "text-sm" : amount.length > 12 ? "text-base" : "text-lg";
+  return (
+    <span className={cn("tabular flex min-w-0 items-baseline gap-1 font-semibold tracking-[-0.02em]", size)} title={value} data-testid="tile-value">
+      {m ? <span className="text-xs font-medium text-muted-foreground">{m[1]}</span> : null}
+      <span className="min-w-0 truncate">{amount}</span>
+    </span>
   );
 }
 
@@ -406,7 +423,10 @@ function Heatmap({ h, money, onAxes, onCell }: { h: NonNullable<Overview["heatma
           {axis("cols", h.colDimension.key, h.rowDimension.key)}
           <span className="ml-auto text-xs text-muted-foreground">{t("overview.cellHint")}</span>
         </div>
-        <div className="overflow-x-auto">
+        {h.rows.length === 0 || h.cols.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="heatmap-empty">{t("overview.heatmapEmpty", { rows: h.rowDimension.label, cols: h.colDimension.label })}</p>
+        ) : null}
+        <div className={cn("overflow-x-auto", h.rows.length === 0 || h.cols.length === 0 ? "hidden" : "")}>
           <table className="tabular w-full border-separate border-spacing-1 text-sm" data-testid="heatmap">
             <caption className="sr-only">{t("overview.heatmapCaption")}</caption>
             <thead>

@@ -100,6 +100,8 @@ test("overview: hide and show tiles and panels, kept after a reload", async ({ p
   await expect(page.getByTestId("heatmap")).toHaveCount(0);
   await expect(page.getByTestId("tile-alerts")).toHaveCount(0);
   await expect(page.getByTestId("overview-customise")).toContainText("2 hidden");
+  // The layout saves in the background; reload once it is on the server.
+  await expect(page.getByTestId("overview-customise")).toHaveAttribute("data-saving", "false");
 
   await page.reload();
   await expect(page.getByTestId("overview")).toHaveAttribute("data-ready", "true");
@@ -111,6 +113,7 @@ test("overview: hide and show tiles and panels, kept after a reload", async ({ p
   await page.getByTestId("customise-reset").click();
   await expect(page.getByTestId("heatmap")).toBeVisible();
   await expect(page.getByTestId("tile-alerts")).toBeVisible();
+  await expect(page.getByTestId("overview-customise")).toHaveAttribute("data-saving", "false");
 });
 
 /** The workspace's own periods (a fiscal quarter as defined in Admin › Fiscal calendar) are on the Overview too. */

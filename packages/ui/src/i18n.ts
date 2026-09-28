@@ -1161,6 +1161,7 @@ const en = {
   "sources.uploadFailed": "The upload failed ({status})",
   "overview.period": "Period",
   "overview.budget": "Budget",
+  "overview.heatmapEmpty": "No budget has both a {rows} and a {cols} yet. Pick other rows and columns, or set these granularities on your budgets.",
   "overview.actual": "Spend to date",
   "overview.spendToDate": "{pct} of budget",
   "overview.pace": "Pace index",
