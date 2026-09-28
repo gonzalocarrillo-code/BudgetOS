@@ -84,6 +84,7 @@ import {
   AddPersonInput,
   PeopleResponse,
   UpdateMeInput,
+  UpdateWorkspaceInput,
   UpdateSlackSettingsInput,
   SlackTestInput,
 } from "@budget/domain";
@@ -551,6 +552,10 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/subscriptions": {
         post: { operationId: "setSubscription", parameters: [workspaceHeader], requestBody: json(SubscriptionInput), responses: { "201": { description: "Follow or stop following an entity's threads" } } },
+      },
+      "/api/v1/workspaces/{ws}/general": {
+        get: { operationId: "getWorkspaceGeneral", parameters: [workspaceParam], responses: { "200": { description: "The workspace's name, slug, reporting currency and fiscal-year start" } } },
+        patch: { operationId: "updateWorkspaceGeneral", parameters: [workspaceParam], requestBody: json(UpdateWorkspaceInput), responses: { "200": { description: "The renamed workspace" } } },
       },
       "/api/v1/workspaces/{ws}/integrations/slack": {
         get: { operationId: "getSlackSettings", parameters: [workspaceParam], responses: { "200": { description: "Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest" } } },

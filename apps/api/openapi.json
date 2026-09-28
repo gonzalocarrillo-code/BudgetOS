@@ -12336,6 +12336,65 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/general": {
+      "get": {
+        "operationId": "getWorkspaceGeneral",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace's name, slug, reporting currency and fiscal-year start"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateWorkspaceGeneral",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The renamed workspace"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{ws}/integrations/slack": {
       "get": {
         "operationId": "getSlackSettings",

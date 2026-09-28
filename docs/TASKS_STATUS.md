@@ -367,3 +367,9 @@ The spec-scale load job re-measures this on this branch.
 - **Admin › Slack:** connection, Link, channels (default, alerts, severities), a test message, and the setup steps with the app manifest.
 - **Local runner:** now delivers notifications (in-app and Slack), and every workspace of the local stack's org.
 - **Needs a real Slack app to use:** the bot token and signing secret, plus a public URL for buttons and /budget.
+
+## Product feedback, round 4: Settings section (2026-09-28)
+
+- **The sidebar's Admin section** keeps Registry, Pacing rules, Roles and Tags, plus **Settings**.
+- **Settings** is a hub page with: Workspace, Approval policies, Slack, Data sources, Naming templates, Fiscal calendar, Workspace templates, Tours. On any of them, a strip above the page moves between them, and the sidebar's Settings item stays active.
+- **New Settings › Workspace:** rename the workspace (`GET`/`PATCH /workspaces/:ws/general`, `user.manage`, audited), and see its currency, fiscal-year start, slug and id.

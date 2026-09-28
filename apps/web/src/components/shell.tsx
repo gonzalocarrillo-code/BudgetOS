@@ -1,6 +1,6 @@
 import { Button, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell,
   BookOpen,
@@ -25,6 +25,8 @@ import {
   type LucideIcon,
   CalendarRange,
   MessageSquare,
+  Building2,
+  Settings,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, type ReactElement, type ReactNode } from "react";
@@ -57,19 +59,43 @@ const NAV: NavItem[] = [
   { to: "/w/$ws/closures", label: "nav.closures", icon: Lock, tour: "nav-closures" },
   { to: "/w/$ws/sources", label: "nav.sources", icon: Database, tour: "nav-sources" },
 ];
+// The admin pages people use day to day stay in the sidebar; the rest live under Settings
+// (product feedback 2026-09-28).
 const ADMIN: NavItem[] = [
   { to: "/w/$ws/admin/registry", label: "admin.registry", icon: BookOpen },
-  { to: "/w/$ws/admin/policies", label: "admin.policies", icon: ShieldCheck },
   { to: "/w/$ws/admin/rules", label: "admin.rules", icon: Gauge },
-  { to: "/w/$ws/admin/slack", label: "admin.slack", icon: MessageSquare },
   { to: "/w/$ws/admin/roles", label: "admin.roles", icon: Users },
   { to: "/w/$ws/admin/tags", label: "admin.tags", icon: Tag },
-  { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug },
-  { to: "/w/$ws/admin/naming", label: "admin.naming", icon: Type },
-  { to: "/w/$ws/admin/periods", label: "admin.periods", icon: CalendarRange },
-  { to: "/w/$ws/admin/templates", label: "admin.templates", icon: LayoutTemplate },
-  { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map },
 ];
+
+/** Settings: its own page (the hub) and a strip above each of these pages to move between them. */
+export const SETTINGS_PAGES: Array<NavItem & { description: MessageKey }> = [
+  { to: "/w/$ws/admin/workspace", label: "admin.workspace", icon: Building2, description: "settings.desc.workspace" },
+  { to: "/w/$ws/admin/policies", label: "admin.policies", icon: ShieldCheck, description: "settings.desc.policies" },
+  { to: "/w/$ws/admin/slack", label: "admin.slack", icon: MessageSquare, description: "settings.desc.slack" },
+  { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug, description: "settings.desc.sources" },
+  { to: "/w/$ws/admin/naming", label: "admin.naming", icon: Type, description: "settings.desc.naming" },
+  { to: "/w/$ws/admin/periods", label: "admin.periods", icon: CalendarRange, description: "settings.desc.periods" },
+  { to: "/w/$ws/admin/templates", label: "admin.templates", icon: LayoutTemplate, description: "settings.desc.templates" },
+  { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map, description: "settings.desc.tours" },
+];
+const SETTINGS_HUB = "/w/$ws/admin/settings";
+const settingsPath = (pathname: string, ws: string) => [SETTINGS_HUB, ...SETTINGS_PAGES.map((p) => p.to)].some((to) => pathname === to.replace("$ws", ws));
+
+function SettingsStrip({ ws }: { ws: string }): ReactElement {
+  return (
+    <nav aria-label={t("admin.settings")} className="flex gap-1 overflow-x-auto border-b border-border bg-card px-6" data-testid="settings-strip">
+      <Link to={SETTINGS_HUB} params={{ ws }} activeOptions={{ exact: true }} className="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm text-muted-foreground hover:text-foreground" activeProps={{ className: "whitespace-nowrap border-b-2 border-primary px-2 py-2.5 text-sm font-medium text-foreground" }}>
+        {t("admin.settings")}
+      </Link>
+      {SETTINGS_PAGES.map((p) => (
+        <Link key={p.to} to={p.to} params={{ ws }} className="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm text-muted-foreground hover:text-foreground" activeProps={{ className: "whitespace-nowrap border-b-2 border-primary px-2 py-2.5 text-sm font-medium text-foreground" }}>
+          {t(p.label)}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 const linkClass = "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-foreground";
 const activeClass = "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground";
@@ -93,6 +119,8 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
   useSearchHotkeys(openSearch);
   const { data: dimensions = [] } = useQuery(registryQuery(ws));
   const current = me.workspaces.find((w) => w.workspaceId === ws);
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
+  const inSettings = settingsPath(pathname, ws);
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-card px-4">
@@ -146,9 +174,16 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
             {ADMIN.map((item) => (
               <NavLink key={item.to} item={item} ws={ws} />
             ))}
+            <Link to={SETTINGS_HUB} params={{ ws }} className={cn(linkClass, inSettings && activeClass)} data-testid="nav-settings" aria-current={inSettings ? "page" : undefined}>
+              <Settings className="size-4 shrink-0" aria-hidden />
+              {t("admin.settings")}
+            </Link>
           </nav>
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          {inSettings ? <SettingsStrip ws={ws} /> : null}
+          {children}
+        </main>
       </div>
       <GlobalSearch ws={ws} dimensions={dimensions} open={searching} onOpenChange={setSearching} />
       <div role="status" aria-live="polite" className="sr-only" data-testid="toasts" />

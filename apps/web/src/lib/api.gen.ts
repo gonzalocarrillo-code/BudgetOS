@@ -1648,6 +1648,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/general": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkspaceGeneral"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateWorkspaceGeneral"];
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/integrations/slack": {
         parameters: {
             query?: never;
@@ -6981,6 +6997,52 @@ export interface operations {
         responses: {
             /** @description Follow or stop following an entity's threads */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getWorkspaceGeneral: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workspace's name, slug, reporting currency and fiscal-year start */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateWorkspaceGeneral: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The renamed workspace */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
