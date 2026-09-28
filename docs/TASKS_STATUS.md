@@ -434,6 +434,6 @@ Phase A notes (2026-09-28): tours never start by themselves (Home invites; a clo
 | UX-011 | D | No text under 12 px; Home's recent budgets with the same name show their parent | done |
 | UX-012 | D | Dark mode: tokens checked for AA like the light ones, the grid's canvas theme, Light / Dark / System in the user menu | done |
 
-All four phases are built (2026-09-28): PRs #83 (A), #84 (C), #85 (B) and the Phase D PR, stacked in that order. Decisions D1–D9 in the plan stay open; the builds follow the plan's proposals.
+All four phases are built (2026-09-28): PRs #83 (A), #84 (C), #85 (B) and #86 (D), stacked in that order. Decisions D1–D9 in the plan stay open; the builds follow the plan's proposals.
 
 Decisions D1–D9 in the plan's Part 5 are open for the product owner.

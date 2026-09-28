@@ -1,7 +1,7 @@
 # Budget OS — UX/UI audit and the superadmin / workspace plan
 
 Date: 2026-09-28. Audited build: `origin/main` at `dcb5b87` (PR #82), the local stack on http://localhost:5173.
-Author: UX/UI review requested by the product owner ("act like a UX/UI specialist"). Status: built on 2026-09-28 in four stacked PRs (Phase A #83, Phase C #84, Phase B #85, Phase D); the decisions in Part 5 stay open and the builds follow their proposals.
+Author: UX/UI review requested by the product owner ("act like a UX/UI specialist"). Status: built on 2026-09-28 in four stacked PRs (Phase A #83, Phase C #84, Phase B #85, Phase D #86); the decisions in Part 5 stay open and the builds follow their proposals.
 
 This document has three parts:
 
