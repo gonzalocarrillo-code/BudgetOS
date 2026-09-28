@@ -1,5 +1,5 @@
 import type { PeriodRow } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/w/$ws/admin/periods")({ component: Period
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, i, 1)).toLocaleString("en", { month: "long", timeZone: "UTC" }));
 const PATTERNS = ["calendar", "445", "454", "544"] as const;
-const field = "h-8 rounded-md border border-input bg-card px-2 text-sm";
+const field = "";
 
 /** The fiscal year a period belongs to: the FY row that contains its start. */
 function yearOf(p: PeriodRow, years: PeriodRow[]): string {
@@ -154,33 +154,33 @@ function FiscalYearCard({ ws, canManage, onDone }: { ws: string; canManage: bool
         <label className="flex items-center justify-between gap-3">
           <span>{t("periods.startMonth")}</span>
           {canManage ? (
-            <select className={field} value={fy?.startMonth ?? ""} onChange={(e) => setStart.mutate(Number(e.target.value))} data-testid="periods-start-month">
+            <Select className={field} value={fy?.startMonth ?? ""} onChange={(e) => setStart.mutate(Number(e.target.value))} data-testid="periods-start-month">
             <option value="" hidden>{t("periods.pickMonth")}</option>
             {MONTHS.map((m, i) => (
               <option key={m} value={i + 1}>{m}</option>
             ))}
-            </select>
+            </Select>
           ) : (
-            <select className={field} value={fy?.startMonth ?? ""} disabled title={t("periods.noManage")}>
+            <Select className={field} value={fy?.startMonth ?? ""} disabled title={t("periods.noManage")}>
             <option value="" hidden>{t("periods.pickMonth")}</option>
             {MONTHS.map((m, i) => (
               <option key={m} value={i + 1}>{m}</option>
             ))}
-            </select>
+            </Select>
           )}
         </label>
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1">
             <span className="text-muted-foreground">{t("periods.year")}</span>
-            <input className={cn(field, "w-24 tabular-nums")} value={year} onChange={(e) => setYear(e.target.value)} inputMode="numeric" data-testid="periods-year" />
+            <Input className={cn(field, "w-24 tabular-nums")} value={year} onChange={(e) => setYear(e.target.value)} inputMode="numeric" data-testid="periods-year" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-muted-foreground">{t("periods.pattern")}</span>
-            <select className={field} value={pattern} onChange={(e) => setPattern(e.target.value as (typeof PATTERNS)[number])} data-testid="periods-pattern">
+            <Select className={field} value={pattern} onChange={(e) => setPattern(e.target.value as (typeof PATTERNS)[number])} data-testid="periods-pattern">
               {PATTERNS.map((p) => (
                 <option key={p} value={p}>{t(`periods.pattern.${p}` as MessageKey)}</option>
               ))}
-            </select>
+            </Select>
           </label>
           {canManage && /^\d{4}$/.test(year) && !generate.isPending ? (
             <Button onClick={() => generate.mutate()} data-testid="periods-generate">{t("periods.generate")}</Button>
@@ -212,15 +212,15 @@ function CustomPeriodCard({ ws, canManage, onDone }: { ws: string; canManage: bo
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex min-w-40 flex-1 flex-col gap-1">
             <span className="text-muted-foreground">{t("periods.name")}</span>
-            <input className={field} value={key} onChange={(e) => setKey(e.target.value)} placeholder="Black Friday 2026" data-testid="custom-key" />
+            <Input className={field} value={key} onChange={(e) => setKey(e.target.value)} placeholder="Black Friday 2026" data-testid="custom-key" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-muted-foreground">{t("periods.from")}</span>
-            <input type="date" className={field} value={start} onChange={(e) => setStart(e.target.value)} data-testid="custom-start" />
+            <Input type="date" className={field} value={start} onChange={(e) => setStart(e.target.value)} data-testid="custom-start" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-muted-foreground">{t("periods.to")}</span>
-            <input type="date" className={field} value={end} onChange={(e) => setEnd(e.target.value)} data-testid="custom-end" />
+            <Input type="date" className={field} value={end} onChange={(e) => setEnd(e.target.value)} data-testid="custom-end" />
           </label>
           {canManage && ready && !create.isPending ? (
             <Button onClick={() => create.mutate()} data-testid="custom-add"><Plus className="size-4" aria-hidden />{t("periods.add")}</Button>

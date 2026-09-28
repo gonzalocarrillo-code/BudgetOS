@@ -1,5 +1,5 @@
 import type { ColumnMapping } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, Sparkles } from "lucide-react";
@@ -109,7 +109,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
     if (key === "projection") return setColumn(col, { role: "projection", metric: "spend" });
     return setColumn(col, { role: key } as ColumnMapping);
   };
-  const field = "h-8 rounded-md border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+  const field = "";
   const nextWhy = problems[0] ?? null;
   const saveWhy = nextWhy ?? (create.isPending ? t("shell.loading") : null);
   const createWhy = !name.trim() ? t("sources.needName") : schedule.trim() && !/^(\S+\s){4}\S+$/.test(schedule.trim()) ? t("sources.badCron") : create.isPending ? t("shell.loading") : null;
@@ -132,13 +132,13 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 text-sm">
               {t("sources.kind")}
-              <select className={field} value={mapping.kind} onChange={(e) => setMapping({ ...mapping, kind: e.target.value as Kind })} data-testid="wizard-kind">
+              <Select className={field} value={mapping.kind} onChange={(e) => setMapping({ ...mapping, kind: e.target.value as Kind })} data-testid="wizard-kind">
                 {(["spend", "kpi", "spend+kpi", "projection"] as const).map((k) => (
                   <option key={k} value={k}>
                     {t(`sources.kind.${k.replace("+", "_")}` as MessageKey)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             {sample.rows.length ? (
               <Button variant="outline" size="sm" className="ml-auto" onClick={() => suggest.mutate()} data-testid="wizard-ai">
@@ -166,7 +166,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
                       <td className="px-3 py-2 font-medium">{col}</td>
                       <td className="max-w-40 truncate px-3 py-2 text-xs text-muted-foreground">{sample.rows.slice(0, 3).map((r) => r[i] ?? "").join(" · ") || "—"}</td>
                       <td className="px-3 py-2">
-                        <select className={field} value={choiceOf(c)} onChange={(e) => onChoice(col, e.target.value)} aria-label={t("sources.mapsToFor", { column: col })} data-testid="wizard-choice">
+                        <Select className={field} value={choiceOf(c)} onChange={(e) => onChoice(col, e.target.value)} aria-label={t("sources.mapsToFor", { column: col })} data-testid="wizard-choice">
                           <optgroup label={t("sources.roles")}>
                             {ROLES.map((r) => (
                               <option key={r} value={`role:${r}`}>
@@ -181,7 +181,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
                               </option>
                             ))}
                           </optgroup>
-                        </select>
+                        </Select>
                       </td>
                       <td className="px-3 py-2">
                         <Details c={c} onChange={(n) => setColumn(col, n)} field={field} />
@@ -224,17 +224,17 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm font-medium">
             {t("sources.name")}
-            <input className="h-9 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring" value={name} onChange={(e) => setName(e.target.value)} data-testid="wizard-name" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="wizard-name" />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             {t("sources.schedule")}
-            <input className="h-9 rounded-lg border border-input bg-card px-2 font-mono text-sm outline-none focus:border-ring" value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="0 6 * * *" />
+            <Input className="font-mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="0 6 * * *" />
             <span className="text-xs font-normal text-muted-foreground">{t("sources.scheduleHelp")}</span>
           </label>
           {mapping && Object.values(mapping.columns).some((c) => "role" in c && c.role === "match_key") ? (
             <label className="flex flex-col gap-1 text-sm font-medium">
               {t("sources.parsePattern")}
-              <input className="h-9 rounded-lg border border-input bg-card px-2 font-mono text-sm outline-none focus:border-ring" value={parsePattern} onChange={(e) => setParsePattern(e.target.value)} placeholder="^(?<country>[A-Z]{2})_(?<platform>[a-z_]+)" data-testid="wizard-parse-pattern" />
+              <Input className="font-mono" value={parsePattern} onChange={(e) => setParsePattern(e.target.value)} placeholder="^(?<country>[A-Z]{2})_(?<platform>[a-z_]+)" data-testid="wizard-parse-pattern" />
               <span className="text-xs font-normal text-muted-foreground">{t("sources.parsePatternHelp")}</span>
             </label>
           ) : null}
@@ -263,25 +263,25 @@ function Details({ c, onChange, field }: { c: ColumnMapping | undefined; onChang
   if (!c) return null;
   if ("dimension" in c)
     return (
-      <select className={field} value={c.transform ?? ""} onChange={(e) => onChange({ dimension: c.dimension, ...(e.target.value ? { transform: e.target.value as "lower" } : {}) })} aria-label={t("sources.transform")}>
+      <Select className={field} value={c.transform ?? ""} onChange={(e) => onChange({ dimension: c.dimension, ...(e.target.value ? { transform: e.target.value as "lower" } : {}) })} aria-label={t("sources.transform")}>
         <option value="">{t("sources.transform.none")}</option>
         <option value="lower">{t("sources.transform.lower")}</option>
         <option value="upper">{t("sources.transform.upper")}</option>
         <option value="trim">{t("sources.transform.trim")}</option>
-      </select>
+      </Select>
     );
   if (c.role === "period_date")
     return (
-      <select className={field} value={c.format} onChange={(e) => onChange({ role: "period_date", format: e.target.value as "yyyy-MM-dd" })} aria-label={t("sources.dateFormat")}>
+      <Select className={field} value={c.format} onChange={(e) => onChange({ role: "period_date", format: e.target.value as "yyyy-MM-dd" })} aria-label={t("sources.dateFormat")}>
         {(["yyyy-MM-dd", "yyyy-MM", "dd/MM/yyyy", "MM/dd/yyyy"] as const).map((f) => (
           <option key={f} value={f}>
             {f}
           </option>
         ))}
-      </select>
+      </Select>
     );
   if (c.role === "amount")
-    return <input className={cn(field, "w-24 uppercase")} value={c.currency ?? ""} maxLength={3} placeholder={t("sources.currencyInline")} onChange={(e) => onChange({ role: "amount", ...(e.target.value ? { currency: e.target.value.toUpperCase() } : {}) })} aria-label={t("sources.currencyInline")} data-testid="wizard-currency" />;
-  if (c.role === "kpi" || c.role === "projection") return <input className={cn(field, "w-36 font-mono")} value={c.metric} onChange={(e) => onChange({ ...c, metric: e.target.value })} aria-label={t("sources.metric")} />;
+    return <Input className={cn(field, "w-24 uppercase")} value={c.currency ?? ""} maxLength={3} placeholder={t("sources.currencyInline")} onChange={(e) => onChange({ role: "amount", ...(e.target.value ? { currency: e.target.value.toUpperCase() } : {}) })} aria-label={t("sources.currencyInline")} data-testid="wizard-currency" />;
+  if (c.role === "kpi" || c.role === "projection") return <Input className={cn(field, "w-36 font-mono")} value={c.metric} onChange={(e) => onChange({ ...c, metric: e.target.value })} aria-label={t("sources.metric")} />;
   return null;
 }

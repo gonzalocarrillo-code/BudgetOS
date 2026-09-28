@@ -1,5 +1,5 @@
 import type { NamingChip } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, GripVertical, X } from "lucide-react";
@@ -125,7 +125,7 @@ export function NamingTemplateBuilder({ ws, kind, current, blocked, onSaved }: {
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="w-24 text-xs text-muted-foreground">{t("naming.text")}</span>
-          <input className="h-7 w-32 rounded-md border border-input bg-card px-2 text-xs outline-none focus:border-ring" value={text} onChange={(e) => setText(e.target.value.slice(0, 40))} aria-label={t("naming.text")} data-testid="naming-text" />
+          <Input className="w-32 text-xs" size="sm" value={text} onChange={(e) => setText(e.target.value.slice(0, 40))} aria-label={t("naming.text")} data-testid="naming-text" />
           <Button size="sm" variant="outline" className="h-7" onClick={() => text.trim() && (add({ type: "text", value: text.trim() }), setText(""))} data-testid="naming-add-text">
             {t("naming.add")}
           </Button>
@@ -141,23 +141,23 @@ export function NamingTemplateBuilder({ ws, kind, current, blocked, onSaved }: {
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <label className="flex items-center gap-2">
           {t("naming.casing")}
-          <select className="h-8 rounded-md border border-input bg-card px-2 text-sm" value={casing} onChange={(e) => setCasing(e.target.value)} data-testid="naming-casing">
+          <Select size="sm" value={casing} onChange={(e) => setCasing(e.target.value)} data-testid="naming-casing">
             {(["original", "lower", "upper"] as const).map((c) => (
               <option key={c} value={c}>
                 {t(`naming.casing.${c}` as MessageKey)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-2">
           {t("naming.whitespace")}
-          <select className="h-8 rounded-md border border-input bg-card px-2 text-sm" value={whitespace} onChange={(e) => setWhitespace(e.target.value)} data-testid="naming-whitespace">
+          <Select size="sm" value={whitespace} onChange={(e) => setWhitespace(e.target.value)} data-testid="naming-whitespace">
             {(["keep", "underscore", "dash", "remove"] as const).map((w) => (
               <option key={w} value={w}>
                 {t(`naming.whitespace.${w}` as MessageKey)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={stripAccents} onChange={(e) => setStripAccents(e.target.checked)} />

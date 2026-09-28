@@ -1,5 +1,5 @@
 import { ChainStep, PolicyConditions, type PolicyConditions as Conditions } from "@budget/domain";
-import { Button, cn, EmptyState } from "@budget/ui";
+import { Button, cn, EmptyState, Input, Select, Modal } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -172,20 +172,20 @@ function PolicyEditor({ ws, policy, nextPriority, onClose }: { ws: string; polic
     },
   });
 
-  const field = "h-8 rounded-md border border-input bg-card px-2 text-sm";
+  const field = "";
   const setStep = (i: number, patch: Partial<ChainStep>) => setSteps((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   return (
-    <div className="fixed inset-0 z-30 grid place-items-center bg-inverse/30 p-6" role="dialog" aria-modal="true" aria-labelledby="policy-title" data-testid="policy-editor">
+    <Modal onClose={onClose} labelledBy="policy-title" testId="policy-editor">
       <div className="flex max-h-[88vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg">
         <h2 id="policy-title" className="text-lg font-semibold tracking-[-0.015em]">{policy ? t("policy.editTitle", { name: policy.name }) : t("policy.new")}</h2>
         <div className="grid grid-cols-[1fr_7rem] gap-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-muted-foreground">{t("policy.name")}</span>
-            <input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="policy-name" />
+            <Input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="policy-name" />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-muted-foreground">{t("policy.priority")}</span>
-            <input className={cn(field, "text-right tabular-nums")} value={priority} onChange={(e) => setPriority(e.target.value)} inputMode="numeric" data-testid="policy-priority" />
+            <Input className={cn(field, "text-right tabular-nums")} value={priority} onChange={(e) => setPriority(e.target.value)} inputMode="numeric" data-testid="policy-priority" />
           </label>
           <p className="col-span-2 -mt-1 text-xs text-muted-foreground">{t("policy.priorityHelp")}</p>
         </div>
@@ -193,12 +193,12 @@ function PolicyEditor({ ws, policy, nextPriority, onClose }: { ws: string; polic
           <legend className="mb-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{t("policy.when")}</legend>
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>{t("policy.what")}</span>
-            <select className={field} value={entity} onChange={(e) => setEntity(e.target.value)} data-testid="policy-entity">
+            <Select className={field} value={entity} onChange={(e) => setEntity(e.target.value)} data-testid="policy-entity">
               <option value="">{t("policy.entity.any")}</option>
               {ENTITIES.map((x) => (
                 <option key={x} value={x}>{t(`policy.entity.${x}` as MessageKey)}</option>
               ))}
-            </select>
+            </Select>
           </label>
           <div className="flex flex-col gap-2 text-sm">
             <span className="inline-flex items-center gap-1.5"><UserCheck className="size-4 text-muted-foreground" aria-hidden />{t("policy.who")}</span>
@@ -214,9 +214,9 @@ function PolicyEditor({ ws, policy, nextPriority, onClose }: { ws: string; polic
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span>{t("policy.amount")}</span>
-            <input className={cn(field, "w-32 text-right tabular-nums")} placeholder={t("policy.min")} value={amountMin} onChange={(e) => setAmountMin(e.target.value)} inputMode="decimal" />
+            <Input className={cn(field, "w-32 text-right tabular-nums")} placeholder={t("policy.min")} value={amountMin} onChange={(e) => setAmountMin(e.target.value)} inputMode="decimal" />
             <span className="text-muted-foreground">–</span>
-            <input className={cn(field, "w-32 text-right tabular-nums")} placeholder={t("policy.max")} value={amountMax} onChange={(e) => setAmountMax(e.target.value)} inputMode="decimal" />
+            <Input className={cn(field, "w-32 text-right tabular-nums")} placeholder={t("policy.max")} value={amountMax} onChange={(e) => setAmountMax(e.target.value)} inputMode="decimal" />
           </div>
         </fieldset>
         <fieldset className="flex flex-col gap-3">
@@ -235,12 +235,12 @@ function PolicyEditor({ ws, policy, nextPriority, onClose }: { ws: string; polic
               {steps.map((s, i) => (
                 <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="w-14 text-muted-foreground">{t("policy.step", { n: i + 1 })}</span>
-                  <select className={field} value={s.role} onChange={(e) => setStep(i, { role: e.target.value as ChainStep["role"] })}>
+                  <Select className={field} value={s.role} onChange={(e) => setStep(i, { role: e.target.value as ChainStep["role"] })}>
                     {STEP_ROLES.map((r) => (
                       <option key={r} value={r}>{roleLabel(r)}</option>
                     ))}
-                  </select>
-                  <input className={cn(field, "w-14 text-right")} value={s.minApprovals} onChange={(e) => setStep(i, { minApprovals: Math.max(1, Number(e.target.value) || 1) })} aria-label={t("policy.minApprovals")} />
+                  </Select>
+                  <Input className={cn(field, "w-14 text-right")} value={s.minApprovals} onChange={(e) => setStep(i, { minApprovals: Math.max(1, Number(e.target.value) || 1) })} aria-label={t("policy.minApprovals")} />
                   <span className="text-muted-foreground">{t("policy.approvals")}</span>
                   {steps.length > 1 ? (
                     <Button size="sm" variant="ghost" onClick={() => setSteps((x) => x.filter((_, j) => j !== i))}>{t("policy.removeStep")}</Button>
@@ -273,6 +273,6 @@ function PolicyEditor({ ws, policy, nextPriority, onClose }: { ws: string; polic
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

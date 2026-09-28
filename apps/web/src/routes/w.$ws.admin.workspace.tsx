@@ -1,4 +1,4 @@
-import { Button } from "@budget/ui";
+import { Button, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -48,7 +48,7 @@ function WorkspacePage(): ReactElement {
           >
             <label className="flex min-w-64 flex-1 flex-col gap-1 text-sm font-medium">
               {t("workspace.nameLabel")}
-              <input className="h-9 rounded-lg border border-input bg-card px-2.5 text-sm font-normal" value={value} onChange={(e) => (setName(e.target.value), setSaved(false))} readOnly={!canManage} title={canManage ? undefined : t("workspace.noPermission")} data-testid="workspace-name-input" />
+              <Input className="font-normal" value={value} onChange={(e) => (setName(e.target.value), setSaved(false))} readOnly={!canManage} title={canManage ? undefined : t("workspace.noPermission")} data-testid="workspace-name-input" />
             </label>
             {why ? (
               <Button type="button" disabled reason={why}>{t("workspace.save")}</Button>

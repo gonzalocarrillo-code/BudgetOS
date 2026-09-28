@@ -1,4 +1,4 @@
-import { Button } from "@budget/ui";
+import { Button, Input, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
@@ -41,7 +41,7 @@ export function MetricLibrary({ ws, blocked }: { ws: string; blocked: string | n
   });
   const valid = /^(spend|budget|kpi:[a-z][a-z0-9_]{0,62})$/;
   const why = blocked ?? (!key ? t("registry.form.needLabel") : !valid.test(numerator) || (denominator !== "" && !valid.test(denominator)) ? t("registry.metrics.badSource") : !/^\d{1,12}(\.\d{1,6})?$/.test(multiplier) ? t("registry.metrics.badMultiplier") : create.isPending ? t("shell.loading") : null);
-  const field = "h-9 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+  const field = "";
   return (
     <div className="flex flex-col gap-5" data-testid="metric-library">
       <div className="overflow-x-auto">
@@ -79,36 +79,36 @@ export function MetricLibrary({ ws, blocked }: { ws: string; blocked: string | n
         <p className="text-sm font-medium sm:col-span-3">{t("registry.metrics.new")}</p>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t("registry.form.label")}
-          <input className={field} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Cost per lead" data-testid="metric-label" />
+          <Input className={field} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Cost per lead" data-testid="metric-label" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t("registry.metrics.numerator")}
-          <input className={field} value={numerator} onChange={(e) => setNumerator(e.target.value)} />
+          <Input className={field} value={numerator} onChange={(e) => setNumerator(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t("registry.metrics.denominator")}
-          <input className={field} value={denominator} onChange={(e) => setDenominator(e.target.value)} placeholder="kpi:leads" data-testid="metric-denominator" />
+          <Input className={field} value={denominator} onChange={(e) => setDenominator(e.target.value)} placeholder="kpi:leads" data-testid="metric-denominator" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t("registry.metrics.multiplier")}
-          <input className={field} value={multiplier} onChange={(e) => setMultiplier(e.target.value)} inputMode="decimal" />
+          <Input className={field} value={multiplier} onChange={(e) => setMultiplier(e.target.value)} inputMode="decimal" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t("registry.metrics.better")}
-          <select className={field} value={direction} onChange={(e) => setDirection(e.target.value)}>
+          <Select className={field} value={direction} onChange={(e) => setDirection(e.target.value)}>
             <option value="lower_is_better">{t("registry.metrics.lower")}</option>
             <option value="higher_is_better">{t("registry.metrics.higher")}</option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t("registry.metrics.format")}
-          <select className={field} value={format} onChange={(e) => setFormat(e.target.value)}>
+          <Select className={field} value={format} onChange={(e) => setFormat(e.target.value)}>
             {["currency", "number", "percent", "ratio"].map((f) => (
               <option key={f} value={f}>
                 {f}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <p className="text-xs text-muted-foreground sm:col-span-2">
           {key ? t("registry.metrics.preview", { key, formula: formula({ numerator, denominator: denominator || null, multiplier }) }) : t("registry.metrics.help")}

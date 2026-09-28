@@ -197,7 +197,7 @@ export {
   issueSummary,
 } from "./manual-entry.js";
 
-export { CompleteTourInput, CreateWorkspaceInput, HomeResponse, HomeScope, ListToursQuery, TemplateSavedView, TourRole, TourStep, UpdateMeInput, UpdateTourInput, UpdateWorkspaceInput, tourRolesFor } from "./home.js";
+export { CompleteTourInput, CreateWorkspaceInput, HomeResponse, HomeScope, ListToursQuery, TemplateSavedView, TourRole, TourStep, UpdateMeInput, UpdateTourInput, UpdateWorkspaceInput, tourRolesFor, MarkNotificationsReadInput, NotificationItem, NotificationsResponse } from "./home.js";
 export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";

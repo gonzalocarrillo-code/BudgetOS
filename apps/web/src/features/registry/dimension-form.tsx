@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Textarea } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
@@ -9,7 +9,7 @@ import { DimensionIcon } from "./dimension-icon.js";
 import { IconPicker } from "./icon-picker.js";
 import { parseValueLines, toKey } from "./values.js";
 
-const field = "h-9 w-full rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+const field = "w-full";
 const label = "flex flex-col gap-1 text-sm font-medium";
 
 /**
@@ -62,17 +62,17 @@ export function DimensionForm({ ws, dims, dim, isOrgAdmin, blocked, onSaved }: {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className={label}>
           {t("registry.form.label")}
-          <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("registry.form.labelHint")} data-testid="dim-label" />
+          <Input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("registry.form.labelHint")} data-testid="dim-label" />
         </label>
         <label className={label}>
           {t("registry.form.key")}
-          <input className={cn(field, "font-mono", dim ? "bg-surface text-muted-foreground" : "")} value={effectiveKey} readOnly={dim !== null} onChange={(e) => (setKey(e.target.value), setKeyTouched(true))} aria-describedby="dim-key-help" data-testid="dim-key" />
+          <Input className={cn(field, "font-mono", dim ? "bg-surface text-muted-foreground" : "")} value={effectiveKey} readOnly={dim !== null} onChange={(e) => (setKey(e.target.value), setKeyTouched(true))} aria-describedby="dim-key-help" data-testid="dim-key" />
           <span id="dim-key-help" className="text-xs font-normal text-muted-foreground">{t(dim ? "registry.form.keyFixed" : "registry.form.keyHelp", { key: effectiveKey || "…" })}</span>
         </label>
       </div>
       <label className={label}>
         {t("registry.form.description")}
-        <input className={field} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Input className={field} value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 text-sm font-medium">{t("registry.form.icon")}</legend>
@@ -107,7 +107,7 @@ export function DimensionForm({ ws, dims, dim, isOrgAdmin, blocked, onSaved }: {
           ) : null}
           <label className={label}>
             {t("registry.form.values")}
-            <textarea className="min-h-28 rounded-lg border border-input bg-card p-2 font-mono text-sm outline-none focus:border-ring" value={values} onChange={(e) => setValues(e.target.value)} placeholder={t("registry.values.placeholder")} data-testid="dim-values" />
+            <Textarea className="min-h-28 font-mono" value={values} onChange={(e) => setValues(e.target.value)} placeholder={t("registry.values.placeholder")} data-testid="dim-values" />
             <span className="text-xs font-normal text-muted-foreground">{t("registry.values.help")}</span>
           </label>
         </>

@@ -1,4 +1,4 @@
-import { Button } from "@budget/ui";
+import { Button, Input, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
@@ -27,8 +27,8 @@ export function SavedViews({ ws, current, onLoad, onSaved }: { ws: string; curre
   };
   return (
     <div className="flex items-center gap-2">
-      <select
-        className="h-8 rounded-md border border-input bg-card px-2 text-sm"
+      <Select
+        size="sm"
         aria-label={t("explorer.views")}
         value=""
         onChange={(e) => {
@@ -43,10 +43,10 @@ export function SavedViews({ ws, current, onLoad, onSaved }: { ws: string; curre
             {v.name}
           </option>
         ))}
-      </select>
+      </Select>
       {naming ? (
         <form onSubmit={submit} className="flex items-center gap-2">
-          <input autoFocus className="h-8 w-40 rounded-md border border-input bg-card px-2 text-sm" placeholder={t("explorer.views.name")} aria-label={t("explorer.views.name")} value={name} onChange={(e) => setName(e.target.value)} data-testid="saved-view-name" />
+          <Input autoFocus className="w-40" size="sm" placeholder={t("explorer.views.name")} aria-label={t("explorer.views.name")} value={name} onChange={(e) => setName(e.target.value)} data-testid="saved-view-name" />
           {name.trim() ? (
             <Button size="sm" type="submit" data-testid="saved-view-submit">
               {t("explorer.views.save")}

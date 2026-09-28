@@ -1,4 +1,4 @@
-import { cn } from "@budget/ui";
+import { cn, Avatar, SkeletonRows, TBody, TD, TH, THead, TR, Table } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -33,41 +33,57 @@ function Inbox(): ReactElement {
       </div>
       <Card tour="approvals-list">
         {isPending ? (
-          <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
+          <SkeletonRows rows={4} />
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="approvals-empty">
             {t(tab === "mine" ? "approvals.empty.mine" : "approvals.empty")}
           </p>
         ) : (
-          <table className="w-full text-sm" data-testid="approvals-table">
-            <thead className="text-left text-muted-foreground">
+          <Table data-testid="approvals-table">
+            <THead>
               <tr>
-                <th className="py-2 pr-3 font-medium">{t("approvals.col.request")}</th>
-                <th className="py-2 pr-3 font-medium">{t("approvals.col.requestedBy")}</th>
-                <th className="py-2 pr-3 font-medium">{t("approvals.col.step")}</th>
-                <th className="py-2 pr-3 font-medium">{t("approvals.col.due")}</th>
-                <th className="py-2 font-medium">{t("approvals.col.status")}</th>
+                <TH>{t("approvals.col.request")}</TH>
+                <TH className="hidden md:table-cell">{t("approvals.col.requestedBy")}</TH>
+                <TH className="hidden md:table-cell">{t("approvals.col.step")}</TH>
+                <TH>{t("approvals.col.due")}</TH>
+                <TH>{t("approvals.col.status")}</TH>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t border-border" data-testid="approval-row">
-                  <td className="py-2.5 pr-3">
-                    <Link to="/w/$ws/approvals/$id" params={{ ws, id: r.id }} className="font-medium text-foreground hover:text-primary" data-testid="approval-link">
-                      {r.summary ?? r.entityType}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">{t("approvals.rows", { count: r.rows })}</div>
-                  </td>
-                  <td className="py-2.5 pr-3">{r.requestedByName ?? "—"}</td>
-                  <td className="py-2.5 pr-3">{stepLabel(r.currentStep)}</td>
-                  <td className="py-2.5 pr-3 tabular">{r.dueAt ? new Date(r.dueAt).toLocaleDateString() : "—"}</td>
-                  <td className="py-2.5">
-                    <StatusChip status={r.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            </THead>
+            <TBody>
+              {rows.map((r) => {
+                // DS-004: what is late reads as late, not only as a date.
+                const overdue = r.dueAt !== null && r.dueAt !== undefined && new Date(r.dueAt).getTime() < Date.now() && (r.status === "PENDING" || r.status === "ESCALATED");
+                return (
+                  <TR key={r.id} data-testid="approval-row">
+                    <TD>
+                      <Link to="/w/$ws/approvals/$id" params={{ ws, id: r.id }} className="font-medium text-foreground hover:text-primary" data-testid="approval-link">
+                        {r.summary ?? r.entityType}
+                      </Link>
+                      <div className="text-xs text-muted-foreground">{t("approvals.rows", { count: r.rows })}</div>
+                    </TD>
+                    <TD className="hidden md:table-cell">
+                      {r.requestedByName ? (
+                        <span className="flex items-center gap-2">
+                          <Avatar name={r.requestedByName} size={24} />
+                          {r.requestedByName}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TD>
+                    <TD className="hidden md:table-cell">{t("approvals.stepOf", { n: stepLabel(r.currentStep) })}</TD>
+                    <TD numeric className={cn("text-left", overdue && "font-medium text-danger-text")}>
+                      {r.dueAt ? new Date(r.dueAt).toLocaleDateString() : "—"}
+                      {overdue ? <span className="ml-1 text-xs">· {t("approvals.overdue")}</span> : null}
+                    </TD>
+                    <TD>
+                      <StatusChip status={r.status} />
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
         )}
       </Card>
     </Page>

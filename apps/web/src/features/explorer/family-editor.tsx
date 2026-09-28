@@ -1,6 +1,6 @@
 import { BulkPreview, FamilyPlan, type FamilySum } from "@budget/domain";
 import { formatMoney, parseMoney } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Modal } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
@@ -100,9 +100,9 @@ export function FamilyEditor({ ws, id, onReview, onClose }: { ws: string; id: st
     }
   };
 
-  const field = "h-8 rounded-md border border-input bg-card px-2 text-right text-sm tabular-nums";
+  const field = "text-right tabular-nums";
   return (
-    <div className="fixed inset-0 z-30 grid place-items-center bg-inverse/30 p-6" role="dialog" aria-modal="true" aria-labelledby="family-title" data-testid="family-editor">
+    <Modal onClose={onClose} labelledBy="family-title" testId="family-editor">
       <div className="flex max-h-[85vh] w-full max-w-3xl flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-lg">
         <div>
           <h2 id="family-title" className="text-lg font-semibold tracking-[-0.015em]">
@@ -113,7 +113,7 @@ export function FamilyEditor({ ws, id, onReview, onClose }: { ws: string; id: st
         {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
         <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
           <span className="text-sm font-medium">{t("family.parentAmount", { currency })}</span>
-          <input className={cn(field, "w-44")} value={parentAmount} onChange={(e) => setParentAmount(e.target.value)} inputMode="decimal" data-testid="family-parent" />
+          <Input className={cn(field, "w-44")} value={parentAmount} onChange={(e) => setParentAmount(e.target.value)} inputMode="decimal" data-testid="family-parent" />
         </label>
         <div className="overflow-y-auto rounded-lg border border-border">
           <table className="w-full text-sm">
@@ -150,7 +150,7 @@ export function FamilyEditor({ ws, id, onReview, onClose }: { ws: string; id: st
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <input className={cn(field, "w-32")} value={r.value} onChange={(e) => setRow(i, { value: e.target.value })} inputMode="decimal" aria-label={r.mode === "percent" ? t("family.col.pct") : t("family.col.amount")} data-testid="family-value" />
+                      <Input className={cn(field, "w-32")} value={r.value} onChange={(e) => setRow(i, { value: e.target.value })} inputMode="decimal" aria-label={r.mode === "percent" ? t("family.col.pct") : t("family.col.amount")} data-testid="family-value" />
                       {r.mode === "percent" ? <span className="ml-1 text-muted-foreground">%</span> : null}
                     </td>
                     <td className={cn("px-3 py-2 text-right tabular-nums", m?.changed && "font-medium")} data-testid="family-after">
@@ -168,7 +168,7 @@ export function FamilyEditor({ ws, id, onReview, onClose }: { ws: string; id: st
         </div>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">{t("family.rationale")}</span>
-          <input className="h-8 rounded-md border border-input bg-card px-2 text-sm" value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("family.rationaleDefault")} data-testid="family-rationale" />
+          <Input size="sm" value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("family.rationaleDefault")} data-testid="family-rationale" />
         </label>
         {saveError ? <p role="alert" className="text-sm text-destructive">{saveError}</p> : null}
         <div className="flex justify-end gap-2">
@@ -186,6 +186,6 @@ export function FamilyEditor({ ws, id, onReview, onClose }: { ws: string; id: st
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

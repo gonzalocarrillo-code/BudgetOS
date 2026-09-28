@@ -1,5 +1,5 @@
 import type { TourStep } from "@budget/domain";
-import { Button } from "@budget/ui";
+import { Button, Input, Textarea } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -49,7 +49,7 @@ function TourEditor({ ws, tour, blocked }: { ws: string; tour: Tour; blocked: st
   });
   const set = (i: number, patch: Partial<TourStep>) => setSteps(steps.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const why = blocked ?? (!dirty ? t("tours.admin.noChanges") : steps.some((s) => !s.title.trim() || !s.description.trim()) ? t("tours.admin.needText") : save.isPending ? t("shell.loading") : null);
-  const field = "w-full rounded-md border border-input bg-card px-2 py-1.5 text-sm outline-none focus:border-ring disabled:bg-muted";
+  const field = "w-full disabled:bg-muted";
   return (
     <Card title={`${tour.name} · ${t(`tours.role.${tour.role}` as MessageKey)}`}>
       <div className="flex flex-col gap-3" data-testid="tour-editor" data-role={tour.role}>
@@ -62,8 +62,8 @@ function TourEditor({ ws, tour, blocked }: { ws: string; tour: Tour; blocked: st
                 <span className="font-mono text-[11px] text-muted-foreground">
                   {s.path ?? "/"} · {s.element}
                 </span>
-                <input className={field} value={s.title} readOnly={blocked !== null} onChange={(e) => set(i, { title: e.target.value.slice(0, 120) })} aria-label={t("tours.admin.stepTitle", { n: i + 1 })} data-testid="tour-step-title" />
-                <textarea className={`${field} h-16`} value={s.description} readOnly={blocked !== null} onChange={(e) => set(i, { description: e.target.value.slice(0, 600) })} aria-label={t("tours.admin.stepText", { n: i + 1 })} />
+                <Input className={field} value={s.title} readOnly={blocked !== null} onChange={(e) => set(i, { title: e.target.value.slice(0, 120) })} aria-label={t("tours.admin.stepTitle", { n: i + 1 })} data-testid="tour-step-title" />
+                <Textarea className={`${field} h-16`} value={s.description} readOnly={blocked !== null} onChange={(e) => set(i, { description: e.target.value.slice(0, 600) })} aria-label={t("tours.admin.stepText", { n: i + 1 })} />
               </div>
             </li>
           ))}

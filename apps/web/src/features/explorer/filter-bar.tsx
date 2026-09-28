@@ -1,5 +1,5 @@
 import type { FilterGroupT, Predicate } from "@budget/domain";
-import { Button } from "@budget/ui";
+import { Button, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { Plus, X } from "lucide-react";
 import { useState, type ReactElement } from "react";
@@ -59,7 +59,7 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
       })}
       {adding ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-sm" data-testid="filter-editor">
-          <select className="h-8 rounded-md border border-input bg-card px-2 text-sm" aria-label={t("explorer.filter.pickDimension")} value={dimKey} onChange={(e) => (setDimKey(e.target.value), setPicked([]))} data-testid="filter-dimension">
+          <Select size="sm" aria-label={t("explorer.filter.pickDimension")} value={dimKey} onChange={(e) => (setDimKey(e.target.value), setPicked([]))} data-testid="filter-dimension">
             <option value="">{t("explorer.filter.pickDimension")}</option>
             {dimensions.map((d) => (
               <option key={d.key} value={d.key}>
@@ -67,11 +67,11 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
               </option>
             ))}
             {tags.length ? <option value={TAG_KEY}>{t("explorer.filter.tag")}</option> : null}
-          </select>
+          </Select>
           {dim ? (
-            <select
+            <Select
               multiple
-              className="h-24 min-w-40 rounded-md border border-input bg-card px-2 text-sm"
+              wrapperClassName="min-w-40"
               aria-label={t("explorer.filter.pickValues")}
               value={picked}
               onChange={(e) => setPicked([...e.target.selectedOptions].map((o) => o.value))}
@@ -82,7 +82,7 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
                   {v.label}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : null}
           {picked.length ? (
             <Button size="sm" onClick={apply} data-testid="filter-apply">

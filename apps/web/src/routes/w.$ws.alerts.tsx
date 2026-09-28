@@ -1,9 +1,9 @@
-import { Button, cn, StatusChip } from "@budget/ui";
+import { Button, cn, StatusChip, RowActions, toast } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { AlertOctagon, AlertTriangle, Database, Info } from "lucide-react";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { alertsQuery, can, type Alert } from "../features/ops/queries.js";
@@ -57,6 +57,28 @@ function AlertsPage(): ReactElement {
     onSuccess: () => client.invalidateQueries({ queryKey: ["alerts", ws] }),
   });
   const weekFromNow = () => new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+  // DS-004: tick alerts, then acknowledge, snooze or resolve them together.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const visibleIds = alerts.map((a) => a.id);
+  const chosen = visibleIds.filter((id) => selected.has(id));
+  const toggle = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const bulk = useMutation({
+    meta: { error: true },
+    mutationFn: async (body: Record<string, unknown>) => {
+      for (const id of chosen) await unwrap(api.PATCH("/api/v1/alerts/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: body as never }));
+      return chosen.length;
+    },
+    onSuccess: async (n) => {
+      setSelected(new Set());
+      await client.invalidateQueries({ queryKey: ["alerts", ws] });
+      toast.success(t("alerts.bulkDone", { count: n }));
+    },
+  });
 
   return (
     <Page title={t("nav.alerts")} actions={<Link to="/w/$ws/admin/rules" params={{ ws }} className="text-sm text-primary hover:underline">{t("alerts.rules")}</Link>}>
@@ -85,9 +107,30 @@ function AlertsPage(): ReactElement {
           <p className="text-sm text-muted-foreground" data-testid="alerts-empty">{t("alerts.empty")}</p>
         ) : (
           <div className="overflow-x-auto">
+            {chosen.length > 0 ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm" role="region" aria-label={t("alerts.bulkLabel")} data-testid="alerts-bulk">
+                <span className="font-medium">{t("alerts.selected", { count: chosen.length })}</span>
+                <span className="flex-1" />
+                {bulk.isPending ? (
+                  <Button size="sm" disabled reason={t("shell.loading")}>{t("alerts.acknowledge")}</Button>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => bulk.mutate({ status: "ACKNOWLEDGED" })} data-testid="alerts-bulk-ack">{t("alerts.acknowledge")}</Button>
+                    <Button size="sm" variant="outline" onClick={() => bulk.mutate({ status: "SNOOZED", snoozedUntil: weekFromNow() })} data-testid="alerts-bulk-snooze">{t("alerts.snooze")}</Button>
+                    <Button size="sm" variant="outline" onClick={() => bulk.mutate({ status: "RESOLVED" })} data-testid="alerts-bulk-resolve">{t("alerts.resolve")}</Button>
+                  </>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>{t("alerts.clearSelection")}</Button>
+              </div>
+            ) : null}
             <table className="w-full text-sm" data-testid="alerts-table">
               <thead className="text-left text-muted-foreground">
                 <tr>
+                  {canAct ? (
+                    <th className="w-8 py-2 pr-2">
+                      <input type="checkbox" aria-label={t("alerts.selectAll")} checked={chosen.length > 0 && chosen.length === visibleIds.length} onChange={(e) => setSelected(e.target.checked ? new Set(visibleIds) : new Set())} data-testid="alerts-select-all" />
+                    </th>
+                  ) : null}
                   <th className="py-2 pr-3 font-medium">{t("alerts.col.severity")}</th>
                   <th className="py-2 pr-3 font-medium">{t("alerts.col.budget")}</th>
                   <th className="py-2 pr-3 font-medium">{t("alerts.col.rule")}</th>
@@ -98,7 +141,7 @@ function AlertsPage(): ReactElement {
               </thead>
               <tbody>
                 {alerts.map((a) => (
-                  <AlertRow key={a.id} ws={ws} a={a} tags={alertTags[a.id] ?? []} canAct={canAct} pending={act.isPending} onAct={(body) => act.mutate({ id: a.id, body })} weekFromNow={weekFromNow} />
+                  <AlertRow key={a.id} ws={ws} a={a} tags={alertTags[a.id] ?? []} canAct={canAct} pending={act.isPending} onAct={(body) => act.mutate({ id: a.id, body })} weekFromNow={weekFromNow} selected={selected.has(a.id)} onToggle={() => toggle(a.id)} />
                 ))}
               </tbody>
             </table>
@@ -109,7 +152,7 @@ function AlertsPage(): ReactElement {
   );
 }
 
-function AlertRow({ ws, a, tags, canAct, pending, onAct, weekFromNow }: { ws: string; a: Alert; tags: Array<{ id: string; name: string; color: string | null }>; canAct: boolean; pending: boolean; onAct: (body: Record<string, unknown>) => void; weekFromNow: () => string }): ReactElement {
+function AlertRow({ ws, a, tags, canAct, pending, onAct, weekFromNow, selected, onToggle }: { ws: string; a: Alert; tags: Array<{ id: string; name: string; color: string | null }>; canAct: boolean; pending: boolean; onAct: (body: Record<string, unknown>) => void; weekFromNow: () => string; selected: boolean; onToggle: () => void }): ReactElement {
   const ctx = a.context ?? {};
   // Reporting-currency amounts from the evaluator's context, as plain numbers.
   const money = (k: string) => (typeof ctx[k] === "string" ? Number(ctx[k]).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null);
@@ -125,7 +168,12 @@ function AlertRow({ ws, a, tags, canAct, pending, onAct, weekFromNow }: { ws: st
       </Button>
     );
   return (
-    <tr className="border-t border-border align-top" data-testid="alert-row">
+    <tr className="group/row border-t border-border align-top hover:bg-accent/40 data-[selected=true]:bg-secondary" data-selected={selected} data-testid="alert-row">
+      {canAct ? (
+        <td className="py-2.5 pr-2">
+          <input type="checkbox" checked={selected} onChange={onToggle} aria-label={t("alerts.selectOne", { name: a.envelopeName ?? a.envelopeId })} data-testid="alert-select" />
+        </td>
+      ) : null}
       <td className="py-2 pr-3">
         <SeverityChip severity={a.severity} />
       </td>
@@ -147,11 +195,11 @@ function AlertRow({ ws, a, tags, canAct, pending, onAct, weekFromNow }: { ws: st
         {a.snoozedUntil && a.status === "SNOOZED" ? <div className="text-xs">{t("alerts.snoozedUntil", { date: new Date(a.snoozedUntil).toLocaleDateString() })}</div> : null}
       </td>
       <td className="py-2">
-        <div className="flex flex-wrap justify-end gap-1">
+        <RowActions className="flex-wrap">
           {a.status === "OPEN" ? button("alerts.acknowledge", { status: "ACKNOWLEDGED" }, "alert-ack") : null}
           {a.status !== "RESOLVED" && a.status !== "SNOOZED" ? button("alerts.snooze", { status: "SNOOZED", snoozedUntil: weekFromNow() }, "alert-snooze", "ghost") : null}
           {a.status !== "RESOLVED" ? button("alerts.resolve", { status: "RESOLVED" }, "alert-resolve", "ghost") : null}
-        </div>
+        </RowActions>
       </td>
     </tr>
   );

@@ -1,5 +1,5 @@
 import { OrgPeopleResponse } from "@budget/domain";
-import { Button, Chip, EmptyState, SkeletonRows, StatusChip } from "@budget/ui";
+import { Button, Chip, EmptyState, SkeletonRows, StatusChip, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -35,7 +35,7 @@ function PeoplePage(): ReactElement {
       <p className="-mt-2 text-sm text-muted-foreground">{t("org.people.intro")}</p>
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
       <Card>
-        <input className="mb-3 h-9 w-full max-w-sm rounded-lg border border-input bg-card px-3 text-sm outline-none focus:border-ring" placeholder={t("org.people.search")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("org.people.search")} data-testid="org-people-search" />
+        <Input className="mb-3 w-full max-w-sm" placeholder={t("org.people.search")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("org.people.search")} data-testid="org-people-search" />
         {isPending ? (
           <SkeletonRows rows={5} />
         ) : people.length === 0 ? (

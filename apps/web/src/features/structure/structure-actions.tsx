@@ -1,6 +1,6 @@
-import { Button } from "@budget/ui";
+import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
-import { FolderInput, GitBranchPlus, Merge, Split } from "lucide-react";
+import { FolderInput, GitBranchPlus, Merge, Split, ChevronDown, Network } from "lucide-react";
 import type { ReactElement } from "react";
 import type { EnvelopeDetail } from "../../lib/queries.js";
 import type { StructureOp } from "./structure-dialog.js";
@@ -21,8 +21,38 @@ export function StructureActions({ env, onPick, compact = false }: { env: Envelo
     if ((op === "split" || op === "merge") && env.status === "PENDING") return t("structure.pending");
     return null;
   };
+  // DS-005: the toolbar offers one "Structure" menu; the drawer keeps the buttons beside the budget.
+  if (!compact) {
+    return (
+      <Menu>
+        <MenuTrigger asChild>
+          <Button variant="outline" size="sm" data-testid="structure-actions" data-tour="structure-actions">
+            <Network className="size-4" aria-hidden />
+            {t("structure.title")}
+            <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+          </Button>
+        </MenuTrigger>
+        <MenuContent align="start" className="w-72">
+          {env === null ? <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t("structure.selectFirst")}</p> : null}
+          {STRUCTURE_OPS.map(({ op, label, icon: Icon }) => {
+            const why = reason(op);
+            // A disabled item says why in its own text (the rule's `reason` is for buttons with a tooltip).
+            return (
+              <MenuItem key={op} {...(why ? { disabled: true } : {})} onSelect={() => onPick(op)} className="items-start" data-testid={`structure-${op}`}>
+                <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block">{t(label)}</span>
+                  {why && env !== null ? <span className="block text-xs text-muted-foreground">{why}</span> : null}
+                </span>
+              </MenuItem>
+            );
+          })}
+        </MenuContent>
+      </Menu>
+    );
+  }
   return (
-    <div className="inline-flex flex-wrap items-center gap-1" role="group" aria-label={t("structure.title")} data-testid={compact ? "drawer-structure-actions" : "structure-actions"} data-tour="structure-actions">
+    <div className="inline-flex flex-wrap items-center gap-1" role="group" aria-label={t("structure.title")} data-testid="drawer-structure-actions" data-tour="structure-actions">
       {STRUCTURE_OPS.map(({ op, label, icon: Icon }) => {
         const why = reason(op);
         return why ? (

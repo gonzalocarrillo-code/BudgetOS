@@ -15,7 +15,10 @@ it("budget/no-bare-disabled fails a bare disabled and passes one with a reason",
   expect(bare[0]?.message).toContain("needs a `reason`");
   expect(await lint(`export const B = (x: boolean) => <button disabled={x}>Send</button>;\n`)).toHaveLength(1);
   expect(await lint(`export const B2 = (x: boolean) => <select disabled={x} title="Pick a dimension first" />;\n`)).toHaveLength(0);
-  expect(await lint(`export const B3 = (x: boolean) => <Select disabled={x} title="Not a reason" />;\n`)).toHaveLength(1);
+  // A Button explains itself with `reason` (its tooltip); `title` is not enough.
+  expect(await lint(`export const B3 = (x: boolean) => <Button disabled={x} title="Not a reason" />;\n`)).toHaveLength(1);
+  // DS-001: the @budget/ui fields render a native field, whose tooltip is `title`.
+  expect(await lint(`export const B4 = (x: boolean) => <Select disabled={x} title="Pick a dimension first" />;\n`)).toHaveLength(0);
   expect(await lint(`export const C = () => <Button disabled reason="Fill in the name first">Send</Button>;\n`)).toHaveLength(0);
   expect(await lint(`export const D = () => <Button disabled={false}>Send</Button>;\n`)).toHaveLength(0);
   expect(await lint(`export const E = () => <Button onClick={() => undefined}>Send</Button>;\n`)).toHaveLength(0);

@@ -1,6 +1,6 @@
 import type { ManualEntryIssue } from "@budget/domain";
 import { BudgetGrid, formatMoney, type ColumnSpec, type GridEvents } from "@budget/grid";
-import { Button, cn, StatusChip } from "@budget/ui";
+import { Button, cn, Input, StatusChip, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -75,14 +75,14 @@ function ManualEntryPage(): ReactElement {
           ))}
         </div>
         {more.length ? (
-          <select className="mb-1 ml-auto h-8 rounded-md border border-input bg-card px-2 text-sm text-muted-foreground" value="" onChange={(e) => e.target.value && setSearch({ channel: e.target.value, batch: undefined })} aria-label={t("manual.moreChannels")} data-testid="channel-more">
+          <Select className="text-muted-foreground" wrapperClassName="mb-1 ml-auto" size="sm" value="" onChange={(e) => e.target.value && setSearch({ channel: e.target.value, batch: undefined })} aria-label={t("manual.moreChannels")} data-testid="channel-more">
             <option value="">{t("manual.moreChannels")}</option>
             {more.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.label}
               </option>
             ))}
-          </select>
+          </Select>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2" data-testid="batch-strip" data-tour="manual-batches">
@@ -90,7 +90,7 @@ function ManualEntryPage(): ReactElement {
           <BatchChip key={b.id} b={b} active={b.id === selected} onClick={() => setSearch({ batch: b.id })} />
         ))}
         <div className="ml-auto flex items-center gap-2">
-          <input type="month" className="h-9 rounded-md border border-input bg-card px-2 text-sm" value={month} onChange={(e) => setMonth(e.target.value)} aria-label={t("manual.month")} data-testid="batch-month" />
+          <Input type="month" className="w-40" value={month} onChange={(e) => setMonth(e.target.value)} aria-label={t("manual.month")} data-testid="batch-month" />
           {blocked || !channel ? (
             <Button disabled reason={blocked ?? t("manual.noChannel")} data-testid="batch-new">
               <Plus className="size-4" aria-hidden /> {t("manual.new")}
@@ -258,14 +258,14 @@ function BatchGrid({ ws, batch, dimensions, cols, blocked, onCols, onChanged }: 
               {label(k)} ×
             </button>
           ))}
-          <select className="h-7 rounded-md border border-input bg-card px-2 text-xs" value="" onChange={(e) => e.target.value && onCols([...dimCols, e.target.value])} aria-label={t("manual.addColumn")} data-testid="col-add">
+          <Select className="text-xs" size="sm" value="" onChange={(e) => e.target.value && onCols([...dimCols, e.target.value])} aria-label={t("manual.addColumn")} data-testid="col-add">
             <option value="">{t("manual.addColumn")}</option>
             {granular.filter((d) => !dimCols.includes(d.key)).map((d) => (
               <option key={d.key} value={d.key}>
                 {d.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       ) : null}
       <Card>

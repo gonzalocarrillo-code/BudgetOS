@@ -30,6 +30,7 @@ export function TotalsRow({
           role="cell"
           data-column={column.kind === "measure" ? column.key : column.kind}
           style={{ width: widths?.[index] ?? 96, flex: "none", padding: "8px", textAlign: index === 0 ? "left" : "right", overflow: "hidden", textOverflow: "ellipsis" }}
+          title={index === 0 ? undefined : totalText(column, totals, currency)}
         >
           {index === 0 ? label : totalText(column, totals, currency)}
         </span>

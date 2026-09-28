@@ -1,5 +1,5 @@
 import { OrgWorkspacesResponse, type OrgWorkspace } from "@budget/domain";
-import { Button, EmptyState, SkeletonRows, StatusChip, cn, toast } from "@budget/ui";
+import { Button, EmptyState, SkeletonRows, StatusChip, cn, toast, Input, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -17,7 +17,7 @@ import { api, unwrap } from "../lib/api.js";
 export const Route = createFileRoute("/org/workspaces")({ component: WorkspacesPage });
 
 const workspacesQuery = { queryKey: ["org-workspaces"], queryFn: async () => OrgWorkspacesResponse.parse(await unwrap(api.GET("/api/v1/workspaces", {}))) };
-const field = "h-9 w-full rounded-lg border border-input bg-card px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20";
+const field = "w-full";
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—");
 
 function WorkspacesPage(): ReactElement {
@@ -167,38 +167,38 @@ function NewWorkspace({ onClose }: { onClose: () => void }): ReactElement {
       >
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">{t("templates.name")}</span>
-          <input className={field} value={name} onChange={(e) => setName(e.target.value.slice(0, 120))} placeholder={t("templates.namePlaceholder")} autoFocus data-testid="org-create-name" />
+          <Input className={field} value={name} onChange={(e) => setName(e.target.value.slice(0, 120))} placeholder={t("templates.namePlaceholder")} autoFocus data-testid="org-create-name" />
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">{t("org.template")}</span>
-          <select className={field} value={chosen} onChange={(e) => setTemplateId(e.target.value)}>
+          <Select className={field} value={chosen} onChange={(e) => setTemplateId(e.target.value)}>
             {templates.map((tp) => (
               <option key={tp.id} value={tp.id}>
                 {tp.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">{t("workspace.currency")}</span>
-          <input className={cn(field, "uppercase")} value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+          <Input className={cn(field, "uppercase")} value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">{t("workspace.fiscalStart")}</span>
-          <select className={field} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+          <Select className={field} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
             {MONTHS.map((m, i) => (
               <option key={m} value={i + 1}>
                 {m}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <fieldset className="flex flex-col gap-2 rounded-xl border border-border p-4 md:col-span-2">
           <legend className="px-1 text-sm font-medium">{t("org.firstAdmin")}</legend>
           <p className="text-sm text-muted-foreground">{t("org.firstAdminHelp")}</p>
           <div className="grid gap-3 md:grid-cols-2">
-            <input className={field} value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="name@company.com" aria-label={t("roles.email")} data-testid="org-create-admin-email" />
-            <input className={field} value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder={t("roles.name")} aria-label={t("roles.name")} data-testid="org-create-admin-name" />
+            <Input className={field} value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="name@company.com" aria-label={t("roles.email")} data-testid="org-create-admin-email" />
+            <Input className={field} value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder={t("roles.name")} aria-label={t("roles.name")} data-testid="org-create-admin-name" />
           </div>
         </fieldset>
         <label className="flex items-center gap-2 text-sm md:col-span-2">
@@ -237,11 +237,11 @@ function DeleteWorkspace({ ws, onClose, onDeleted }: { ws: OrgWorkspace; onClose
           </div>
           <label className="flex flex-col gap-1 text-sm">
             <span>{t("org.deleteType", { name: ws.name })}</span>
-            <input className={field} value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus data-testid="org-delete-name" />
+            <Input className={field} value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus data-testid="org-delete-name" />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span>{t("org.deleteReason")}</span>
-            <input className={field} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="org-delete-reason" />
+            <Input className={field} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="org-delete-reason" />
           </label>
           {remove.error ? <p role="alert" className="text-sm text-destructive">{remove.error.message}</p> : null}
           <div className="flex justify-end gap-2">

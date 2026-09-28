@@ -61,3 +61,21 @@
   background: var(--card);
 }
 .driver-popover.bt-tour .driver-popover-footer .driver-popover-next-btn { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+
+/* DS-002: layers fade in; nothing moves on data. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

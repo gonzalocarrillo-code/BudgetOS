@@ -1,4 +1,4 @@
-import { Button, cn } from "@budget/ui";
+import { Button, cn, Input, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/w/$ws/admin/tags")({ component: TagsPage 
 
 const COLORS = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#475569"];
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} _.:/-]{0,63}$/u;
-const field = "h-8 rounded-md border border-input bg-card px-2 text-sm";
+const field = "";
 const byTag = (name: string) => ({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: name }] });
 
 function Swatches({ value, onPick }: { value: string | null; onPick: (c: string) => void }): ReactElement {
@@ -63,7 +63,7 @@ function TagsPage(): ReactElement {
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-48 flex-1 flex-col gap-1 text-sm">
             <span className="text-muted-foreground">{t("tagsAdmin.name")}</span>
-            <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="q4-push" data-testid="tag-name" />
+            <Input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="q4-push" data-testid="tag-name" />
           </label>
           <Swatches value={color} onPick={setColor} />
           {canManage && valid && !create.isPending ? (
@@ -99,7 +99,7 @@ function TagRow(props: { ws: string; tag: Tag; others: Tag[]; canManage: boolean
       <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: tag.color ?? "var(--color-muted-foreground)" }} aria-hidden />
       {editing ? (
         <>
-          <input className={cn(field, "w-56")} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("tagsAdmin.name")} data-testid="tag-rename" />
+          <Input className={cn(field, "w-56")} value={name} onChange={(e) => setName(e.target.value)} aria-label={t("tagsAdmin.name")} data-testid="tag-rename" />
           <Swatches value={color} onPick={setColor} />
           {NAME.test(name.trim()) && !props.busy ? (
             <Button size="sm" onClick={() => props.onSave({ ...(name.trim() !== tag.name ? { name: name.trim() } : {}), ...(color !== tag.color ? { color } : {}) })} data-testid="tag-save">{t("tagsAdmin.save")}</Button>
@@ -112,11 +112,11 @@ function TagRow(props: { ws: string; tag: Tag; others: Tag[]; canManage: boolean
         <>
           <span className="font-medium">{tag.name}</span>
           <span className="text-muted-foreground">{t("tagsAdmin.mergeInto")}</span>
-          <select className={field} value={into} onChange={(e) => setInto(e.target.value)} data-testid="tag-merge-into">
+          <Select className={field} value={into} onChange={(e) => setInto(e.target.value)} data-testid="tag-merge-into">
             {others.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
-          </select>
+          </Select>
           {into && !props.busy ? (
             <Button size="sm" variant="destructive" onClick={() => props.onSave({ mergeIntoId: into })} data-testid="tag-merge-confirm">{t("tagsAdmin.mergeConfirm", { count: tag.count ?? 0 })}</Button>
           ) : (

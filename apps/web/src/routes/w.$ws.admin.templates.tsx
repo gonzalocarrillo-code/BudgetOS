@@ -1,4 +1,4 @@
-import { Button } from "@budget/ui";
+import { Button, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -50,7 +50,7 @@ function TemplatesAdmin(): ReactElement {
   const createWhy = !isOrgAdmin ? t("templates.orgAdminOnly") : !name.trim() ? t("templates.needName") : !chosen ? t("templates.needTemplate") : create.isPending ? t("templates.creating") : null;
   const canPurge = isOrgAdmin || perms.includes("user.manage");
   const purgeWhy = !canPurge ? t("templates.purgeNoPermission") : (demo?.envelopes ?? 0) === 0 ? t("templates.noDemo") : purge.isPending ? t("shell.loading") : null;
-  const field = "h-9 w-full rounded-md border border-input bg-card px-3 text-sm outline-none focus:border-ring";
+  const field = "w-full";
 
   return (
     <Page title={t("admin.templates")}>
@@ -79,7 +79,7 @@ function TemplatesAdmin(): ReactElement {
             </div>
             <label className="flex flex-col gap-1.5 text-sm">
               <span className="font-medium">{t("templates.name")}</span>
-              <input className={field} value={name} onChange={(e) => setName(e.target.value.slice(0, 120))} placeholder={t("templates.namePlaceholder")} data-testid="workspace-name" />
+              <Input className={field} value={name} onChange={(e) => setName(e.target.value.slice(0, 120))} placeholder={t("templates.namePlaceholder")} data-testid="workspace-name" />
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={withDemo} onChange={(e) => setWithDemo(e.target.checked)} data-testid="workspace-demo" />

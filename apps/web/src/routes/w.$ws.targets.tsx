@@ -1,4 +1,4 @@
-import { Button, cn, StatusChip } from "@budget/ui";
+import { Button, cn, StatusChip, Input, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -33,6 +33,7 @@ function TargetsPage(): ReactElement {
   const { data, isPending, error } = useQuery(targetsQuery(ws));
   const metrics = [...new Set((data ?? []).map((r) => r.metricKey))].sort();
   const rows = (data ?? []).filter((r) => !search.metric || r.metricKey === search.metric);
+  const anyDraft = rows.some((r) => r.draft);
   const selected = data?.find((r) => r.id === search.select) ?? null;
   const set = (s: { metric?: string | undefined; select?: string | undefined }) => void navigate({ search: (prev: TargetsSearch) => ({ ...prev, ...s }) });
 
@@ -53,13 +54,14 @@ function TargetsPage(): ReactElement {
           <p className="text-sm text-muted-foreground" data-testid="targets-empty">{t("targets.empty")}</p>
         ) : (
           <div className="overflow-x-auto">
+            {/* DS-004: the Draft column only when something is in draft. */}
             <table className="tabular w-full text-sm" data-testid="targets-table">
               <thead className="text-left text-muted-foreground">
                 <tr>
                   <th className="py-2 pr-3 font-medium">{t("targets.col.metric")}</th>
                   <th className="py-2 pr-3 font-medium">{t("targets.col.scope")}</th>
                   <th className="py-2 pr-3 text-right font-medium">{t("targets.col.target")}</th>
-                  <th className="py-2 pr-3 text-right font-medium">{t("targets.col.draft")}</th>
+                  {anyDraft ? <th className="py-2 pr-3 text-right font-medium">{t("targets.col.draft")}</th> : null}
                   <th className="py-2 font-medium">{t("targets.col.dates")}</th>
                 </tr>
               </thead>
@@ -73,7 +75,17 @@ function TargetsPage(): ReactElement {
                     </td>
                     <td className="py-2 pr-3">{scopeLabel(r)}</td>
                     <td className="whitespace-nowrap py-2 pr-3 text-right">{r.current ? formatTarget(r.current) : "—"}</td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-right text-muted-foreground">{r.draft ? `${formatTarget(r.draft)} · ${r.draft.status.toLowerCase()}` : "—"}</td>
+                    {anyDraft ? (
+                      <td className="whitespace-nowrap py-2 pr-3 text-right text-muted-foreground">
+                        {r.draft ? (
+                          <span className="inline-flex items-center gap-2">
+                            {formatTarget(r.draft)} <StatusChip status={r.draft.status} />
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    ) : null}
                     <td className="whitespace-nowrap py-2 text-muted-foreground">{r.startDate} – {r.endDate}</td>
                   </tr>
                 ))}
@@ -189,7 +201,7 @@ function ProposeValue({ ws, target }: { ws: string; target: TargetRow }): ReactE
   });
   const valid = /^-?\d{1,14}(\.\d{1,4})?$/.test(value) && (comparator !== "between" || /^-?\d{1,14}(\.\d{1,4})?$/.test(upper));
   const why = !perms.includes("target.edit_draft") ? t("targets.noPermission") : !valid ? t("targets.invalid") : propose.isPending ? t("shell.loading") : null;
-  const field = "h-9 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring";
+  const field = "";
   return (
     <form
       className="flex flex-col gap-2 rounded-lg border border-border p-3"
@@ -202,17 +214,17 @@ function ProposeValue({ ws, target }: { ws: string; target: TargetRow }): ReactE
     >
       <span className="text-sm font-medium">{t("targets.propose")}</span>
       <div className="flex gap-2">
-        <select className={field} value={comparator} onChange={(e) => setComparator(e.target.value)} aria-label={t("targets.comparator")}>
+        <Select className={field} value={comparator} onChange={(e) => setComparator(e.target.value)} aria-label={t("targets.comparator")}>
           {["lte", "gte", "eq", "between"].map((c) => (
             <option key={c} value={c}>
               {t(`targets.comparator.${c}` as "targets.comparator.lte")}
             </option>
           ))}
-        </select>
-        <input className={cn(field, "w-28 text-right")} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} aria-label={t("targets.value")} data-testid="target-value" />
-        {comparator === "between" ? <input className={cn(field, "w-28 text-right")} inputMode="decimal" value={upper} onChange={(e) => setUpper(e.target.value)} aria-label={t("targets.valueUpper")} /> : null}
+        </Select>
+        <Input className={cn(field, "w-28 text-right")} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} aria-label={t("targets.value")} data-testid="target-value" />
+        {comparator === "between" ? <Input className={cn(field, "w-28 text-right")} inputMode="decimal" value={upper} onChange={(e) => setUpper(e.target.value)} aria-label={t("targets.valueUpper")} /> : null}
       </div>
-      <input className={field} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("targets.rationale")} aria-label={t("targets.rationale")} />
+      <Input className={field} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("targets.rationale")} aria-label={t("targets.rationale")} />
       {done ? <p role="status" className="text-xs text-success" data-testid="target-done">{done}</p> : null}
       {propose.error ? <p role="alert" className="text-xs text-destructive">{propose.error.message}</p> : null}
       <div className="flex justify-end">

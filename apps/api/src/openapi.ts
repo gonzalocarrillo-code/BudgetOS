@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   AddMemberInput,
+  MarkNotificationsReadInput,
+  NotificationsResponse,
   DeleteWorkspaceInput,
   OrgPeopleResponse,
   OrgWorkspacesResponse,
@@ -386,6 +388,12 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/undelete": {
         post: { operationId: "undeleteWorkspace", parameters: [workspaceParam], responses: { "200": { description: "Superadmins: back as archived, within the retention window" } } },
+      },
+      "/api/v1/me/notifications": {
+        get: { operationId: "myNotifications", parameters: [workspaceHeader], responses: { "200": { description: "The caller's latest notifications in the workspace and the unread count", ...json(NotificationsResponse) } } },
+      },
+      "/api/v1/me/notifications/read": {
+        post: { operationId: "readNotifications", parameters: [workspaceHeader], requestBody: json(MarkNotificationsReadInput), responses: { "200": { description: "How many notifications were marked read" } } },
       },
       "/api/v1/org/people": {
         get: { operationId: "listOrgPeople", responses: { "200": { description: "Superadmins: everyone in the org and where they hold roles", ...json(OrgPeopleResponse) } } },

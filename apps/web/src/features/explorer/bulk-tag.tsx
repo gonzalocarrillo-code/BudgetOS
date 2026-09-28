@@ -1,4 +1,4 @@
-import { Button } from "@budget/ui";
+import { Button, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tag as TagIcon, X } from "lucide-react";
@@ -47,7 +47,7 @@ export function BulkTagBar({ ws, envelopeIds, onDone, onExit }: { ws: string; en
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-secondary px-3 py-2 text-sm" role="toolbar" aria-label={t("bulkTag.title")} data-testid="bulk-tag-bar">
       <TagIcon className="size-4 text-primary" aria-hidden />
       <span className="font-medium" data-testid="bulk-tag-count">{t("bulkTag.selected", { count: envelopeIds.length })}</span>
-      <input list="bulk-tag-names" className="h-8 w-48 rounded-md border border-input bg-card px-2 text-sm" value={tagName} onChange={(e) => setTagName(e.target.value)} placeholder={mayCreate ? t("tags.findOrCreate") : t("tags.find")} aria-label={t("bulkTag.tag")} data-testid="bulk-tag-name" />
+      <Input list="bulk-tag-names" className="w-48" size="sm" value={tagName} onChange={(e) => setTagName(e.target.value)} placeholder={mayCreate ? t("tags.findOrCreate") : t("tags.find")} aria-label={t("bulkTag.tag")} data-testid="bulk-tag-name" />
       <datalist id="bulk-tag-names">
         {tags.map((x) => (
           <option key={x.id} value={x.name} />

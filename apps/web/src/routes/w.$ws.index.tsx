@@ -1,5 +1,5 @@
 import { formatMoney } from "@budget/grid";
-import { cn, Button } from "@budget/ui";
+import { cn, Button, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
@@ -186,7 +186,7 @@ function OverviewPage(): ReactElement {
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("overview.period")}
-            <select className="h-8 max-w-64 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={period} onChange={(e) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, period: e.target.value }) })} data-testid="overview-period">
+            <Select className="text-foreground" wrapperClassName="max-w-64" size="sm" value={period} onChange={(e) => void navigate({ search: (prev: OverviewSearch) => ({ ...prev, period: e.target.value }) })} data-testid="overview-period">
               {PRESETS.map((p) => (
                 <option key={p} value={p}>
                   {t(`explorer.period.${p}` as MessageKey)}
@@ -204,7 +204,7 @@ function OverviewPage(): ReactElement {
                     ))}
                 </optgroup>
               ) : null}
-            </select>
+            </Select>
           </label>
           <Customise layout={layout} />
         </div>
@@ -363,7 +363,7 @@ function Tile({ label, value, hint, to, ws, testId }: { label: string; value: st
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </>
   );
-  const cls = "flex min-w-0 flex-col gap-0.5 rounded-xl border border-border bg-card px-4 py-3 shadow-xs";
+  const cls = "flex min-w-0 flex-col gap-0.5";
   if (to && ws)
     return to === "alerts" ? (
       <Link to="/w/$ws/alerts" params={{ ws }} className={cn(cls, "hover:border-primary")} data-testid={testId}>
@@ -411,11 +411,11 @@ function Heatmap({ h, money, onAxes, onCell }: { h: NonNullable<Overview["heatma
   const axis = (which: "rows" | "cols", value: string, other: string) => (
     <label className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
       {t(which === "rows" ? "overview.axis.rows" : "overview.axis.cols")}
-      <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={value} onChange={(e) => onAxes({ [which]: e.target.value })} data-testid={`heatmap-${which}`}>
+      <Select className="text-foreground" size="sm" value={value} onChange={(e) => onAxes({ [which]: e.target.value })} data-testid={`heatmap-${which}`}>
         {h.dimensions.filter((d) => d.key !== other).map((d) => (
           <option key={d.key} value={d.key}>{d.label}</option>
         ))}
-      </select>
+      </Select>
     </label>
   );
   return (

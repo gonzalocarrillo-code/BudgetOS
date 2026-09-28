@@ -1,5 +1,5 @@
 import { formatMoney } from "@budget/grid";
-import { Button, cn, StatusChip as SharedStatusChip } from "@budget/ui";
+import { Button, cn, StatusChip as SharedStatusChip, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -113,7 +113,7 @@ function CloseForm({ ws, canClose, onClosed }: { ws: string; canClose: boolean; 
       <p className="text-sm text-muted-foreground">{t("closures.closeHelp")}</p>
       <label className="flex flex-col gap-1 text-sm font-medium">
         {t("closures.period")}
-        <input className="h-9 rounded-lg border border-input bg-card px-2 font-mono text-sm outline-none focus:border-ring" value={key} onChange={(e) => (setKey(e.target.value.toUpperCase()), setConfirming(false))} placeholder="2026-Q3" data-testid="close-period" />
+        <Input className="font-mono" value={key} onChange={(e) => (setKey(e.target.value.toUpperCase()), setConfirming(false))} placeholder="2026-Q3" data-testid="close-period" />
         <span className="text-xs font-normal text-muted-foreground">{t("closures.periodHelp")}</span>
       </label>
       {close.error ? <p role="alert" className="text-sm text-destructive">{close.error.message}</p> : null}
@@ -212,7 +212,7 @@ function Report({ ws, closure, canRestate, onChanged }: { ws: string; closure: C
         <div className="flex flex-col gap-2 border-t border-border pt-3">
           <label className="flex flex-col gap-1 text-sm font-medium">
             {t("closures.restateReason")}
-            <input className="h-9 rounded-lg border border-input bg-card px-2 text-sm outline-none focus:border-ring" value={reason} onChange={(e) => setReason(e.target.value)} data-testid="restate-reason" />
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} data-testid="restate-reason" />
           </label>
           {restate.error ? <p role="alert" className="text-sm text-destructive">{restate.error.message}</p> : null}
           <div className="flex justify-end">

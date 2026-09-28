@@ -10,3 +10,6 @@ export type { ChipTone } from "./status-chip.js";
 export { Toaster, dismissToast, toast } from "./toast.js";
 export type { ToastItem, ToastKind } from "./toast.js";
 export { EmptyState, Skeleton, SkeletonRows } from "./feedback.js";
+export { FormField, Input, NumberInput, Select, Textarea, fieldClass } from "./forms.js";
+export { Dialog, DialogClose, DialogContent, DialogTrigger, Modal, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Popover, PopoverClose, PopoverContent, PopoverTrigger, SheetContent, Tabs, TabsContent, TabsList, TabsTrigger } from "./layers.js";
+export { Avatar, Kbd, RowActions, TBody, TD, TH, THead, TR, Table } from "./bits.js";

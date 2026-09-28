@@ -1,4 +1,4 @@
-import { Button, cn, StatusChip } from "@budget/ui";
+import { Button, cn, StatusChip, Input } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -202,7 +202,7 @@ function AssignPicker({ ws, u, onDone }: { ws: string; u: Unmatched; onDone: () 
   });
   return (
     <div className="mt-2 flex flex-col gap-1.5 rounded-lg bg-surface p-3" data-testid="assign-picker">
-      <input type="search" className="h-8 rounded-md border border-input bg-card px-2 text-sm outline-none focus:border-ring" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("sources.assignSearch")} placeholder={t("sources.assignSearch")} data-testid="assign-search" />
+      <Input type="search" size="sm" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("sources.assignSearch")} placeholder={t("sources.assignSearch")} data-testid="assign-search" />
       <ul className="flex flex-col gap-1">
         {hits.map((h) => (
           <li key={h.id}>
