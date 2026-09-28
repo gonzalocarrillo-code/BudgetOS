@@ -50,6 +50,50 @@
   --neutral-soft: #eef2f6;
 }
 
+/*
+ * UX-012: dark mode. The same names, darker values, AA text on every surface (checked by
+ * tokens.contrast.test.ts). Chosen in the user menu (Light, Dark or System); "System" follows the
+ * operating system.
+ */
+:root[data-theme="dark"] {
+  --background: #0a101c;
+  --surface: #0d1422;
+  --foreground: #e6ebf2;
+  --card: #121a2b;
+  --card-foreground: #e6ebf2;
+  --popover: #151e31;
+  --popover-foreground: #e6ebf2;
+  --primary: #5b9bff;
+  --primary-foreground: #0a1020;
+  --secondary: #16233d;
+  --secondary-foreground: #9cc3ff;
+  --muted: #1a2438;
+  --muted-foreground: #9aa7bb;
+  --subtle-foreground: #8d9aae;
+  --accent: #1a2438;
+  --accent-foreground: #e6ebf2;
+  --inverse: #e6ebf2;
+  --inverse-foreground: #0a101c;
+  --destructive: #c23d42;
+  --success: #34c38f;
+  --warning: #f0b43a;
+  --border: #243049;
+  --input: #3a4966;
+  --ring: #5b9bff;
+  --brand-bright: #5b9bff;
+  --success-text: #6ee7b7;
+  --success-soft: #0f2e24;
+  --warning-text: #fcd34d;
+  --warning-soft: #33270a;
+  --danger-text: #fca5a5;
+  --danger-soft: #3a1416;
+  --info-text: #93c5fd;
+  --info-soft: #10233f;
+  --neutral-text: #cbd5e1;
+  --neutral-soft: #1e293b;
+  color-scheme: dark;
+}
+
 @theme inline {
   --font-sans: var(--font-sans);
   --radius-sm: calc(var(--radius) - 6px);

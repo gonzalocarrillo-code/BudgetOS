@@ -11,6 +11,15 @@
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
   }
+  /* UX-010: whatever takes keyboard focus shows it, in both themes. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
   /* Figures line up in tables and cards. */
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -20,7 +29,7 @@
 /* cmdk (the search palette): group headings and items on the design tokens. */
 [cmdk-group-heading] {
   padding: 8px 12px 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;

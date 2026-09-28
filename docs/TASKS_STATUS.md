@@ -429,6 +429,11 @@ Phase A notes (2026-09-28): tours never start by themselves (Home invites; a clo
 | ORG-006 | C | Template granularities become the new workspace's own; shared rows labelled | done (existing orgs keep their shared rows; decision D4) |
 | ORG-007 | C | Workspace metrics (`metric_definition.workspace_id`, RLS) and workspace tours edited by workspace admins | done |
 | ORG-008 | C | Boundary tests: permission matrix rows, `lifecycle.test.ts`, `members.test.ts`, `consumer.test.ts`, e2e `org-console.spec.ts` | done |
-| UX-009…012 | D | Settings IA, keyboard and axe pass, Home / Overview polish, dark mode | pending |
+| UX-009 | D | Settings hub grouped by purpose (Workspace, People and approvals, Taxonomy, Pacing and alerts, Data and integrations, Onboarding), the sidebar's admin pages included; the nav's "Sources" is "Spend data" | done |
+| UX-010 | D | A visible focus ring everywhere; `?` shortcuts; an accessibility smoke over 16 screens (`e2e/a11y.spec.ts`) | done (axe-core is MPL-2.0, outside the allowlist, so the checks are written in the spec) |
+| UX-011 | D | No text under 12 px; Home's recent budgets with the same name show their parent | done |
+| UX-012 | D | Dark mode: tokens checked for AA like the light ones, the grid's canvas theme, Light / Dark / System in the user menu | done |
+
+All four phases are built (2026-09-28): PRs #83 (A), #84 (C), #85 (B) and #86 (D), stacked in that order. Decisions D1–D9 in the plan stay open; the builds follow the plan's proposals.
 
 Decisions D1–D9 in the plan's Part 5 are open for the product owner.

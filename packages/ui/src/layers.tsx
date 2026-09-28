@@ -117,7 +117,7 @@ export function MenuItem({ className, ...props }: ComponentPropsWithoutRef<typeo
   return <DropdownPrimitive.Item className={cn("flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[disabled]:opacity-50", className)} {...props} />;
 }
 export function MenuLabel({ className, ...props }: ComponentPropsWithoutRef<typeof DropdownPrimitive.Label>): ReactElement {
-  return <DropdownPrimitive.Label className={cn("px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground", className)} {...props} />;
+  return <DropdownPrimitive.Label className={cn("px-2.5 pb-1 pt-1.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground", className)} {...props} />;
 }
 export function MenuSeparator({ className, ...props }: ComponentPropsWithoutRef<typeof DropdownPrimitive.Separator>): ReactElement {
   return <DropdownPrimitive.Separator className={cn("my-1 h-px bg-border", className)} {...props} />;

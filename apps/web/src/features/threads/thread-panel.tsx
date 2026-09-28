@@ -142,7 +142,7 @@ function CommentItem({ ws, comment: c, names, mine, refresh }: { ws: string; com
   }
   return (
     <div className="flex gap-2" data-testid="comment">
-      <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-foreground" aria-hidden>
+      <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground" aria-hidden>
         {initials(author)}
       </span>
       <div className="min-w-0 flex-1">

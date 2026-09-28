@@ -84,7 +84,7 @@ function RolesPage(): ReactElement {
                 <span className="font-medium">{p.name}</span>
                 <span className="text-xs text-muted-foreground">{p.sub}</span>
                 {p.badges.map((b) => (
-                  <span key={b} className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{b}</span>
+                  <span key={b} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{b}</span>
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-2">

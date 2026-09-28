@@ -16,7 +16,9 @@ test("Settings holds the other admin pages; an admin renames the workspace", asy
 
   await page.getByTestId("nav-settings").click();
   await expect(page.getByTestId("page-title")).toHaveText("Settings");
-  await expect(page.getByTestId("settings-card")).toHaveCount(8);
+  // UX-009: every admin page, grouped by what it is for (the sidebar's four included).
+  await expect(page.getByTestId("settings-card")).toHaveCount(12);
+  for (const group of ["Workspace", "People and approvals", "Taxonomy", "Pacing and alerts", "Data and integrations", "Onboarding"]) await expect(page.getByTestId("settings-hub").getByRole("heading", { name: group, exact: true })).toBeVisible();
   await page.getByTestId("settings-card").filter({ hasText: "Data sources" }).click();
   await expect(page.getByTestId("page-title")).toHaveText("Data sources");
   await expect(page.getByTestId("nav-settings")).toHaveAttribute("aria-current", "page");
