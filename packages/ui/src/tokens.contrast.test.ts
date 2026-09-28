@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
  */
 const css = readFileSync(join(import.meta.dirname, "tokens.css"), "utf8");
 const token = (name: string): string => {
+  if (name === "white") return "#ffffff";
   const m = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(css);
   if (!m?.[1]) throw new Error(`token --${name} not found`);
   return m[1];
@@ -38,7 +39,7 @@ const PAIRS: Array<[string, string]> = [
   ["primary", "surface"],
   ["secondary-foreground", "secondary"],
   ["inverse-foreground", "inverse"],
-  ["card", "destructive"],
+  ["white", "destructive"], // the destructive button's text is white in both themes
   ["success-text", "success-soft"],
   ["warning-text", "warning-soft"],
   ["danger-text", "danger-soft"],
@@ -50,6 +51,21 @@ describe("design tokens meet WCAG AA contrast", () => {
   for (const [fg, bg] of PAIRS) {
     it(`--${fg} on --${bg} is at least 4.5:1`, () => {
       expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
+describe("dark tokens meet WCAG AA contrast (UX-012)", () => {
+  const block = css.slice(css.indexOf(':root[data-theme="dark"]'), css.indexOf("@theme inline"));
+  const dark = (name: string): string => {
+    if (name === "white") return "#ffffff";
+    const m = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(block);
+    if (!m?.[1]) throw new Error(`dark token --${name} not found`);
+    return m[1];
+  };
+  for (const [fg, bg] of PAIRS) {
+    it(`--${fg} on --${bg} is at least 4.5:1`, () => {
+      expect(contrast(dark(fg), dark(bg))).toBeGreaterThanOrEqual(4.5);
     });
   }
 });

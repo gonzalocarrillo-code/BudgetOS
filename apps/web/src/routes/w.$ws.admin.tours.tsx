@@ -59,7 +59,7 @@ function TourEditor({ ws, tour, blocked }: { ws: string; tour: Tour; blocked: st
             <li key={`${s.element}-${i}`} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[2rem_1fr]">
               <span className="text-sm font-semibold text-muted-foreground">{i + 1}</span>
               <div className="flex flex-col gap-1.5">
-                <span className="font-mono text-[11px] text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {s.path ?? "/"} · {s.element}
                 </span>
                 <Input className={field} value={s.title} readOnly={blocked !== null} onChange={(e) => set(i, { title: e.target.value.slice(0, 120) })} aria-label={t("tours.admin.stepTitle", { n: i + 1 })} data-testid="tour-step-title" />

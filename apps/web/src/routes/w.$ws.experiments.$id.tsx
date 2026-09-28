@@ -9,7 +9,7 @@ import { useMemo, useState, type ReactElement } from "react";
 import { Card, Page } from "../components/page.js";
 import { useExplorerLabels } from "../features/explorer/labels.js";
 import { ExplorerRowSource } from "../features/explorer/row-source.js";
-import { GRID_THEME } from "../features/explorer/grid-theme.js";
+import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { ConcludeDialog, CriterionBadge, LinkPicker, ReadoutCards, StatusBadge } from "../features/experiments/components.js";
 import { experimentQuery, type Experiment } from "../features/experiments/queries.js";
 import { can } from "../features/ops/queries.js";
@@ -134,6 +134,7 @@ function ExperimentPage(): ReactElement {
 
 /** The linked budgets of one role: the Explorer's grid over a fixed filter (`experiment` = `<id>:<role>`). */
 function LinkedGrid({ ws, experiment, role }: { ws: string; experiment: Experiment; role: "TEST" | "CONTROL" }): ReactElement {
+  const gridTheme = useGridTheme();
   const navigate = useNavigate();
   const [loaded, setLoaded] = useState<{ total: number; totals: Record<string, string | null> } | null>(null);
   const count = experiment.envelopes.filter((e) => e.role === role).length;
@@ -172,7 +173,7 @@ function LinkedGrid({ ws, experiment, role }: { ws: string; experiment: Experime
         <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{t("experiments.linkedNone")}</p>
       ) : (
         <div className="h-64 min-w-0 overflow-hidden rounded-lg border border-border">
-          <BudgetGrid key={key} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency={CURRENCY} theme={GRID_THEME} totalsLabel={t("explorer.totals")} />
+          <BudgetGrid key={key} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency={CURRENCY} theme={gridTheme} totalsLabel={t("explorer.totals")} />
         </div>
       )}
     </div>

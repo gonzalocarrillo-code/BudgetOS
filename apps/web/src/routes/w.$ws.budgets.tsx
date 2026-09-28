@@ -18,7 +18,7 @@ import { SendForApproval } from "../features/explorer/send-for-approval.js";
 import { FamilyEditor } from "../features/explorer/family-editor.js";
 import { ExplorerRowSource, type ExplorerRow } from "../features/explorer/row-source.js";
 import { SavedViews } from "../features/explorer/saved-views.js";
-import { GRID_THEME } from "../features/explorer/grid-theme.js";
+import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
 import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
@@ -70,6 +70,7 @@ const MEASURE_COLUMNS: Array<{ key: "budget" | "actual" | "projected" | "remaini
 type Notice = { kind: "ok" | "error"; text: string; requestId?: string; envelopeId?: string } | { kind: "conflict"; name: string; amount: string };
 
 function ExplorerPage(): ReactElement {
+  const gridTheme = useGridTheme();
   const { ws } = Route.useParams();
   const search: ExplorerSearchT = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -320,7 +321,7 @@ function ExplorerPage(): ReactElement {
             ) : (
               <>
                 <div className="relative h-[calc(100dvh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
-                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={GRID_THEME} totalsLabel={t("explorer.totals")} selectRows={selecting} /> : <SkeletonRows rows={6} className="p-2" />}
+                  {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={gridTheme} totalsLabel={t("explorer.totals")} selectRows={selecting} /> : <SkeletonRows rows={6} className="p-2" />}
                   {loaded && loaded.total === 0 ? (
                     // UX-007: an empty tree says why and offers the next step.
                     <div className="absolute inset-x-0 top-20 flex justify-center">

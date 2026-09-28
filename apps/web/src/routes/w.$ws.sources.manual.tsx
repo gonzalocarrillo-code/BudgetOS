@@ -8,7 +8,7 @@ import { AlertTriangle, CheckCircle2, Plus, Send } from "lucide-react";
 import { useMemo, useRef, useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
-import { GRID_THEME } from "../features/explorer/grid-theme.js";
+import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { EntrySource, FIELD } from "../features/manual-entry/entry-source.js";
 import { Batch, batchQuery, batchesQuery, channelColor, type BatchSummary } from "../features/manual-entry/queries.js";
 import { can } from "../features/ops/queries.js";
@@ -135,6 +135,7 @@ function BatchEditor({ ws, id, dimensions, cols, blocked, onCols }: { ws: string
 }
 
 function BatchGrid({ ws, batch, dimensions, cols, blocked, onCols, onChanged }: { ws: string; batch: Batch; dimensions: Dimension[]; cols: string[] | undefined; blocked: string | null; onCols: (cols: string[]) => void; onChanged: () => void }): ReactElement {
+  const gridTheme = useGridTheme();
   const client = useQueryClient();
   const editable = batch.status === "DRAFT" && blocked === null;
   const source = useMemo(() => new EntrySource(batch.rows, editable, batch.issues), [batch.id, batch.status]);
@@ -270,7 +271,7 @@ function BatchGrid({ ws, batch, dimensions, cols, blocked, onCols, onChanged }: 
       ) : null}
       <Card>
         <div className="h-[26rem] min-w-0 overflow-hidden" data-testid="entry-grid" data-rows={state.totals.rows} data-total={state.totals.amount ?? ""}>
-          <BudgetGrid key={`${source.value.length}-${dimCols.join()}`} source={source} columns={columns} events={events} totals={{ actual: state.totals.amount }} currency={Object.keys(state.totals.byCurrency)[0] ?? "USD"} theme={GRID_THEME} totalsLabel={t("manual.totals")} searchDimensionValues={searchDimensionValues} />
+          <BudgetGrid key={`${source.value.length}-${dimCols.join()}`} source={source} columns={columns} events={events} totals={{ actual: state.totals.amount }} currency={Object.keys(state.totals.byCurrency)[0] ?? "USD"} theme={gridTheme} totalsLabel={t("manual.totals")} searchDimensionValues={searchDimensionValues} />
         </div>
       </Card>
       {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}

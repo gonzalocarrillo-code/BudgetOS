@@ -22,7 +22,7 @@ const ROUTES: Array<[path: string, title: string | RegExp]> = [
   ["/alerts", "Alerts"],
   ["/search?q=meta", "Search"],
   ["/closures", "Closures"],
-  ["/sources", "Sources"],
+  ["/sources", "Spend data"],
   ["/admin/registry", "Registry"],
   ["/admin/policies", "Approval policies"],
   ["/admin/rules", "Pacing rules"],

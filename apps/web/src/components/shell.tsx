@@ -30,6 +30,9 @@ import {
   Archive,
   ChevronsUpDown,
   Menu,
+  Monitor,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
@@ -39,6 +42,7 @@ import { NotificationBell } from "../features/home/notifications.js";
 import { clearToken } from "../lib/auth.js";
 import { api, unwrap } from "../lib/api.js";
 import { registryQuery, type Me } from "../lib/queries.js";
+import { setThemeChoice, useTheme, type ThemeChoice } from "../lib/theme.js";
 import type { Action } from "@budget/domain";
 
 /**
@@ -86,6 +90,14 @@ const ADMIN: NavItem[] = [
 ];
 
 /** Settings: its own page (the hub) and a strip above each of these pages to move between them. */
+/** The sidebar's admin pages, as Settings hub cards. */
+const ADMIN_SETTINGS: Array<NavItem & { description: MessageKey }> = [
+  { to: "/w/$ws/admin/registry", label: "admin.registry", icon: BookOpen, description: "settings.desc.registry" },
+  { to: "/w/$ws/admin/rules", label: "admin.rules", icon: Gauge, description: "settings.desc.rules" },
+  { to: "/w/$ws/admin/roles", label: "admin.roles", icon: Users, requires: ["user.manage"], description: "settings.desc.roles" },
+  { to: "/w/$ws/admin/tags", label: "admin.tags", icon: Tag, description: "settings.desc.tags" },
+];
+
 export const SETTINGS_PAGES: Array<NavItem & { description: MessageKey }> = [
   { to: "/w/$ws/admin/workspace", label: "admin.workspace", icon: Building2, requires: ["user.manage"], description: "settings.desc.workspace" },
   { to: "/w/$ws/admin/policies", label: "admin.policies", icon: ShieldCheck, requires: ["policy.manage", "approval.decide"], description: "settings.desc.policies" },
@@ -97,7 +109,23 @@ export const SETTINGS_PAGES: Array<NavItem & { description: MessageKey }> = [
   { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map, requires: ["user.manage"], description: "settings.desc.tours" },
 ];
 const SETTINGS_HUB = "/w/$ws/admin/settings";
+
+/**
+ * UX-009 (plan §11.6): the Settings hub groups every admin page by what it is for, the sidebar's
+ * day-to-day pages included, so there is one place to find a setting.
+ */
+export type SettingsGroup = "workspace" | "people" | "taxonomy" | "pacing" | "data" | "onboarding";
+export const SETTINGS_GROUPS: Array<{ id: SettingsGroup; label: MessageKey; pages: Array<NavItem & { description: MessageKey }> }> = [];
 const ORG_CONSOLE = "__org_console__";
+const byPath = (to: string) => [...SETTINGS_PAGES, ...ADMIN_SETTINGS].find((p) => p.to === to) as NavItem & { description: MessageKey };
+SETTINGS_GROUPS.push(
+  { id: "workspace", label: "settings.group.workspace", pages: [byPath("/w/$ws/admin/workspace"), byPath("/w/$ws/admin/periods"), byPath("/w/$ws/admin/templates")] },
+  { id: "people", label: "settings.group.people", pages: [byPath("/w/$ws/admin/roles"), byPath("/w/$ws/admin/policies")] },
+  { id: "taxonomy", label: "settings.group.taxonomy", pages: [byPath("/w/$ws/admin/registry"), byPath("/w/$ws/admin/tags"), byPath("/w/$ws/admin/naming")] },
+  { id: "pacing", label: "settings.group.pacing", pages: [byPath("/w/$ws/admin/rules")] },
+  { id: "data", label: "settings.group.data", pages: [byPath("/w/$ws/admin/sources"), byPath("/w/$ws/admin/slack")] },
+  { id: "onboarding", label: "settings.group.onboarding", pages: [byPath("/w/$ws/admin/tours")] },
+);
 const settingsPath = (pathname: string, ws: string) => [SETTINGS_HUB, ...SETTINGS_PAGES.map((p) => p.to)].some((to) => pathname === to.replace("$ws", ws));
 
 function SettingsStrip({ ws, me }: { ws: string; me: Me }): ReactElement {
@@ -131,7 +159,7 @@ function NavLink({ item, ws, exact = false }: { item: NavItem; ws: string; exact
 /** In the icon rail (768–1279 px) labels are hidden but still read by screen readers. */
 const labelClass = "md:max-xl:sr-only";
 const SectionLabel = ({ children }: { children: ReactNode }) => (
-  <div className="px-3 pb-1 pt-5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:max-xl:px-0 md:max-xl:pt-3">
+  <div className="px-3 pb-1 pt-5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground md:max-xl:px-0 md:max-xl:pt-3">
     <span className="md:max-xl:sr-only">{children}</span>
     <span className="hidden h-px bg-border md:max-xl:block" aria-hidden />
   </div>
@@ -355,6 +383,32 @@ function useDocumentTitle(pathname: string, ws: string, workspace: string | unde
   }, [title]);
 }
 
+/** UX-012: Light, Dark or the system's choice, for this browser. */
+function ThemePicker(): ReactElement {
+  const { choice } = useTheme();
+  const options: Array<{ id: ThemeChoice; label: MessageKey; icon: LucideIcon }> = [
+    { id: "light", label: "theme.light", icon: Sun },
+    { id: "dark", label: "theme.dark", icon: Moon },
+    { id: "system", label: "theme.system", icon: Monitor },
+  ];
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5 text-sm" role="radiogroup" aria-label={t("theme.label")} data-testid="theme-picker">
+      <span className="text-muted-foreground">{t("theme.label")}</span>
+      <span className="inline-flex rounded-lg border border-border bg-muted/60 p-0.5">
+        {options.map((o) => {
+          const Icon = o.icon;
+          return (
+            <button key={o.id} type="button" role="radio" aria-checked={choice === o.id} title={t(o.label)} className={cn("grid size-7 place-items-center rounded-md text-muted-foreground", choice === o.id && "bg-card text-foreground shadow-xs")} onClick={() => setThemeChoice(o.id)} data-testid={`theme-${o.id}`}>
+              <Icon className="size-4" aria-hidden />
+              <span className="sr-only">{t(o.label)}</span>
+            </button>
+          );
+        })}
+      </span>
+    </div>
+  );
+}
+
 /**
  * The signed-in person (DS-003): who they are, their roles here, their name (editable; what Home
  * greets them by) and sign out, in one menu.
@@ -380,7 +434,7 @@ function UserMenu({ ws, me, roles }: { ws: string; me: Me; roles: string[] }): R
         <button type="button" className="flex max-w-64 items-center gap-2 rounded-lg px-1.5 py-1 text-right hover:bg-accent" aria-label={t("user.menu")} data-testid="profile-button">
           <span className="hidden min-w-0 flex-col items-end lg:flex">
             <span className="max-w-48 truncate text-sm font-medium" data-testid="user-name">{me.user.name}</span>
-            <span className="max-w-48 truncate text-[11px] text-muted-foreground" data-testid="user-email">{me.user.email}</span>
+            <span className="max-w-48 truncate text-xs text-muted-foreground" data-testid="user-email">{me.user.email}</span>
           </span>
           <Avatar name={me.user.name} id={me.user.id} size={30} />
         </button>
@@ -418,6 +472,7 @@ function UserMenu({ ws, me, roles }: { ws: string; me: Me; roles: string[] }): R
             )}
           </div>
         </form>
+        <ThemePicker />
         <div className="border-t border-border p-1.5">
           <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent" onClick={() => clearToken()} data-testid="sign-out">
             <LogOut className="size-4 text-muted-foreground" aria-hidden />

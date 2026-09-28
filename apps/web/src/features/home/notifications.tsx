@@ -58,7 +58,7 @@ export function NotificationBell({ ws }: { ws: string }): ReactElement {
         <Button variant="ghost" size="icon" className="relative" aria-label={unread ? t("notify.labelCount", { count: unread }) : t("notify.label")} data-testid="notifications">
           <Bell className="size-4" aria-hidden />
           {unread > 0 ? (
-            <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-destructive px-1 text-[11px] font-semibold leading-4 text-white" data-testid="notifications-count">
+            <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-destructive px-1 text-xs font-semibold leading-4 text-white" data-testid="notifications-count">
               {unread > 99 ? "99+" : unread}
             </span>
           ) : null}

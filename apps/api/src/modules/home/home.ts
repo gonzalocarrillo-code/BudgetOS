@@ -97,6 +97,18 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts };
     }
 
+    // UX-011: two recent budgets with the same name (two "LATAM"s) read with their parent's name.
+    const recentIds = ids("envelope");
+    const parents = new Map((await tx.envelope.findMany({ where: { id: { in: recentIds } }, select: { id: true, parentId: true } })).map((e) => [e.id, e.parentId]));
+    const parentNames = new Map((await tx.envelope.findMany({ where: { id: { in: [...parents.values()].filter((x): x is string => x !== null) } }, select: { id: true, name: true, displayName: true } })).map((e) => [e.id, e.displayName ?? e.name]));
+    const seen = new Map<string, number>();
+    for (const x of touched) if (titles.has(x.entity_id)) seen.set(titles.get(x.entity_id) as string, (seen.get(titles.get(x.entity_id) as string) ?? 0) + 1);
+    for (const id of recentIds) {
+      const title = titles.get(id);
+      const parent = parentNames.get(parents.get(id) ?? "");
+      if (title && parent && (seen.get(title) ?? 0) > 1) titles.set(id, `${title} · ${parent}`);
+    }
+
     return {
       waitingOnMe: {
         approvals: approvals.map((a) => ({ id: a.id, summary: a.summary, entityType: a.entityType, requestedAt: a.requestedAt, dueAt: a.dueAt })),

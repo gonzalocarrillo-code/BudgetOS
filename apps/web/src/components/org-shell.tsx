@@ -30,7 +30,7 @@ export function OrgShell({ me, children }: { me: Me; children: ReactNode }): Rea
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden text-right text-sm lg:block">
             <span className="block font-medium">{me.user.name}</span>
-            <span className="block text-[11px] text-muted-foreground">{me.user.email}</span>
+            <span className="block text-xs text-muted-foreground">{me.user.email}</span>
           </span>
           <Button variant="ghost" size="sm" onClick={() => clearToken()}>
             <LogOut className="size-4" aria-hidden />
