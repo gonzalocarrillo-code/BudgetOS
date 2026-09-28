@@ -399,3 +399,23 @@ The spec-scale load job re-measures this on this branch.
   - in the Budgets tree, a group with no value for its level folds into the level above, so a budget with no granularities is at the top and an unused Client level never shows.
 - **Edit granularities** (#79): a budget's granularities change from its drawer (`PATCH /envelopes/:id` `dimensionValues`). They're registry- and scope-checked, audited, and the roll-ups rebuild.
 - **Budget structure** (ADR-050): Budgets and the Timeline open on the budgets as built. Top-level budgets come first, then each one's children; parents are rows with their own amount and their subtree's spend. The hierarchy templates remain in the picker.
+
+## Product feedback, round 6: UX/UI audit, BudgetOS identity, superadmins (2026-09-28)
+
+The product owner asked for a usability audit of the whole system by a UX/UI specialist, a BudgetOS logo at the top, superadmins who create and delete workspaces, and workspace admins confined to their own workspace. The audit and the plan are in `docs/UX_AUDIT_AND_ADMIN_PLAN.md` (nothing built yet). Tasks, in execution order, each one PR:
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| UX-001 | A | Tour auto-start no longer hijacks navigation | pending |
+| UX-002 | A | Shell: only `<main>` scrolls; sticky page header and decide bar | pending |
+| UX-003 | A | Nav and Settings gated by permissions | pending |
+| UX-004 | A | Branded 403 / 404 pages | pending |
+| UX-005 | A | BudgetOS logo, favicon, page titles, sign-in | pending |
+| UX-006 | A | AA-contrast tokens; one `StatusChip` vocabulary | pending |
+| UX-007 | A | Toasts, skeletons, empty states | pending |
+| UX-008 | A | One "budget this fiscal year" definition (ADR-051) | pending |
+| DS-001…005 | B | `@budget/ui` form controls, layers, shell v2, `Table`, Budgets toolbar | pending |
+| ORG-001…008 | C | Superadmin naming (ADR-052), workspace archive / delete + purge worker, org console, scoped members, workspace-owned registry and metrics, boundary tests | pending |
+| UX-009…012 | D | Settings IA, keyboard and axe pass, Home / Overview polish, dark mode | pending |
+
+Decisions D1–D9 in the plan's Part 5 are open for the product owner.
