@@ -271,6 +271,9 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
     // T-036 (§24.2): a naming or registry change renames every envelope (labels, codes, templates).
     if (event.topic === "naming.changed" || event.topic === "registry.changed") result.renamed = await recomputeNames(tx, event.workspaceId);
     if (!["budget.changed", "facts.loaded", "registry.changed"].includes(event.topic)) return;
+    // T-034: a draft changes no cached measure. The cache holds approved budgets, spend,
+    // projections and pending counts; a draft is unapproved, and a pending envelope takes no draft.
+    if (event.topic === "budget.changed" && (event.payload as { kind?: unknown } | null)?.kind === "draft") return;
     const templates = await tx.hierarchyTemplate.findMany({ where: { workspaceId: event.workspaceId } });
     result.templates = templates.length;
     if (event.topic === "registry.changed") {

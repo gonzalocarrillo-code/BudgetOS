@@ -316,3 +316,9 @@ Deferred from T-007 and now built (ADR-042).
 - typos: about 2 s with 0–1 results → 180–265 ms with results.
 
 The spec-scale load job re-measures this on this branch.
+
+## T-034 roll-up lag: skip draft events (2026-09-27)
+
+- The rollup worker now skips `budget.changed` events of kind `draft`. A draft changes no cached measure: the cache holds approved budgets, spend, projections and pending counts; a draft is unapproved, and a pending envelope can't take one.
+- The lag test's change (a draft, then an auto-approved submit) now costs one refresh instead of two.
+- Still open: one refresh at spec scale (5 templates × 2 periods). Profiling continues.
