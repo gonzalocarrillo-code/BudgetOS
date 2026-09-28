@@ -95,7 +95,14 @@ async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>)
 export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: GoldenOptions = {}): Promise<GoldenResult> {
   const started = performance.now();
   const slug = opts.slug ?? "golden";
-  const log = opts.log ?? (() => undefined);
+  const sink = opts.log ?? (() => undefined);
+  // Each line carries the time spent since the previous one, so the seed profiles itself phase by phase.
+  let lap = started;
+  const log = (line: string): void => {
+    const now = performance.now();
+    sink(`${line} [${((now - lap) / 1000).toFixed(2)} s]`);
+    lap = now;
+  };
   const concurrency = opts.concurrency ?? 8;
 
   const existing = await owner.workspace.findFirst({ where: { slug }, select: { id: true, orgId: true } });
@@ -153,6 +160,7 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     await assignRole(app, auth("orgAdmin"), { principalType: "user", principalId: users[p], role: PERSONAS[p] });
   }
   await seedDefaultPolicies(app, auth("admin").ctx);
+  log("golden: roles and default policies");
 
   // ---- Approvals: walk each request through its frozen chain with the right personas. ----
   const decidersFor: Record<string, Persona[]> = {
@@ -165,21 +173,23 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     const submitted = await submitVersion(app, auth("planner"), envelopeId, { versionId });
     if (submitted.autoApproved) return;
     const requestId = submitted.requestId as string;
-    for (let guard = 0; guard < 10; guard += 1) {
-      const r = await withTenant(app, auth("planner").ctx, (tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId } }));
-      if (r.status === "APPROVED") return;
-      const step = PolicySnapshot.parse(r.policySnapshot).chain[r.currentStep];
-      if (step === undefined) throw new Error(`golden: request ${requestId} has no step ${r.currentStep}`);
+    // The chain is frozen on the request at submit: read it once, then follow each decision's outcome
+    // (a step advances when its last required approval lands, the last step approves the version).
+    const r = await withTenant(app, auth("planner").ctx, (tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { policySnapshot: true, currentStep: true } }));
+    let status = "PENDING";
+    for (const step of PolicySnapshot.parse(r.policySnapshot).chain.slice(r.currentStep)) {
       const people = decidersFor[step.role] ?? [];
       if (people.length < step.minApprovals) throw new Error(`golden: not enough ${step.role} personas for ${requestId}`);
-      for (const p of people.slice(0, step.minApprovals)) await decide(app, auth(p), requestId, { decision: "approve" });
+      for (const p of people.slice(0, step.minApprovals)) status = (await decide(app, auth(p), requestId, { decision: "approve" })).status;
     }
-    throw new Error(`golden: request ${requestId} did not finish`);
+    if (status !== "APPROVED") throw new Error(`golden: request ${requestId} ended ${status}, not APPROVED`);
   };
 
   // ---- Envelope tree, top-down so parents are approved before children count against them. ----
   const plan = goldenPlan();
   const ids = new Map<string, string>();
+  // Each envelope's current (last approved) version, so a re-plan need not read it back.
+  const heads = new Map<string, string>();
   const byLevel = new Map<number, PlannedEnvelope[]>();
   for (const e of plan) byLevel.set(e.level, [...(byLevel.get(e.level) ?? []), e]);
   const round1 = GOLDEN_ROUNDS[0];
@@ -202,6 +212,7 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
         });
         ids.set(e.key, created.id);
         await approve(created.id, created.draftVersionId as string);
+        heads.set(created.id, created.draftVersionId as string);
       });
       log(`golden: level ${level} approved (${byLevel.get(level)?.length ?? 0})`);
     }
@@ -211,9 +222,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
         const v = e.versions.find((x) => x.round === round.round);
         if (v === undefined) return;
         const id = ids.get(e.key) as string;
-        const head = await withTenant(app, auth("planner").ctx, (tx) => tx.envelope.findUniqueOrThrow({ where: { id }, select: { currentVersionId: true } }));
-        const draft = await createDraftVersion(app, auth("planner"), id, { amount: v.amount, phasing: v.phasing, basedOnVersionId: head.currentVersionId, rationale: `Re-plan (round ${round.round})` });
+        const draft = await createDraftVersion(app, auth("planner"), id, { amount: v.amount, phasing: v.phasing, basedOnVersionId: heads.get(id) as string, rationale: `Re-plan (round ${round.round})` });
         await approve(id, draft.id);
+        heads.set(id, draft.id);
       });
       log(`golden: round ${round.round} approved`);
     }
@@ -230,10 +241,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     // T-014: one split, auto-approved (a structural change keeps the total), source archived.
     clock.now = () => new Date(GOLDEN_SPLIT.at);
     const sourceId = ids.get(GOLDEN_SPLIT.sourceKey) as string;
-    const head = await withTenant(app, auth("planner").ctx, (tx) => tx.envelope.findUniqueOrThrow({ where: { id: sourceId }, select: { currentVersionId: true } }));
     const parts = splitAmounts(plan);
     const split = await splitEnvelope(app, auth("planner"), sourceId, {
-      basedOnVersionId: head.currentVersionId,
+      basedOnVersionId: heads.get(sourceId) as string,
       rationale: GOLDEN_SPLIT.rationale,
       parts: parts.map((p) => ({ name: p.name, amount: p.amount, dimensionValues: { retailer: p.retailer } })),
     });
@@ -283,6 +293,7 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
 
   // ---- T-018: default pacing rules, evaluated on three consecutive days by the real job function. ----
   await seedDefaultRules(app, auth("admin").ctx);
+  log("golden: default pacing rules");
   let opened = 0;
   for (const day of GOLDEN_PACING.days) opened += (await evaluateWorkspace(app, { workspaceId, orgId }, day, new Date(`${day}T12:00:00Z`))).opened.length;
   log(`golden: pacing evaluated for ${GOLDEN_PACING.days.length} days, ${opened} alerts open`);
@@ -358,6 +369,7 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
 
   // ---- T-027: the planner's saved Explorer view. ----
   await createSavedView(app, auth(GOLDEN_SAVED_VIEW.persona), { name: GOLDEN_SAVED_VIEW.name, screen: "explorer", definition: GOLDEN_SAVED_VIEW.definition });
+  log("golden: saved view");
 
   // ---- T-024: Finance closes 2026-Q1 (rows to a recording sink: the seed has no BigQuery), an admin restates it. ----
   const closureSink = new RecordingClosureSink();
