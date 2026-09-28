@@ -30,13 +30,20 @@ async function queryTotal(token: string, asOf?: string): Promise<string> {
   const body = (await res.json()) as { totals: Record<string, string | null> };
   return new Decimal(body.totals["budget"] ?? 0).toFixed(2);
 }
+/** The workspace's default hierarchy template (the grouped timeline; Budget structure is the default view, ADR-050). */
+async function defaultTemplate(token: string): Promise<string> {
+  const ws = state().workspaceId;
+  const res = await fetch(`http://127.0.0.1:${PORTS.api}/api/v1/workspaces/${ws}/hierarchy-templates`, { headers: { authorization: `Bearer ${token}`, "x-workspace-id": ws } });
+  const list = (await res.json()) as Array<{ id: string; isDefault: boolean }>;
+  return (list.find((x) => x.isDefault) ?? list[0])?.id ?? "";
+}
 const envelopeTotal = (bars: Bar[]) => bars.filter((b) => b.kind === "envelope").reduce((s, b) => s.plus(b.budget ?? 0), new Decimal(0)).toFixed(2);
 
 test("timeline: bars on the fiscal calendar, targets as lanes, a row opens the drawer, as-of matches /query", async ({ page }) => {
   const token = await signIn(page);
   const ws = state().workspaceId;
   const first = page.waitForResponse((r) => r.url().includes(`/workspaces/${ws}/timeline`) && !r.url().includes("asOf="));
-  await page.goto(`/w/${ws}/budgets?view=%22timeline%22&period=${FY}`);
+  await page.goto(`/w/${ws}/budgets?view=%22timeline%22&period=${FY}&templateId=${encodeURIComponent(JSON.stringify(await defaultTemplate(token)))}`);
   const now = (await (await first).json()) as { bars: Bar[] };
   const view = page.getByTestId("timeline-view");
   await expect(view).toBeVisible();
@@ -86,4 +93,21 @@ test("timeline: bars on the fiscal calendar, targets as lanes, a row opens the d
   await page.getByTestId("zoom-picker").selectOption("quarter");
   await expect(page).toHaveURL(/zoom=/);
   await expect(page.locator(".wx-timescale-viewport, .wx-scale").first()).toContainText("Q4");
+});
+
+/** ADR-050: under Budget structure (the default) every budget is a bar, parents included, nested by parent links. */
+test("timeline: the budget structure by default, parents before their children", async ({ page }) => {
+  await signIn(page);
+  const ws = state().workspaceId;
+  const first = page.waitForResponse((r) => r.url().includes(`/workspaces/${ws}/timeline`) && r.url().includes("structure=true"));
+  await page.goto(`/w/${ws}/budgets?view=%22timeline%22&period=${FY}`);
+  const bars = ((await (await first).json()) as { bars: Array<Bar & { key: string; parentKey: string | null; level: number }> }).bars.filter((b) => b.kind === "envelope");
+  const levels = new Map<string, number>();
+  for (const b of bars) {
+    expect(b.level).toBe(b.parentKey === null ? 0 : (levels.get(b.parentKey) ?? -99) + 1);
+    levels.set(b.key, b.level);
+  }
+  expect(bars.some((b) => b.level > 0)).toBe(true);
+  await expect(page.getByTestId("template-picker")).toHaveValue("");
+  await expect(page.getByTestId("budget-timeline").locator(".bt-envelope").first()).toBeAttached();
 });

@@ -16,6 +16,9 @@ import { api, unwrap } from "../../lib/api.js";
  *   ADR-049) — a budget without a client shows no Client level, a budget with no granularities
  *   sits at the top. Only rows move; every number is still the server's.
  * - pivot: the groups of `groupBy`, or the envelopes themselves when groupBy is empty.
+ * - structure (ADR-050, the default tree): the budgets as they were built — top-level budgets,
+ *   then each one's children by parent link. Each row is one budget: its own amount, and spend
+ *   summed over everything under it by the server (`subtree`).
  */
 
 export const NONE = "∅";
@@ -28,6 +31,8 @@ export interface ExplorerQuery {
   period: unknown;
   measures: string[];
   asOf?: string | undefined;
+  /** tree: follow parent links instead of a hierarchy template (ADR-050). */
+  structure?: boolean | undefined;
   /** tree: the hierarchy template (its id for the roll-up cache, its path for the levels). */
   templateId?: string | undefined;
   levels: string[];
@@ -66,13 +71,23 @@ export class ExplorerRowSource implements RowSource {
     private readonly onLoaded: (s: ExplorerRowSource) => void = () => undefined,
   ) {
     this.expanded = new Set(q.expanded);
-    this.cached = q.view === "tree" && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf;
+    this.cached = q.view === "tree" && !q.structure && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf;
     this.ready = this.load();
+  }
+
+  private get structure(): boolean {
+    return this.q.view === "tree" && this.q.structure === true;
   }
 
   private filterWith(extra: Predicate[]): FilterGroupT {
     const own = this.q.filter.children.length ? [this.q.filter] : [];
-    return { logic: "and", children: [...LIVE_LEAVES, ...own, ...extra] };
+    // Structure: parents are rows too (each with its own amount), so every live budget, not only leaves.
+    const cut = this.structure ? LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status") : LIVE_LEAVES;
+    return { logic: "and", children: [...cut, ...own, ...extra] };
+  }
+
+  private underParent(id: string | null): Predicate[] {
+    return [id === null ? { field: { kind: "attr", key: "parent_id" }, op: "is_empty" } : { field: { kind: "attr", key: "parent_id" }, op: "eq", value: id }];
   }
 
   /** Every page of one query (a level of the tree or the pivot; the golden workspace is small, T-034 measures the large one). */
@@ -81,7 +96,7 @@ export class ExplorerRowSource implements RowSource {
     let cursor: string | null = null;
     let last: QueryResponse | undefined;
     do {
-      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(cursor ? { cursor } : {}) };
+      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : {}), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(cursor ? { cursor } : {}) };
       last = (await unwrap(api.POST("/api/v1/workspaces/{ws}/query", { params: { path: { ws: this.q.ws } }, body: body as never }))) as QueryResponse;
       rows.push(...last.rows);
       cursor = last.nextCursor;
@@ -125,10 +140,15 @@ export class ExplorerRowSource implements RowSource {
   }
 
   private envelopeRows(rows: QueryRow[], level: number): ExplorerRow[] {
-    return rows.map((r) => ({ ...r, key: r.envelopeId ?? r.key, level, name: r.path.at(-1) ?? "", hasChildren: false, expanded: false }));
+    return rows.map((r) => {
+      const key = r.envelopeId ?? r.key;
+      const hasChildren = this.structure && (r.childCount ?? 0) > 0;
+      return { ...r, key, level, name: r.path.at(-1) ?? "", hasChildren, expanded: hasChildren && this.expanded.has(key) };
+    });
   }
 
   private async childrenOf(node: ExplorerRow, level = node.level + 1): Promise<ExplorerRow[]> {
+    if (this.structure) return this.envelopeRows((await this.all([], this.underParent(node.envelopeId), [{ key: "name", dir: "asc" }])).rows, level);
     const segments = node.path;
     const depth = segments.length;
     const levels = this.q.levels;
@@ -145,29 +165,31 @@ export class ExplorerRowSource implements RowSource {
       this.roots = this.q.groupBy.length
         ? res.rows.map((r) => ({ ...r, level: 0, name: this.q.groupBy.map((k) => ((r.dimensions[k] ?? NONE) === NONE ? this.labels.none(k, 1) : this.labels.value(k, r.dimensions[k] as string))).join(" · "), hasChildren: false, expanded: false }))
         : this.envelopeRows(res.rows, 0);
-    } else if (this.q.levels.length === 0) {
-      const res = await this.all([], [], [{ key: "name", dir: "asc" }]);
+    } else if (this.structure || this.q.levels.length === 0) {
+      const res = await this.all([], this.structure ? this.underParent(null) : [], [{ key: "name", dir: "asc" }]);
       Object.assign(this, { totals: res.totals, dataVersion: String(res.dataVersion) });
       this.roots = this.envelopeRows(res.rows, 0);
+      await this.reopen(this.roots);
     } else {
       const keys = this.q.levels.slice(0, 1);
       const res = await this.level([]);
       this.totals = res.totals;
       this.dataVersion = String(res.dataVersion);
       this.roots = await this.collapse(this.groupRows(res.rows, keys, []), 0);
-      // Re-open what the URL says is expanded, parents first.
-      const open = async (rows: ExplorerRow[]) => {
-        for (const r of rows) {
-          if (!r.hasChildren || !this.expanded.has(r.key)) continue;
-          const kids = await this.childrenOf(r);
-          this.children.set(r.key, kids);
-          await open(kids);
-        }
-      };
-      await open(this.roots);
+      await this.reopen(this.roots);
     }
     this.rebuild();
     this.onLoaded(this);
+  }
+
+  /** Re-open what the URL says is expanded, parents first. */
+  private async reopen(rows: ExplorerRow[]): Promise<void> {
+    for (const r of rows) {
+      if (!r.hasChildren || !this.expanded.has(r.key)) continue;
+      const kids = await this.childrenOf(r);
+      this.children.set(r.key, kids);
+      await this.reopen(kids);
+    }
   }
 
   private rebuild(): void {

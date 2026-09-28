@@ -31,6 +31,7 @@ import { Plus } from "lucide-react";
 const ExplorerSearch = z.object({
   filter: FilterGroup.default({ logic: "and", children: [] }),
   groupBy: z.array(z.string()).default([]),
+  /** A hierarchy template, or (unset) the budget structure (ADR-050). */
   templateId: z.string().uuid().optional(),
   measures: z.array(z.string()).default(["budget", "actual", "projected", "pace_index"]),
   targets: z.array(z.string()).default([]),
@@ -91,21 +92,23 @@ function ExplorerPage(): ReactElement {
   const setSearch = (patch: Partial<ExplorerSearchT>) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, ...patch }), replace: false });
   const { data: me } = useQuery(meQuery);
   const currency = me?.workspaces.find((w) => w.workspaceId === ws)?.currency ?? "USD";
-  const template = templates.find((x) => x.id === search.templateId) ?? templates.find((x) => x.isDefault) ?? templates[0];
+  // Unset: the budgets as they were built (parent links, ADR-050); a hierarchy regroups them by granularities.
+  const template = search.templateId ? templates.find((x) => x.id === search.templateId) : undefined;
+  const byStructure = search.templateId === undefined;
   const isTimeline = search.view === "timeline";
-  // The timeline groups like the tree (hierarchy template); it has its own data source.
+  // The timeline groups like the tree (structure or hierarchy template); it has its own data source.
   const view = search.view === "timeline" ? "tree" : search.view;
   const measures = useMemo(() => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures])], [search.measures]);
 
   const labels = useExplorerLabels(ws);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
   const source = useMemo(
     () =>
-      !isTimeline && (template || view === "pivot")
+      !isTimeline && (byStructure || template || view === "pivot")
         ? new ExplorerRowSource(
-            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
+            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
             // Only the current source reports: a replaced one (older filter) whose response lands
@@ -203,7 +206,8 @@ function ExplorerPage(): ReactElement {
         {view === "tree" ? (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("explorer.hierarchy")}
-            <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={template?.id ?? ""} onChange={(e) => setSearch({ templateId: e.target.value, expanded: [] })} data-testid="template-picker">
+            <select className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground" value={template?.id ?? ""} onChange={(e) => setSearch({ templateId: e.target.value || undefined, expanded: [] })} data-testid="template-picker">
+              <option value="">{t("explorer.structure")}</option>
               {templates.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.name}
@@ -307,7 +311,7 @@ function ExplorerPage(): ReactElement {
               <div className="h-[calc(100vh-19rem)] min-h-80">
                 <TimelineView
                   ws={ws}
-                  search={{ filter: search.filter, templateId: template?.id, period: search.period, asOf: search.asOf, zoom: search.zoom }}
+                  search={{ filter: search.filter, templateId: template?.id, structure: byStructure, period: search.period, asOf: search.asOf, zoom: search.zoom }}
                   currency="USD"
                   onSelect={(id) => setSearch({ select: id })}
                   onAsOf={(asOf) => setSearch({ asOf })}

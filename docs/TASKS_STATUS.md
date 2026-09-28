@@ -398,3 +398,4 @@ The spec-scale load job re-measures this on this branch.
   - a template's levels may come in any order; `allowedParents` now governs values only;
   - in the Budgets tree, a group with no value for its level folds into the level above, so a budget with no granularities is at the top and an unused Client level never shows.
 - **Edit granularities** (#79): a budget's granularities change from its drawer (`PATCH /envelopes/:id` `dimensionValues`). They're registry- and scope-checked, audited, and the roll-ups rebuild.
+- **Budget structure** (ADR-050): Budgets and the Timeline open on the budgets as built. Top-level budgets come first, then each one's children; parents are rows with their own amount and their subtree's spend. The hierarchy templates remain in the picker.

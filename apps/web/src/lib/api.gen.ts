@@ -2649,7 +2649,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -2796,7 +2796,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -4539,7 +4539,7 @@ export interface operations {
                                 /** @enum {string} */
                                 kind: "attr";
                                 /** @enum {string} */
-                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
                             };
                             /** @enum {string} */
                             op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -4592,6 +4592,7 @@ export interface operations {
                     asOf?: string;
                     /** Format: uuid */
                     templateId?: string;
+                    subtree?: boolean;
                     /** @default [] */
                     sort?: {
                         key: string;
@@ -4621,6 +4622,9 @@ export interface operations {
                             depth?: number;
                             /** Format: uuid */
                             nodeEnvelopeId?: string | null;
+                            childCount?: number;
+                            /** Format: uuid */
+                            parentId?: string | null;
                             path: string[];
                             dimensions: {
                                 [key: string]: string | null;
@@ -4724,6 +4728,9 @@ export interface operations {
                             depth?: number;
                             /** Format: uuid */
                             nodeEnvelopeId?: string | null;
+                            childCount?: number;
+                            /** Format: uuid */
+                            parentId?: string | null;
                             path: string[];
                             dimensions: {
                                 [key: string]: string | null;
@@ -4999,7 +5006,7 @@ export interface operations {
                                         /** @enum {string} */
                                         kind: "attr";
                                         /** @enum {string} */
-                                        key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                        key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
                                     };
                                     /** @enum {string} */
                                     op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -6138,7 +6145,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -6191,6 +6198,7 @@ export interface operations {
                         asOf?: string;
                         /** Format: uuid */
                         templateId?: string;
+                        subtree?: boolean;
                         /** @default [] */
                         sort?: {
                             key: string;

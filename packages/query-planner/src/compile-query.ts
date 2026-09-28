@@ -107,6 +107,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   let kpiCols = "";
   let kpiDerived = "";
   let kpiAgg = "";
+  const kpiNames: string[] = [];
   for (const mk of kpiMetrics) {
     const def = defs.get(mk);
     if (!def) throw new DomainError("VALIDATION", `unknown metric ${mk}`);
@@ -116,10 +117,12 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     if (def.denominator) {
       const den = def.denominator === "budget" ? budgetSql : factSql(mk, def.denominator, b, pStart, pEnd, ws, period);
       kpiCols += `, ${num} AS num_${s}, ${den} AS den_${s}`;
+      kpiNames.push(`num_${s}`, `den_${s}`);
       kpiDerived += `, (num_${s}${mult} / NULLIF(den_${s},0)) AS kpi_${s}`;
       if (requested.has(mk)) kpiAgg += `, (sum(m.num_${s})${mult} / NULLIF(sum(m.den_${s}),0)) AS kpi_${s}`;
     } else {
       kpiCols += `, ${num} AS num_${s}`;
+      kpiNames.push(`num_${s}`);
       kpiDerived += `, (num_${s}${mult}) AS kpi_${s}`;
       if (requested.has(mk)) kpiAgg += `, (sum(m.num_${s})${mult}) AS kpi_${s}`;
     }
@@ -148,8 +151,24 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   // SUPERSEDED now (spec §7.3), so status alone cannot select them.
   const derived = projectionDerived("projected", "budget");
   const onlyIds = opts.envelopeIds === undefined ? "" : ` AND e.id = ANY(${b.p([...opts.envelopeIds])}::uuid[])`;
-  const measuresCte = `
+  // Budget structure (ADR-050): each envelope's spend and projections are its own plus everything
+  // under it, so a parent reads against its own amount. `WITH RECURSIVE` walks the parent links.
+  const subtree = q.subtree === true;
+  const subtreeCte = !subtree
+    ? ""
+    : `,
+    sub AS (
+      SELECT o.envelope_id AS root, o.envelope_id AS node FROM m_own o
+      UNION ALL
+      SELECT s.root, c.id FROM sub s JOIN envelope c ON c.parent_id = s.node AND c.status <> 'ARCHIVED'
+    ),
     m AS (
+      SELECT o.envelope_id, o.budget, o.period_share, coalesce(x.actual, 0) AS actual, coalesce(x.projected, 0) AS projected${kpiNames.map((n) => `, o.${n}`).join("")}
+      FROM m_own o
+      LEFT JOIN (SELECT s.root, sum(d.actual) AS actual, sum(d.projected) AS projected FROM sub s JOIN m_own d ON d.envelope_id = s.node GROUP BY s.root) x ON x.root = o.envelope_id
+    )`;
+  const measuresCte = `${subtree ? "RECURSIVE " : ""}
+    ${subtree ? "m_own" : "m"} AS (
       SELECT e.id AS envelope_id,
         ${budgetSql} AS budget,
         -- The share of the envelope's days that fall in the period (its budget's share, below).
@@ -159,8 +178,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         ${kpiCols}
       FROM envelope e${projectionJoin("e.id")}
       WHERE e.workspace_id = ${ws}::uuid
-        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${onlyIds}
-    ),
+        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${subtree ? "" : onlyIds}
+    )${subtreeCte},
     m1 AS (
       SELECT *, budget * period_share AS budget_in_period FROM m
     ),
@@ -203,6 +222,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
 
 export function compileQuery(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
   const { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin } = compileBase(q, period, today, opts);
+  const subtree = q.subtree === true;
   const groupKeys = q.groupBy.map(sanitize);
   if (new Set(groupKeys).size !== groupKeys.length) throw new DomainError("VALIDATION", "groupBy keys must be unique");
 
@@ -234,7 +254,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const columns = new Set<string>(
     grouped
       ? [...groupKeys.flatMap((k) => [`dim_${k}`, `lbl_${k}`]), ...measures, ...targetKeys.map((s) => `kpi_${s}`), "leaf_count", "pending_count"]
-      : ["envelope_id", "name", "status", "parent_id", ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
+      : ["envelope_id", "name", "status", "parent_id", ...(subtree ? ["child_count"] : []), ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
   );
   const orderKeys = resolveOrder(q, columns, grouped ? groupKeys.map((k) => `dim_${k}`) : ["envelope_id"], grouped ? [] : ["name"]);
   const after = q.cursor === undefined ? "TRUE" : keysetAfter(orderKeys, decodeCursor(q.cursor, orderKeys.length), b);
@@ -244,7 +264,8 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   // A flat page whose order and filter do not read projected spend gets it after the LIMIT, for
   // its own rows only (ADR-030): a lateral over every envelope would cost more than the page.
   const tail =
-    !grouped && opts.hasProjections !== false && measures.some((mk) => PROJECTION.has(mk)) && !orderKeys.some((o) => PROJECTION.has(o.col)) && !filterReads(q.filter ?? { logic: "and", children: [] }, PROJECTION);
+    !grouped &&
+    !subtree && opts.hasProjections !== false && measures.some((mk) => PROJECTION.has(mk)) && !orderKeys.some((o) => PROJECTION.has(o.col)) && !filterReads(q.filter ?? { logic: "and", children: [] }, PROJECTION);
   const flatMeasures = tail ? measures.filter((mk) => !PROJECTION.has(mk)) : measures;
 
   const groupSql = grouped
@@ -253,7 +274,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
        FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
        WHERE ${where}
        GROUP BY ${q.groupBy.map((_, i) => `g${i}.code, g${i}.label`).join(", ")}`
-    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, e.status::text AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
+    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, e.status::text AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values${subtree ? `, (SELECT count(*) FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED') AS child_count` : ""}${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
          ${kpiSelect},
          (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
          (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads
