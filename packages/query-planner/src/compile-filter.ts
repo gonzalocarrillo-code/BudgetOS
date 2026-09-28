@@ -176,6 +176,12 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
       // A leaf has no live child (archived children, e.g. merged-away envelopes, do not count).
       if (p.op !== "eq" || typeof p.value !== "boolean") throw invalid(`is_leaf needs eq true or false`, p);
       return `${p.value ? "NOT " : ""}EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED')`;
+    case "parent_id":
+      if (p.op === "is_empty") return "e.parent_id IS NULL";
+      if (p.op === "not_empty") return "e.parent_id IS NOT NULL";
+      if (p.op === "eq") return `e.parent_id = ${b.p(String(p.value))}::uuid`;
+      if (p.op === "in") return `e.parent_id = ANY(${b.p(list(p).map(String))}::uuid[])`;
+      throw invalid(`op ${p.op} not valid for parent_id`, p);
     case "experiment": {
       // Linked to an experiment (spec §25): by status, by id, or by id and role (`<id>:TEST`).
       if (p.op !== "eq" && p.op !== "in") throw invalid(`op ${p.op} not valid for experiment`, p);

@@ -98,7 +98,8 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
     const period = { start: q.from ?? spec.start, end: q.to ?? spec.end };
     if (period.start > period.end) throw new DomainError("VALIDATION", "from is after to");
 
-    const groupBy = q.groupBy ? q.groupBy.split(",").map((k) => k.trim()).filter(Boolean) : null;
+    const structure = q.structure === "true";
+    const groupBy = structure ? [] : q.groupBy ? q.groupBy.split(",").map((k) => k.trim()).filter(Boolean) : null;
     const template = groupBy
       ? null
       : await tx.hierarchyTemplate.findFirst({ where: { workspaceId, ...(q.templateId ? { id: q.templateId } : {}) }, orderBy: [{ isDefault: "desc" }, { name: "asc" }], select: { id: true, path: true } });
@@ -107,8 +108,10 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
     if (levels.length > 8) throw new DomainError("VALIDATION", "At most 8 grouping levels");
 
     // Live leaves, the caller's filter and their read scope (the same cut as /query).
-    const filter: FilterGroupT = { logic: "and", children: [...LIVE_LEAVES, ...(userFilter && userFilter.children.length ? [userFilter] : [])] };
-    const base = scopedQuery(auth, { workspaceId, filter, period: { kind: "range", ...period }, measures: [...MEASURES], ...(q.asOf ? { asOf: q.asOf } : {}) });
+    // Structure (ADR-050): every live budget, parents included, each with its subtree's spend.
+    const cut = structure ? [LIVE_LEAVES[1] as (typeof LIVE_LEAVES)[number]] : LIVE_LEAVES;
+    const filter: FilterGroupT = { logic: "and", children: [...cut, ...(userFilter && userFilter.children.length ? [userFilter] : [])] };
+    const base = scopedQuery(auth, { workspaceId, filter, period: { kind: "range", ...period }, measures: [...MEASURES], ...(q.asOf ? { asOf: q.asOf } : {}), ...(structure ? { subtree: true } : {}) });
     const opts: CompileOptions = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period)), groupDates: true };
 
     const bars: TimelineBar[] = [];
@@ -138,9 +141,36 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
       }
     }
 
-    // One page of envelopes (the leaves), by name.
-    const c = compileQuery({ ...base, groupBy: [], sort: [{ key: "name", dir: "asc" }], limit: q.limit, ...(q.cursor ? { cursor: q.cursor } : {}) }, period, today, opts);
-    const page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
+    // One page of envelopes (the leaves), by name. Structure: all of them, so every parent is there.
+    const page = structure
+      ? { rows: await allPages(tx, { ...base, groupBy: [], sort: [{ key: "name", dir: "asc" }] }, period, today, opts), nextCursor: null }
+      : await (async () => {
+          const c = compileQuery({ ...base, groupBy: [], sort: [{ key: "name", dir: "asc" }], limit: q.limit, ...(q.cursor ? { cursor: q.cursor } : {}) }, period, today, opts);
+          return pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
+        })();
+    // Structure: a budget sits under its parent when the parent is shown, else at the top.
+    const shown = new Set(page.rows.map((r) => String(r["envelope_id"])));
+    const parentOf = (r: Row) => (structure && r["parent_id"] && shown.has(String(r["parent_id"])) ? String(r["parent_id"]) : null);
+    const byId = new Map(page.rows.map((r) => [String(r["envelope_id"]), r]));
+    const depthOf = (r: Row): number => {
+      let d = 0;
+      for (let p = parentOf(r); p !== null && d < 50; d++) p = parentOf(byId.get(p) as Row);
+      return d;
+    };
+    if (structure) {
+      // Parents before their children, siblings by name: the Gantt reads the rows as a tree.
+      const kids = new Map<string | null, Row[]>();
+      for (const r of page.rows) kids.set(parentOf(r), [...(kids.get(parentOf(r)) ?? []), r]);
+      const ordered: Row[] = [];
+      const walk = (p: string | null) => {
+        for (const r of kids.get(p) ?? []) {
+          ordered.push(r);
+          walk(String(r["envelope_id"]));
+        }
+      };
+      walk(null);
+      page.rows = ordered;
+    }
     const ids = page.rows.map((r) => String(r["envelope_id"]));
     const dates = new Map((await tx.envelope.findMany({ where: { id: { in: ids } }, select: { id: true, startDate: true, endDate: true } })).map((e) => [e.id, e]));
     const targets = await ganttTargets(tx, workspaceId, ids, period.start, period.end, asOf);
@@ -165,10 +195,11 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
       const d = dates.get(id);
       const own = targetsOf.get(id) ?? [];
       const iso = (x: Date | undefined) => (x ? x.toISOString().slice(0, 10) : period.start);
+      const level = structure ? depthOf(r) : levels.length;
       bars.push({
         key: id,
-        parentKey: levels.length ? segments.join("/") : null,
-        level: levels.length,
+        parentKey: structure ? parentOf(r) : levels.length ? segments.join("/") : null,
+        level,
         kind: "envelope",
         name: String(r["name"]),
         path: [...segments, String(r["name"])],
@@ -177,7 +208,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
         envelopeId: id,
         ...measuresOf(r),
         status: String(r["status"]),
-        hasChildren: own.length > 0 || experimentsOf.has(id),
+        hasChildren: own.length > 0 || experimentsOf.has(id) || Number(r["child_count"] ?? 0) > 0,
         expanded: false,
         lane: 0,
         markers: markersOf.get(id) ?? [],
@@ -190,7 +221,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
         bars.push({
           key: `${id}:${t.targetId}`,
           parentKey: id,
-          level: levels.length + 1,
+          level: level + 1,
           kind: "target",
           name: t.metricKey,
           path: [...segments, String(r["name"]), t.metricKey],
@@ -216,7 +247,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
         bars.push({
           key: `${id}:x:${x.id}`,
           parentKey: id,
-          level: levels.length + 1,
+          level: level + 1,
           kind: "experiment",
           name: x.name,
           path: [...segments, String(r["name"]), x.name],

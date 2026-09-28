@@ -422,6 +422,7 @@ const en = {
   "explorer.filter.chip": "{dimension} is {values}",
   "explorer.filter.chipEmpty": "{dimension} is empty",
   "explorer.filter.custom": "Custom filter",
+  "explorer.structure": "Budget structure",
   "explorer.none": "(none)",
   "tagsAdmin.intro": "Tags group budgets, targets, alerts and threads across the tree. Open a tag to see what carries it; merge two tags and everything tagged with one moves to the other.",
   "tagsAdmin.new": "New tag",

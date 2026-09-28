@@ -53,6 +53,8 @@ export const AttrKey = z.enum([
   "has_attachments",
   "alert_severity",
   "is_leaf",
+  /** The envelope's parent (ADR-050): eq / in an envelope id, or is_empty for top-level budgets. */
+  "parent_id",
   /** T-038: linked to an experiment. Value: a status (RUNNING), an experiment id, or `<id>:TEST` / `<id>:CONTROL`. */
   "experiment",
 ]);

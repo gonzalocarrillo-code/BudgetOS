@@ -21,6 +21,8 @@ const MAX_ENVELOPES = 5000;
 export interface TimelineSearch {
   filter: FilterGroupT;
   templateId?: string | undefined;
+  /** Budget structure (ADR-050): nest by parent links, not a hierarchy template. */
+  structure?: boolean | undefined;
   period: PeriodSpec;
   asOf?: string | undefined;
   zoom: TimelineZoom;
@@ -28,7 +30,7 @@ export interface TimelineSearch {
 
 export const timelineQuery = (ws: string, s: TimelineSearch) =>
   queryOptions({
-    queryKey: ["timeline", ws, s.filter, s.templateId ?? null, s.period, s.asOf ?? null, s.zoom],
+    queryKey: ["timeline", ws, s.filter, s.structure ? "structure" : (s.templateId ?? null), s.period, s.asOf ?? null, s.zoom],
     queryFn: async (): Promise<TimelineResponse & { truncated: boolean }> => {
       let cursor: string | null = null;
       let first = null as TimelineResponse | null;
@@ -39,7 +41,7 @@ export const timelineQuery = (ws: string, s: TimelineSearch) =>
           zoom: s.zoom,
           limit: PAGE,
           ...(s.filter.children.length ? { filter: encodeFilter(s.filter) } : {}),
-          ...(s.templateId ? { templateId: s.templateId } : {}),
+          ...(s.structure ? { structure: "true" } : s.templateId ? { templateId: s.templateId } : {}),
           ...(s.asOf ? { asOf: s.asOf } : {}),
           ...(cursor ? { cursor } : {}),
         };

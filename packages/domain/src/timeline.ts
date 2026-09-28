@@ -86,6 +86,8 @@ export const TimelineQuery = z
     filter: z.string().max(20_000).optional(),
     groupBy: z.string().max(1000).optional(),
     templateId: z.string().uuid().optional(),
+    /** Budget structure (ADR-050): every live budget nested by its parent links, not grouped by granularities. */
+    structure: z.enum(["true", "false"]).optional(),
     from: IsoDate.optional(),
     to: IsoDate.optional(),
     period: z.string().max(2000).optional(),

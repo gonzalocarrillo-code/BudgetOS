@@ -30,6 +30,11 @@ export const QueryRequest = z.object({
   grain: Grain.default("total"),
   asOf: z.string().datetime().optional(),
   templateId: z.string().uuid().optional(),
+  /**
+   * Budget structure (ADR-050): each flat row's actual and projected include every envelope under
+   * it (parent links), so a parent reads against its own amount; rows carry `childCount`.
+   */
+  subtree: z.boolean().optional(),
   sort: z.array(z.object({ key: z.string(), dir: z.enum(["asc", "desc"]) })).max(3).default([]),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(1000).default(200),
@@ -47,6 +52,9 @@ export const QueryRow = z.object({
    * a parent opens in the drawer like a leaf. Null when no single envelope is the group.
    */
   nodeEnvelopeId: z.string().uuid().nullable().optional(),
+  /** Flat rows with `subtree`: live children of this envelope; its parent. */
+  childCount: z.number().int().optional(),
+  parentId: z.string().uuid().nullable().optional(),
   path: z.array(z.string()),
   dimensions: z.record(z.string(), z.string().nullable()),
   measures: z.record(z.string(), z.string().nullable()),

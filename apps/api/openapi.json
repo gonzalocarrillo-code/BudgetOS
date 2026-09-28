@@ -1716,6 +1716,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "parent_id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -2270,6 +2271,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "parent_id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -6355,6 +6357,7 @@
                                             "has_attachments",
                                             "alert_severity",
                                             "is_leaf",
+                                            "parent_id",
                                             "experiment"
                                           ]
                                         }
@@ -6617,6 +6620,9 @@
                     "type": "string",
                     "format": "uuid"
                   },
+                  "subtree": {
+                    "type": "boolean"
+                  },
                   "sort": {
                     "type": "array",
                     "maxItems": 3,
@@ -6691,6 +6697,14 @@
                             "type": "integer"
                           },
                           "nodeEnvelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "childCount": {
+                            "type": "integer"
+                          },
+                          "parentId": {
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
@@ -6993,6 +7007,14 @@
                             "type": "integer"
                           },
                           "nodeEnvelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "childCount": {
+                            "type": "integer"
+                          },
+                          "parentId": {
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
@@ -7684,6 +7706,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "parent_id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -10182,6 +10205,7 @@
                                                 "has_attachments",
                                                 "alert_severity",
                                                 "is_leaf",
+                                                "parent_id",
                                                 "experiment"
                                               ]
                                             }
@@ -10443,6 +10467,9 @@
                       "templateId": {
                         "type": "string",
                         "format": "uuid"
+                      },
+                      "subtree": {
+                        "type": "boolean"
                       },
                       "sort": {
                         "type": "array",
