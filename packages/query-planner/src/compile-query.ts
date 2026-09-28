@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Decimal } from "decimal.js";
-import { DomainError, isPredicate, type FilterGroupT, type QueryRequest, type ScopeFilter } from "@budget/domain";
+import { COMPARE_MEASURES, DomainError, isPredicate, type FilterGroupT, type QueryRequest, type ScopeFilter } from "@budget/domain";
 import { SqlBuilder } from "./sql-builder.js";
 import { compileFilter, filterMetrics, sanitize, type CompileCtx } from "./compile-filter.js";
 
@@ -103,6 +103,27 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const budgetSql = `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
            AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${asOf}
            ORDER BY v.approved_at DESC LIMIT 1)`;
+  // Phase E (H-004): the budget to compare with, per envelope: a snapshot's frozen amount, or the
+  // version approved at another instant (the same rule as budgetSql). Change = now − then.
+  const compare = q.compareTo;
+  if (compare === undefined && (q.measures.some((mk) => COMPARE_MEASURES.has(mk)) || filterReads(filter, COMPARE_MEASURES) || q.sort.some((s) => COMPARE_MEASURES.has(s.key.replace(/^[em]\./, ""))))) {
+    throw new DomainError("VALIDATION", "budget_baseline and the change measures need compareTo (a snapshot or an instant)");
+  }
+  const baselineSql =
+    compare === undefined
+      ? "NULL::numeric"
+      : "baselineId" in compare
+        ? `(SELECT br.amount_reporting FROM budget_baseline_row br WHERE br.baseline_id = ${b.p(compare.baselineId)}::uuid AND br.envelope_id = e.id)`
+        : `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
+           AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${b.p(compare.asOf)}::timestamptz
+           ORDER BY v.approved_at DESC LIMIT 1)`;
+  // Only a comparing query carries the change columns (the check above refuses them otherwise).
+  const compareCols =
+    compare === undefined
+      ? ""
+      : `,
+        (coalesce(budget, 0) - coalesce(budget_baseline, 0)) AS budget_change_abs,
+        CASE WHEN budget_baseline > 0 THEN (coalesce(budget, 0) - budget_baseline) / budget_baseline ELSE NULL END AS budget_change_pct`;
   const requested = new Set(q.targets);
   let kpiCols = "";
   let kpiDerived = "";
@@ -163,14 +184,15 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       SELECT s.root, c.id FROM sub s JOIN envelope c ON c.parent_id = s.node AND c.status <> 'ARCHIVED'
     ),
     m AS (
-      SELECT o.envelope_id, o.budget, o.period_share, coalesce(x.actual, 0) AS actual, coalesce(x.projected, 0) AS projected${kpiNames.map((n) => `, o.${n}`).join("")}
+      SELECT o.envelope_id, o.budget,${compare === undefined ? "" : " o.budget_baseline,"} o.period_share, coalesce(x.actual, 0) AS actual, coalesce(x.projected, 0) AS projected${kpiNames.map((n) => `, o.${n}`).join("")}
       FROM m_own o
       LEFT JOIN (SELECT s.root, sum(d.actual) AS actual, sum(d.projected) AS projected FROM sub s JOIN m_own d ON d.envelope_id = s.node GROUP BY s.root) x ON x.root = o.envelope_id
     )`;
   const measuresCte = `${subtree ? "RECURSIVE " : ""}
     ${subtree ? "m_own" : "m"} AS (
       SELECT e.id AS envelope_id,
-        ${budgetSql} AS budget,
+        ${budgetSql} AS budget,${compare === undefined ? "" : `
+        ${baselineSql} AS budget_baseline,`}
         -- The share of the envelope's days that fall in the period (its budget's share, below).
         (LEAST(e.end_date, ${pEnd}) - GREATEST(e.start_date, ${pStart}) + 1)::numeric / NULLIF(e.end_date - e.start_date + 1, 0) AS period_share,
         ${spendSql(b, period, ws)} AS actual,
@@ -190,7 +212,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         CASE WHEN budget > 0 THEN actual / budget ELSE NULL END AS spend_to_date_pct,
         -- Pace: the period's spend against the budget's share of the period, over the share of the period gone.
         CASE WHEN budget_in_period > 0 AND ${elapsedFrac} > 0 THEN (actual / budget_in_period) / ${elapsedFrac} ELSE NULL END AS pace_index,
-        ${derived.projected_close_pct} AS projected_close_pct
+        ${derived.projected_close_pct} AS projected_close_pct${compareCols}
         ${kpiDerived}
       FROM m1
     )`;
@@ -210,6 +232,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const measures = [...new Set(q.measures)];
   const measureAgg = measures
     .map((mk) => {
+      // A group's change % is its total change over its total baseline, never an average of %.
+      if (mk === "budget_change_pct") return `CASE WHEN sum(m.budget_baseline) > 0 THEN sum(m.budget_change_abs) / sum(m.budget_baseline) ELSE NULL END AS ${mk}`;
       if (RATIO.has(mk)) {
         // ratio measures are recomputed from sums, never averaged
         return `CASE WHEN sum(m.budget) > 0 THEN ${ratioExpr(mk, elapsedFrac)} ELSE NULL END AS ${mk}`;
@@ -331,7 +355,7 @@ export function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: st
 }
 
 const UUID_COLS = new Set(["envelope_id", "parent_id"]);
-const NUMERIC_COLS = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
+const NUMERIC_COLS = new Set(["budget", "budget_in_period", "budget_baseline", "budget_change_abs", "budget_change_pct", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
 const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */

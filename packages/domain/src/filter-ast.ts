@@ -31,7 +31,13 @@ export const MeasureKey = z.enum([
   "pace_index",
   "projected_close_pct",
   "spend_to_date_pct",
+  /** Phase E (H-004, ADR-053): with `compareTo`, the budget then, and how it changed since (derived, never stored). */
+  "budget_baseline",
+  "budget_change_abs",
+  "budget_change_pct",
 ]);
+/** The measures that need `QueryRequest.compareTo`. */
+export const COMPARE_MEASURES: ReadonlySet<string> = new Set(["budget_baseline", "budget_change_abs", "budget_change_pct"]);
 export type MeasureKey = z.infer<typeof MeasureKey>;
 
 export const AttrKey = z.enum([

@@ -38,9 +38,19 @@ Amounts already have history, because `envelope_version` is immutable and the pl
 - **Reintroducing creates a successor.** `POST /envelopes/:id/reintroduce`, or `successor` inside the end, creates a new budget under the same parent, with the same granularities, currency and owner. It gets new dates, which start after the old end, and a new amount, and it has `envelope_lineage` kind `continues`. It goes through the policy as a `reintroduce` bulk change, or inside the end's request. Versions that give amount back are approved before new ones, so a successor can reuse what the ended budget released under the parent's cap.
 - **The dialog proposes spend as the final amount.** `GET /envelopes/:id/spend?through=` returns spend up to the last day, which the End dialog proposes as the final amount (decision E2).
 
+## Decision: comparing inside /query (Phase E3)
+
+- **`QueryRequest.compareTo`** is either `{ baselineId }`, a snapshot's frozen rows, or `{ asOf }`, the versions approved at an instant, which is the same rule as `asOf`.
+- **Three measures** come with it: `budget_baseline`, `budget_change_abs` and `budget_change_pct`. They are derived per envelope in the planner's measures CTE and never stored.
+  - The change is now minus then.
+  - A budget the snapshot does not hold has no baseline, and its whole budget counts as change, because it is new.
+  - A group's change % is its total change over its total baseline, never an average of percentages.
+- These measures work in flat, grouped, subtree and totals queries, and in sort, filter and keyset paging.
+- **The compare measures need `compareTo`.** The planner refuses them without it. A query with `compareTo` stays on Postgres, not the warehouse, and the roll-up cache (`/tree`) does not accept them.
+- **A subtree snapshot compared with the whole workspace** shows every budget outside it as new. Screens that compare with a subtree snapshot filter to that subtree, which comes in Phase E4.
+
 ## Consequences
 
 - A snapshot of a large workspace copies one row per budget. At the planned sizes of up to 50,000 budgets, that is one INSERT…SELECT inside the request transaction.
 - Moves, renames and granularity changes made after a snapshot don't change it. That is the point, and it is also why the report can show a budget as moved.
-- Comparing to a snapshot inside `/query` is a planner measure, which comes in Phase E3 (H-004).
 - The grid and the planner don't know about `ended_at` yet, so the "Ended" chip shows in the drawer only. The Budgets grid gets it with the compare columns in Phase E4.

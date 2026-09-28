@@ -29,6 +29,12 @@ export const QueryRequest = z.object({
   period: PeriodSpec,
   grain: Grain.default("total"),
   asOf: z.string().datetime().optional(),
+  /**
+   * Phase E (H-004, ADR-053): what `budget_baseline` and the change measures compare with: a saved
+   * snapshot's frozen amounts, or the budgets approved at an instant. A budget the snapshot does
+   * not hold has no baseline, and its change is its whole budget (a new budget).
+   */
+  compareTo: z.union([z.object({ baselineId: z.string().uuid() }).strict(), z.object({ asOf: z.string().datetime() }).strict()]).optional(),
   templateId: z.string().uuid().optional(),
   /**
    * Budget structure (ADR-050): each flat row's actual and projected include every envelope under
@@ -96,7 +102,8 @@ export const TreeRequest = z.object({
   templateId: z.string().uuid(),
   period: PeriodSpec,
   parentPath: z.string().max(4000).default(""),
-  measures: z.array(MeasureKey).min(1).default(["budget", "actual", "projected", "pace_index"]),
+  // The roll-up cache holds no snapshot: comparing goes through /query with compareTo (H-004).
+  measures: z.array(MeasureKey.exclude(["budget_baseline", "budget_change_abs", "budget_change_pct"])).min(1).default(["budget", "actual", "projected", "pace_index"]),
 });
 export type TreeRequest = z.infer<typeof TreeRequest>;
 

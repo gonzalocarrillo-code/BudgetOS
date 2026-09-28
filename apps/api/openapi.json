@@ -2073,7 +2073,10 @@
                                                     "variance_pct",
                                                     "pace_index",
                                                     "projected_close_pct",
-                                                    "spend_to_date_pct"
+                                                    "spend_to_date_pct",
+                                                    "budget_baseline",
+                                                    "budget_change_abs",
+                                                    "budget_change_pct"
                                                   ]
                                                 }
                                               },
@@ -2628,7 +2631,10 @@
                                                     "variance_pct",
                                                     "pace_index",
                                                     "projected_close_pct",
-                                                    "spend_to_date_pct"
+                                                    "spend_to_date_pct",
+                                                    "budget_baseline",
+                                                    "budget_change_abs",
+                                                    "budget_change_pct"
                                                   ]
                                                 }
                                               },
@@ -6714,7 +6720,10 @@
                                             "variance_pct",
                                             "pace_index",
                                             "projected_close_pct",
-                                            "spend_to_date_pct"
+                                            "spend_to_date_pct",
+                                            "budget_baseline",
+                                            "budget_change_abs",
+                                            "budget_change_pct"
                                           ]
                                         }
                                       },
@@ -6938,7 +6947,10 @@
                         "variance_pct",
                         "pace_index",
                         "projected_close_pct",
-                        "spend_to_date_pct"
+                        "spend_to_date_pct",
+                        "budget_baseline",
+                        "budget_change_abs",
+                        "budget_change_pct"
                       ]
                     },
                     "default": [
@@ -7040,6 +7052,34 @@
                   "asOf": {
                     "type": "string",
                     "format": "date-time"
+                  },
+                  "compareTo": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "baselineId": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "required": [
+                          "baselineId"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "asOf": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "asOf"
+                        ]
+                      }
+                    ]
                   },
                   "templateId": {
                     "type": "string",
@@ -8063,7 +8103,10 @@
                                                     "variance_pct",
                                                     "pace_index",
                                                     "projected_close_pct",
-                                                    "spend_to_date_pct"
+                                                    "spend_to_date_pct",
+                                                    "budget_baseline",
+                                                    "budget_change_abs",
+                                                    "budget_change_pct"
                                                   ]
                                                 }
                                               },
@@ -9315,7 +9358,10 @@
                                                     "variance_pct",
                                                     "pace_index",
                                                     "projected_close_pct",
-                                                    "spend_to_date_pct"
+                                                    "spend_to_date_pct",
+                                                    "budget_baseline",
+                                                    "budget_change_abs",
+                                                    "budget_change_pct"
                                                   ]
                                                 }
                                               },
@@ -11867,7 +11913,10 @@
                                                 "variance_pct",
                                                 "pace_index",
                                                 "projected_close_pct",
-                                                "spend_to_date_pct"
+                                                "spend_to_date_pct",
+                                                "budget_baseline",
+                                                "budget_change_abs",
+                                                "budget_change_pct"
                                               ]
                                             }
                                           },
@@ -12091,7 +12140,10 @@
                             "variance_pct",
                             "pace_index",
                             "projected_close_pct",
-                            "spend_to_date_pct"
+                            "spend_to_date_pct",
+                            "budget_baseline",
+                            "budget_change_abs",
+                            "budget_change_pct"
                           ]
                         },
                         "default": [
@@ -12193,6 +12245,34 @@
                       "asOf": {
                         "type": "string",
                         "format": "date-time"
+                      },
+                      "compareTo": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "baselineId": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            },
+                            "required": [
+                              "baselineId"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "asOf": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "required": [
+                              "asOf"
+                            ]
+                          }
+                        ]
                       },
                       "templateId": {
                         "type": "string",

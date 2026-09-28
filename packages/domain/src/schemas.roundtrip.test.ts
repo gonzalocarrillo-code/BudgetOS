@@ -49,6 +49,8 @@ const samples: Record<string, readonly unknown[]> = {
   Grain: ["total", "month"],
   QueryRequest: [
     { workspaceId, period: { kind: "relative", preset: "current_quarter" } },
+    { workspaceId, period: { kind: "fiscal", key: "2026-Q4" }, measures: ["budget", "budget_baseline", "budget_change_abs", "budget_change_pct"], compareTo: { baselineId: "01927a00-0000-7000-8000-0000000000c1" } },
+    { workspaceId, period: { kind: "fiscal", key: "2026-Q4" }, measures: ["budget_change_pct"], compareTo: { asOf: "2026-10-01T00:00:00.000Z" } },
     {
       workspaceId,
       filter: { logic: "and", children: [] },
