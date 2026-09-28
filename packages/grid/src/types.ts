@@ -25,7 +25,8 @@ export type ColumnSpec = (
   | { kind: "path" }
   | { kind: "measure"; key: MeasureKey; editable?: boolean }
   | { kind: "target"; metric: string; field: "target" | "actual" | "vsTargetPct"; editable?: boolean }
-  | { kind: "status" }
+  /** `labels`: what each status reads as (default: the raw status); `pendingLabel`: a group's count waiting for approval. */
+  | { kind: "status"; labels?: Readonly<Record<string, string>>; pendingLabel?: (count: number) => string }
   | { kind: "chips" }
   | { kind: "dimension"; key: string; editable?: boolean }
 ) & { title?: string; width?: number };

@@ -1,15 +1,17 @@
 import { formatMoney } from "@budget/grid";
 import { Button } from "@budget/ui";
-import { t } from "@budget/ui/i18n";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { t, type MessageKey } from "@budget/ui/i18n";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 import { HistoryList } from "../history/history-list.js";
 import { threadsQuery } from "../threads/queries.js";
 import { TagChips } from "../threads/tag-chips.js";
 import { ThreadPanel } from "../threads/thread-panel.js";
 import { envelopeQuery, registryQuery } from "../../lib/queries.js";
+import { api, unwrap } from "../../lib/api.js";
+import { STATUS_LABELS } from "./labels.js";
 import { DimensionIcon } from "../registry/dimension-icon.js";
 import type { StructureOp } from "../structure/structure-dialog.js";
 import { StructureActions } from "../structure/structure-actions.js";
@@ -22,9 +24,19 @@ type Tab = "details" | "history" | "comments";
  * The envelope drawer (`select` search param): Details (approved budget, open draft, dimensions,
  * tags), History (every change, T-029) and Comments (threads, T-030). Every budget always has all three.
  */
-export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily }: { ws: string; id: string; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void }): ReactElement {
+export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChanged }: { ws: string; id: string; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void; onChanged?: () => void }): ReactElement {
   const client = useQueryClient();
   const { data, error } = useQuery(envelopeQuery(ws, id));
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  const rename = useMutation({
+    mutationFn: async (body: { name: string } | { useTemplateName: true }) => unwrap(api.PATCH("/api/v1/envelopes/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: { rowVersion: data?.rowVersion ?? 1, ...body } as never })),
+    onSuccess: async () => {
+      setRenaming(false);
+      await client.invalidateQueries({ queryKey: ["envelope", ws, id] });
+      onChanged?.();
+    },
+  });
   const { data: threads } = useQuery(threadsQuery(ws, "envelope", id));
   const { data: dims = [] } = useQuery(registryQuery(ws));
   const open = threads?.filter((x) => x.status === "open").length ?? 0;
@@ -52,12 +64,49 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily }: { ws:
     <aside className="fixed bottom-0 right-0 top-16 z-20 flex w-[28rem] max-w-full flex-col gap-4 overflow-y-auto border-l border-border bg-card p-5 shadow-lg" data-testid="envelope-drawer" aria-label={data?.name ?? ""}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold tracking-[-0.015em]" data-testid="drawer-name">
-            {(typeof data?.["displayName"] === "string" ? data["displayName"] : null) ?? data?.name ?? (error ? t("error.title") : t("shell.loading"))}
-          </h2>
+          {data && renaming ? (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newName.trim()) rename.mutate({ name: newName.trim() });
+              }}
+              data-testid="drawer-rename-form"
+            >
+              <input className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm" aria-label={t("drawer.renameLabel")} value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus data-testid="drawer-rename-input" />
+              {newName.trim() && !rename.isPending ? (
+                <Button type="submit" size="sm" data-testid="drawer-rename-save">{t("drawer.renameSave")}</Button>
+              ) : (
+                <Button type="button" size="sm" disabled reason={rename.isPending ? t("shell.loading") : t("drawer.renameNeed")}>{t("drawer.renameSave")}</Button>
+              )}
+              <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(false)}>{t("drawer.renameCancel")}</Button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-1">
+              <h2 className="truncate text-lg font-semibold tracking-[-0.015em]" data-testid="drawer-name">
+                {(typeof data?.["displayName"] === "string" ? data["displayName"] : null) ?? data?.name ?? (error ? t("error.title") : t("shell.loading"))}
+              </h2>
+              {data ? (
+                <button type="button" className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={t("drawer.rename")} title={t("drawer.rename")} onClick={() => (setNewName(data.name), setRenaming(true))} data-testid="drawer-rename">
+                  <Pencil className="size-3.5" aria-hidden />
+                </button>
+              ) : null}
+            </div>
+          )}
           {typeof data?.["displayName"] === "string" && data["displayName"] !== data.name ? <p className="truncate text-xs text-muted-foreground" data-testid="drawer-original-name">{data.name}</p> : null}
+          {data?.["nameCustom"] === true ? (
+            <p className="text-xs text-muted-foreground">
+              {t("drawer.customName")}{" "}
+              <button type="button" className="text-primary hover:underline" onClick={() => rename.mutate({ useTemplateName: true })} data-testid="drawer-use-template-name">{t("drawer.useTemplateName")}</button>
+            </p>
+          ) : null}
           {error ? <p className="text-xs text-destructive" data-testid="drawer-error">{error.message}</p> : null}
-          {data ? <p className="text-xs text-muted-foreground">{data.status}</p> : null}
+          {rename.error ? <p className="text-xs text-destructive" role="alert">{rename.error.message}</p> : null}
+          {data ? (
+            <span className="mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground" title={t(`status.help.${data.status}` as MessageKey)} data-testid="drawer-status">
+              {STATUS_LABELS()[data.status] ?? data.status}
+            </span>
+          ) : null}
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("drawer.close")}>
           <X className="size-4" aria-hidden />

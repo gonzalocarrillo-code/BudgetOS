@@ -368,6 +368,13 @@ The spec-scale load job re-measures this on this branch.
 - **Local runner:** now delivers notifications (in-app and Slack), and every workspace of the local stack's org.
 - **Needs a real Slack app to use:** the bot token and signing secret, plus a public URL for buttons and /budget.
 
+## Product feedback, round 4: Budgets (2026-09-28)
+
+- **Pace:** the period's spend against the budget's share of the period (`budget_in_period`, ADR-047). A year-long budget viewed over one quarter no longer reads 0.15.
+- **Default period:** Budgets opens on the fiscal year.
+- **Statuses:** read as words (Draft, Waiting for approval, Approved, Locked (period closed), Archived; groups "N waiting"), with an explanation on the drawer's chip.
+- **Rename:** a budget is renamed from its drawer. A custom name wins over the display naming template (`envelope.name_custom`); "use the template name" undoes it.
+- **Adding budgets:** "New budget" (#68) adds a top-level budget; Add child / Split add below one.
 ## Product feedback, round 4: admins apply directly (2026-09-28)
 
 - A workspace admin's or org admin's own change is approved on submit, with no approval step. `matchPolicy` returns the built-in "Admins apply directly" policy before the workspace's own, so every write path gets it: edits, bulk, family, structure, targets and manual entry, plus the drawer's "Apply now".

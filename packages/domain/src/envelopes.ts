@@ -62,8 +62,11 @@ export const UpdateEnvelopeInput = z
     startDate: IsoDate.optional(),
     endDate: IsoDate.optional(),
     periodId: z.string().uuid().nullable().optional(),
+    /** Drop a custom name: the display naming template names the budget again. */
+    useTemplateName: z.literal(true).optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => !(v.useTemplateName && v.name !== undefined), { message: "Rename, or use the template name, not both", path: ["useTemplateName"] });
 export type UpdateEnvelopeInput = z.infer<typeof UpdateEnvelopeInput>;
 
 // ---------------------------------------------------------------------------------------------
