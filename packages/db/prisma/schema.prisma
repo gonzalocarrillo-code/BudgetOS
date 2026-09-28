@@ -28,6 +28,14 @@ model Workspace {
   fiscalYearStartMonth Int          @default(1) @map("fiscal_year_start_month")
   settings             Json         @default("{}")
   createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  /// ACTIVE | ARCHIVED (ADR-052): archived is read-only and seen by superadmins only.
+  status               String       @default("ACTIVE")
+  archivedAt           DateTime?    @map("archived_at") @db.Timestamptz
+  archivedBy           String?      @map("archived_by") @db.Uuid
+  /// Deleted by a superadmin: a tombstone; the purge worker removes its rows after purgeAfter.
+  deletedAt            DateTime?    @map("deleted_at") @db.Timestamptz
+  purgeAfter           DateTime?    @map("purge_after") @db.Timestamptz
+  purgedAt             DateTime?    @map("purged_at") @db.Timestamptz
 
   @@unique([orgId, slug])
   @@map("workspace")
@@ -319,6 +327,8 @@ model FxRate {
 model MetricDefinition {
   id          String  @id @db.Uuid
   orgId       String  @map("org_id") @db.Uuid
+  /// ORG-007: set for a workspace's own metric; null for the shared library (superadmins).
+  workspaceId String? @map("workspace_id") @db.Uuid
   key         String // budget | cpa | cpl | roas | cpm | cpc | ctr | conversions | revenue | ...
   label       String
   numerator   String // 'spend' | 'kpi:<metric>' | 'budget'

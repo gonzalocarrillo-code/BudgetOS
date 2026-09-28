@@ -417,7 +417,14 @@ The product owner asked for a usability audit of the whole system by a UX/UI spe
 
 Phase A notes (2026-09-28): tours never start by themselves (Home invites; a close records a skip, migration `20261001000000_tour_dismissed`); only `<main>` scrolls; nav and Settings follow `/me` permissions; branded sign-in, 403 and no-workspace pages; the BudgetOS logo, favicon and per-page tab titles; AA tokens with a contrast test; one `StatusChip`; toasts (`meta.success` / `meta.error` on mutations), skeletons and empty states; Home and the Overview tiles use Budgets' total (ADR-051). The web UI says BudgetOS; Slack messages and exports still say Budget OS until decision D1 is confirmed. The Explorer e2e totals test waited on the wrong load since ADR-050 and now waits for the template's tree.
 | DS-001…005 | B | `@budget/ui` form controls, layers, shell v2, `Table`, Budgets toolbar | pending |
-| ORG-001…008 | C | Superadmin naming (ADR-052), workspace archive / delete + purge worker, org console, scoped members, workspace-owned registry and metrics, boundary tests | pending |
+| ORG-001 | C | Superadmin naming and marking (ADR-052): "Superadmin" everywhere, `isSuperadmin` on `/me`, a badge in the workspace, `audit_event.actor_context` | done |
+| ORG-002 | C | Archive and restore: `workspace.status`, 423 on writes, hidden from members, workers skip it, a banner | done |
+| ORG-003 | C | Delete (archived, typed name, reason), undelete within `WORKSPACE_RETENTION_DAYS`, the purge job keeping audit rows | done |
+| ORG-004 | C | Org console: Workspaces (new with a first admin, archive, restore, delete) and People (deactivate, reactivate); "Manage workspaces" in the switcher | done |
+| ORG-005 | C | Members scoped to the workspace; workspace admins add people by email with a role; one admin always kept; group sync superadmin-only | done |
+| ORG-006 | C | Template granularities become the new workspace's own; shared rows labelled | done (existing orgs keep their shared rows; decision D4) |
+| ORG-007 | C | Workspace metrics (`metric_definition.workspace_id`, RLS) and workspace tours edited by workspace admins | done |
+| ORG-008 | C | Boundary tests: permission matrix rows, `lifecycle.test.ts`, `members.test.ts`, `consumer.test.ts`, e2e `org-console.spec.ts` | done |
 | UX-009…012 | D | Settings IA, keyboard and axe pass, Home / Overview polish, dark mode | pending |
 
 Decisions D1–D9 in the plan's Part 5 are open for the product owner.

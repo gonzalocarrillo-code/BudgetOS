@@ -9,7 +9,11 @@ import { api, unwrap } from "./api.js";
 export const Me = z.object({
   user: z.object({ id: z.string().uuid(), email: z.string(), name: z.string(), orgId: z.string().uuid() }),
   isOrgAdmin: z.boolean(),
+  /** ADR-052: the org-wide role, shown as Superadmin. */
+  isSuperadmin: z.boolean().default(false),
   workspaces: z.array(z.object({ workspaceId: z.string().uuid(), name: z.string(), currency: z.string().default("USD"), roles: z.array(z.string()), permissions: z.array(z.string()) })),
+  /** Superadmins: archived workspaces, opened read-only. */
+  archivedWorkspaces: z.array(z.object({ workspaceId: z.string().uuid(), name: z.string(), archivedAt: z.string().nullable() })).default([]),
 });
 export type Me = z.infer<typeof Me>;
 

@@ -58,7 +58,7 @@ async function stepApprovers(tx: Tx, workspaceId: string, requestId: string): Pr
  * - approval.changed: a new or escalated request notifies the current step's approvers
  *   (`approval_requested`); an outcome notifies the requester (`approval_outcome`).
  */
-export async function handleInApp(prisma: PrismaClient, body: unknown): Promise<{ outcome: "applied" | "duplicate"; notified: string[] }> {
+export async function handleInApp(prisma: PrismaClient, body: unknown): Promise<{ outcome: "applied" | "duplicate" | "skipped"; notified: string[] }> {
   const event: OutboxEvent = decodePush(body);
   const notified: string[] = [];
   const outcome = await handleOnce(prisma, IN_APP_CONSUMER, event, async (tx) => {

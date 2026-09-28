@@ -10,6 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OrgRouteImport } from './routes/org'
+import { Route as OrgIndexRouteImport } from './routes/org.index'
+import { Route as OrgPeopleRouteImport } from './routes/org.people'
+import { Route as OrgWorkspacesRouteImport } from './routes/org.workspaces'
 import { Route as WWsRouteImport } from './routes/w.$ws'
 import { Route as WWsIndexRouteImport } from './routes/w.$ws.index'
 import { Route as WWsAlertsRouteImport } from './routes/w.$ws.alerts'
@@ -45,6 +49,26 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const OrgRoute = OrgRouteImport.update({
+  id: '/org',
+  path: '/org',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrgIndexRoute = OrgIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgRoute,
+} as any)
+const OrgPeopleRoute = OrgPeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
+  getParentRoute: () => OrgRoute,
+} as any)
+const OrgWorkspacesRoute = OrgWorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => OrgRoute,
 } as any)
 const WWsRoute = WWsRouteImport.update({
   id: '/w/$ws',
@@ -199,7 +223,11 @@ const WWsSourcesManualRoute = WWsSourcesManualRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/org': typeof OrgRouteWithChildren
+  '/org/people': typeof OrgPeopleRoute
+  '/org/workspaces': typeof OrgWorkspacesRoute
   '/w/$ws': typeof WWsRouteWithChildren
+  '/org/': typeof OrgIndexRoute
   '/w/$ws/alerts': typeof WWsAlertsRoute
   '/w/$ws/approvals': typeof WWsApprovalsRouteWithChildren
   '/w/$ws/budgets': typeof WWsBudgetsRoute
@@ -232,6 +260,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/org/people': typeof OrgPeopleRoute
+  '/org/workspaces': typeof OrgWorkspacesRoute
+  '/org': typeof OrgIndexRoute
   '/w/$ws/alerts': typeof WWsAlertsRoute
   '/w/$ws/budgets': typeof WWsBudgetsRoute
   '/w/$ws/closures': typeof WWsClosuresRoute
@@ -262,7 +293,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/org': typeof OrgRouteWithChildren
+  '/org/people': typeof OrgPeopleRoute
+  '/org/workspaces': typeof OrgWorkspacesRoute
   '/w/$ws': typeof WWsRouteWithChildren
+  '/org/': typeof OrgIndexRoute
   '/w/$ws/alerts': typeof WWsAlertsRoute
   '/w/$ws/approvals': typeof WWsApprovalsRouteWithChildren
   '/w/$ws/budgets': typeof WWsBudgetsRoute
@@ -297,7 +332,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/org'
+    | '/org/people'
+    | '/org/workspaces'
     | '/w/$ws'
+    | '/org/'
     | '/w/$ws/alerts'
     | '/w/$ws/approvals'
     | '/w/$ws/budgets'
@@ -330,6 +369,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/org/people'
+    | '/org/workspaces'
+    | '/org'
     | '/w/$ws/alerts'
     | '/w/$ws/budgets'
     | '/w/$ws/closures'
@@ -359,7 +401,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/org'
+    | '/org/people'
+    | '/org/workspaces'
     | '/w/$ws'
+    | '/org/'
     | '/w/$ws/alerts'
     | '/w/$ws/approvals'
     | '/w/$ws/budgets'
@@ -393,6 +439,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  OrgRoute: typeof OrgRouteWithChildren
   WWsRoute: typeof WWsRouteWithChildren
 }
 
@@ -404,6 +451,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/org': {
+      id: '/org'
+      path: '/org'
+      fullPath: '/org'
+      preLoaderRoute: typeof OrgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/org/': {
+      id: '/org/'
+      path: '/'
+      fullPath: '/org/'
+      preLoaderRoute: typeof OrgIndexRouteImport
+      parentRoute: typeof OrgRoute
+    }
+    '/org/people': {
+      id: '/org/people'
+      path: '/people'
+      fullPath: '/org/people'
+      preLoaderRoute: typeof OrgPeopleRouteImport
+      parentRoute: typeof OrgRoute
+    }
+    '/org/workspaces': {
+      id: '/org/workspaces'
+      path: '/workspaces'
+      fullPath: '/org/workspaces'
+      preLoaderRoute: typeof OrgWorkspacesRouteImport
+      parentRoute: typeof OrgRoute
     }
     '/w/$ws': {
       id: '/w/$ws'
@@ -618,6 +693,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface OrgRouteChildren {
+  OrgPeopleRoute: typeof OrgPeopleRoute
+  OrgWorkspacesRoute: typeof OrgWorkspacesRoute
+  OrgIndexRoute: typeof OrgIndexRoute
+}
+
+const OrgRouteChildren: OrgRouteChildren = {
+  OrgPeopleRoute: OrgPeopleRoute,
+  OrgWorkspacesRoute: OrgWorkspacesRoute,
+  OrgIndexRoute: OrgIndexRoute,
+}
+
+const OrgRouteWithChildren = OrgRoute._addFileChildren(OrgRouteChildren)
+
 interface WWsApprovalsRouteChildren {
   WWsApprovalsIdRoute: typeof WWsApprovalsIdRoute
   WWsApprovalsIndexRoute: typeof WWsApprovalsIndexRoute
@@ -716,6 +805,7 @@ const WWsRouteWithChildren = WWsRoute._addFileChildren(WWsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  OrgRoute: OrgRouteWithChildren,
   WWsRoute: WWsRouteWithChildren,
 }
 export const routeTree = rootRouteImport

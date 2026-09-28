@@ -11,6 +11,10 @@ export async function revokeRole(prisma: PrismaClient, auth: AuthContext, rawId:
   return withTenant(prisma, auth.ctx, async (tx) => {
     const row = await tx.roleAssignment.findUnique({ where: { id } });
     if (row === null || row.workspaceId !== workspaceId) throw new DomainError("NOT_FOUND", "Role assignment not found");
+    // ORG-005: a workspace keeps at least one admin, so its people are never locked out of it.
+    if (row.role === "WORKSPACE_ADMIN" && (await tx.roleAssignment.count({ where: { workspaceId, role: "WORKSPACE_ADMIN" } })) <= 1) {
+      throw new DomainError("CONFLICT", "A workspace needs at least one admin. Give someone else the Workspace admin role first.", { lastAdmin: true });
+    }
     await tx.roleAssignment.delete({ where: { id } });
     const before = { principalType: row.principalType, principalId: row.principalId, role: row.role, scope: row.scope };
     await audit(tx, {

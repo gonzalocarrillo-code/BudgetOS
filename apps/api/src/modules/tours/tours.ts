@@ -1,4 +1,4 @@
-import { CompleteTourInput, DomainError, ListToursQuery, TourStep, UpdateTourInput, newId, tourRolesFor, type TourRole } from "@budget/domain";
+import { CompleteTourInput, DomainError, ListToursQuery, can, TourStep, UpdateTourInput, newId, tourRolesFor, type TourRole } from "@budget/domain";
 import { audit, ensureDefaultTours, outbox, withTenant, type Tx } from "@budget/db";
 import type { Prisma, PrismaClient, Tour } from "@prisma/client";
 import { z } from "zod";
@@ -36,7 +36,7 @@ async function effectiveTours(tx: Tx, workspaceId: string): Promise<Map<string, 
 export async function listTours(prisma: PrismaClient, auth: AuthContext, raw: unknown) {
   const q = parseInput(ListToursQuery, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const roles: TourRole[] = q.role ? [q.role] : q.all === "true" && auth.isOrgAdmin ? ["planner", "approver", "finance", "data_admin"] : tourRolesFor(auth.roles);
+  const roles: TourRole[] = q.role ? [q.role] : q.all === "true" && (auth.isOrgAdmin || can(auth.roles, "user.manage")) ? ["planner", "approver", "finance", "data_admin"] : tourRolesFor(auth.roles);
   return withTenant(prisma, auth.ctx, async (tx) => {
     const tours = await effectiveTours(tx, workspaceId);
     const picked = roles.flatMap((r) => (tours.has(r) ? [tours.get(r) as Tour] : []));
@@ -70,9 +70,12 @@ export async function completeTour(prisma: PrismaClient, auth: AuthContext, rawI
   });
 }
 
-/** PATCH /tours/:id (org admins) — a default becomes the workspace's own copy; a new version either way. */
+/**
+ * PATCH /tours/:id (workspace admins and superadmins, ORG-007) — editing a default makes the
+ * workspace's own copy, so a workspace admin never changes another workspace's tour; a new version
+ * either way.
+ */
 export async function updateTour(prisma: PrismaClient, auth: AuthContext, rawId: string, raw: unknown) {
-  if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin edits tours");
   const id = parseId(rawId);
   const input = parseInput(UpdateTourInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);

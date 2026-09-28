@@ -14,7 +14,7 @@ export async function runPacing(prisma: PrismaClient, orgIds: readonly string[],
   const out: Array<{ workspaceId: string; opened: number; resolved: number; reopened: number }> = [];
   for (const orgId of orgIds) {
     const workspaces = await withTenant(prisma, { workspaceId: null, orgId, userId: null, isOrgAdmin: true, actorType: "system", requestId: `pacing-${today}-${orgId}` }, (tx) =>
-      tx.workspace.findMany({ where: { orgId }, select: { id: true }, orderBy: { id: "asc" } }),
+      tx.workspace.findMany({ where: { orgId, status: "ACTIVE", deletedAt: null }, select: { id: true }, orderBy: { id: "asc" } }),
     );
     for (const ws of workspaces) {
       try {

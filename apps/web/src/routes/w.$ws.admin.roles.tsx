@@ -74,7 +74,7 @@ function RolesPage(): ReactElement {
       <p className="max-w-3xl text-sm text-muted-foreground">{t("roles.intro")}</p>
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
       {problem ? <p role="alert" className="text-sm text-destructive" data-testid="roles-error">{problem}</p> : null}
-      {me?.isOrgAdmin ? <AddPerson ws={ws} onDone={refresh} /> : null}
+      {canManage ? <AddPerson ws={ws} superadmin={me?.isOrgAdmin === true} onDone={refresh} /> : null}
       <Card title={t("roles.people", { count: principals.length })}>
         <ul className="flex flex-col divide-y divide-border" data-testid="principals">
           {principals.map((p) => (
@@ -171,13 +171,18 @@ function AddRole({ ws, principal, onDone, onError }: { ws: string; principal: { 
   );
 }
 
-function AddPerson({ ws, onDone }: { ws: string; onDone: () => void }): ReactElement {
+/**
+ * ORG-005: a workspace admin adds someone to this workspace by work email, with a role here (the
+ * person joins the organization if they are new to it). A superadmin may add someone with no role yet.
+ */
+function AddPerson({ ws, superadmin, onDone }: { ws: string; superadmin: boolean; onDone: () => void }): ReactElement {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [role, setRole] = useState<string>(superadmin ? "" : "VIEWER");
   const [note, setNote] = useState<string | null>(null);
   const add = useMutation({
     meta: { success: t("toast.personAdded") },
-    mutationFn: async () => z.object({ created: z.boolean(), email: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/members", { params: { path: { ws } }, body: { email, name } as never }))),
+    mutationFn: async () => z.object({ created: z.boolean(), email: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/members", { params: { path: { ws } }, body: { email, name, ...(role ? { role } : {}) } as never }))),
     onSuccess: (r) => (setNote(r.created ? t("roles.added", { email: r.email }) : t("roles.already", { email: r.email })), setEmail(""), setName(""), onDone()),
   });
   const valid = /^\S+@\S+\.\S+$/.test(email.trim()) && name.trim() !== "";
@@ -193,6 +198,17 @@ function AddPerson({ ws, onDone }: { ws: string; onDone: () => void }): ReactEle
           <label className="flex min-w-48 flex-1 flex-col gap-1">
             <span className="text-muted-foreground">{t("roles.name")}</span>
             <input className={field} value={name} onChange={(e) => setName(e.target.value)} data-testid="person-name" />
+          </label>
+          <label className="flex min-w-40 flex-col gap-1">
+            <span className="text-muted-foreground">{t("roles.role")}</span>
+            <select className={field} value={role} onChange={(e) => setRole(e.target.value)} data-testid="person-role">
+              {superadmin ? <option value="">{t("roles.noRoleYet")}</option> : null}
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {roleLabel(r)}
+                </option>
+              ))}
+            </select>
           </label>
           {valid && !add.isPending ? (
             <Button onClick={() => add.mutate()} data-testid="person-add"><UserPlus className="size-4" aria-hidden />{t("roles.addButton")}</Button>

@@ -50,15 +50,16 @@ export class AdminController {
     return this.admin.people(auth);
   }
 
-  /** Add a person by email, so they can be given a role before they first sign in. */
+  /** Add a person to this workspace by email, with a role here (ORG-005); they sign in with Google later. */
   @Post("workspaces/:ws/members")
-  @Permission("org.admin")
+  @Permission("user.manage")
   addPerson(@Tenant() auth: AuthContext, @Body() body: AddPersonDto) {
     return this.admin.addPerson(auth, body);
   }
 
+  /** Google Groups are org-wide: only a superadmin syncs them (ORG-005). */
   @Post("workspaces/:ws/groups/sync")
-  @Permission("user.manage")
+  @Permission("org.admin")
   syncGroups(@Tenant() auth: AuthContext, @Body() body: GroupsSyncDto) {
     return this.admin.syncGroups(auth, body);
   }

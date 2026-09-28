@@ -20,14 +20,15 @@ export const Route = createFileRoute("/w/$ws/admin/tours")({ component: ToursAdm
 function ToursAdmin(): ReactElement {
   const { ws } = Route.useParams();
   const { data: me } = useQuery(meQuery);
-  const isOrgAdmin = me?.isOrgAdmin ?? false;
+  // ORG-007: a workspace's admins edit its tours (editing a default makes this workspace's copy).
+  const canEdit = me?.isOrgAdmin === true || (me?.workspaces.find((w) => w.workspaceId === ws)?.permissions.includes("user.manage") ?? false);
   const { data: tours = [], isPending } = useQuery(toursQuery(ws, true));
   return (
     <Page title={t("admin.tours")}>
       <p className="-mt-2 max-w-3xl text-sm text-muted-foreground">{t("tours.admin.intro")}</p>
       {isPending ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : null}
       {tours.map((tour) => (
-        <TourEditor key={`${tour.id}-${tour.version}`} ws={ws} tour={tour} blocked={isOrgAdmin ? null : t("tours.admin.orgAdminOnly")} />
+        <TourEditor key={`${tour.id}-${tour.version}`} ws={ws} tour={tour} blocked={canEdit ? null : t("tours.admin.orgAdminOnly")} />
       ))}
     </Page>
   );

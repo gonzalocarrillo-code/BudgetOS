@@ -30,10 +30,13 @@ export function decodePush(raw: unknown): OutboxEvent {
  * the row and does nothing; a handler that throws rolls the row back, so the redelivery runs it.
  * Returns "duplicate" for a delivery that was already applied.
  */
-export async function handleOnce(prisma: PrismaClient, consumer: string, event: OutboxEvent, handler: EventHandler): Promise<"applied" | "duplicate"> {
+export async function handleOnce(prisma: PrismaClient, consumer: string, event: OutboxEvent, handler: EventHandler): Promise<"applied" | "duplicate" | "skipped"> {
   const ctx: TenantContext = { workspaceId: event.workspaceId, orgId: event.orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `${consumer}-${event.outboxId}` };
   const outcome = await withTenant(prisma, ctx, async (tx) => {
     if (!(await markProcessed(tx, consumer, event.outboxId))) return "duplicate" as const;
+    // ADR-052: an archived or deleted workspace is frozen; its events are acknowledged, not applied.
+    const [ws] = await tx.$queryRaw<Array<{ status: string; deleted: boolean }>>`SELECT status, deleted_at IS NOT NULL AS deleted FROM workspace WHERE id = ${event.workspaceId}::uuid`;
+    if (ws && (ws.status !== "ACTIVE" || ws.deleted)) return "skipped" as const;
     await handler(tx, event);
     return "applied" as const;
   });

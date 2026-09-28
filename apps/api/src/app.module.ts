@@ -21,8 +21,9 @@ import { SearchModule } from "./modules/search/search.module.js";
 import { ThreadsModule } from "./modules/threads/threads.module.js";
 import { SourcesModule } from "./modules/sources/sources.module.js";
 import { TargetsModule } from "./modules/targets/targets.module.js";
+import { WorkspacesModule } from "./modules/workspaces/workspaces.module.js";
 
 @Module({
-  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule, ExperimentsModule, ManualEntryModule, HomeModule, ClosuresModule, QueryModule, ViewsModule, OverviewModule, NamingModule, PeriodsModule, SlackModule],
+  imports: [CommonModule, AuthModule, AdminModule, RegistryModule, EnvelopesModule, ApprovalsModule, TargetsModule, SourcesModule, PacingModule, ThreadsModule, SearchModule, ExportsModule, ExperimentsModule, ManualEntryModule, HomeModule, ClosuresModule, QueryModule, ViewsModule, OverviewModule, NamingModule, PeriodsModule, SlackModule, WorkspacesModule],
 })
 export class AppModule {}

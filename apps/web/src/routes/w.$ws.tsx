@@ -15,7 +15,9 @@ export const Route = createFileRoute("/w/$ws")({
     // Signed out: the root shows the sign-in screen; do not call the API without a token.
     if (!getToken()) throw new ApiError(401, "UNAUTHENTICATED", t("auth.title"));
     const me: Me = await context.queryClient.ensureQueryData(meQuery);
-    const workspace = me.workspaces.find((w) => w.workspaceId === params.ws);
+    // ADR-052: a superadmin opens an archived workspace read-only (no permissions, a banner says why).
+    const archived = me.archivedWorkspaces.find((w) => w.workspaceId === params.ws);
+    const workspace = me.workspaces.find((w) => w.workspaceId === params.ws) ?? (me.isOrgAdmin && archived ? { workspaceId: archived.workspaceId, name: archived.name, currency: "USD", roles: ["ORG_ADMIN"], permissions: [] } : undefined);
     if (!workspace) throw new ApiError(403, "FORBIDDEN", t("error.forbidden"));
     return { me, workspace };
   },

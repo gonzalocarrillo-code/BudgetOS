@@ -6,6 +6,7 @@ import { handleInApp } from "./notify/in-app.js";
 import { handleSlackEvent, slackFromEnv } from "./notify/slack.js";
 import { objectStoreFromEnv, uploadBucket } from "./ingest/object-store.js";
 import { log } from "./log.js";
+import { purgeDueWorkspaces } from "./purge/purge.js";
 
 /**
  * Local stand-in for Pub/Sub + the ingest, roll-up and notify workers (T-032, ADR-038), for the
@@ -43,6 +44,8 @@ async function pass(): Promise<number> {
        FROM outbox o JOIN workspace w ON w.id = o.workspace_id
       WHERE o.topic = ANY($2::text[]) AND o.published_at IS NULL
         AND ($3::text IS NULL AND w.slug LIKE $1 OR w.org_id = (SELECT org_id FROM workspace WHERE slug = $3::text))
+        -- ADR-052: an archived or deleted workspace is frozen; its events wait, unapplied.
+        AND w.status = 'ACTIVE' AND w.deleted_at IS NULL
       ORDER BY w.created_at DESC, o.id LIMIT 50`,
     `${prefix}%`,
     TOPICS,
@@ -80,7 +83,21 @@ await ensureBucket();
 const port = Number(process.env["PORT"] ?? 4799);
 createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, "127.0.0.1");
 log.info({ port, prefix, orgFrom, slack: slack !== null }, "local runner up");
+// ADR-052: deleted workspaces past their retention window are purged, checked once a minute.
+let lastPurge = 0;
+async function purgePass(): Promise<void> {
+  if (Date.now() - lastPurge < 60_000) return;
+  lastPurge = Date.now();
+  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
+    `SELECT DISTINCT org_id::text FROM workspace WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
+    `${prefix}%`,
+    orgFrom,
+  );
+  if (orgs.length) await purgeDueWorkspaces(app, orgs.map((o) => o.org_id));
+}
+
 for (;;) {
+  await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
   const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));
   if (n === 0) await new Promise((r) => setTimeout(r, 1000));
 }

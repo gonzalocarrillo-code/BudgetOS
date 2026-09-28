@@ -16,3 +16,10 @@ export type RoutePermission = Action | "workspace.member" | "authenticated" | "o
 
 export const PERMISSION_KEY = "budget:permission";
 export const Permission = (permission: RoutePermission) => SetMetadata(PERMISSION_KEY, permission);
+
+/**
+ * ADR-052: a superadmin route that manages a workspace's lifecycle (archive, restore, delete,
+ * undelete). It reaches archived and deleted workspaces; every other route is refused on them.
+ */
+export const LIFECYCLE_KEY = "budget:workspace-lifecycle";
+export const WorkspaceLifecycle = () => SetMetadata(LIFECYCLE_KEY, true);

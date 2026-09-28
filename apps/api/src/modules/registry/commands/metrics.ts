@@ -15,16 +15,20 @@ export function metricView(m: MetricDefinition) {
     format: m.format,
     unit: m.unit,
     isActive: m.isActive,
+    /** ORG-007: the shared library (superadmins) or this workspace's own. */
+    scope: m.workspaceId === null ? ("shared" as const) : ("workspace" as const),
   };
 }
 
-async function insertMetric(tx: Tx, ctx: TenantContext, workspace: WorkspaceRef, input: CreateMetricInput) {
+async function insertMetric(tx: Tx, ctx: TenantContext, workspace: WorkspaceRef, input: CreateMetricInput, shared: boolean) {
   const clash = await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: workspace.orgId, key: input.key } }, select: { id: true } });
+  // Keys are unique per org; another workspace's metric is invisible here, and the insert says so.
   if (clash) throw new DomainError("CONFLICT", `Metric ${input.key} already exists`, { metricId: clash.id });
   const row = await tx.metricDefinition.create({
     data: {
       id: newId(),
       orgId: workspace.orgId,
+      workspaceId: shared ? null : workspace.id,
       key: input.key,
       label: input.label,
       numerator: input.numerator,
@@ -34,6 +38,9 @@ async function insertMetric(tx: Tx, ctx: TenantContext, workspace: WorkspaceRef,
       format: input.format,
       unit: input.unit ?? null,
     },
+  }).catch((e: unknown) => {
+    if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", `The key ${input.key} is taken in this organization; pick another`);
+    throw e;
   });
   await recordChange(tx, ctx, { workspaceId: workspace.id, orgId: workspace.orgId, action: "metric.created", entityType: "metric_definition", entityId: row.id, kind: "metric", after: metricView(row) });
   return row;
@@ -41,13 +48,13 @@ async function insertMetric(tx: Tx, ctx: TenantContext, workspace: WorkspaceRef,
 
 /**
  * POST /workspaces/:ws/metrics (plan §4.8): an admin defines a numerator / denominator over facts,
- * no deploy. Metrics are org-level; RLS lets only the org admin write them.
+ * no deploy. A superadmin adds to the shared library; a workspace admin adds the workspace's own
+ * metric, which no other workspace sees (ORG-007, RLS).
  */
 export async function createMetric(prisma: PrismaClient, ctx: TenantContext, roles: Role[], raw: unknown) {
   assertCanManage(roles);
   const input = parseInput(CreateMetricInput, raw);
-  if (!ctx.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin can add metrics");
-  return inWorkspace(prisma, ctx, async (tx, workspace) => metricView(await insertMetric(tx, ctx, workspace, input)));
+  return inWorkspace(prisma, ctx, async (tx, workspace) => metricView(await insertMetric(tx, ctx, workspace, input, ctx.isOrgAdmin)));
 }
 
 /** Seeds plan §4.8's default metrics into the org; skips keys that exist. */
@@ -57,7 +64,7 @@ export async function seedDefaultMetrics(prisma: PrismaClient, ctx: TenantContex
     let created = 0;
     for (const m of DEFAULT_METRICS) {
       if (await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: workspace.orgId, key: m.key } }, select: { id: true } })) continue;
-      await insertMetric(tx, ctx, workspace, parseInput(CreateMetricInput, m));
+      await insertMetric(tx, ctx, workspace, parseInput(CreateMetricInput, m), true);
       created += 1;
     }
     return created;

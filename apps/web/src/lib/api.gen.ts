@@ -1063,13 +1063,77 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["listWorkspaces"];
         put?: never;
         post: operations["createWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteWorkspace"];
+        options?: never;
+        head?: never;
+        patch: operations["setWorkspaceStatus"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/undelete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["undeleteWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/org/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listOrgPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/org/people/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateOrgPerson"];
         trace?: never;
     };
     "/api/v1/workspaces/{ws}/demo-data": {
@@ -1992,7 +2056,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The org's people and groups, each with its role assignments in this workspace */
+            /** @description The people and groups with a role in this workspace (a superadmin sees the whole org), each with its role assignments here */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2047,11 +2111,29 @@ export interface operations {
                     /** Format: email */
                     email: string;
                     name: string;
+                    /** @enum {string} */
+                    role?: "VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN";
+                    /** @default {} */
+                    scope?: {
+                        /** @enum {string} */
+                        logic: "and" | "or";
+                        not?: boolean;
+                        children: ({
+                            field: {
+                                /** @enum {string} */
+                                kind: "dimension";
+                                key: string;
+                            };
+                            /** @enum {string} */
+                            op: "eq" | "in" | "descends_from";
+                            value: string | string[];
+                        } | unknown)[];
+                    } | Record<string, never>;
                 };
             };
         };
         responses: {
-            /** @description Added to the org by email (or the existing person); they sign in with Google later */
+            /** @description Added to this workspace by email with a role here (joins the org when new); they sign in with Google later */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3480,7 +3562,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Group membership after sync */
+            /** @description Superadmins: group membership after sync */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5022,6 +5104,8 @@ export interface operations {
                                     } | unknown;
                                 } | unknown)[];
                             };
+                            /** Format: uuid */
+                            envelopeId?: string;
                             budget: string | null;
                             actual: string | null;
                             projected: string | null;
@@ -5109,6 +5193,8 @@ export interface operations {
             content: {
                 "application/json": {
                     version: number;
+                    /** @default false */
+                    dismissed?: boolean;
                 };
             };
         };
@@ -5147,7 +5233,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Org admins: a new version (a default becomes the workspace's copy) */
+            /** @description Workspace admins: a new version (a default becomes the workspace's copy) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5171,6 +5257,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Superadmins: every workspace of the org with its status, admins and counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workspaces: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            slug: string;
+                            currency: string;
+                            fiscalYearStartMonth: number;
+                            /** @enum {string} */
+                            status: "ACTIVE" | "ARCHIVED";
+                            archivedAt: string | null;
+                            deletedAt: string | null;
+                            purgeAfter: string | null;
+                            createdAt: string;
+                            members: number;
+                            budgets: number;
+                            lastActivityAt: string | null;
+                            admins: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                email: string;
+                            }[];
+                        }[];
+                    };
+                };
             };
         };
     };
@@ -5200,6 +5330,150 @@ export interface operations {
         responses: {
             /** @description Org admins: a workspace from a template (hierarchy templates, policies, rules, a view, tours; missing org dimensions), with the demo dataset when asked */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    confirmName: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Superadmins: an archived workspace, its name typed, becomes a tombstone purged after the retention window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not archived, or already deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setWorkspaceStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "ACTIVE" | "ARCHIVED";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Superadmins: archived (read-only, hidden from its members) or restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    undeleteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Superadmins: back as archived, within the retention window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listOrgPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Superadmins: everyone in the org and where they hold roles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        people: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            email: string;
+                            isActive: boolean;
+                            signedIn: boolean;
+                            superadmin: boolean;
+                            workspaces: {
+                                /** Format: uuid */
+                                workspaceId: string;
+                                name: string;
+                                roles: string[];
+                            }[];
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    updateOrgPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    isActive: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Superadmins: deactivate or reactivate someone */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

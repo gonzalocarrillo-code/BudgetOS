@@ -1,0 +1,109 @@
+import { randomUUID } from "node:crypto";
+import { purgeWorkspace } from "@budget/workers";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { appDb as appDbClient, ownerDb, startHarness, testUser, type Harness, type Method, type TestUser } from "../../test-support/harness.js";
+
+/**
+ * ADR-052 done-when: only a superadmin archives, restores, deletes and undeletes a workspace; an
+ * archived workspace is hidden from its members and read-only for superadmins (423 on writes); a
+ * delete needs an archived workspace and its exact name; the purge removes the workspace's rows and
+ * keeps its audit trail; superadmin actions are marked in audit_event.actor_context.
+ */
+const owner = ownerDb();
+const app = appDbClient();
+let h: Harness;
+const orgId = randomUUID();
+const ws = randomUUID();
+const other = randomUUID();
+const superadmin = testUser("life-super", randomUUID());
+const admin = testUser("life-admin", randomUUID());
+const planner = testUser("life-planner", randomUUID());
+
+async function call(user: TestUser, method: Method, url: string, body?: unknown, workspace: string | null = ws) {
+  return h.call(method, `/api/v1${url}`, await h.mint(user), { ...(workspace ? { headers: { "x-workspace-id": workspace } } : {}), ...(body === undefined ? {} : { body }) });
+}
+
+beforeAll(async () => {
+  await owner.organization.create({ data: { id: orgId, name: "lifecycle" } });
+  await owner.workspace.createMany({ data: [
+    { id: ws, orgId, slug: `life-${ws.slice(0, 8)}`, name: "Acme LATAM", reportingCurrency: "USD" },
+    { id: other, orgId, slug: `other-${other.slice(0, 8)}`, name: "Other", reportingCurrency: "USD" },
+  ] });
+  for (const u of [superadmin, admin, planner]) await owner.user.create({ data: { id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` } });
+  await owner.roleAssignment.createMany({ data: [
+    { id: randomUUID(), workspaceId: null, principalType: "user", principalId: superadmin.id, role: "ORG_ADMIN", createdBy: superadmin.id },
+    { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: admin.id, role: "WORKSPACE_ADMIN", createdBy: superadmin.id },
+    { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: planner.id, role: "PLANNER", createdBy: superadmin.id },
+    { id: randomUUID(), workspaceId: other, principalType: "user", principalId: admin.id, role: "PLANNER", createdBy: superadmin.id },
+  ] });
+  await owner.tag.create({ data: { id: randomUUID(), workspaceId: ws, name: "doomed", color: "#1868d8", createdBy: admin.id } });
+  h = await startHarness();
+}, 60_000);
+
+afterAll(async () => {
+  await h?.close();
+  await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, [ws, other]);
+  await owner.tag.deleteMany({ where: { workspaceId: { in: [ws, other] } } });
+  await owner.roleAssignment.deleteMany({ where: { OR: [{ workspaceId: { in: [ws, other] } }, { principalId: superadmin.id }] } });
+  await owner.user.deleteMany({ where: { orgId } });
+  await owner.workspace.deleteMany({ where: { orgId } });
+  await owner.organization.deleteMany({ where: { id: orgId } });
+  await Promise.all([owner.$disconnect(), app.$disconnect()]);
+});
+
+describe("workspace lifecycle (ADR-052)", () => {
+  it("lists the org's workspaces for superadmins only, with admins and counts", async () => {
+    expect((await call(admin, "GET", "/workspaces", undefined, null)).status).toBe(403);
+    const res = await call(superadmin, "GET", "/workspaces", undefined, null);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const acme = (res.body["workspaces"] as Array<{ id: string; status: string; members: number; admins: Array<{ id: string }> }>).find((w) => w.id === ws);
+    expect(acme).toMatchObject({ status: "ACTIVE", members: 2, admins: [{ id: admin.id }] });
+  });
+
+  it("archive: members lose it, a superadmin reads it but cannot write, restore brings it back", async () => {
+    expect((await call(admin, "PATCH", `/workspaces/${ws}`, { status: "ARCHIVED" })).status).toBe(403); // a workspace admin cannot
+    const archived = await call(superadmin, "PATCH", `/workspaces/${ws}`, { status: "ARCHIVED", reason: "Client paused" });
+    expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+
+    expect((await call(planner, "GET", `/workspaces/${ws}/tags`)).status).toBe(403);
+    const me = (await call(admin, "GET", "/me", undefined, null)).body as { workspaces: Array<{ workspaceId: string }> };
+    expect(me.workspaces.map((w) => w.workspaceId)).toEqual([other]);
+    const sm = (await call(superadmin, "GET", "/me", undefined, null)).body as { isSuperadmin: boolean; archivedWorkspaces: Array<{ workspaceId: string }> };
+    expect(sm.isSuperadmin).toBe(true);
+    expect(sm.archivedWorkspaces.map((w) => w.workspaceId)).toContain(ws);
+
+    expect((await call(superadmin, "GET", `/workspaces/${ws}/tags`)).status).toBe(200);
+    const write = await call(superadmin, "POST", `/workspaces/${ws}/tags`, { name: "late" });
+    expect(write.status).toBe(423);
+
+    expect((await call(superadmin, "PATCH", `/workspaces/${ws}`, { status: "ACTIVE" })).status).toBe(200);
+    expect((await call(planner, "GET", `/workspaces/${ws}/tags`)).status).toBe(200);
+    const audit = await owner.$queryRawUnsafe<Array<{ action: string; actor_context: string | null }>>(`SELECT action, actor_context FROM audit_event WHERE workspace_id = $1::uuid AND action LIKE 'workspace.%' ORDER BY occurred_at`, ws);
+    expect(audit).toEqual([{ action: "workspace.archived", actor_context: "superadmin" }, { action: "workspace.restored", actor_context: "superadmin" }]);
+  });
+
+  it("delete: only archived, only with the exact name; undelete within the window; the purge keeps the audit trail", async () => {
+    expect((await call(superadmin, "DELETE", `/workspaces/${ws}`, { confirmName: "Acme LATAM", reason: "done" })).status).toBe(409); // not archived
+    await call(superadmin, "PATCH", `/workspaces/${ws}`, { status: "ARCHIVED" });
+    expect((await call(superadmin, "DELETE", `/workspaces/${ws}`, { confirmName: "acme latam", reason: "done" })).status).toBe(422);
+    const deleted = await call(superadmin, "DELETE", `/workspaces/${ws}`, { confirmName: "Acme LATAM", reason: "Contract over" });
+    expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
+    expect((await call(superadmin, "GET", `/workspaces/${ws}/tags`)).status).toBe(403); // gone, even for a superadmin
+    expect(((await call(superadmin, "GET", "/workspaces", undefined, null)).body["workspaces"] as Array<{ id: string }>).map((w) => w.id)).not.toContain(ws);
+
+    expect((await call(superadmin, "POST", `/workspaces/${ws}/undelete`)).status).toBe(200);
+    const back = await owner.workspace.findUniqueOrThrow({ where: { id: ws } });
+    expect(back).toMatchObject({ status: "ARCHIVED", deletedAt: null, slug: `life-${ws.slice(0, 8)}` });
+
+    await call(superadmin, "DELETE", `/workspaces/${ws}`, { confirmName: "Acme LATAM", reason: "Contract over" });
+    const counts = await purgeWorkspace(app, { workspaceId: ws, orgId });
+    expect(counts["tag"]).toBe(1);
+    expect(counts["role_assignment"]).toBe(2);
+    expect(await owner.tag.count({ where: { workspaceId: ws } })).toBe(0);
+    expect((await owner.workspace.findUniqueOrThrow({ where: { id: ws } })).purgedAt).not.toBeNull();
+    const kept = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid`, ws);
+    expect(Number(kept[0]?.n)).toBeGreaterThan(4);
+    expect((await call(superadmin, "POST", `/workspaces/${ws}/undelete`)).status).toBe(409); // purged: no way back
+    expect(await owner.roleAssignment.count({ where: { workspaceId: other } })).toBe(1); // the other workspace is untouched
+  });
+});

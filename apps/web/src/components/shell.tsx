@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Building2,
   Settings,
+  Archive,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
@@ -93,6 +94,7 @@ export const SETTINGS_PAGES: Array<NavItem & { description: MessageKey }> = [
   { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map, requires: ["user.manage"], description: "settings.desc.tours" },
 ];
 const SETTINGS_HUB = "/w/$ws/admin/settings";
+const ORG_CONSOLE = "__org_console__";
 const settingsPath = (pathname: string, ws: string) => [SETTINGS_HUB, ...SETTINGS_PAGES.map((p) => p.to)].some((to) => pathname === to.replace("$ws", ws));
 
 function SettingsStrip({ ws, me }: { ws: string; me: Me }): ReactElement {
@@ -131,7 +133,10 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
   const openSearch = useCallback(() => setSearching(true), []);
   useSearchHotkeys(openSearch);
   const { data: dimensions = [] } = useQuery(registryQuery(ws));
-  const current = me.workspaces.find((w) => w.workspaceId === ws);
+  const archived = me.archivedWorkspaces.find((w) => w.workspaceId === ws);
+  const current = me.workspaces.find((w) => w.workspaceId === ws) ?? (archived ? { workspaceId: archived.workspaceId, name: archived.name, roles: ["ORG_ADMIN"] } : undefined);
+  // ADR-052: a superadmin here through the org-wide role only (no role of their own in this workspace).
+  const asSuperadmin = me.isOrgAdmin && (current?.roles ?? []).every((r) => r === "ORG_ADMIN");
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const inSettings = settingsPath(pathname, ws);
   useDocumentTitle(pathname, ws, current?.name);
@@ -152,15 +157,31 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
             className="min-w-0 flex-1 cursor-pointer appearance-none truncate bg-transparent text-sm font-medium text-foreground outline-none"
             value={ws}
             data-testid="workspace-switcher"
-            onChange={(e) => void navigate({ to: "/w/$ws", params: { ws: e.target.value } })}
+            onChange={(e) => (e.target.value === ORG_CONSOLE ? void navigate({ to: "/org/workspaces" }) : void navigate({ to: "/w/$ws", params: { ws: e.target.value } }))}
           >
             {me.workspaces.map((w) => (
               <option key={w.workspaceId} value={w.workspaceId}>
                 {w.name}
               </option>
             ))}
+            {me.archivedWorkspaces.length > 0 ? (
+              <optgroup label={t("shell.archived")}>
+                {me.archivedWorkspaces.map((w) => (
+                  <option key={w.workspaceId} value={w.workspaceId}>
+                    {w.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {me.isOrgAdmin ? <option value={ORG_CONSOLE}>{t("shell.manageWorkspaces")}</option> : null}
           </select>
         </label>
+        {asSuperadmin ? (
+          <span className="hidden shrink-0 items-center gap-1 rounded-full bg-info-soft px-2.5 py-1 text-xs font-medium text-info-text lg:inline-flex" title={t("shell.superadminHint")} data-testid="superadmin-badge">
+            <ShieldCheck className="size-3.5" aria-hidden />
+            {t("role.org_admin")}
+          </span>
+        ) : null}
         <button
           type="button"
           onClick={openSearch}
@@ -199,9 +220,25 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
               {t("admin.settings")}
             </Link>
             ) : null}
+            {me.isOrgAdmin ? (
+              <>
+                <SectionLabel>{t("shell.organization")}</SectionLabel>
+                <Link to="/org/workspaces" className={linkClass} data-testid="nav-org-console">
+                  <Building2 className="size-4 shrink-0" aria-hidden />
+                  {t("org.console")}
+                </Link>
+              </>
+            ) : null}
           </nav>
         </aside>
         <main className="min-w-0 flex-1 overflow-y-auto" data-testid="main-scroll">
+          {archived ? (
+            <div role="status" className="flex flex-wrap items-center gap-3 border-b border-warning/40 bg-warning-soft px-6 py-2.5 text-sm text-warning-text" data-testid="archived-banner">
+              <Archive className="size-4 shrink-0" aria-hidden />
+              <span className="flex-1">{t("shell.archivedBanner")}</span>
+              <Link to="/org/workspaces" className="font-medium underline">{t("shell.archivedManage")}</Link>
+            </div>
+          ) : null}
           {inSettings ? <SettingsStrip ws={ws} me={me} /> : null}
           {children}
         </main>
