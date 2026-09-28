@@ -115,6 +115,13 @@ describe("rollup-worker", () => {
     expect((await handleRollupEvent(app, body, TODAY)).outcome).toBe("duplicate");
   });
 
+  it("a draft changes no cached measure: its event is skipped (T-034)", async () => {
+    await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { envelopeId: env["latamMeta"], kind: "draft" } }));
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId: env["latamMeta"], kind: "draft" })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
+    expect(await handleRollupEvent(app, body, TODAY)).toMatchObject({ outcome: "applied", templates: 0, upserted: 0, deleted: 0 });
+  });
+
   it("a refresh leaves the cache equal to a full rebuild, in every measure and period (ADR-038)", async () => {
     const snapshot = async () => (await owner.$queryRawUnsafe<Array<{ k: string; m: unknown }>>(`SELECT period_start::text || '|' || node_path AS k, measures AS m FROM rollup_cache WHERE template_id = $1::uuid ORDER BY 1`, templateId)).map((r) => [r.k, r.m]);
     // A new leaf under a node that did not exist (EMEA/tiktok), and spend on an existing one.
