@@ -1136,6 +1136,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/baselines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listBaselines"];
+        put?: never;
+        post: operations["saveBaseline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/baselines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateBaseline"];
+        trace?: never;
+    };
+    "/api/v1/baselines/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["baselineReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/org/people": {
         parameters: {
             query?: never;
@@ -5513,6 +5561,244 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listBaselines: {
+        parameters: {
+            query?: {
+                includeArchived?: "true" | "false";
+                envelopeId?: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshots, newest first (Phase E) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        baselines: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** @enum {string} */
+                            kind: "plan" | "close" | "other";
+                            scope: {
+                                [key: string]: unknown;
+                            };
+                            scopeLabel: string | null;
+                            periodKey: string | null;
+                            asOf: string;
+                            note: string | null;
+                            takenBy: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                            } | null;
+                            createdAt: string;
+                            archivedAt: string | null;
+                            rowCount: number;
+                            total: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    saveBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /**
+                     * @default other
+                     * @enum {string}
+                     */
+                    kind?: "plan" | "close" | "other";
+                    /** @default {} */
+                    scope?: {
+                        /** Format: uuid */
+                        envelopeId: string;
+                    } | {
+                        filter: {
+                            /** @enum {string} */
+                            logic: "and" | "or";
+                            not?: boolean;
+                            children: ({
+                                field: {
+                                    /** @enum {string} */
+                                    kind: "dimension";
+                                    key: string;
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "measure";
+                                    /** @enum {string} */
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "target";
+                                    metric: string;
+                                    /** @enum {string} */
+                                    field: "value" | "actual" | "vs_target_pct" | "exists";
+                                } | {
+                                    /** @enum {string} */
+                                    kind: "attr";
+                                    /** @enum {string} */
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                };
+                                /** @enum {string} */
+                                op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
+                                value?: string | number | boolean | (string | number)[] | ((string | number) | (string | number))[] | {
+                                    /** @enum {string} */
+                                    unit: "day" | "week" | "month" | "quarter" | "year";
+                                    amount: number;
+                                    /**
+                                     * @default today
+                                     * @enum {string}
+                                     */
+                                    anchor?: "today" | "period_start" | "period_end";
+                                } | unknown;
+                            } | unknown)[];
+                        };
+                    } | Record<string, never>;
+                    periodKey?: string;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description A snapshot of the workspace, a filter or one budget's subtree, taken now */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateBaseline: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    note?: string | null;
+                    /** @enum {string} */
+                    kind?: "plan" | "close" | "other";
+                    archived?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Renamed, re-noted or archived; its rows never change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    baselineReport: {
+        parameters: {
+            query?: {
+                against?: string;
+                limit?: number;
+            };
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The snapshot against now or another snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        baseline: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            asOf: string;
+                            total: string;
+                        };
+                        against: {
+                            /** @enum {string} */
+                            kind: "working" | "baseline";
+                            /** Format: uuid */
+                            id: string | null;
+                            name: string;
+                            asOf: string;
+                            total: string;
+                        };
+                        change: {
+                            abs: string;
+                            pct: string | null;
+                        };
+                        counts: {
+                            increased: number;
+                            decreased: number;
+                            new: number;
+                            removed: number;
+                            ended: number;
+                            unchanged: number;
+                        };
+                        byDimension: {
+                            [key: string]: {
+                                code: string;
+                                label: string;
+                                baseline: string;
+                                now: string;
+                                abs: string;
+                                pct: string | null;
+                            }[];
+                        };
+                        topMovers: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            baseline: string;
+                            now: string;
+                            abs: string;
+                            pct: string | null;
+                            /** @enum {string} */
+                            status: "changed" | "new" | "removed" | "ended";
+                        }[];
+                        currency: string;
+                    };
+                };
             };
         };
     };

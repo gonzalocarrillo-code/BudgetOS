@@ -122,6 +122,17 @@ const samples: Record<string, readonly unknown[]> = {
   GeneratePeriodsInput: [{ fiscalYear: 2027, pattern: "445" }, { fiscalYear: 2027, pattern: "calendar" }],
   PeriodRow: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf7", key: "2026-Q1", kind: "quarter", start: "2026-01-01", end: "2026-03-31", closure: { id: "01a0e0da-e7e9-7f9a-9212-1c166382caf8", status: "restated" } }, { id: "01a0e0da-e7e9-7f9a-9212-1c166382caf9", key: "Black Friday 2026", kind: "custom", start: "2026-11-20", end: "2026-11-30", closure: null }],
   AddPersonInput: [{ email: "ana@acme.test", name: "Ana" }],
+  // Phase E (ADR-053): snapshots, the change report, end and reintroduce.
+  BaselineKind: ["plan", "close", "other"],
+  BaselineScope: [{}, { envelopeId: "01927a00-0000-7000-8000-0000000000a1" }, { filter: { logic: "and", children: [] } }],
+  CreateBaselineInput: [{ name: "Q4 plan", kind: "plan", scope: {} }, { name: "Brazil before re-plan", kind: "other", scope: { envelopeId: "01927a00-0000-7000-8000-0000000000a1" }, note: "as agreed" }],
+  UpdateBaselineInput: [{ name: "Q4 plan (final)" }, { archived: true }],
+  BaselineView: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Q4 plan", kind: "plan", scope: {}, scopeLabel: null, periodKey: "2026-Q4", asOf: "2026-10-01T00:00:00.000Z", note: null, takenBy: { id: "01927a00-0000-7000-8000-0000000000a1", name: "Ana" }, createdAt: "2026-10-01T00:00:00.000Z", archivedAt: null, rowCount: 3, total: "1000.00" }],
+  BaselinesResponse: [{ baselines: [] }],
+  BaselineReportQuery: [{ limit: 20 }, { against: "01927a00-0000-7000-8000-0000000000a1", limit: 5 }],
+  BaselineReport: [{ baseline: { id: "01927a00-0000-7000-8000-0000000000a1", name: "Q4 plan", asOf: "2026-10-01T00:00:00.000Z", total: "100.00" }, against: { kind: "working", id: null, name: "Now", asOf: "2026-10-02T00:00:00.000Z", total: "110.00" }, change: { abs: "10.00", pct: "0.1000" }, counts: { increased: 1, decreased: 0, new: 0, removed: 0, ended: 0, unchanged: 2 }, byDimension: {}, topMovers: [], currency: "USD" }],
+  ReintroduceInput: [{ startDate: "2026-12-01", endDate: "2026-12-31", amount: "500.00", rationale: "" }],
+  EndEnvelopeInput: [{ endDate: "2026-11-15", finalAmount: "400.00", rationale: "Paused", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1" }, { endDate: "2026-11-15", finalAmount: "400.00", rationale: "", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1", successor: { startDate: "2026-12-01", endDate: "2026-12-31", amount: "600.00" } }],
   // ADR-052 / ORG-005: workspace lifecycle and the org console.
   WorkspaceStatus: ["ACTIVE", "ARCHIVED"],
   UpdateWorkspaceStatusInput: [{ status: "ARCHIVED", reason: "Client ended" }, { status: "ACTIVE" }],

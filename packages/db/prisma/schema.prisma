@@ -239,6 +239,10 @@ model Envelope {
   dims                EnvelopeDimension[]
   /// T-040: written by the demo dataset; the purge deletes these rows.
   demo                Boolean              @default(false)
+  /// Phase E (ADR-053): stopped early on end_date with its final amount; read-only after.
+  endedAt             DateTime?            @map("ended_at") @db.Timestamptz
+  endedBy             String?              @map("ended_by") @db.Uuid
+  endedReason         String?              @map("ended_reason")
   allocationsAsParent EnvelopeAllocation[] @relation("AllocationParent")
   allocationsAsChild  EnvelopeAllocation[] @relation("AllocationChild")
 
@@ -864,4 +868,47 @@ model EnvelopeAllocation {
 
   // Partial indexes (current rule per child, by parent) live in the migration's SQL only.
   @@map("envelope_allocation")
+}
+
+/// Phase E (ADR-053): a snapshot saved by hand — the workspace, a filter's budgets or one budget's subtree.
+model BudgetBaseline {
+  id             String              @id @db.Uuid
+  workspaceId    String              @map("workspace_id") @db.Uuid
+  name           String
+  kind           String // plan | close | other
+  scope          Json                @default("{}")
+  periodKey      String?             @map("period_key")
+  asOf           DateTime            @map("as_of") @db.Timestamptz
+  note           String?
+  takenBy        String              @map("taken_by") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  archivedAt     DateTime?           @map("archived_at") @db.Timestamptz
+  rowCount       Int                 @map("row_count")
+  totalReporting Decimal             @map("total_reporting") @db.Decimal(18, 2)
+  rows           BudgetBaselineRow[]
+
+  @@index([workspaceId, createdAt])
+  @@map("budget_baseline")
+}
+
+/// One budget as it was when the snapshot was saved: amount and structure. Written once.
+model BudgetBaselineRow {
+  baselineId      String         @map("baseline_id") @db.Uuid
+  baseline        BudgetBaseline @relation(fields: [baselineId], references: [id], onDelete: Restrict)
+  workspaceId     String         @map("workspace_id") @db.Uuid
+  envelopeId      String         @map("envelope_id") @db.Uuid
+  versionId       String?        @map("version_id") @db.Uuid
+  amount          Decimal        @db.Decimal(18, 2)
+  amountReporting Decimal        @map("amount_reporting") @db.Decimal(18, 2)
+  currency        String         @db.Char(3)
+  parentId        String?        @map("parent_id") @db.Uuid
+  name            String
+  dimensionValues Json           @map("dimension_values")
+  startDate       DateTime       @map("start_date") @db.Date
+  endDate         DateTime       @map("end_date") @db.Date
+  isLeaf          Boolean        @map("is_leaf")
+
+  @@id([baselineId, envelopeId])
+  @@index([workspaceId, envelopeId])
+  @@map("budget_baseline_row")
 }

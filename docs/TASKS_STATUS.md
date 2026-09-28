@@ -444,9 +444,9 @@ Plan: `docs/BUDGET_HISTORY_PLAN.md` (Phase E, revision 2: snapshots by hand for 
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
-| H-001 | E1 | Schemas, migration, RLS | pending |
-| H-002 | E1 | Save / list / rename / archive snapshots; versions list their snapshots | pending |
-| H-005 | E1 | Change report | pending |
+| H-001 | E1 | Schemas, migration, RLS | done (ADR-053) |
+| H-002 | E1 | Save / list / rename / archive snapshots; versions list their snapshots | done (ADR-053) |
+| H-005 | E1 | Change report | done (ADR-053) |
 | H-011 | E2 | End a budget through the approval policy | pending |
 | H-012 | E2 | Reintroduce a budget; lineage `continues` | pending |
 | H-004 | E3 | Planner `compareTo` and change measures | pending |

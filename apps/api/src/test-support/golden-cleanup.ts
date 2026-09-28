@@ -32,6 +32,8 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
 export async function cleanupWorkspace(owner: PrismaClient, ws: string): Promise<void> {
   const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
   for (const sql of [
+    `DELETE FROM budget_baseline_row WHERE workspace_id = $1::uuid`,
+    `DELETE FROM budget_baseline WHERE workspace_id = $1::uuid`,
     `DELETE FROM notification WHERE workspace_id = $1::uuid`,
     `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
     `DELETE FROM search_term WHERE workspace_id = $1::uuid`,
