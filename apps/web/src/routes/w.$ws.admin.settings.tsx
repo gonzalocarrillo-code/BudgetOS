@@ -3,18 +3,22 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import type { ReactElement } from "react";
 import { Page } from "../components/page.js";
-import { SETTINGS_PAGES } from "../components/shell.js";
+import { SETTINGS_PAGES, canSee } from "../components/shell.js";
+import { useQuery } from "@tanstack/react-query";
+import { meQuery } from "../lib/queries.js";
 
 /** Settings (product feedback 2026-09-28): the workspace's less-visited admin pages, in one place. */
 export const Route = createFileRoute("/w/$ws/admin/settings")({ component: SettingsHub });
 
 function SettingsHub(): ReactElement {
   const { ws } = Route.useParams();
+  const { data: me } = useQuery(meQuery);
+  const pages = me ? SETTINGS_PAGES.filter((p) => canSee(p, me, ws)) : [];
   return (
     <Page title={t("admin.settings")}>
       <p className="-mt-2 text-sm text-muted-foreground">{t("settings.intro")}</p>
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="settings-hub">
-        {SETTINGS_PAGES.map((p) => {
+        {pages.map((p) => {
           const Icon = p.icon;
           return (
             <li key={p.to}>

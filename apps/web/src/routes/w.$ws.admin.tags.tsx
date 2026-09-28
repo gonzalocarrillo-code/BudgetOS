@@ -43,10 +43,12 @@ function TagsPage(): ReactElement {
   const [merging, setMerging] = useState<string | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ["tags", ws] });
   const create = useMutation({
+    meta: { success: t("toast.tagCreated") },
     mutationFn: async () => unwrap(api.POST("/api/v1/workspaces/{ws}/tags", { params: { path: { ws } }, body: { name: name.trim(), color } as never })),
     onSuccess: () => (setName(""), refresh()),
   });
   const update = useMutation({
+    meta: { success: t("toast.tagUpdated") },
     mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => unwrap(api.PATCH("/api/v1/tags/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: body as never })),
     onSuccess: () => (setEditing(null), setMerging(null), refresh()),
   });

@@ -119,3 +119,13 @@ export const LIVE_LEAVES: Predicate[] = [
   { field: { kind: "attr", key: "is_leaf" }, op: "eq", value: true },
   { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" },
 ];
+
+/**
+ * Top-level budgets (ADR-050, ADR-051): live envelopes with no parent. Queried with `subtree: true`
+ * each reads its own approved amount against everything spent under it. This is what "the budget"
+ * means on Budgets, Home and the Overview headline, for callers who read the whole workspace.
+ */
+export const TOP_LEVEL: Predicate[] = [
+  { field: { kind: "attr", key: "parent_id" }, op: "is_empty" },
+  { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" },
+];

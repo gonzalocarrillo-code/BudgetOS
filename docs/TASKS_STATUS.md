@@ -406,14 +406,16 @@ The product owner asked for a usability audit of the whole system by a UX/UI spe
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
-| UX-001 | A | Tour auto-start no longer hijacks navigation | pending |
-| UX-002 | A | Shell: only `<main>` scrolls; sticky page header and decide bar | pending |
-| UX-003 | A | Nav and Settings gated by permissions | pending |
-| UX-004 | A | Branded 403 / 404 pages | pending |
-| UX-005 | A | BudgetOS logo, favicon, page titles, sign-in | pending |
-| UX-006 | A | AA-contrast tokens; one `StatusChip` vocabulary | pending |
-| UX-007 | A | Toasts, skeletons, empty states | pending |
-| UX-008 | A | One "budget this fiscal year" definition (ADR-051) | pending |
+| UX-001 | A | Tour auto-start no longer hijacks navigation | done |
+| UX-002 | A | Shell: only `<main>` scrolls; sticky page header and decide bar | done |
+| UX-003 | A | Nav and Settings gated by permissions | done |
+| UX-004 | A | Branded 403 / 404 pages | done |
+| UX-005 | A | BudgetOS logo, favicon, page titles, sign-in | done |
+| UX-006 | A | AA-contrast tokens; one `StatusChip` vocabulary | done |
+| UX-007 | A | Toasts, skeletons, empty states | done |
+| UX-008 | A | One "budget this fiscal year" definition (ADR-051) | done |
+
+Phase A notes (2026-09-28): tours never start by themselves (Home invites; a close records a skip, migration `20261001000000_tour_dismissed`); only `<main>` scrolls; nav and Settings follow `/me` permissions; branded sign-in, 403 and no-workspace pages; the BudgetOS logo, favicon and per-page tab titles; AA tokens with a contrast test; one `StatusChip`; toasts (`meta.success` / `meta.error` on mutations), skeletons and empty states; Home and the Overview tiles use Budgets' total (ADR-051). The web UI says BudgetOS; Slack messages and exports still say Budget OS until decision D1 is confirmed. The Explorer e2e totals test waited on the wrong load since ADR-050 and now waits for the template's tree.
 | DS-001…005 | B | `@budget/ui` form controls, layers, shell v2, `Table`, Budgets toolbar | pending |
 | ORG-001…008 | C | Superadmin naming (ADR-052), workspace archive / delete + purge worker, org console, scoped members, workspace-owned registry and metrics, boundary tests | pending |
 | UX-009…012 | D | Settings IA, keyboard and axe pass, Home / Overview polish, dark mode | pending |

@@ -1,6 +1,6 @@
 import type { ExperimentReadout, FilterGroupT, MetricSet } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, StatusChip } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, CircleDashed, FlaskConical, XCircle } from "lucide-react";
@@ -17,20 +17,8 @@ import { KINDS, metricsQuery, type Experiment } from "./queries.js";
  * (the planner); nothing is computed here but the display.
  */
 
-const STATUS_TONE: Record<Experiment["status"], string> = {
-  PLANNED: "bg-muted text-muted-foreground",
-  RUNNING: "bg-primary/10 text-primary",
-  EVALUATING: "bg-warning/15 text-[#8a5a00]",
-  CONCLUDED: "bg-success/15 text-[#0b6b50]",
-  ABANDONED: "bg-muted text-subtle-foreground line-through",
-};
-
 export function StatusBadge({ status }: { status: Experiment["status"] }): ReactElement {
-  return (
-    <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium", STATUS_TONE[status])} data-testid="experiment-status" data-status={status}>
-      {t(`experiments.status.${status}` as MessageKey)}
-    </span>
-  );
+  return <StatusChip status={status} label={t(`experiments.status.${status}` as MessageKey)} data-testid="experiment-status" />;
 }
 
 /** Met / not met / no verdict yet (and why). */

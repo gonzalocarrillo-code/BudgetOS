@@ -812,6 +812,8 @@ model TourCompletion {
   tourId      String   @map("tour_id") @db.Uuid
   tour        Tour     @relation(fields: [tourId], references: [id])
   version     Int
+  /// Closed before the last step (UX-001): seen, not completed.
+  dismissed   Boolean  @default(false)
   completedAt DateTime @default(now()) @map("completed_at") @db.Timestamptz
 
   @@id([userId, tourId, version])

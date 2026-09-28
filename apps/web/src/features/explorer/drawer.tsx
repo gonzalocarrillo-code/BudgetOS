@@ -1,5 +1,5 @@
 import { formatMoney } from "@budget/grid";
-import { Button } from "@budget/ui";
+import { Button, StatusChip } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -112,9 +112,7 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
           {error ? <p className="text-xs text-destructive" data-testid="drawer-error">{error.message}</p> : null}
           {rename.error ? <p className="text-xs text-destructive" role="alert">{rename.error.message}</p> : null}
           {data ? (
-            <span className="mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground" title={t(`status.help.${data.status}` as MessageKey)} data-testid="drawer-status">
-              {STATUS_LABELS()[data.status] ?? data.status}
-            </span>
+            <StatusChip status={data.status} label={STATUS_LABELS()[data.status] ?? data.status} className="mt-1" title={t(`status.help.${data.status}` as MessageKey)} data-testid="drawer-status" />
           ) : null}
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("drawer.close")}>

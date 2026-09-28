@@ -79,9 +79,14 @@ test.describe("web shell (T-026)", () => {
     await expect(page.getByTestId("sign-in")).toBeVisible();
   });
 
-  test("a workspace the caller has no role in is refused", async ({ page }) => {
+  test("a workspace the caller has no role in is refused, with a way back to their own (UX-004)", async ({ page }) => {
     await signIn(page, await tokenFor("admin"));
     await page.goto(`/w/0199b5a0-0000-7000-8000-00000000f00d/budgets`);
-    await expect(page.getByTestId("route-error")).toHaveText("You do not have access to this workspace.");
+    const denied = page.getByTestId("no-access");
+    await expect(denied.getByTestId("page-title")).toHaveText("You don't have access to this workspace");
+    await expect(page.getByTestId("logo")).toBeVisible();
+    await denied.getByTestId("denied-workspace").filter({ hasText: "Golden" }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/w/${state().workspaceId}/home$`));
+    await expect(page).toHaveTitle(/^Home · Golden · BudgetOS$/);
   });
 });

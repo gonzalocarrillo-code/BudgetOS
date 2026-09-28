@@ -1,6 +1,6 @@
 import { HomeResponse } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
-import { cn } from "@budget/ui";
+import { cn, Skeleton, SkeletonRows } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -8,6 +8,7 @@ import { AtSign, Bell, CircleCheck, Clock, Database, Eye, Plus, Sparkles, Users,
 import type { ReactElement, ReactNode } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
+import { TourInvite } from "../features/home/tour-launcher.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
 
@@ -47,6 +48,7 @@ function HomePage(): ReactElement {
       <p className="-mt-3 text-sm text-muted-foreground" data-testid="home-subtitle">
         {home?.workspace ? t("home.subtitle", { workspace: home.workspace.name, date: dateLine, elapsed: pct(home.workspace.period.elapsed) }) : dateLine}
       </p>
+      <TourInvite ws={ws} />
       {demo && demo.envelopes > 0 ? (
         <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2.5 text-sm" data-testid="home-demo">
           <Sparkles className="size-4 text-primary" aria-hidden />
@@ -57,8 +59,27 @@ function HomePage(): ReactElement {
         </div>
       ) : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
-      {isPending || !home ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : home.setup && home.setup.budgets === 0 ? <GettingStarted ws={ws} home={home} /> : <HomeBlocks ws={ws} home={home} />}
+      {isPending || !home ? <HomeSkeleton /> : home.setup && home.setup.budgets === 0 ? <GettingStarted ws={ws} home={home} /> : <HomeBlocks ws={ws} home={home} />}
     </Page>
+  );
+}
+
+/** Home while it loads (UX-007): the shape of the tiles and cards, not a line of text. */
+function HomeSkeleton(): ReactElement {
+  return (
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label={t("shell.loading")}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-6 w-32" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border border-border bg-card p-5">
+        <SkeletonRows rows={3} />
+      </div>
+    </div>
   );
 }
 

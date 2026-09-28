@@ -342,10 +342,10 @@ const samples: Record<string, readonly unknown[]> = {
   TourStep: [{ path: "/budgets", element: '[data-tour="filter-bar"]', title: "Filters", description: "Narrow the budgets you see." }, { element: '[data-tour="global-search"]', title: "Search", description: "Find anything." }],
   ListToursQuery: [{}, { role: "finance" }, { all: "true" }],
   UpdateTourInput: [{ name: "Planner basics" }, { steps: [{ element: '[data-tour="save-view"]', title: "Save", description: "Keep this view." }] }],
-  CompleteTourInput: [{ version: 2 }],
+  CompleteTourInput: [{ version: 2, dismissed: false }, { version: 3, dismissed: true }],
   CreateWorkspaceInput: [{ name: "Acme LATAM", templateId: "01927a00-0000-7000-8000-0000000000c1", withDemoData: true, reportingCurrency: "USD", fiscalYearStartMonth: 1 }],
   TemplateSavedView: [{ name: "By country", screen: "budgets", definition: { view: "pivot", groupBy: ["country"] } }],
-  HomeScope: [{ label: "LATAM", filter: { logic: "and", children: [] }, budget: "1000.00", actual: "400.00", projected: null, paceIndex: "0.8000", spentPct: "0.4000" }],
+  HomeScope: [{ label: "LATAM", filter: { logic: "and", children: [] }, envelopeId: "01927a00-0000-7000-8000-0000000000a1", budget: "1000.00", actual: "400.00", projected: null, paceIndex: "0.8000", spentPct: "0.4000" }],
   HomeResponse: [
     { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [] },
     { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [], workspace: { name: "OpenAI", currency: "USD", period: { start: "2026-01-01", end: "2026-12-31", elapsed: "0.74" } }, totals: null, setup: { budgets: 0, sources: 0, people: 1, spend: false, tags: 0 } },

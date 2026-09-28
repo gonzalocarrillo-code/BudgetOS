@@ -1,9 +1,9 @@
 import { ChainStep, PolicyConditions, type PolicyConditions as Conditions } from "@budget/domain";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, EmptyState } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, CircleCheck, Plus, UserCheck } from "lucide-react";
+import { ArrowRight, CircleCheck, Plus, UserCheck, ShieldCheck } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -79,6 +79,11 @@ function PoliciesPage(): ReactElement {
         )}
       </div>
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
+      {policies.length === 0 ? (
+        <Card>
+          <EmptyState icon={ShieldCheck} title={t("policies.empty.title")} body={t("policies.empty.body")} action={canManage ? <Button size="sm" onClick={() => setEditing("new")}>{t("policy.new")}</Button> : undefined} />
+        </Card>
+      ) : null}
       <ol className="flex flex-col gap-3" data-testid="policy-list">
         {policies.map((p, i) => (
           <li key={p.id}>
@@ -155,6 +160,7 @@ function PolicyEditor({ ws, policy, nextPriority, onClose }: { ws: string; polic
   const invalid = name.trim() === "" ? t("policy.needName") : !/^\d+$/.test(priority) ? t("policy.needPriority") : [amountMin, amountMax].some((v) => v.trim() !== "" && !Number.isFinite(Number(v))) ? t("policy.needNumber") : null;
 
   const save = useMutation({
+    meta: { success: t("toast.policySaved") },
     mutationFn: async () => {
       const body = { name: name.trim(), priority: Number(priority), conditions: conditions(), chain: direct ? [] : steps };
       if (policy) return unwrap(api.PATCH("/api/v1/policies/{id}", { params: { path: { id: policy.id }, header: { "X-Workspace-Id": ws } }, body: { ...body, version: policy.version, isActive: active } as never }));

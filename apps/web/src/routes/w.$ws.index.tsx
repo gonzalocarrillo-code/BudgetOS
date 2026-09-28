@@ -33,6 +33,8 @@ const Overview = z.object({
   period: z.object({ preset: z.string(), start: z.string().optional(), end: z.string().optional(), elapsed: z.string().optional() }).passthrough(),
   dataAsOf: z.string(),
   totals: z.record(z.string(), z.string().nullable()),
+  /** UX-008: the tiles' budget, as Budgets counts it; `assigned` is what the leaves (the heatmap) hold. */
+  headline: z.object({ basis: z.string(), budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), paceIndex: z.string().nullable(), assigned: z.string().nullable() }).nullable().optional(),
   heatmap: z
     .object({
       rowDimension: z.object({ key: z.string(), label: z.string() }),
@@ -159,16 +161,18 @@ function OverviewPage(): ReactElement {
   const { period, rows, cols } = Route.useSearch();
   const navigate = Route.useNavigate();
   const { data: o, error, isPending } = useQuery(overviewQuery(ws, period, rows, cols));
+  // The tiles read the headline (Budgets' definition); older responses fall back to the totals.
+  const head = { budget: o?.headline?.budget ?? o?.totals["budget"] ?? null, actual: o?.headline?.actual ?? o?.totals["actual"] ?? null, spentPct: o?.headline?.spentPct ?? o?.totals["spend_to_date_pct"] ?? null };
   const { data: periods = [] } = useQuery(periodsQuery(ws));
   const layout = useLayout(ws);
   const [cell, setCell] = useState<CellRef | null>(null);
   const money = (v: string | null | undefined) => (v === null || v === undefined ? "—" : formatMoney(v, o?.currency ?? "USD"));
   const periodSpec = period.startsWith("fiscal:") ? { kind: "fiscal", key: period.slice("fiscal:".length) } : { kind: "relative", preset: period };
   const tiles = [
-    layout.shows("tile.budget") ? <Tile key="b" label={t("overview.budget")} value={o ? money(o.totals["budget"]) : ""} /> : null,
-    layout.shows("tile.actual") ? <Tile key="a" label={t("overview.actual")} value={o ? money(o.totals["actual"]) : ""} hint={o ? t("overview.spendToDate", { pct: pct(o.totals["spend_to_date_pct"] ?? null) }) : undefined} /> : null,
+    layout.shows("tile.budget") ? <Tile key="b" label={t("overview.budget")} value={o ? money(head.budget) : ""} hint={o && o.headline && o.headline.assigned !== null && o.headline.assigned !== o.headline.budget ? t("overview.assigned", { amount: money(o.headline.assigned) }) : undefined} testId="tile-budget" /> : null,
+    layout.shows("tile.actual") ? <Tile key="a" label={t("overview.actual")} value={o ? money(head.actual) : ""} hint={o ? t("overview.spendToDate", { pct: pct(head.spentPct) }) : undefined} /> : null,
     // % of the budget spent (product feedback 8), against how much of the period has gone.
-    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(o.totals["spend_to_date_pct"] ?? null) : ""} hint={o?.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" /> : null,
+    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(head.spentPct) : ""} hint={o?.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" /> : null,
     // A projection needs projection facts; without them it would read 0%.
     layout.shows("tile.projected") ? <Tile key="p" label={t("overview.projectedClose")} value={o ? (Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])) : ""} hint={o && Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} /> : null,
     layout.shows("tile.alerts") ? <Tile key="al" label={t("overview.openAlerts")} value={o ? String(o.alerts.open) : ""} to="alerts" ws={ws} testId="tile-alerts" /> : null,

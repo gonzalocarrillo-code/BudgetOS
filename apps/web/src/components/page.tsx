@@ -1,10 +1,13 @@
 import type { ReactElement, ReactNode } from "react";
 
-/** A page: its title, then content in white rounded cards on the surface (ADR-021). */
+/**
+ * A page: its title, then content in white rounded cards on the surface (ADR-021). Only the shell's
+ * <main> scrolls, and the title row with the page's actions stays at its top (UX-002).
+ */
 export function Page({ title, actions, children }: { title: string; actions?: ReactNode; children?: ReactNode }): ReactElement {
   return (
-    <section className="flex min-w-0 flex-col gap-5 p-6">
-      <div className="flex flex-wrap items-center gap-3">
+    <section className="flex min-w-0 flex-col gap-5 px-6 pb-6">
+      <div className="sticky top-0 z-20 -mx-6 flex flex-wrap items-center gap-3 border-b border-border/0 bg-surface/95 px-6 pb-3 pt-6 backdrop-blur supports-[backdrop-filter]:bg-surface/80" data-testid="page-header">
         <h1 className="text-[22px] font-semibold leading-7 tracking-[-0.02em]" data-testid="page-title">
           {title}
         </h1>

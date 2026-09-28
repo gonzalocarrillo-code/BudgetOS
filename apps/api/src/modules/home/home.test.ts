@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { LIVE_LEAVES } from "@budget/domain";
+import { TOP_LEVEL, LIVE_LEAVES } from "@budget/domain";
 import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -103,6 +103,17 @@ describe("tours (T-040)", () => {
     expect(((await as("finance1", "GET", "/tours")).body as unknown as Array<{ role: string }>).map((t) => t.role)).toEqual(["finance"]);
     expect(((await as("approver", "GET", "/tours")).body as unknown as Array<{ role: string }>).map((t) => t.role)).toEqual(["approver"]);
 
+    // UX-001: closing early is a skip. It stops the invitation but is not a completion; finishing later is.
+    const [fin] = (await as("finance1", "GET", "/tours")).body as unknown as Array<{ id: string; version: number }>;
+    const skipped = await as("finance1", "POST", `/tours/${fin?.id ?? ""}/complete`, { version: fin?.version, dismissed: true });
+    expect(skipped.body).toMatchObject({ completed: false, dismissed: true });
+    expect((await as("finance1", "GET", "/tours")).body).toEqual([]);
+    expect(((await as("finance1", "GET", "/tours?all=true")).body as unknown as Array<{ completed: boolean; dismissed: boolean }>)[0]).toMatchObject({ completed: false, dismissed: true });
+    await as("finance1", "POST", `/tours/${fin?.id ?? ""}/complete`, { version: fin?.version });
+    expect(((await as("finance1", "GET", "/tours?all=true")).body as unknown as Array<{ completed: boolean; dismissed: boolean }>)[0]).toMatchObject({ completed: true, dismissed: false });
+    await as("finance1", "POST", `/tours/${fin?.id ?? ""}/complete`, { version: fin?.version, dismissed: true });
+    expect(((await as("finance1", "GET", "/tours?all=true")).body as unknown as Array<{ completed: boolean }>)[0]?.completed).toBe(true);
+
     const done = await as("planner", "POST", `/tours/${tour?.id ?? ""}/complete`, { version: tour?.version });
     expect(done.body).toMatchObject({ completed: true });
     expect((await as("planner", "GET", "/tours")).body).toEqual([]);
@@ -130,9 +141,13 @@ describe("home (T-040)", () => {
     expect((res.body["totals"] as { budget: string | null }).budget).not.toBeNull();
     expect(home.waitingOnMe.unmatched).toBeGreaterThan(0); // the golden CSV's unmatched US rows
     expect(home.scopes.length).toBeGreaterThan(0);
-    const first = home.scopes[0];
-    const q = await as("budgetOwner", "POST", `/workspaces/${golden.workspaceId}/query`, { workspaceId: golden.workspaceId, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: [...LIVE_LEAVES, ...((first?.filter as { children: unknown[] }).children)] }, measures: ["budget"], limit: 1 });
-    expect(first?.budget).toBe((q.body["totals"] as Record<string, string>)["budget"]);
+    // UX-008 (ADR-051): a strip is its top-level budget's own row in Budgets' budget structure, and
+    // the header total is Budgets' total, not the sum of the leaves.
+    const first = home.scopes[0] as { envelopeId?: string; budget: string } | undefined;
+    const structure = await as("budgetOwner", "POST", `/workspaces/${golden.workspaceId}/query`, { workspaceId: golden.workspaceId, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: TOP_LEVEL }, subtree: true, measures: ["budget", "actual"], limit: 100 });
+    const rows = structure.body["rows"] as Array<{ envelopeId: string; measures: Record<string, string> }>;
+    expect(first?.budget).toBe(rows.find((r) => r.envelopeId === first?.envelopeId)?.measures["budget"]);
+    expect((res.body["totals"] as { budget: string }).budget).toBe((structure.body["totals"] as Record<string, string>)["budget"]);
 
     // A mention in an open thread is waiting on the person mentioned (golden's only mention is in a resolved thread).
     const envelopeId = [...golden.envelopeIds.values()][0] as string;

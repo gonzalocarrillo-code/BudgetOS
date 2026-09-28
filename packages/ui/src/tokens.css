@@ -19,23 +19,35 @@
   --card-foreground: #1b2638;
   --popover: #ffffff;
   --popover-foreground: #1b2638;
-  --primary: #1877f2;
+  --primary: #1868d8; /* UX-006: white text on it is 5.2:1 (was #1877f2, 4.2:1) */
   --primary-foreground: #ffffff;
   --secondary: #f0f7ff; /* selected sub-item, primary-tinted surfaces */
   --secondary-foreground: #1868d8;
   --muted: #f1f5f9; /* chips, progress tracks, table headers */
-  --muted-foreground: #6b7a90;
-  --subtle-foreground: #9facc0; /* secondary numbers ("36,662,968 / 44,530,000") */
+  --muted-foreground: #5b6b80; /* 5.4:1 on white (was #6b7a90, 4.4:1) */
+  --subtle-foreground: #616f85; /* secondary numbers ("36,662,968 / 44,530,000"); 4.9:1 (was #9facc0, 2.3:1) */
   --accent: #f3f6fa; /* hover */
   --accent-foreground: #1b2638;
   --inverse: #0b1628; /* dark buttons, tour popover actions */
   --inverse-foreground: #ffffff;
-  --destructive: #e5484d;
-  --success: #12a37a;
-  --warning: #e8a317;
+  --destructive: #c8383d; /* white text 5.1:1 (was #e5484d, 3.9:1) */
+  --success: #12a37a; /* fills and bars; text uses --success-text */
+  --warning: #e8a317; /* fills and bars; text uses --warning-text */
   --border: #e6eaf0;
-  --input: #dfe4eb;
+  --input: #bcc6d3; /* field borders, darker than card borders (decision D6 open) */
   --ring: #1877f2;
+  --brand-bright: #1877f2; /* bars, progress, the focus ring */
+  /* Status chips (UX-006): AA text on a tinted background, never colour alone. */
+  --success-text: #0e7c5c;
+  --success-soft: #e7f7f1;
+  --warning-text: #8a5a00;
+  --warning-soft: #fff4dc;
+  --danger-text: #b42f35;
+  --danger-soft: #fdecec;
+  --info-text: #1558bd;
+  --info-soft: #eaf2fe;
+  --neutral-text: #4a5a70;
+  --neutral-soft: #eef2f6;
 }
 
 @theme inline {
@@ -68,4 +80,15 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-bright: var(--brand-bright);
+  --color-success-text: var(--success-text);
+  --color-success-soft: var(--success-soft);
+  --color-warning-text: var(--warning-text);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger-text: var(--danger-text);
+  --color-danger-soft: var(--danger-soft);
+  --color-info-text: var(--info-text);
+  --color-info-soft: var(--info-soft);
+  --color-neutral-text: var(--neutral-text);
+  --color-neutral-soft: var(--neutral-soft);
 }

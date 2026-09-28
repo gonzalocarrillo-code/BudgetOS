@@ -127,3 +127,33 @@ test("profile: a person renames themselves and Home greets them by it", async ({
   await expect(page.getByTestId("user-name")).toHaveText("Priya Raman");
   await expect(page.getByTestId("page-title")).toHaveText(/^Good (morning|afternoon|evening), Priya$/);
 });
+
+/**
+ * UX-001 (product feedback round 6): a tour never starts by itself, so a person with an unfinished
+ * tour lands on the page they opened. Home invites them instead; "Not now" records a skip.
+ */
+test("tours: nothing starts by itself; Home invites, Not now skips it for this version", async ({ page }) => {
+  const admin = await tokenFor("orgAdmin");
+  const approverTour = ((await api(admin, "GET", "/tours?all=true&role=approver")) as Array<{ id: string; steps: unknown[] }>)[0];
+  // A new version (same steps): the approver has not seen it yet.
+  await fetch(`http://127.0.0.1:${PORTS.api}/api/v1/tours/${approverTour?.id ?? ""}`, { method: "PATCH", headers: { authorization: `Bearer ${admin}`, "content-type": "application/json", "x-workspace-id": state().workspaceId }, body: JSON.stringify({ steps: approverTour?.steps }) });
+  await signIn(page, "approver");
+  const ws = state().workspaceId;
+  await page.goto(`/w/${ws}/targets`);
+  await expect(page.getByTestId("page-title")).toHaveText("Targets");
+  await page.waitForTimeout(1500);
+  await expect(page).toHaveURL(new RegExp(`/w/${ws}/targets$`));
+  await expect(page.locator(".driver-popover")).toHaveCount(0);
+
+  await page.goto(`/w/${ws}/home`);
+  const invite = page.getByTestId("tour-invite");
+  await expect(invite).toHaveAttribute("data-role", "approver");
+  await expect(page).toHaveURL(new RegExp(`/w/${ws}/home$`));
+  await invite.getByTestId("tour-invite-skip").click();
+  await expect(invite).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("page-title")).toBeVisible();
+  await expect(page.getByTestId("tour-invite")).toHaveCount(0);
+  await page.getByTestId("help-menu").click();
+  await expect(page.getByTestId("tour-start").and(page.locator('[data-role="approver"]'))).toContainText("Skipped");
+});

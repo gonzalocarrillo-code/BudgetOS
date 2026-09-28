@@ -37,6 +37,7 @@ function PeriodsPage(): ReactElement {
   const [problem, setProblem] = useState<string | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ["periods", ws] });
   const act = useMutation({
+    meta: { success: t("toast.periodUpdated") },
     mutationFn: async (fn: () => Promise<unknown>) => fn(),
     onSuccess: () => (setProblem(null), refresh()),
     onError: (e: Error) => setProblem(e.message),
@@ -137,11 +138,13 @@ function FiscalYearCard({ ws, canManage, onDone }: { ws: string; canManage: bool
   const [pattern, setPattern] = useState<(typeof PATTERNS)[number]>("calendar");
   const [notice, setNotice] = useState<string | null>(null);
   const setStart = useMutation({
+    meta: { success: t("toast.fiscalSaved") },
     mutationFn: async (m: number) => unwrap(api.PATCH("/api/v1/workspaces/{ws}/fiscal-year", { params: { path: { ws } }, body: { startMonth: m } as never })),
     // Computed periods and "this quarter" everywhere follow the new start.
     onSuccess: () => void client.invalidateQueries(),
   });
   const generate = useMutation({
+    meta: { success: t("toast.periodsGenerated") },
     mutationFn: async () => z.object({ created: z.array(z.string()), kept: z.array(z.string()) }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/periods/generate", { params: { path: { ws } }, body: { fiscalYear: Number(year), pattern } as never }))),
     onSuccess: (r) => (setNotice(t("periods.generated", { created: r.created.length, kept: r.kept.length })), onDone()),
   });
@@ -197,6 +200,7 @@ function CustomPeriodCard({ ws, canManage, onDone }: { ws: string; canManage: bo
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const create = useMutation({
+    meta: { success: t("toast.periodCreated") },
     mutationFn: async () => unwrap(api.POST("/api/v1/workspaces/{ws}/periods", { params: { path: { ws } }, body: { key: key.trim(), kind: "custom", start, end } as never })),
     onSuccess: () => (setKey(""), setStart(""), setEnd(""), onDone()),
   });

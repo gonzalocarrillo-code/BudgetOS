@@ -1,6 +1,6 @@
 import type { ManualEntryIssue } from "@budget/domain";
 import { BudgetGrid, formatMoney, type ColumnSpec, type GridEvents } from "@budget/grid";
-import { Button, cn } from "@budget/ui";
+import { Button, cn, StatusChip } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -26,17 +26,7 @@ const ManualSearch = z.object({ channel: z.string().optional(), batch: z.string(
 type ManualSearch = z.infer<typeof ManualSearch>;
 export const Route = createFileRoute("/w/$ws/sources/manual")({ validateSearch: ManualSearch, component: ManualEntryPage });
 
-const STATUS_TONE: Record<Batch["status"], string> = {
-  DRAFT: "bg-muted text-muted-foreground",
-  SUBMITTED: "bg-warning/15 text-[#8a5a00]",
-  APPROVED: "bg-success/15 text-[#0b6b50]",
-  REJECTED: "bg-destructive/10 text-destructive",
-};
-const StatusBadge = ({ status }: { status: Batch["status"] }) => (
-  <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium", STATUS_TONE[status])} data-testid="batch-status" data-status={status}>
-    {t(`manual.status.${status}` as MessageKey)}
-  </span>
-);
+const StatusBadge = ({ status }: { status: Batch["status"] }) => <StatusChip status={status} label={t(`manual.status.${status}` as MessageKey)} data-testid="batch-status" />;
 const OFFLINE = ["tv", "ooh", "dooh", "print", "radio", "sponsorship", "other"];
 const monthRange = (month: string) => {
   const [y, m] = month.split("-").map(Number) as [number, number];

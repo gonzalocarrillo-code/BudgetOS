@@ -7,6 +7,7 @@ export {
   FieldRef,
   FilterGroup,
   LIVE_LEAVES,
+  TOP_LEVEL,
   MeasureKey,
   Predicate,
   RelativeDate,
