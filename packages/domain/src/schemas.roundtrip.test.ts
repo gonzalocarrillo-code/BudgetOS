@@ -346,7 +346,11 @@ const samples: Record<string, readonly unknown[]> = {
   CreateWorkspaceInput: [{ name: "Acme LATAM", templateId: "01927a00-0000-7000-8000-0000000000c1", withDemoData: true, reportingCurrency: "USD", fiscalYearStartMonth: 1 }],
   TemplateSavedView: [{ name: "By country", screen: "budgets", definition: { view: "pivot", groupBy: ["country"] } }],
   HomeScope: [{ label: "LATAM", filter: { logic: "and", children: [] }, budget: "1000.00", actual: "400.00", projected: null, paceIndex: "0.8000", spentPct: "0.4000" }],
-  HomeResponse: [{ waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [] }],
+  HomeResponse: [
+    { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [] },
+    { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [], workspace: { name: "OpenAI", currency: "USD", period: { start: "2026-01-01", end: "2026-12-31", elapsed: "0.74" } }, totals: null, setup: { budgets: 0, sources: 0, people: 1, spend: false, tags: 0 } },
+  ],
+  UpdateMeInput: [{ name: "Maya Chen" }],
   TimelineZoom: ["week", "month", "quarter", "fy"],
   TimelineMarker: [{ kind: "approval", at: "2026-02-01", id: "v1" }, { kind: "alert", at: "2026-08-14", id: "a1", severity: "warning" }],
   TimelinePeriod: [{ id: "2026-Q1", kind: "quarter", start: "2026-01-01", end: "2026-03-31", label: "Q1 FY2026" }],

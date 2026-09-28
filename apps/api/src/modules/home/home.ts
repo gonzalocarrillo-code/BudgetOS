@@ -1,5 +1,5 @@
-import { LIVE_LEAVES, QueryRequest, canInScope, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
-import { plannerOptions, unmatchedSpend, withTenant, fiscalCalendar } from "@budget/db";
+import { LIVE_LEAVES, QueryRequest, canInScope, elapsedFraction, readScopeFilter, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
+import { plannerOptions, unmatchedSpend, withTenant, fiscalCalendar, workspaceSetup } from "@budget/db";
 import { compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -45,7 +45,7 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     const scopesOf = auth.isOrgAdmin ? null : await envelopeScopeTargets(tx, roots.map((r) => r.id));
     const mine = roots.filter((r) => r.ownerId === me || scopesOf === null || canInScope(auth.assignments, "envelope.read", scopesOf.get(r.id) ?? { dims: {} }));
     const picked = [...mine.filter((r) => r.ownerId === me), ...mine.filter((r) => r.ownerId !== me)].slice(0, MAX_SCOPES);
-    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
+    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true, name: true, reportingCurrency: true } });
     const period = resolvePeriod({ kind: "relative", preset: "current_year" }, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period);
     const scopes: HomeResponse["scopes"] = [];
@@ -72,7 +72,26 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       ...(await tx.target.findMany({ where: { id: { in: ids("target") } }, select: { id: true, metricKey: true } })).map((x) => [x.id, `${x.metricKey.toUpperCase()} target`] as [string, string]),
     ]);
 
-    const views = await tx.savedView.findMany({ where: { workspaceId, OR: [{ createdBy: me }, { visibility: { in: ["shared", "workspace_default"] } }] }, orderBy: [{ visibility: "asc" }, { name: "asc" }], take: 6 });
+    // Budgets views only (Overview layouts are not places to open); mine, then the workspace's.
+    const views = await tx.savedView.findMany({ where: { workspaceId, screen: "explorer", OR: [{ createdBy: me }, { visibility: "workspace" }] }, orderBy: [{ visibility: "asc" }, { name: "asc" }], take: 6 });
+
+    // The year so far over every budget the caller may read (Home's header numbers).
+    const setup = await workspaceSetup(tx, workspaceId);
+    let totals: HomeResponse["totals"] = null;
+    // Someone with no role that reads budgets gets no totals (readScopeFilter refuses them).
+    let scope: FilterGroupT | null | undefined;
+    try {
+      scope = auth.isOrgAdmin ? null : readScopeFilter(auth.assignments, "envelope.read");
+    } catch {
+      scope = undefined;
+    }
+    if (setup.budgets > 0 && scope !== undefined) {
+      const q = QueryRequest.parse({ workspaceId, filter: { logic: "and", children: [...LIVE_LEAVES, ...(scope ? [scope] : [])] }, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct"], limit: 1 });
+      const tt = compileTotals(q, period, today, opts);
+      const [row] = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(tt.sql, ...tt.values);
+      const openAlerts = await tx.alert.count({ where: { workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });
+      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts };
+    }
 
     return {
       waitingOnMe: {
@@ -84,6 +103,9 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       scopes,
       recents: touched.filter((x) => titles.has(x.entity_id)).map((x) => ({ entityType: x.entity_type, entityId: x.entity_id, title: titles.get(x.entity_id) as string, at: new Date(x.at).toISOString() })),
       pinnedViews: views.map((v) => ({ id: v.id, name: v.name, screen: v.screen, definition: v.definition as Record<string, unknown> })),
+      workspace: { name: ws.name, currency: ws.reportingCurrency, period: { start: period.start, end: period.end, elapsed: ratio(elapsedFraction(period, today).toString()) } },
+      totals,
+      setup,
     };
   });
 }
