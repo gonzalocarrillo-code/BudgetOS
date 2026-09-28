@@ -67,3 +67,15 @@ export const tagsQuery = (ws: string) =>
     queryFn: async () => z.array(Tag).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/tags", { params: { path: { ws } } }))),
     staleTime: 30_000,
   });
+
+export type TaggableType = "envelope" | "target" | "alert" | "approval_request";
+
+/** The tags on entities of one type (chips on alerts, approvals and targets), keyed by entity id. */
+export const appliedTagsQuery = (ws: string, type: TaggableType, ids: string[]) =>
+  queryOptions({
+    queryKey: ["applied-tags", ws, type, [...ids].sort().join(",")],
+    queryFn: async () =>
+      z.record(z.string(), z.array(Tag)).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/tags/applied", { params: { path: { ws }, query: { type, ids: ids.join(",") } as never } }))),
+    enabled: ids.length > 0,
+    staleTime: 15_000,
+  });

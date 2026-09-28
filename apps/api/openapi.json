@@ -12546,6 +12546,51 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/tags/applied": {
+      "get": {
+        "operationId": "appliedTags",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "envelope",
+                "target",
+                "alert",
+                "approval_request",
+                "thread"
+              ]
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated entity ids (up to 200)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Each entity id's tags; entities without tags are left out"
+          }
+        }
+      }
+    },
     "/api/v1/tags/{id}": {
       "patch": {
         "operationId": "updateTag",

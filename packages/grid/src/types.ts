@@ -38,6 +38,8 @@ export interface GridEvents {
   /** The first (name) cell of a row without children was clicked: open its details. */
   onOpen?(row: QueryRow): void;
   onSort?(column: ColumnSpec): void;
+  /** With `selectRows`: the rows whose checkboxes are ticked, in grid order. */
+  onRowsSelected?(rows: QueryRow[]): void;
 }
 
 export type GridDensity = "compact" | "normal" | "comfortable";
@@ -55,6 +57,8 @@ export interface BudgetGridProps {
   searchTags?: (query: string) => Promise<readonly string[]>;
   /** Glide theme overrides (the app's design tokens). */
   theme?: Partial<Theme>;
+  /** Checkbox row markers for picking several rows (bulk tagging); off by default. */
+  selectRows?: boolean;
   /** Label of the pinned totals row's first cell. */
   totalsLabel?: string;
 }

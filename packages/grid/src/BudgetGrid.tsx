@@ -9,7 +9,7 @@ import {
   type Item,
 } from "@glideapps/glide-data-grid";
 import "@glideapps/glide-data-grid/dist/index.css";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { buildCell, customRenderers, type BudgetCell } from "./cells.js";
 import { bindEditorHost } from "./editor-fields.js";
 import { forwardPaste } from "./paste.js";
@@ -62,6 +62,8 @@ function committedValue(cell: EditableGridCell): string {
 
 /** The path cell indents 16 px a level; its marker sits within the padding + ~18 px (cells.tsx). */
 const INDENT_PX = 16;
+/** The checkbox column in select mode (the totals row makes room for it). */
+const ROW_MARKER_PX = 36;
 const MARKER_HIT_PX = 26;
 function levelOf(row: QueryRow): number {
   const level = (row as QueryRow & { level?: unknown }).level;
@@ -107,11 +109,16 @@ export function BudgetGrid({
   searchTags,
   theme,
   totalsLabel = "Total",
+  selectRows = false,
 }: BudgetGridProps) {
   const cache = useRowCache(source, { pageSize: 200, prefetch: 2 });
   // Glide stores the selection only when it is not given onGridSelectionChange; we need the
   // callback, so the selection is held here (without it, nothing selects and nothing edits).
   const [selection, setSelection] = useState<GridSelection>({ columns: CompactSelection.empty(), rows: CompactSelection.empty() });
+  // Leaving select mode drops the ticked rows.
+  useEffect(() => {
+    if (!selectRows) setSelection((s) => ({ ...s, rows: CompactSelection.empty() }));
+  }, [selectRows]);
   bindEditorHost({
     ...(searchDimensionValues === undefined ? {} : { searchDimensionValues }),
     ...(searchTags === undefined ? {} : { searchTags }),
@@ -151,7 +158,7 @@ export function BudgetGrid({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0 }}>
-      {pinnedTotals === "top" ? <TotalsRow columns={columns} totals={totals} currency={currency} widths={columns.map(columnWidth)} label={totalsLabel} /> : null}
+      {pinnedTotals === "top" ? <TotalsRow columns={columns} totals={totals} currency={currency} widths={columns.map(columnWidth)} label={totalsLabel} offset={selectRows ? ROW_MARKER_PX : 0} /> : null}
       <div style={{ flex: "1 1 auto", minHeight: 0 }}>
         <DataEditor
         width="100%"
@@ -170,12 +177,16 @@ export function BudgetGrid({
         getCellsForSelection={true}
         rangeSelect="multi-rect"
         columnSelect="none"
-        rowSelect="single"
+        rowSelect={selectRows ? "multi" : "single"}
+        rowMarkers={selectRows ? "checkbox" : "none"}
+        rowMarkerWidth={ROW_MARKER_PX}
+        rowSelectionMode={selectRows ? "multi" : "auto"}
         gridSelection={selection}
         onGridSelectionChange={(next) => {
           setSelection(next);
           const current = next.current;
           events.onSelect(current ? (cache.get(current.cell[1]) ?? null) : null);
+          if (selectRows) events.onRowsSelected?.([...next.rows].map((i) => cache.get(i)).filter((r): r is NonNullable<typeof r> => r !== undefined));
         }}
         onCellClicked={([col, row], event) => {
           const record = cache.get(row);

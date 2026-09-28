@@ -13,7 +13,15 @@ import type { Dimension } from "../../lib/queries.js";
 
 const isPredicate = (n: FilterGroupT["children"][number]): n is Predicate => "field" in n;
 
+/** The "Tag" choice in Add filter: budgets carrying any of the picked tags (the planner's `tag` attribute). */
+const TAG_KEY = "__tag";
+const isTagFilter = (n: FilterGroupT["children"][number]): n is Predicate => isPredicate(n) && n.field.kind === "attr" && n.field.key === "tag";
+
 function chipLabel(n: FilterGroupT["children"][number], dims: Dimension[]): string {
+  if (isTagFilter(n)) {
+    const values = Array.isArray(n.value) ? (n.value as string[]) : [String(n.value)];
+    return t("explorer.filter.chipTag", { values: values.join(", ") });
+  }
   if (!isPredicate(n) || n.field.kind !== "dimension") return t("explorer.filter.custom");
   const key = n.field.key;
   const dim = dims.find((d) => d.key === key);
@@ -23,14 +31,15 @@ function chipLabel(n: FilterGroupT["children"][number], dims: Dimension[]): stri
   return t("explorer.filter.chip", { dimension: dim?.label ?? key, values: values.map(label).join(", ") });
 }
 
-export function FilterBar({ filter, dimensions, onChange }: { filter: FilterGroupT; dimensions: Dimension[]; onChange: (f: FilterGroupT) => void }): ReactElement {
+export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter: FilterGroupT; dimensions: Dimension[]; onChange: (f: FilterGroupT) => void; tags?: Array<{ name: string }> }): ReactElement {
   const [adding, setAdding] = useState(false);
   const [dimKey, setDimKey] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
-  const dim = dimensions.find((d) => d.key === dimKey);
+  const dim = dimKey === TAG_KEY ? { key: TAG_KEY, values: tags.map((x) => ({ code: x.name, label: x.name })) } : dimensions.find((d) => d.key === dimKey);
   const apply = () => {
     if (!dimKey || picked.length === 0) return;
-    onChange({ ...filter, children: [...filter.children, { field: { kind: "dimension", key: dimKey }, op: "in", value: picked }] });
+    const predicate: Predicate = dimKey === TAG_KEY ? { field: { kind: "attr", key: "tag" }, op: "in", value: picked } : { field: { kind: "dimension", key: dimKey }, op: "in", value: picked };
+    onChange({ ...filter, children: [...filter.children, predicate] });
     setAdding(false);
     setDimKey("");
     setPicked([]);
@@ -57,6 +66,7 @@ export function FilterBar({ filter, dimensions, onChange }: { filter: FilterGrou
                 {d.label}
               </option>
             ))}
+            {tags.length ? <option value={TAG_KEY}>{t("explorer.filter.tag")}</option> : null}
           </select>
           {dim ? (
             <select

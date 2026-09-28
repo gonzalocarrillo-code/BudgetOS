@@ -1,4 +1,4 @@
-import { ListThreadsQuery, PeopleQuery, REACTIONS, REACTION_NAMES, type Mention } from "@budget/domain";
+import { AppliedTagsQuery, ListThreadsQuery, PeopleQuery, REACTIONS, REACTION_NAMES, type Mention } from "@budget/domain";
 import { withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
@@ -72,6 +72,23 @@ export function listTags(prisma: PrismaClient, auth: AuthContext) {
     const tags = await tx.tag.findMany({ where: { workspaceId }, orderBy: { name: "asc" } });
     const counts = await tx.taggable.groupBy({ by: ["tagId"], where: { workspaceId }, _count: { _all: true } });
     return tags.map((t) => ({ ...tagView(t), count: counts.find((c) => c.tagId === t.id)?._count._all ?? 0 }));
+  });
+}
+
+/** GET /workspaces/:ws/tags/applied?type&ids: each entity's tags (entities with none are left out). */
+export async function appliedTags(prisma: PrismaClient, auth: AuthContext, raw: unknown) {
+  const q = parseInput(AppliedTagsQuery, raw ?? {});
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const rows = await tx.taggable.findMany({ where: { workspaceId, entityType: q.type, entityId: { in: q.ids } }, select: { entityId: true, tagId: true } });
+    const tags = new Map((await tx.tag.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.tagId))] } } })).map((t) => [t.id, tagView(t)]));
+    const out: Record<string, Array<ReturnType<typeof tagView>>> = {};
+    for (const r of rows) {
+      const tag = tags.get(r.tagId);
+      if (tag) (out[r.entityId] ??= []).push(tag);
+    }
+    for (const list of Object.values(out)) list.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
   });
 }
 

@@ -346,6 +346,11 @@ The spec-scale load job re-measures this on this branch.
 
 - **An org admin can approve anything**, their own changes included: `eligible_approver()` (migration `20260930000000_org_admin_approves`) and `eligibleApprover()` let an org-wide ORG_ADMIN decide any step. Everyone else keeps the step role, the group and blockSelfApproval.
 
+## Product feedback, round 3: tagging (2026-09-28)
+
+- **Filter by tag:** Budgets › Add filter › Tag (the planner's `tag` attribute), also in rule scopes.
+- **Tag many at once:** Budgets › Select shows checkboxes in the grid; tick rows, then Tag or Untag in one call. A new tag is created on the spot by anyone who may create tags.
+- **Chips on alerts, approval requests and targets**, not only budgets. They read `GET /workspaces/:ws/tags/applied`, and a new tag can be created from the chip picker.
 ## Product feedback, round 3: pacing and alert rules fully editable (2026-09-28)
 
 - **New in the editor:** the period a rule is measured over, whether it shows in the app, who its alerts are assigned to (`delivery.assignTo`, default the budget's owner), active on creation, Duplicate, and Delete.

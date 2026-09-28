@@ -10,6 +10,7 @@ import { Card, Page } from "../components/page.js";
 import { StatusChip } from "../features/approvals/parts.js";
 import { HistoryList } from "../features/history/history-list.js";
 import { ThreadPanel } from "../features/threads/thread-panel.js";
+import { TagChips } from "../features/threads/tag-chips.js";
 import { api, unwrap } from "../lib/api.js";
 import { approvalQuery, type ApprovalDetail } from "../lib/queries.js";
 
@@ -84,6 +85,9 @@ function RequestDetail(): ReactElement {
         <div className="flex flex-col gap-5">
           <Card title={t("approvals.chain")}>
             <Chain r={r} />
+          </Card>
+          <Card title={t("tags.title")}>
+            <TagChips ws={ws} entity={{ type: "approval_request", id: r.id }} />
           </Card>
           <Card title={t("approvals.timeline")}>
             <DecisionTimeline r={r} />

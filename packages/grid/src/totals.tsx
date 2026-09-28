@@ -11,15 +11,19 @@ export function TotalsRow({
   currency,
   widths,
   label = "Total",
+  offset = 0,
 }: {
   columns: readonly ColumnSpec[];
   totals: Readonly<Record<string, string | null>>;
   currency: string;
   widths?: readonly number[];
   label?: string;
+  /** Leading space for the grid's row-marker column (select mode). */
+  offset?: number;
 }) {
   return (
     <div className="budget-grid-totals" role="row" data-testid="grid-totals" style={{ display: "flex", fontVariantNumeric: "tabular-nums", fontWeight: 600, whiteSpace: "nowrap" }}>
+      {offset ? <div style={{ width: offset, flex: "none" }} aria-hidden /> : null}
       {columns.map((column, index) => (
         <span
           key={`${column.kind}-${index}`}
