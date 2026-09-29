@@ -76,3 +76,49 @@ test("dark mode: the user menu switches the theme and it sticks", async ({ page 
   await page.getByTestId("theme-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
+
+/**
+ * HO-016: Home and the Overview on a phone, in both themes. Nothing wider than the screen, the
+ * title row scrolls away (it would cover a third of the screen), no text under 12 px, every control
+ * named — including the Overview's Customise menu and the heatmap's phone list.
+ */
+for (const scheme of ["light", "dark"] as const) {
+  test(`phone, ${scheme}: Home and the Overview fit, read and name their controls`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await signIn(page, "admin");
+    const check = () =>
+      page.evaluate((root) => {
+        const out: string[] = [];
+        const el = document.querySelector(root);
+        if (!el) return [`no ${root}`];
+        if (document.documentElement.scrollWidth > window.innerWidth) out.push(`page ${document.documentElement.scrollWidth}px wide`);
+        if (getComputedStyle(document.querySelector('[data-testid="page-header"]') as Element).position === "sticky") out.push("sticky header on a phone");
+        const visible = (e: Element) => {
+          const r = (e as HTMLElement).getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden";
+        };
+        for (const e of el.querySelectorAll("*")) {
+          const own = [...e.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "");
+          if (own && visible(e) && parseFloat(getComputedStyle(e).fontSize) < 12) out.push(`${parseFloat(getComputedStyle(e).fontSize)}px: ${(e.textContent ?? "").trim().slice(0, 40)}`);
+        }
+        for (const b of document.querySelectorAll("button, a[href]")) if (visible(b) && !(b.getAttribute("aria-label") || (b.textContent ?? "").trim() || b.getAttribute("title"))) out.push(`unnamed ${b.outerHTML.slice(0, 100)}`);
+        for (const f of document.querySelectorAll("input:not([type=hidden]), select")) if (visible(f) && !((f as HTMLInputElement).labels?.length || f.getAttribute("aria-label"))) out.push(`unlabelled ${f.outerHTML.slice(0, 100)}`);
+        return out;
+      }, "main");
+    await page.goto(`/w/${state().workspaceId}/home`);
+    await expect(page.getByTestId("home-desk")).toBeVisible();
+    expect(await check()).toEqual([]);
+    await page.screenshot({ path: test.info().outputPath(`home-375-${scheme}.png`), fullPage: true });
+
+    await page.goto(`/w/${state().workspaceId}`);
+    await expect(page.getByTestId("overview")).toHaveAttribute("data-ready", "true");
+    await expect(page.getByTestId("heatmap-phone")).toBeVisible();
+    expect(await check()).toEqual([]);
+    await page.screenshot({ path: test.info().outputPath(`overview-375-${scheme}.png`), fullPage: true });
+    await page.getByTestId("overview-customise").click();
+    await expect(page.getByTestId("overview-customise-menu")).toBeVisible();
+    const menu = await page.getByTestId("overview-customise-menu").evaluate((m) => [...m.querySelectorAll("input, button")].filter((e) => !((e as HTMLInputElement).labels?.length || e.getAttribute("aria-label") || (e.textContent ?? "").trim())).length);
+    expect(menu).toBe(0);
+  });
+}

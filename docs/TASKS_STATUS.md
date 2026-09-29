@@ -508,3 +508,5 @@ Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The 
 | HO-013 | G3 | Heatmap v2: margins, band tints, alert dots, popover with Open in Budgets and Edit these budgets, arrow keys, sort, legend chips, a list on phones | done |
 | HO-014 | G3 | Needs attention (four kinds, ranked by money), alerts by rule with a threshold hint, KPI bullet bars, approval queue, data footer | done |
 | HO-015 | G3 | Customise v2: reorder, remembered rows/columns/sort, "Set as the workspace default" for admins, `OverviewLayout` in `@budget/domain` | done |
+| HO-016 | G4 | Phones and dark mode: the title row scrolls away on phones for Home and the Overview, 12 px smallest text there, attention chips' focus ring; a11y spec at 375 px in both themes | done |
+| HO-017 | G4 | Loading skeletons in the shape of the new Home and Overview; runbook note on the freshness thresholds; ADR index (`docs/adr/README.md`); render budget test kept | done |

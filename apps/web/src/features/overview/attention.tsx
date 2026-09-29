@@ -43,7 +43,7 @@ export function Attention({ ws, a, currency, period }: { ws: string; a: Overview
           {KINDS.map((k) => {
             const n = countOf(a, k);
             return (
-              <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={cn("h-7 rounded-full border px-2.5 text-xs font-medium", kind === k ? "border-foreground bg-foreground text-card" : "border-border bg-card text-foreground hover:bg-accent")} data-testid={`attention-${k}`}>
+              <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={cn("h-7 rounded-full border px-2.5 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", kind === k ? "border-foreground bg-foreground text-card" : "border-border bg-card text-foreground hover:bg-accent")} data-testid={`attention-${k}`}>
                 {t(`overview.attention.${k}` as MessageKey)}
                 {n === null ? "" : ` ${n}`}
               </button>
