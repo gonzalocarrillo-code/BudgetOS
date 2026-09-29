@@ -8986,6 +8986,14 @@ export interface operations {
                                 ahead_of_plan_abs?: string | null;
                                 money: string;
                                 alerts: number;
+                                /** @default [] */
+                                alertList: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    rule: string | null;
+                                    severity: string;
+                                    openedAt: string;
+                                }[];
                                 pending: boolean;
                                 endDate: string | null;
                                 kpi: {
@@ -9010,6 +9018,14 @@ export interface operations {
                                 ahead_of_plan_abs?: string | null;
                                 money: string;
                                 alerts: number;
+                                /** @default [] */
+                                alertList: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    rule: string | null;
+                                    severity: string;
+                                    openedAt: string;
+                                }[];
                                 pending: boolean;
                                 endDate: string | null;
                                 kpi: {
@@ -9034,6 +9050,14 @@ export interface operations {
                                 ahead_of_plan_abs?: string | null;
                                 money: string;
                                 alerts: number;
+                                /** @default [] */
+                                alertList: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    rule: string | null;
+                                    severity: string;
+                                    openedAt: string;
+                                }[];
                                 pending: boolean;
                                 endDate: string | null;
                                 kpi: {
@@ -9058,6 +9082,14 @@ export interface operations {
                                 ahead_of_plan_abs?: string | null;
                                 money: string;
                                 alerts: number;
+                                /** @default [] */
+                                alertList: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    rule: string | null;
+                                    severity: string;
+                                    openedAt: string;
+                                }[];
                                 pending: boolean;
                                 endDate: string | null;
                                 kpi: {
@@ -9082,6 +9114,14 @@ export interface operations {
                                 ahead_of_plan_abs?: string | null;
                                 money: string;
                                 alerts: number;
+                                /** @default [] */
+                                alertList: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    rule: string | null;
+                                    severity: string;
+                                    openedAt: string;
+                                }[];
                                 pending: boolean;
                                 endDate: string | null;
                                 kpi: {

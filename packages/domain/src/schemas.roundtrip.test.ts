@@ -440,6 +440,8 @@ const samples: Record<string, readonly unknown[]> = {
   SlackSettings: [{}, { teamId: "T0GOLDEN1", teamName: "Golden", defaultChannel: "#budget-ops", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], approvals: false }],
   UpdateSlackSettingsInput: [{ defaultChannel: "#budget-ops" }, { alertChannel: null, alertSeverities: ["critical"], link: true }],
   SlackTestInput: [{}, { channel: "#budget-ops" }],
+  SlackUserSettings: [{}, { defaultWorkspaceId: "01a0de3c-0e8a-7a93-a7ac-51d025b21906" }],
+  SubmitDraftInput: [{ amount: "120000.50", rationale: "Q1 moves to Q2", basedOnVersionId: null }, { amount: "0", rationale: "Paused", basedOnVersionId: "01a0de3c-0e8a-7a93-a7ac-51d025b21906" }],
   SlackActionValue: [{ ws: "01927a00-0000-7000-8000-0000000000c1", id: "01927a00-0000-7000-8000-0000000000a1" }],
   SlackSeverity: ["critical"],
   TimelineZoom: ["week", "month", "quarter", "fy"],

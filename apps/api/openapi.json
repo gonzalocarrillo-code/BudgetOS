@@ -17775,6 +17775,35 @@
                               "alerts": {
                                 "type": "integer"
                               },
+                              "alertList": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "rule": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "openedAt": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "rule",
+                                    "severity",
+                                    "openedAt"
+                                  ]
+                                },
+                                "default": []
+                              },
                               "pending": {
                                 "type": "boolean"
                               },
@@ -17876,6 +17905,35 @@
                               },
                               "alerts": {
                                 "type": "integer"
+                              },
+                              "alertList": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "rule": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "openedAt": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "rule",
+                                    "severity",
+                                    "openedAt"
+                                  ]
+                                },
+                                "default": []
                               },
                               "pending": {
                                 "type": "boolean"
@@ -17979,6 +18037,35 @@
                               "alerts": {
                                 "type": "integer"
                               },
+                              "alertList": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "rule": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "openedAt": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "rule",
+                                    "severity",
+                                    "openedAt"
+                                  ]
+                                },
+                                "default": []
+                              },
                               "pending": {
                                 "type": "boolean"
                               },
@@ -18081,6 +18168,35 @@
                               "alerts": {
                                 "type": "integer"
                               },
+                              "alertList": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "rule": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "openedAt": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "rule",
+                                    "severity",
+                                    "openedAt"
+                                  ]
+                                },
+                                "default": []
+                              },
                               "pending": {
                                 "type": "boolean"
                               },
@@ -18182,6 +18298,35 @@
                               },
                               "alerts": {
                                 "type": "integer"
+                              },
+                              "alertList": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "rule": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "openedAt": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "rule",
+                                    "severity",
+                                    "openedAt"
+                                  ]
+                                },
+                                "default": []
                               },
                               "pending": {
                                 "type": "boolean"
