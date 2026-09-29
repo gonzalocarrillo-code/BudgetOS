@@ -28,3 +28,19 @@ A run that fails ends as `failed`, with `summary.error`, one `ingest.run.failed`
 - **A missing FX rate** rejects that row; the run doesn't fail. Add the `fx_rate` row and re-run.
 - **Snowflake, Sheets, BigQuery** need Secret Manager and credentials (phase 20). Until then, a source with a `secretRef` fails its run with "no Secret Manager client is configured".
 - **`suggest-mapping`** needs `OPENAI_API_KEY`. Without it the route returns 503 `UNAVAILABLE`.
+
+## How fresh the actuals are (HO-003, ADR-062)
+
+Home and the Overview show "Actuals through <date>" and count time gone, and so pace, through that
+day rather than today (`dataAsOf()` in `packages/db/src/data-as-of.ts`).
+
+- **Through:** the last spend fact's date, extended to the end of its month when the source's
+  `period_date` column is monthly (`format: "yyyy-MM"` in the mapping). It is never later than today.
+- **Stale:** a daily source more than **2 days** behind today (`STALE_AFTER_DAYS`), or a monthly source
+  still missing a whole month **10 days** after that month ended (`MONTHLY_GRACE_DAYS`): August's
+  file may arrive until 10 September. Both screens then show a
+  banner with the date and a link to Spend data. Nothing else changes: pace is already read as of that day.
+- **A banner that should not be there:** check the source's latest run (`GET /api/v1/sources/:id/runs`)
+  and its mapping's `period_date` format. A monthly file mapped as daily reads as stale after two days.
+- **Changing the thresholds** is a code change to those two constants, with a note in ADR-062; the
+  `data-as-of.test.ts` cases pin both.

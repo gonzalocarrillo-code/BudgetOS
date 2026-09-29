@@ -1,5 +1,5 @@
 import { HEATMAP_SORTS, OverviewResponse, type OverviewBlock } from "@budget/domain";
-import { AsOfChip, Select } from "@budget/ui";
+import { AsOfChip, Select, Skeleton, SkeletonRows } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
@@ -152,6 +152,8 @@ function OverviewPage(): ReactElement {
   return (
     <Page
       title={t("nav.overview")}
+      stickyOnPhone={false}
+      readable
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <PeriodPicker ws={ws} value={search.period} presets={PRESETS} onChange={(period) => setSearch({ period })} testId="overview-period" />
@@ -180,9 +182,7 @@ function OverviewPage(): ReactElement {
       ) : null}
       {o?.asOf.stale && o.asOf.through ? <StaleBanner ws={ws} through={o.asOf.through} days={o.asOf.staleDays ?? 0} /> : null}
       {isPending || !o ? (
-        <p className="text-sm text-muted-foreground" data-testid="overview-loading">
-          {t("shell.loading")}
-        </p>
+        <OverviewSkeleton />
       ) : (
         <div className="flex min-w-0 flex-col gap-5" data-testid="overview" data-ready={isPlaceholderData ? "false" : "true"} data-period={o.period.preset} data-order={saved.order.join(",")}>
           {shown}
@@ -195,6 +195,31 @@ function OverviewPage(): ReactElement {
       )}
       {cell && o ? <CellEditor ws={ws} cell={cell} period={periodSpec} currency={o.currency} onClose={() => setCell(null)} /> : null}
     </Page>
+  );
+}
+
+/** The Overview while it loads (HO-017): the headline tiles, the heatmap and a list, as on Home. */
+function OverviewSkeleton(): ReactElement {
+  return (
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label={t("shell.loading")} data-testid="overview-loading">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-7 w-32" />
+            <Skeleton className="h-2 w-full" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-card p-5">
+        {Array.from({ length: 16 }, (_, i) => (
+          <Skeleton key={i} className="h-10" />
+        ))}
+      </div>
+      <div className="rounded-xl border border-border bg-card p-5">
+        <SkeletonRows rows={4} />
+      </div>
+    </div>
   );
 }
 

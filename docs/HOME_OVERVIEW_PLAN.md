@@ -2,7 +2,7 @@
 
 Date: 2026-09-29. Reviewed build: `main` at `c1efe02` (PR #102), running as `pnpm dev:local` from the `BudgetOS-real` worktree (web :5173, API :3000). Workspaces: **Golden** (333 budgets, monthly actuals through August 2026) and the blank **OpenAI** workspace. Personas from `apps/web/e2e/.auth-local/tokens.json`: `orgAdmin`, `admin`, `budgetOwner`, `approver`, `planner`, `finance1`. Viewports 1440×900 and 375×812.
 
-Author: UX/UI review requested by the product owner ("rethink our home and overview tabs"). Status: **proposal, nothing built.** Tasks in §5 follow `AGENTS.md` (one PR each, "done when" as a test). Decisions only the owner can take are in §6.
+Author: UX/UI review requested by the product owner ("rethink our home and overview tabs"). Status: **built** (HO-001…HO-017, PRs #107, #108, #114 and the G4 PR, 2026-09-29; decisions G1–G10 as proposed). Tasks in §5 follow `AGENTS.md` (one PR each, "done when" as a test). Decisions only the owner can take are in §6.
 
 ---
 

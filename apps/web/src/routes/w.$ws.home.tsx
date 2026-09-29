@@ -43,7 +43,7 @@ function HomePage(): ReactElement {
   const dateLine = today.toLocaleDateString("en", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <Page title={name ? t(greetingKey(today.getHours()), { name }) : t("home.titleNoName")}>
+    <Page title={name ? t(greetingKey(today.getHours()), { name }) : t("home.titleNoName")} stickyOnPhone={false} readable>
       <div className="-mt-3 flex flex-wrap items-center gap-2">
         <p className="text-sm text-muted-foreground" data-testid="home-subtitle">
           {home?.workspace ? t("home.subtitle", { workspace: home.workspace.name, date: dateLine, elapsed: pct(home.workspace.period.elapsed) }) : dateLine}
@@ -66,17 +66,18 @@ function HomePage(): ReactElement {
   );
 }
 
-/** Home while it loads (UX-007): the shape of the tiles and cards, not a line of text. */
+/** Home while it loads (UX-007, HO-017): the desk's shape — the pulse line, then its cards. */
 function HomeSkeleton(): ReactElement {
   return (
-    <div className="flex flex-col gap-5" aria-busy="true" aria-label={t("shell.loading")}>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="h-6 w-32" />
-          </div>
-        ))}
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label={t("shell.loading")} data-testid="home-skeleton">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card px-4 py-3">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-2 w-32" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-28" />
+      </div>
+      <div className="rounded-xl border border-border bg-card p-5">
+        <SkeletonRows rows={3} />
       </div>
       <div className="rounded-xl border border-border bg-card p-5">
         <SkeletonRows rows={3} />
