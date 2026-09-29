@@ -38,7 +38,16 @@ export interface CompileOptions {
    * node's envelopes first and passes them here, so Postgres plans from a known set (ADR-038).
    */
   envelopeIds?: readonly string[] | undefined;
+  /**
+   * HO-003 (ADR-062): count time gone through this day instead of today, the last day the actuals
+   * cover, so late data does not read as under-spending. Never later than today. Only pace (and the
+   * measures derived from time gone) read it; filters and relative dates keep today.
+   */
+  elapsedThrough?: string | undefined;
 }
+
+/** The day time gone is counted to: `elapsedThrough` when it is before today, else today. */
+export const elapsedDay = (today: string, opts: Pick<CompileOptions, "elapsedThrough">): string => (opts.elapsedThrough !== undefined && opts.elapsedThrough < today ? opts.elapsedThrough : today);
 
 export interface OrderKey {
   col: string;
@@ -98,7 +107,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const ws = b.p(q.workspaceId);
   const pStart = `${b.p(period.start)}::date`,
     pEnd = `${b.p(period.end)}::date`;
-  const elapsedFrac = `LEAST(1, GREATEST(0, (${b.p(today)}::date - ${pStart}::date + 1)::numeric / NULLIF((${pEnd}::date - ${pStart}::date + 1),0)))`;
+  const elapsedFrac = `LEAST(1, GREATEST(0, (${b.p(elapsedDay(today, opts))}::date - ${pStart}::date + 1)::numeric / NULLIF((${pEnd}::date - ${pStart}::date + 1),0)))`;
 
   // KPI columns requested via targets[] or read by the filter. Each carries its numerator and
   // denominator per envelope (num_<m>, den_<m>) so every roll-up level divides sums: CPA of a group
@@ -241,6 +250,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         CASE WHEN budget > 0 THEN actual / budget ELSE NULL END AS spend_to_date_pct,
         -- Pace: the period's spend against the budget's share of the period, over the share of the period gone.
         CASE WHEN budget_in_period > 0 AND ${elapsedFrac} > 0 THEN (actual / budget_in_period) / ${elapsedFrac} ELSE NULL END AS pace_index,
+        -- Ahead of plan (ADR-064): the same comparison in money; spend with no budget is all ahead.
+        (actual - coalesce(budget_in_period, 0) * ${elapsedFrac}) AS ahead_of_plan_abs,
         ${derived.projected_close_pct} AS projected_close_pct${compareCols}
         ${kpiDerived}
       FROM m1
@@ -389,7 +400,7 @@ export function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: st
 }
 
 const UUID_COLS = new Set(["envelope_id", "parent_id"]);
-const NUMERIC_COLS = new Set(["budget", "budget_in_period", "budget_baseline", "budget_change_abs", "budget_change_pct", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "child_count", "open_alerts", "open_threads"]);
+const NUMERIC_COLS = new Set(["budget", "budget_in_period", "budget_baseline", "budget_change_abs", "budget_change_pct", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "ahead_of_plan_abs", "leaf_count", "pending_count", "child_count", "open_alerts", "open_threads"]);
 const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */

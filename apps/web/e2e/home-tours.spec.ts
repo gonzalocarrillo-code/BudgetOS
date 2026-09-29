@@ -60,8 +60,9 @@ test("home: waiting on you first, then pacing per budget; each block opens its s
   await expect(blocks.first()).toHaveAttribute("data-tour", "home-waiting");
   await expect(page.getByTestId("home-scope").first()).toBeVisible();
   await expect(page.getByTestId("home-scope-spent").first()).toHaveText(/^\d+%$/);
+  // HO-006: a strip opens its top-level budget in Budgets.
   await page.getByTestId("home-scope").first().click();
-  await expect(page).toHaveURL(/\/budgets\?.*filter=/);
+  await expect(page).toHaveURL(/\/budgets\?.*select=/);
 });
 
 test("templates: a workspace from the template is usable in under 60 s; its demo data goes in one click", async ({ page }) => {

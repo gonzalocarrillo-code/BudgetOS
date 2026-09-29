@@ -48,6 +48,20 @@
   --info-soft: #eaf2fe;
   --neutral-text: #4a5a70;
   --neutral-soft: #eef2f6;
+  /*
+   * HO-002: pace bands (PACE_BANDS in @budget/domain) for Home and the Overview. A tint for the cell
+   * and an AA text colour on it; the text colour is also the bar's fill.
+   */
+  --pace-under: #d6e4fb;
+  --pace-under-text: #0f3d8c;
+  --pace-low: #eaf1fc;
+  --pace-low-text: #1b4f9c;
+  --pace-on: #d9f2e7;
+  --pace-on-text: #0a6246;
+  --pace-high: #fcebc0;
+  --pace-high-text: #744600;
+  --pace-over: #f8d3d4;
+  --pace-over-text: #8a2227;
 }
 
 /*
@@ -91,6 +105,16 @@
   --info-soft: #10233f;
   --neutral-text: #cbd5e1;
   --neutral-soft: #1e293b;
+  --pace-under: #162c52;
+  --pace-under-text: #b3cfff;
+  --pace-low: #18233a;
+  --pace-low-text: #c2d5f5;
+  --pace-on: #0f3024;
+  --pace-on-text: #86e5bd;
+  --pace-high: #3a2c09;
+  --pace-high-text: #fcd679;
+  --pace-over: #421719;
+  --pace-over-text: #fdb0b0;
   color-scheme: dark;
 }
 
@@ -135,4 +159,14 @@
   --color-info-soft: var(--info-soft);
   --color-neutral-text: var(--neutral-text);
   --color-neutral-soft: var(--neutral-soft);
+  --color-pace-under: var(--pace-under);
+  --color-pace-under-text: var(--pace-under-text);
+  --color-pace-low: var(--pace-low);
+  --color-pace-low-text: var(--pace-low-text);
+  --color-pace-on: var(--pace-on);
+  --color-pace-on-text: var(--pace-on-text);
+  --color-pace-high: var(--pace-high);
+  --color-pace-high-text: var(--pace-high-text);
+  --color-pace-over: var(--pace-over);
+  --color-pace-over-text: var(--pace-over-text);
 }

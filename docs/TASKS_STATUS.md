@@ -508,3 +508,25 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`; decisions: ADR-063; runbook: `docs/runbooks/
 | S-012 | S5 | Deferred replies within Slack's three seconds; Slack call timeouts | done (past 2.5 s, "Working on it…" and the answer through response_url; Slack calls from the API time out at 2 s without retries; on Cloud Run this needs CPU always allocated) |
 | S-013 | S5 | App Home tab through the Events API | pending (decision S6's default is later; it also needs the Slack app's event subscription) |
 | S-014 | S5 | ADR-063, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | done (ADR-063; `docs/runbooks/slack.md` and `notify.md`; the Epic 2.2 note; OpenAPI and the web client regenerated with S-004) |
+
+## Product feedback: Home and Overview (2026-09-29)
+
+Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The owner asked for the whole plan to be built; decisions G1–G10 follow the plan's proposals. One PR per phase, stacked in order.
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| HO-001 | G1 | One open-alert count on Home and the Overview; `PACE_BANDS`, `OPEN_ALERT_STATUSES`, `OverviewResponse` in `@budget/domain` | done |
+| HO-002 | G1 | `PaceBar`, `StatTile`, `HeadlineStrip`, `AsOfChip`, `PaceLegend` in `@budget/ui`; pace band tokens (AA in both themes); `formatMoneyCompact` | done |
+| HO-003 | G1 | Pace as of the data: coverage per source grain, `elapsedThrough` in both planner dialects, as-of chip, stale banner | done (ADR-062) |
+| HO-004 | G1 | Short country names; the ISO name kept as the external id `iso_name`; migration `20261008000000_short_country_labels` | done |
+| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-063) |
+| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-063) |
+| HO-007 | G2 | Decide from Home in a side sheet; the approval detail parts shared with the request page | done |
+| HO-008 | G2 | Home steps in the planner, approver and finance tours; strings; status rows | done |
+| HO-009 | G3 | `ahead_of_plan_abs` (actual − budget in period × time gone) in both planner dialects, derived at query time | done (ADR-064) |
+| HO-010 | G3 | `/overview` v2: heatmap margins, per-cell alerts and waiting, server-side sort, Compare to, needs attention by money at stake, alerts by rule with coverage, the workspace queue, projections' freshness | done |
+| HO-011 | G3 | Overview header: `<PeriodPicker/>` on Budgets' periods, Compare to, as-of chip, stale banner | done |
+| HO-012 | G3 | Headline in money: Budget with the assigned split and the change since the plan, Spent with the pace bar, Remaining with the daily rate, Projected close only with projections | done |
+| HO-013 | G3 | Heatmap v2: margins, band tints, alert dots, popover with Open in Budgets and Edit these budgets, arrow keys, sort, legend chips, a list on phones | done |
+| HO-014 | G3 | Needs attention (four kinds, ranked by money), alerts by rule with a threshold hint, KPI bullet bars, approval queue, data footer | done |
+| HO-015 | G3 | Customise v2: reorder, remembered rows/columns/sort, "Set as the workspace default" for admins, `OverviewLayout` in `@budget/domain` | done |

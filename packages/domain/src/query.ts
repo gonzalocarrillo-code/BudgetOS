@@ -113,7 +113,8 @@ export const TreeRequest = z.object({
   period: PeriodSpec,
   parentPath: z.string().max(4000).default(""),
   // The roll-up cache holds no snapshot: comparing goes through /query with compareTo (H-004).
-  measures: z.array(MeasureKey.exclude(["budget_baseline", "budget_change_abs", "budget_change_pct"])).min(1).default(["budget", "actual", "projected", "pace_index"]),
+  // Ahead of plan (ADR-064) is computed by /query only, like the compare measures.
+  measures: z.array(MeasureKey.exclude(["budget_baseline", "budget_change_abs", "budget_change_pct", "ahead_of_plan_abs"])).min(1).default(["budget", "actual", "projected", "pace_index"]),
 });
 export type TreeRequest = z.infer<typeof TreeRequest>;
 

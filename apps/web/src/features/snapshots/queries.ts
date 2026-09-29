@@ -41,7 +41,8 @@ export function useCanSnapshotWorkspace(ws: string): boolean {
   return me?.isOrgAdmin === true || (me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? []).includes("closure.close");
 }
 
-export const savedOn = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+// English like the rest of the app (strings are English-only); the browser locale would mix languages.
+export const savedOn = (iso: string) => new Date(iso).toLocaleDateString("en", { dateStyle: "medium" });
 export const snapshotLabel = (s: Snapshot) => t("snapshots.option", { name: s.name, date: savedOn(s.asOf) });
 
 export const snapshotQuery = (ws: string, id: string) =>

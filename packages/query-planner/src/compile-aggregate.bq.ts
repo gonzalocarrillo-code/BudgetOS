@@ -1,9 +1,9 @@
 import { Buffer } from "node:buffer";
 import { DomainError, elapsedFraction, isPredicate, type FilterGroupT, type Predicate, type QueryRequest } from "@budget/domain";
 import { sanitize } from "./compile-filter.js";
-import { RATIO, resolveOrder, type CompileOptions, type OrderKey } from "./compile-query.js";
+import { RATIO, elapsedDay, resolveOrder, type CompileOptions, type OrderKey } from "./compile-query.js";
 
-const SUPPORTED_MEASURES = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct"]);
+const SUPPORTED_MEASURES = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "ahead_of_plan_abs"]);
 
 /** Grouped or total rows over the base measures: no KPI targets, template, date split or envelope scope. */
 function aggregateShape(q: QueryRequest, opts: CompileOptions): boolean {
@@ -124,7 +124,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
   const ws = b.p(q.workspaceId);
   const pStart = `CAST(${b.p(period.start)} AS DATE)`;
   const pEnd = `CAST(${b.p(period.end)} AS DATE)`;
-  b.params["elapsed"] = elapsedFraction(period, today).toString();
+  b.params["elapsed"] = elapsedFraction(period, elapsedDay(today, opts)).toString();
   b.types["elapsed"] = "BIGNUMERIC";
   const where = compileFilterBq(q.filter ?? { logic: "and", children: [] }, b, t);
   const withProjections = opts.hasProjections !== false;
@@ -182,13 +182,15 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
       if (RATIO.has(mk)) return `IF(SUM(m.budget) > 0, ${ratioBq(mk)}, NULL) AS ${mk}`;
       if (mk === "remaining") return `SUM(m.budget - m.actual) AS remaining`;
       if (mk === "variance_abs") return `SUM(m.projected - m.budget) AS variance_abs`;
+      // ADR-064: the group's spend less its share of the budget for the time gone (the Postgres rows' sum).
+      if (mk === "ahead_of_plan_abs") return `SUM(m.actual) - COALESCE(SUM(m.budget_in_period), 0) * @elapsed AS ahead_of_plan_abs`;
       return `SUM(m.${mk}) AS ${mk}`;
     })
     .join(", ");
   return { b, ctes, measureAgg, measures };
 }
 
-const NUMERIC = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count"]);
+const NUMERIC = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "ahead_of_plan_abs", "leaf_count", "pending_count"]);
 
 function keysetAfterBq(order: OrderKey[], values: Array<string | null>, b: BqBuilder): string {
   const typed = (col: string, v: string) => (NUMERIC.has(col) ? `CAST(${b.p(v)} AS BIGNUMERIC)` : b.p(v));

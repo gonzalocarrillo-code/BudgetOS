@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { LIVE_LEAVES, TOP_LEVEL } from "@budget/domain";
+import { LIVE_LEAVES, TOP_LEVEL, elapsedFraction } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -19,7 +19,7 @@ let golden: GoldenResult;
 const slug = `overview-${randomUUID().slice(0, 8)}`;
 
 type Body = Record<string, unknown>;
-async function as(persona: string, method: "GET" | "POST", url: string, body?: unknown) {
+async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string, body?: unknown) {
   const token = await h.mint({ sub: `ip-${persona}`, email: `${persona.toLowerCase()}@${slug}.golden.test` }, { googleSub: `golden-${slug}-${persona}` });
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId }, ...(body === undefined ? {} : { body }) });
 }
@@ -71,34 +71,135 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?rows=nope`)).status).toBe(422);
   });
 
-  it("top variances are over and under, largest first; alerts, approvals and freshness are there; fast", async () => {
+  it("needs attention ranks live budgets by money at stake, in four kinds, ended ones left out (HO-010, ADR-064); fast", async () => {
     const started = Date.now();
     const res = await as("budgetOwner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=current_year`);
     const elapsed = Date.now() - started;
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+    type Item = { category: string; envelopeId: string; money: string; pace_index: string | null; actual: string | null; ahead_of_plan_abs: string | null };
     const o = res.body as Body & {
-      variances: { over: Array<{ pace_index: string }>; under: Array<{ pace_index: string }> };
-      alerts: { open: number; counts: Record<string, number>; latest: unknown[] };
-      approvals: { mine: number; due: Array<{ dueAt: string | null }> };
-      freshness: { lastFactDate: string | null; sources: Array<{ name: string; lastRun: { status: string } | null }> };
-      kpi: { rows: Array<{ code: string; target: string | null }> } | null;
+      attention: { all: Item[]; over: Item[]; under: Item[]; noSpend: Item[]; kpi: Item[]; counts: Record<string, number> };
+      queue: { waiting: number; overdue: number; byRole: Array<{ role: string; count: number }> };
+      freshness: { lastFactDate: string | null; sources: Array<{ name: string }>; projections: unknown };
+      kpi: { rows: Array<{ code: string; target: string | null; vsTargetPct: string | null }> } | null;
+      headline: { projected: string | null };
       elapsedMs: number;
     };
-    // Over / under pace: spend so far against the phased plan (golden has no projections).
-    const over = o.variances.over.map((v) => Number(v.pace_index));
-    expect(over.length).toBeGreaterThan(0);
-    expect(over.every((v) => v > 1)).toBe(true);
-    expect([...over].sort((a, b) => b - a)).toEqual(over);
-    expect(o.variances.under.every((v) => Number(v.pace_index) < 1)).toBe(true);
-    expect(Object.values(o.alerts.counts).reduce((s, n) => s + n, 0)).toBe(o.alerts.open);
-    expect(o.alerts.latest.length).toBe(Math.min(5, o.alerts.open));
-    expect(o.approvals.mine).toBeGreaterThan(0); // the golden bulk waits on the budget owner
+    const a = o.attention;
+    const num = (v: string | null) => Number(v ?? 0);
+    // Over pace: past the on-plan band and ahead, the largest amount first.
+    expect(a.over.length).toBeGreaterThan(0);
+    expect(a.over.every((i) => num(i.pace_index) >= 1.05 && num(i.ahead_of_plan_abs) > 0)).toBe(true);
+    expect(a.over.map((i) => num(i.ahead_of_plan_abs))).toEqual([...a.over.map((i) => num(i.ahead_of_plan_abs))].sort((x, y) => y - x));
+    // Under pace (with some spend) and no spend yet: behind, the largest gap first.
+    expect(a.under.every((i) => num(i.actual) > 0 && num(i.pace_index) < 0.95 && num(i.ahead_of_plan_abs) < 0)).toBe(true);
+    expect(a.noSpend.length).toBeGreaterThan(0); // the golden's Walmart and Mercado Libre splits have spent nothing
+    expect(a.noSpend.every((i) => num(i.actual) === 0 && num(i.ahead_of_plan_abs) < 0)).toBe(true);
+    // KPI off target: CPA more than 10% over, money = what it costs above target.
+    expect(a.kpi.length).toBeGreaterThan(0);
+    expect(a.kpi.every((i) => num(i.money) > 0)).toBe(true);
+    // All: one row per budget, by the size of the money at stake.
+    const sizes = a.all.map((i) => Math.abs(num(i.money)));
+    expect([...sizes].sort((x, y) => y - x)).toEqual(sizes);
+    expect(new Set(a.all.map((i) => i.envelopeId)).size).toBe(a.all.length);
+    for (const k of ["over", "under", "noSpend", "kpi"] as const) expect(a.counts[k], k).toBeGreaterThanOrEqual(a[k].length);
+    // The ended ES tiktok leaf (GOLDEN_HISTORY) needs no attention.
+    const ended = await owner.envelope.findMany({ where: { workspaceId: golden.workspaceId, endedAt: { not: null } }, select: { id: true } });
+    expect(ended.length).toBeGreaterThan(0);
+    for (const e of ended) expect([...a.all, ...a.over, ...a.under, ...a.noSpend, ...a.kpi].map((i) => i.envelopeId)).not.toContain(e.id);
+    // The workspace's queue, not the caller's list; freshness; CPA by market, worst gap first.
+    expect(o.queue.waiting).toBeGreaterThan(0); // the golden bulk waits
+    expect(o.queue.byRole.map((r) => r.role)).toContain("BUDGET_OWNER");
     expect(o.freshness.lastFactDate).toBe("2026-08-01");
     expect(o.freshness.sources.map((s) => s.name)).toContain("Golden actuals (CSV)");
-    const withTarget = o.kpi?.rows.filter((r) => r.target !== null) ?? [];
-    expect(withTarget.length).toBeGreaterThan(0); // the golden CPA targets on every country budget
+    expect(o.freshness.projections).toBeNull(); // the golden has no projections
+    expect(o.headline.projected).toBeNull(); // not computed, not 0
+    const gaps = (o.kpi?.rows ?? []).map((r) => r.vsTargetPct).filter((g): g is string => g !== null).map(Number);
+    expect(gaps.length).toBeGreaterThan(0);
+    expect([...gaps].sort((x, y) => y - x)).toEqual(gaps);
     expect(o.elapsedMs).toBeLessThan(1500);
-    expect((o as unknown as { totals: Record<string, string | null> }).totals["projected"]).toBeNull(); // the golden has no projections: not computed, not 0
     expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("the heatmap has its margins from the planner, each cell's open alerts, and a server-side sort (HO-010)", async () => {
+    type M = { code: string | null; budget: string | null; alerts: number; pace_index: string | null };
+    const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview`);
+    const o = res.body as Body & { heatmap: { rows: string[]; cols: string[]; cells: Array<{ alerts: number; pending: number }>; rowTotals: M[]; colTotals: M[]; total: Record<string, string | null> }; totals: Record<string, string>; alerts: { open: number; byRule: Array<{ ruleName: string; count: number; budgets: number; covered: number | null; byRow: Array<{ count: number }> }>; byRow: Array<{ count: number }> } };
+    const byCountry = await as("planner", "POST", `/api/v1/workspaces/${golden.workspaceId}/query`, { workspaceId: golden.workspaceId, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: LIVE_LEAVES }, groupBy: ["country"], measures: ["budget"], limit: 100 });
+    const planner = Object.fromEntries((byCountry.body["rows"] as Array<{ dimensions: Record<string, string>; measures: Record<string, string> }>).map((r) => [r.dimensions["country"], r.measures["budget"]]));
+    for (const m of o.heatmap.rowTotals) expect(m.budget, String(m.code)).toBe(planner[m.code ?? ""]);
+    expect(o.heatmap.total["budget"]).toBe(o.totals["budget"]);
+    // Every open alert sits on one cell and in one row and one column (the golden's leaves have both).
+    const sum = (xs: Array<{ alerts: number }>) => xs.reduce((n, x) => n + x.alerts, 0);
+    expect(sum(o.heatmap.cells)).toBe(o.alerts.open);
+    expect(sum(o.heatmap.rowTotals)).toBe(o.alerts.open);
+    expect(sum(o.heatmap.colTotals)).toBe(o.alerts.open);
+    expect(o.heatmap.cells.reduce((n, c) => n + c.pending, 0)).toBeGreaterThanOrEqual(24); // the golden bulk's budgets wait
+    // Alerts by rule: they add up; a rule that fires on many budgets says how many it covers.
+    expect(o.alerts.byRule.reduce((n, r) => n + r.count, 0)).toBe(o.alerts.open);
+    expect(o.alerts.byRow.reduce((n, r) => n + r.count, 0)).toBe(o.alerts.open);
+    const cpa = o.alerts.byRule.find((r) => r.ruleName === "CPA over target");
+    expect(cpa?.covered).not.toBeNull();
+    expect(cpa?.covered ?? 0).toBeGreaterThanOrEqual(cpa?.budgets ?? 0);
+    // Sort: rows by pace, fastest first, as the planner orders them.
+    const paced = (await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?sort=pace`)).body as typeof o;
+    const paces = paced.heatmap.rows.map((code) => Number(paced.heatmap.rowTotals.find((m) => m.code === code)?.pace_index ?? 0));
+    expect([...paces].sort((x, y) => y - x)).toEqual(paces);
+    expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?sort=nope`)).status).toBe(422);
+  });
+
+  it("the headline: what is left and the rate that spends it; the change since the plan snapshot, or since one asked for (HO-010)", async () => {
+    const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview`);
+    const o = res.body as Body & { headline: Record<string, string | null>; period: { end: string; daysLeft: number }; compare: { id: string; name: string; explicit: boolean; changeAbs: string } | null };
+    expect(o.headline["remaining"]).toBe(new Decimal(o.headline["budget"] ?? 0).minus(o.headline["actual"] ?? 0).toFixed(2));
+    expect(o.headline["unassigned"]).toBe(new Decimal(o.headline["budget"] ?? 0).minus(o.headline["assigned"] ?? 0).toFixed(2));
+    expect(o.headline["assignedPct"]).toBe(new Decimal(o.headline["assigned"] ?? 0).div(o.headline["budget"] ?? 1).toDecimalPlaces(4).toString());
+    const today = new Date().toISOString().slice(0, 10);
+    expect(o.period.daysLeft).toBe(Math.round((Date.parse(`${o.period.end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000) + 1);
+    expect(o.headline["runRateNeeded"]).toBe(new Decimal(o.headline["remaining"] ?? 0).div(o.period.daysLeft).toDecimalPlaces(2).toFixed(2));
+    // The golden's FY2026 plan snapshot is the default comparison.
+    expect(o.compare).toMatchObject({ name: "FY2026 plan", explicit: false });
+    const asked = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?compareTo=${o.compare?.id ?? ""}`);
+    expect(asked.status, JSON.stringify(asked.body).slice(0, 300)).toBe(200);
+    const withBaseline = asked.body as Body & { compare: { explicit: boolean }; heatmap: { cells: Array<{ budget_baseline?: string | null }> } };
+    expect(withBaseline.compare.explicit).toBe(true);
+    expect(withBaseline.heatmap.cells.some((c) => c.budget_baseline !== undefined && c.budget_baseline !== null)).toBe(true);
+    expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?compareTo=${"0".repeat(8)}-0000-7000-8000-000000000000`)).status).toBe(404);
+  });
+
+  it("counts open alerts the way Home does: open or acknowledged, as the caller may read them (HO-001)", async () => {
+    const ws = golden.workspaceId;
+    const [first] = await owner.alert.findMany({ where: { workspaceId: ws, status: "OPEN" }, orderBy: { openedAt: "asc" }, take: 1, select: { id: true } });
+    expect(first, "the golden has open alerts").toBeDefined();
+    // An acknowledged alert is still open: someone saw it, nobody resolved it.
+    const ack = await as("budgetOwner", "PATCH", `/api/v1/alerts/${first?.id ?? ""}`, { status: "ACKNOWLEDGED" });
+    expect(ack.status, JSON.stringify(ack.body)).toBe(200);
+    const inDb = await owner.alert.count({ where: { workspaceId: ws, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });
+    for (const persona of ["orgAdmin", "planner", "finance1", "approver"]) {
+      const o = (await as(persona, "GET", `/api/v1/workspaces/${ws}/overview`)).body as { alerts: { open: number; counts: Record<string, number> } };
+      const home = (await as(persona, "GET", "/api/v1/me/home")).body as { totals: { openAlerts: number } };
+      expect(home.totals.openAlerts, persona).toBe(o.alerts.open);
+      expect(o.alerts.open, persona).toBe(inDb); // the golden personas read the whole workspace
+      expect(Object.values(o.alerts.counts).reduce((s, n) => s + n, 0), persona).toBe(o.alerts.open);
+    }
+  });
+
+  it("counts time gone through the last day the actuals cover: the golden's monthly August rows run to 31 August (HO-003, ADR-062)", async () => {
+    const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=current_year`);
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+    const o = res.body as { asOf: Record<string, unknown>; period: { start: string; end: string; elapsed: string; elapsedToday: string }; totals: Record<string, string> };
+    const today = new Date().toISOString().slice(0, 10);
+    const through = "2026-08-31" < today ? "2026-08-31" : today;
+    expect(o.asOf).toMatchObject({ lastFactDate: "2026-08-01", through, grain: "month" });
+    const gone = elapsedFraction(o.period, through);
+    expect(o.period.elapsed).toBe(gone.toDecimalPlaces(4).toString());
+    expect(o.period.elapsedToday).toBe(elapsedFraction(o.period, today).toDecimalPlaces(4).toString());
+    // The heatmap's total pace divides by that share, not by the share gone today.
+    const pace = new Decimal(o.totals["actual"] ?? 0).div(o.totals["budget_in_period"] ?? 1).div(gone);
+    expect(new Decimal(o.totals["pace_index"] ?? 0).toDecimalPlaces(4).toString()).toBe(pace.toDecimalPlaces(4).toString());
+    // Home reads the same day, and its strips' pace with it.
+    const home = (await as("planner", "GET", "/api/v1/me/home")).body as { asOf: Record<string, unknown> & { elapsed: string } };
+    expect(home.asOf).toMatchObject({ lastFactDate: "2026-08-01", through, grain: "month", elapsed: gone.toDecimalPlaces(4).toString() });
   });
 
   it("rejects an unknown period, and needs envelope.read", async () => {
@@ -110,5 +211,28 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=fiscal:2026-Q2`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect((res.body as { period: { start: string; end: string } }).period).toMatchObject({ start: "2026-04-01", end: "2026-06-30" });
+  });
+
+  // Last: it loads projections, which the tests above expect none of.
+  it("projects the close only from loaded projections, and says which source loaded them (HO-012)", async () => {
+    const ws = golden.workspaceId;
+    const runId = golden.ingest?.runId;
+    if (!runId) throw new Error("the golden has no ingest run");
+    const [leaf] = await owner.$queryRaw<Array<{ id: string }>>`
+      SELECT e.id FROM envelope e WHERE e.workspace_id = ${ws}::uuid AND e.status = 'APPROVED' AND e.ended_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id) ORDER BY e.id LIMIT 1`;
+    if (!leaf) throw new Error("no live leaf");
+    try {
+      await owner.$executeRaw`
+        INSERT INTO projection_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id)
+        VALUES (${ws}::uuid, ${leaf.id}::uuid, '{}'::jsonb, '2026-06-15', 'spend', 1234.5, 1234.5, 'ho-012-test', '2026-12-31', 'test', ${runId}::uuid)`;
+      const o = (await as("planner", "GET", `/api/v1/workspaces/${ws}/overview`)).body as { headline: { projected: string | null; projectedClosePct: string | null }; freshness: { projections: { source: string | null; loadedAt: string } | null } };
+      expect(o.headline.projected).not.toBeNull();
+      expect(new Decimal(o.headline.projected ?? 0).gte("1234.50")).toBe(true);
+      expect(o.headline.projectedClosePct).not.toBeNull();
+      expect(o.freshness.projections).toMatchObject({ source: "Golden actuals (CSV)" });
+    } finally {
+      await owner.$executeRaw`DELETE FROM projection_fact WHERE workspace_id = ${ws}::uuid AND formula_version = 'ho-012-test'`;
+    }
   });
 });
