@@ -71,3 +71,4 @@ record with its status line; regenerate it when you add one.
 | [ADR-062](0062-pace-as-of-the-data.md) | Home and the Overview read pace as of the data | Accepted |
 | [ADR-063](0063-home-is-the-desk.md) | Home is each person's desk | Accepted |
 | [ADR-064](0064-ahead-of-plan.md) | Ahead of plan, pace in money | Accepted |
+| [ADR-065](0065-hosting-on-dmus-gonzalo.md) | Hosting on the dmus-gonzalo project, signed in by IAP | Accepted (product owner, 2026-09-29) |

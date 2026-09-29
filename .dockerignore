@@ -1,0 +1,11 @@
+**/node_modules
+.git
+**/.env
+**/.env.*
+!**/.env.example
+**/test-results
+**/playwright-report
+apps/web/e2e/.auth*
+apps/web/dist
+**/.turbo
+.claude

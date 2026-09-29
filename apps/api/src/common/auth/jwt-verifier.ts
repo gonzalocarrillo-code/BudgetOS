@@ -4,6 +4,11 @@ import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
 
 /** Google's public keys for Identity Platform (securetoken) ID tokens. */
 const IDENTITY_PLATFORM_JWKS = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+/** Identity-Aware Proxy's signing keys and issuer (ADR-065). */
+const IAP_JWKS = "https://www.gstatic.com/iap/verify/public_key-jwk";
+const IAP_ISSUER = "https://cloud.google.com/iap";
+/** The header IAP adds to every request it lets through. */
+export const IAP_HEADER = "x-goog-iap-jwt-assertion";
 
 export interface VerifiedIdentity {
   /** Identity Platform uid (`sub`). */
@@ -15,16 +20,28 @@ export interface VerifiedIdentity {
 }
 
 export interface AuthConfig {
+  /** `identity-platform` (a bearer ID token) or `iap` (the IAP assertion header, ADR-065). */
+  mode: "identity-platform" | "iap";
   issuer: string;
   audience: string;
   jwksUrl: string;
 }
 
-/** Reads AUTH_* from the environment. There is no bypass: missing config fails at startup. */
+/**
+ * Reads AUTH_* from the environment. There is no bypass: missing config fails at startup.
+ * AUTH_MODE=iap: the service sits behind Identity-Aware Proxy, which signs in with Google and
+ * vouches for the caller in `x-goog-iap-jwt-assertion`; AUTH_AUDIENCE is then the IAP audience
+ * (`/projects/<number>/locations/<region>/services/<service>` for Cloud Run).
+ */
 export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthConfig {
   const audience = env["AUTH_AUDIENCE"];
+  if (env["AUTH_MODE"] === "iap") {
+    if (!audience) throw new Error("AUTH_AUDIENCE is required (the IAP audience)");
+    return { mode: "iap", audience, issuer: env["AUTH_ISSUER"] ?? IAP_ISSUER, jwksUrl: env["AUTH_JWKS_URL"] ?? IAP_JWKS };
+  }
   if (!audience) throw new Error("AUTH_AUDIENCE is required (Identity Platform project id)");
   return {
+    mode: "identity-platform",
     audience,
     issuer: env["AUTH_ISSUER"] ?? `https://securetoken.google.com/${audience}`,
     jwksUrl: env["AUTH_JWKS_URL"] ?? IDENTITY_PLATFORM_JWKS,
@@ -42,6 +59,19 @@ export class JwtVerifier {
     this.jwks = createRemoteJWKSet(new URL(this.config.jwksUrl));
   }
 
+  /** The credential of a request: the IAP assertion behind IAP, else the bearer token. */
+  credential(headers: Record<string, string | string[] | undefined>): string | undefined {
+    const pick = (name: string) => {
+      const v = headers[name];
+      return Array.isArray(v) ? v[0] : v;
+    };
+    if (this.config.mode === "iap") {
+      const assertion = pick(IAP_HEADER);
+      return assertion ? `Bearer ${assertion}` : undefined;
+    }
+    return pick("authorization");
+  }
+
   async verify(authorization: string | undefined): Promise<VerifiedIdentity> {
     const match = /^Bearer\s+(\S+)$/i.exec(authorization ?? "");
     const token = match?.[1];
@@ -51,7 +81,7 @@ export class JwtVerifier {
       ({ payload } = await jwtVerify(token, this.jwks, {
         issuer: this.config.issuer,
         audience: this.config.audience,
-        algorithms: ["RS256"],
+        algorithms: this.config.mode === "iap" ? ["ES256"] : ["RS256"],
       }));
     } catch (error) {
       const reason = error instanceof errors.JOSEError ? error.code : "ERR_JWT_INVALID";
@@ -59,6 +89,8 @@ export class JwtVerifier {
     }
     const email = typeof payload["email"] === "string" ? payload["email"].toLowerCase() : null;
     if (!payload.sub || email === null) throw new DomainError("UNAUTHENTICATED", "Token lacks sub or email");
+    // IAP: Google verified the account; `sub` is "accounts.google.com:<google id>".
+    if (this.config.mode === "iap") return { sub: payload.sub, email, emailVerified: true, googleSub: payload.sub.replace(/^accounts\.google\.com:/, "") };
     return { sub: payload.sub, email, emailVerified: payload["email_verified"] === true, googleSub: googleIdentity(payload) };
   }
 }

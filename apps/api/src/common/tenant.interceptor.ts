@@ -47,7 +47,7 @@ export class TenantInterceptor implements NestInterceptor {
     }
     const tenant = await authenticate(
       { verifier: this.verifier, access: this.access, cache: this.cache },
-      { authorization: header(request, "authorization"), workspaceId: resolveWorkspace(request), requestId: header(request, "x-request-id") ?? randomUUID(), use: lifecycle ? "lifecycle" : request.method === "GET" || request.method === "HEAD" ? "read" : "write" },
+      { authorization: this.verifier.credential(request.headers), workspaceId: resolveWorkspace(request), requestId: header(request, "x-request-id") ?? randomUUID(), use: lifecycle ? "lifecycle" : request.method === "GET" || request.method === "HEAD" ? "read" : "write" },
     );
     authorize(tenant, permission);
     request.tenant = tenant;

@@ -1,6 +1,6 @@
 import createClient, { type Middleware } from "openapi-fetch";
 import type { paths } from "./api.gen.js";
-import { clearToken, getToken } from "./auth.js";
+import { IAP, clearToken, getToken } from "./auth.js";
 
 /**
  * Typed API client generated from apps/api/openapi.json (`pnpm --filter @budget/web api:generate`,
@@ -18,12 +18,16 @@ export class ApiError extends Error {
 
 const auth: Middleware = {
   onRequest({ request }) {
-    const token = getToken();
+    const token = IAP ? null : getToken();
     if (token) request.headers.set("authorization", `Bearer ${token}`);
     return request;
   },
   onResponse({ response }) {
-    if (response.status === 401) clearToken();
+    // Behind IAP a 401 means the session ended: reload, and IAP signs in again.
+    if (response.status === 401) {
+      if (IAP) window.location.reload();
+      else clearToken();
+    }
     return response;
   },
 };
