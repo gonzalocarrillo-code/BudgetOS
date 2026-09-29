@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_HISTORY, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -19,6 +19,8 @@ import { RecordingClosureSink } from "../modules/closures/sink.js";
 import { createSavedView } from "../modules/views/commands/views.js";
 import { createEnvelope } from "../modules/envelopes/commands/create-envelope.js";
 import { splitEnvelope } from "../modules/envelopes/commands/structure.js";
+import { endEnvelope } from "../modules/envelopes/commands/end-reintroduce.js";
+import { saveBaseline } from "../modules/baselines/commands/baselines.js";
 import { submitVersion } from "../modules/envelopes/commands/submit-version.js";
 import { commitBulk } from "../modules/envelopes/bulk/commit.js";
 import { buildPreview } from "../modules/envelopes/bulk/preview.js";
@@ -216,6 +218,10 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
       });
       log(`golden: level ${level} approved (${byLevel.get(level)?.length ?? 0})`);
     }
+    // Phase E (ADR-053): finance saves the plan by hand as agreed on 1 February, before the re-plans.
+    const planned = GOLDEN_HISTORY.plan;
+    const snapshot = await saveBaseline(app, auth(planned.by), { name: planned.name, kind: planned.kind, periodKey: planned.periodKey }, new Date(planned.asOf));
+    log(`golden: snapshot '${snapshot.name}' saved (${snapshot.rowCount} budgets)`);
     for (const round of GOLDEN_ROUNDS.slice(1)) {
       clock.now = () => new Date(round.approvedAt);
       await pool(byLevel.get(4) ?? [], concurrency, async (e) => {
@@ -249,6 +255,15 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
     });
     split.partIds.forEach((pid, i) => ids.set(`${GOLDEN_SPLIT.sourceKey}#${parts[i]?.retailer}`, pid));
     log(`golden: split ${GOLDEN_SPLIT.sourceKey} into ${split.partIds.length} (${split.autoApproved ? "auto-approved" : "pending"})`);
+
+    // Phase E (H-011, H-012): one FY2026 leaf ends on its last day and continues in FY2027.
+    const h = GOLDEN_HISTORY.end;
+    clock.now = () => new Date(h.at);
+    const endedId = ids.get(h.key) as string;
+    const kept = plan.find((e) => e.key === h.key)?.versions.at(-1)?.amount as string;
+    const ended = await endEnvelope(app, auth(h.by), endedId, { endDate: h.endDate, finalAmount: kept, rationale: h.reason, basedOnVersionId: heads.get(endedId) as string, successor: h.successor });
+    if (!ended.ended || ended.successorId === null) throw new Error("golden: the end was not applied at once");
+    log(`golden: ended ${h.key}; continues as ${h.successor.name}`);
 
     // T-015: CPA targets (countries + every other leaf) and one filter-scoped ROAS target, through
     // the real commands; a workspace policy auto-approves target versions. Metrics came with the registry.

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GOLDEN_ASSERTIONS, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FY } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FY, GOLDEN_HISTORY } from "@budget/db";
 import { LIVE_LEAVES } from "@budget/workers";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -90,7 +90,7 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     const { tools } = await c.listTools();
     await c.close();
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ["describe_dimensions", "export_csv", "get_budget", "get_closure", "get_decision_timeline", "get_pacing", "list_alerts", "list_approvals", "list_tags", "list_threads", "list_workspaces", "query_budgets", "query_targets", "search"].sort(),
+      ["compare_budgets", "describe_dimensions", "export_csv", "get_budget", "get_closure", "get_decision_timeline", "get_pacing", "list_alerts", "list_approvals", "list_baselines", "list_tags", "list_threads", "list_workspaces", "query_budgets", "query_targets", "search"].sort(),
     );
     expect(tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false)).toBe(true);
   });
@@ -151,6 +151,22 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     const totals = String(file).trimEnd().split("\r\n").at(-1)?.split(",") ?? [];
     expect(totals[0]).toBe("Total");
     expect(totals).toContain(A.exports.budget);
+  });
+
+  it("Phase E (H-008): list_baselines, compare_budgets, and query_budgets with compareTo", async () => {
+    const snapshots = (await counted("list_baselines")) as { baselines: Array<{ id: string; name: string; kind: string; rowCount: number }> };
+    const plan = snapshots.baselines.find((b) => b.name === GOLDEN_HISTORY.plan.name);
+    expect(plan).toMatchObject({ kind: "plan", rowCount: A.history.plan.rows });
+    const report = (await counted("compare_budgets", { baselineId: plan?.id })) as { byDimension: Record<string, Array<{ code: string; baseline: string }>>; counts: Record<string, number>; change: { abs: string } };
+    expect(Object.fromEntries((report.byDimension["region"] ?? []).map((r) => [r.code, r.baseline]))).toEqual(A.history.plan.leafByRegion);
+    expect(report.counts["ended"]).toBe(1);
+    // EMEA's leaves are all in the plan snapshot (the successor runs in FY2027): its FY2026 baseline is the 1 Feb budget.
+    const compared = (await counted("query_budgets", { filter: live(), groupBy: ["region"], measures: ["budget", "budget_baseline", "budget_change_abs"], period, compareTo: { baselineId: plan?.id } })) as { rows: Array<{ dimensions: Record<string, string>; measures: Record<string, string> }> };
+    const emea = compared.rows.find((r) => r.dimensions["region"] === "EMEA")?.measures;
+    expect(emea?.["budget_baseline"]).toBe(A.history.plan.leafByRegion["EMEA"]);
+    expect(emea?.["budget_change_abs"]).toBe(new Decimal(emea?.["budget"] ?? 0).minus(emea?.["budget_baseline"] ?? 0).toFixed(2));
+    const asOf = (await counted("query_budgets", { filter: live({ field: { kind: "dimension", key: "region" }, op: "eq", value: "EMEA" }), measures: ["budget_baseline"], period, compareTo: { asOf: GOLDEN_HISTORY.plan.asOf }, limit: 1000 })) as { totals: Record<string, string> };
+    expect(asOf.totals["budget_baseline"]).toBe(A.history.plan.leafByRegion["EMEA"]);
   });
 
   it("the registry resource", async () => {

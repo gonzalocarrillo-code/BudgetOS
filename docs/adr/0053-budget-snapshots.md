@@ -58,6 +58,18 @@ Amounts already have history, because `envelope_version` is immutable and the pl
 - **Settings › Fiscal calendar › Snapshots** lists every snapshot. People can rename, archive and restore them, and open one in Budgets. Snapshots are never deleted.
 - **Ended budgets** read `ENDED` in the planner's flat rows, and the grid shows "Ended". Filters still see status `APPROVED`.
 
+## Decision: MCP and the golden workspace (Phase E5)
+
+- **Two read-only MCP tools.**
+  - `list_baselines` lists snapshots. With `envelopeId`, it lists the ones that hold that budget and what each kept.
+  - `compare_budgets` is the change report, against now or against a later snapshot.
+- **`query_budgets` gains `compareTo`**, and its description says so, along with `asOf`. The tools call the API's read barrel only. For that, the snapshot module is split into `queries/` and `commands/`, and the envelope read takes its FX lookup from `envelopes/fx.ts`, not from `commands/`. The MCP import guard enforces both.
+- **The golden workspace** (`GOLDEN_HISTORY`):
+  - Finance saves the plan as it stood on 1 February, after round 1 and before the re-plans.
+  - After the split, an admin ends one FY2026 leaf on its own last day with its approved amount.
+  - Its FY2027 successor gets USD 750, which fits in the parent's room.
+  - FY2026 totals are unchanged. The envelope count gains 1, and the approved-version and search counts change with it.
+
 ## Consequences
 
 - A snapshot of a large workspace copies one row per budget. At the planned sizes of up to 50,000 budgets, that is one INSERT…SELECT inside the request transaction.

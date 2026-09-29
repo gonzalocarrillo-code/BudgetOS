@@ -21,7 +21,7 @@ import { search } from "../modules/search/search.js";
 import { runQuery } from "../modules/query/queries/run-query.js";
 import { treeQuery } from "../modules/query/queries/tree.query.js";
 import { updateEnvelope } from "../modules/envelopes/commands/update-envelope.js";
-import { GOLDEN_CLOSURE, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW } from "@budget/db";
+import { GOLDEN_CLOSURE, GOLDEN_EXPORT, GOLDEN_HISTORY, GOLDEN_SAVED_VIEW } from "@budget/db";
 import { MemoryObjectStore, runExport } from "@budget/workers";
 import ExcelJS from "exceljs";
 import { parseCsv } from "../modules/envelopes/bulk/csv.js";
@@ -116,6 +116,30 @@ describe("pnpm db:seed (T-006 done-when)", () => {
     expect(count["envelope.version.approved"]).toBe(A.approvedVersions);
     expect(count["approval.requested"]).toBeGreaterThan(0);
     expect(count["registry.dimension.created"] ?? count["dimension.created"] ?? 0).toBeGreaterThan(0);
+  });
+
+  it("Phase E: the plan snapshot as of 1 Feb, and an ended leaf that continues in FY2027 (GOLDEN_HISTORY)", async () => {
+    const ws = golden.workspaceId;
+    const snap = await owner.budgetBaseline.findFirstOrThrow({ where: { workspaceId: ws, name: GOLDEN_HISTORY.plan.name } });
+    expect(snap).toMatchObject({ kind: "plan", periodKey: GOLDEN_HISTORY.plan.periodKey, rowCount: A.history.plan.rows });
+    expect(snap.asOf.toISOString()).toBe(GOLDEN_HISTORY.plan.asOf);
+    const byRegion = await owner.$queryRawUnsafe<Array<{ region: string; s: string }>>(
+      `SELECT dimension_values->>'region' AS region, sum(amount_reporting)::text AS s FROM budget_baseline_row
+       WHERE baseline_id = $1::uuid AND dimension_values ? 'audience' GROUP BY 1 ORDER BY 1`,
+      snap.id,
+    );
+    expect(Object.fromEntries(byRegion.map((r) => [r.region, new Decimal(r.s).toFixed(2)]))).toEqual(A.history.plan.leafByRegion);
+    const endedId = golden.envelopeIds.get(A.history.end.key) as string;
+    const ended = await owner.envelope.findUniqueOrThrow({ where: { id: endedId } });
+    const amountOf = async (versionId: string | null) => (await owner.envelopeVersion.findUniqueOrThrow({ where: { id: versionId as string } })).amount.toFixed(2);
+    expect(ended.endedAt).not.toBeNull();
+    expect(ended.endDate.toISOString().slice(0, 10)).toBe(GOLDEN_HISTORY.end.endDate);
+    expect(await amountOf(ended.currentVersionId)).toBe(A.history.end.finalAmount);
+    const link = await owner.envelopeLineage.findFirstOrThrow({ where: { fromEnvelopeId: endedId, kind: "continues" } });
+    const successor = await owner.envelope.findUniqueOrThrow({ where: { id: link.toEnvelopeId } });
+    expect(successor).toMatchObject({ name: GOLDEN_HISTORY.end.successor.name, status: "APPROVED", parentId: ended.parentId, endedAt: null });
+    expect(successor.startDate.toISOString().slice(0, 10)).toBe(GOLDEN_HISTORY.end.successor.startDate);
+    expect(await amountOf(successor.currentVersionId)).toBe(A.history.end.successorAmount);
   });
 
   it("uses more than one approval route (auto-approve, Minor, Standard, Major)", async () => {
@@ -688,7 +712,9 @@ describe("closures (T-024 done-when: locked envelope rejects draft with 423)", (
     const before = await statuses();
     const sink = new RecordingClosureSink();
     const closed = await closePeriod(app, sink, person(golden.users.finance1, "FINANCE"), { periodKey: "2026-Q2" });
-    const live = Object.values(before).filter((s) => s !== "ARCHIVED").length;
+    // Live envelopes that overlap the quarter (the FY2027 successor of GOLDEN_HISTORY does not).
+    const outside = await owner.envelope.count({ where: { workspaceId: golden.workspaceId, status: { not: "ARCHIVED" }, OR: [{ startDate: { gt: new Date("2026-06-30") } }, { endDate: { lt: new Date("2026-04-01") } }] } });
+    const live = Object.values(before).filter((s) => s !== "ARCHIVED").length - outside;
     expect(closed).toMatchObject({ status: "closed", lockedEnvelopes: live, period: { start: "2026-04-01", end: "2026-06-30" } });
     expect(Object.values(await statuses()).filter((s) => s === "LOCKED")).toHaveLength(live);
 

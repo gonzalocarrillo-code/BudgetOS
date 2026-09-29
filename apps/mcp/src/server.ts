@@ -84,7 +84,12 @@ export function buildServer(deps: McpDeps): McpServer {
 
   server.registerTool(
     "query_budgets",
-    { description: "Budget vs actual vs projected at any grouping (the planner). filter is the FilterGroup AST over describe_dimensions keys; groupBy dimension keys; one page per call (cursor).", inputSchema: QueryRequest.shape, annotations: readOnly },
+    {
+      description:
+        "Budget vs actual vs projected at any grouping (the planner). filter is the FilterGroup AST over describe_dimensions keys; groupBy dimension keys; one page per call (cursor). asOf reads the budgets approved at an instant; compareTo ({ baselineId } from list_baselines, or { asOf }) adds the measures budget_baseline, budget_change_abs and budget_change_pct.",
+      inputSchema: QueryRequest.shape,
+      annotations: readOnly,
+    },
     async (args, extra) => run("query_budgets", "envelope.read", args.workspaceId, extra, args, (auth) => q.runQuery(deps.prisma, auth, args)),
   );
 
@@ -149,6 +154,26 @@ export function buildServer(deps: McpDeps): McpServer {
 
   server.registerTool("list_tags", { description: "The workspace's tag vocabulary with usage counts.", inputSchema: { workspaceId: ws }, annotations: readOnly }, async (args, extra) =>
     run("list_tags", "workspace.member", args.workspaceId, extra, args, (auth) => q.listTags(deps.prisma, auth)),
+  );
+
+  server.registerTool(
+    "list_baselines",
+    {
+      description: "Snapshots of the budget saved by hand (Phase E): the plan as agreed, a close, or any moment someone kept. Each has a name, kind (plan, close, other), what it holds (the workspace, a filter's budgets or one budget's subtree), when it was taken and its total. envelopeId lists the ones that hold that budget, with what each kept for it.",
+      inputSchema: { workspaceId: ws, includeArchived: z.boolean().optional(), envelopeId: z.string().uuid().optional() },
+      annotations: readOnly,
+    },
+    async (args, extra) => run("list_baselines", "envelope.read", args.workspaceId, extra, args, (auth) => q.listBaselines(deps.prisma, auth, defined({ includeArchived: args.includeArchived ? "true" : undefined, envelopeId: args.envelopeId }))),
+  );
+
+  server.registerTool(
+    "compare_budgets",
+    {
+      description: "How budgets moved since a snapshot: against now, or against a later snapshot (against = its id). Totals and the change (amount and %), how many budgets went up, down, are new, were removed or ended, the change per granularity, and the biggest movers.",
+      inputSchema: { workspaceId: ws, baselineId: z.string().uuid(), against: z.string().uuid().optional(), limit: z.number().int().min(1).max(200).optional() },
+      annotations: readOnly,
+    },
+    async (args, extra) => run("compare_budgets", "envelope.read", args.workspaceId, extra, args, (auth) => q.baselineReport(deps.prisma, auth, args.baselineId, defined({ against: args.against, limit: args.limit === undefined ? undefined : String(args.limit) }))),
   );
 
   server.registerTool(

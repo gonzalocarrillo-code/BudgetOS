@@ -5,6 +5,7 @@ import type { Envelope, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
+import { rephase } from "../bulk/allocate.js";
 import { insertEnvelopeRow } from "./create-envelope.js";
 import { routeStructural } from "./structure.js";
 import { assertBasedOnHead, assertDraftNotPending, lockForWrite, resolveFx, writeDraftVersion } from "./version-writer.js";
@@ -92,9 +93,14 @@ export async function endIn(tx: Tx, auth: AuthContext, workspaceId: string, enve
   const source = await tx.envelope.findUniqueOrThrow({ where: { id: envelopeId } });
   const current = await tx.envelopeVersion.findUniqueOrThrow({ where: { id: env.currentVersionId } });
   const finalAmount = nonNegative(input.finalAmount, "finalAmount");
+  // The monthly shape up to the last day, scaled to the final amount; the months after it drop.
+  const shape = (await tx.envelopePhasing.findMany({ where: { versionId: current.id }, orderBy: { month: "asc" } }))
+    .map((p) => ({ month: isoDate(p.month), amount: new Decimal(p.amount.toString()) }))
+    .filter((p) => p.month <= `${input.endDate.slice(0, 7)}-01`);
+  const phasing = shape.length && shape.some((p) => !p.amount.isZero()) ? rephase(shape, finalAmount).map((p) => ({ month: p.month, amount: p.amount.toFixed(2) })) : undefined;
   const endVersion = await writeDraftVersion(tx, auth, env, {
     amount: finalAmount,
-    phasing: undefined,
+    phasing,
     rationale: input.rationale ? `Ends on ${input.endDate}: ${input.rationale}` : `Ends on ${input.endDate}`,
     attachments: [],
   });
