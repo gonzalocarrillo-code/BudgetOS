@@ -6630,6 +6630,15 @@ export interface operations {
                             spentPct: string | null;
                             openAlerts: number;
                         } | null;
+                        asOf?: {
+                            lastFactDate: string | null;
+                            through: string | null;
+                            /** @enum {string|null} */
+                            grain: "day" | "month" | null;
+                            staleDays: number | null;
+                            stale: boolean;
+                            elapsed: string | null;
+                        };
                         setup?: {
                             budgets: number;
                             sources: number;
@@ -8754,7 +8763,147 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        currency: string;
+                        period: {
+                            preset: string;
+                            start?: string;
+                            end?: string;
+                            elapsed?: string;
+                            elapsedToday?: string;
+                        };
+                        asOf: {
+                            lastFactDate: string | null;
+                            through: string | null;
+                            /** @enum {string|null} */
+                            grain: "day" | "month" | null;
+                            staleDays: number | null;
+                            stale: boolean;
+                        };
+                        dataAsOf: string;
+                        totals: {
+                            [key: string]: string | null;
+                        };
+                        headline?: {
+                            basis: string;
+                            budget: string | null;
+                            actual: string | null;
+                            spentPct: string | null;
+                            paceIndex: string | null;
+                            assigned: string | null;
+                        } | null;
+                        heatmap: {
+                            rowDimension: {
+                                key: string;
+                                label: string;
+                            };
+                            colDimension: {
+                                key: string;
+                                label: string;
+                            };
+                            rows: string[];
+                            cols: string[];
+                            labels: {
+                                rows: {
+                                    [key: string]: string;
+                                };
+                                cols: {
+                                    [key: string]: string;
+                                };
+                            };
+                            cells: {
+                                row: string | null;
+                                col: string | null;
+                                budget?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                            }[];
+                            /** @default [] */
+                            dimensions: {
+                                key: string;
+                                label: string;
+                            }[];
+                        } | null;
+                        variances: {
+                            over: {
+                                /** Format: uuid */
+                                envelopeId: string | null;
+                                name: string;
+                                path: string[];
+                                budget?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                            }[];
+                            under: {
+                                /** Format: uuid */
+                                envelopeId: string | null;
+                                name: string;
+                                path: string[];
+                                budget?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                            }[];
+                        };
+                        kpi: {
+                            metric: string;
+                            dimension: {
+                                key: string;
+                                label: string;
+                            };
+                            rows: {
+                                code: string | null;
+                                label: string | null;
+                                budget?: string | null;
+                                actual?: string | null;
+                                target?: string | null;
+                                vsTargetPct?: string | null;
+                            }[];
+                        } | null;
+                        alerts: {
+                            open: number;
+                            counts: {
+                                [key: string]: number;
+                            };
+                            latest: {
+                                id: string;
+                                severity: string;
+                                envelopeId: string;
+                                envelopeName: string | null;
+                                ruleName: string | null;
+                            }[];
+                        };
+                        approvals: {
+                            mine: number;
+                            overdue: number;
+                            due: {
+                                id: string;
+                                summary: string | null;
+                                dueAt: string | null;
+                                requestedByName?: string | null;
+                            }[];
+                        };
+                        freshness: {
+                            lastFactDate: string | null;
+                            sources: {
+                                id: string;
+                                name: string;
+                                kind: string;
+                                isActive: boolean;
+                                lastRun: {
+                                    status: string;
+                                    startedAt: string;
+                                    finishedAt: string | null;
+                                    matchCoverage: string | null;
+                                } | null;
+                            }[];
+                        };
+                        elapsedMs: number;
+                    };
+                };
             };
         };
     };

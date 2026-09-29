@@ -1,6 +1,7 @@
+import { OverviewResponse, type OverviewLeaf } from "@budget/domain";
 import { formatChange, formatMoney, formatPctChange } from "@budget/grid";
 import { savedOn, snapshotReportQuery, snapshotsQuery } from "../features/snapshots/queries.js";
-import { cn, Button, Select } from "@budget/ui";
+import { AsOfChip, cn, Button, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
@@ -27,34 +28,7 @@ const OverviewSearch = z.object({ period: PeriodParam.catch("current_year").defa
 type OverviewSearch = z.infer<typeof OverviewSearch>;
 export const Route = createFileRoute("/w/$ws/")({ validateSearch: OverviewSearch, search: { middlewares: [stripSearchParams({ period: "current_year" })] }, component: OverviewPage });
 
-const Num = z.string().nullable().optional();
-const Leaf = z.object({ envelopeId: z.string().uuid().nullable(), name: z.string(), path: z.array(z.string()), budget: Num, actual: Num, pace_index: Num, spend_to_date_pct: Num }).passthrough();
-const Overview = z.object({
-  currency: z.string(),
-  period: z.object({ preset: z.string(), start: z.string().optional(), end: z.string().optional(), elapsed: z.string().optional() }).passthrough(),
-  dataAsOf: z.string(),
-  totals: z.record(z.string(), z.string().nullable()),
-  /** UX-008: the tiles' budget, as Budgets counts it; `assigned` is what the leaves (the heatmap) hold. */
-  headline: z.object({ basis: z.string(), budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), paceIndex: z.string().nullable(), assigned: z.string().nullable() }).nullable().optional(),
-  heatmap: z
-    .object({
-      rowDimension: z.object({ key: z.string(), label: z.string() }),
-      colDimension: z.object({ key: z.string(), label: z.string() }),
-      rows: z.array(z.string()),
-      cols: z.array(z.string()),
-      labels: z.object({ rows: z.record(z.string(), z.string()), cols: z.record(z.string(), z.string()) }),
-      cells: z.array(z.object({ row: z.string().nullable(), col: z.string().nullable(), budget: Num, actual: Num, pace_index: Num, spend_to_date_pct: Num }).passthrough()),
-      dimensions: z.array(z.object({ key: z.string(), label: z.string() })).default([]),
-    })
-    .nullable(),
-  variances: z.object({ over: z.array(Leaf), under: z.array(Leaf) }),
-  kpi: z.object({ metric: z.string(), dimension: z.object({ key: z.string(), label: z.string() }), rows: z.array(z.object({ code: z.string().nullable(), label: z.string().nullable(), budget: Num, actual: Num, target: Num, vsTargetPct: Num })) }).nullable(),
-  alerts: z.object({ open: z.number(), counts: z.record(z.string(), z.number()), latest: z.array(z.object({ id: z.string(), severity: z.string(), envelopeId: z.string(), envelopeName: z.string().nullable(), ruleName: z.string().nullable() }).passthrough()) }),
-  approvals: z.object({ mine: z.number(), overdue: z.number(), due: z.array(z.object({ id: z.string(), summary: z.string().nullable(), dueAt: z.string().nullable(), requestedByName: z.string().nullable().optional() }).passthrough()) }),
-  freshness: z.object({ lastFactDate: z.string().nullable(), sources: z.array(z.object({ id: z.string(), name: z.string(), kind: z.string(), isActive: z.boolean(), lastRun: z.object({ status: z.string(), startedAt: z.string(), finishedAt: z.string().nullable(), matchCoverage: z.string().nullable() }).nullable() })) }),
-  elapsedMs: z.number(),
-});
-type Overview = z.infer<typeof Overview>;
+type Overview = OverviewResponse;
 
 /**
  * What each person sees (product feedback: "what we see and what we don't see"): tiles and panels
@@ -141,7 +115,7 @@ function Customise({ layout }: { layout: ReturnType<typeof useLayout> }): ReactE
 const overviewQuery = (ws: string, period: string, rows?: string, cols?: string) =>
   queryOptions({
     queryKey: ["overview", ws, period, rows ?? "", cols ?? ""],
-    queryFn: async () => Overview.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/overview", { params: { path: { ws }, query: { period, ...(rows ? { rows } : {}), ...(cols ? { cols } : {}) } as never } }))),
+    queryFn: async () => OverviewResponse.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/overview", { params: { path: { ws }, query: { period, ...(rows ? { rows } : {}), ...(cols ? { cols } : {}) } as never } }))),
     staleTime: 30_000,
   });
 
@@ -173,7 +147,7 @@ function OverviewPage(): ReactElement {
     layout.shows("tile.budget") ? <Tile key="b" label={t("overview.budget")} value={o ? money(head.budget) : ""} hint={o && o.headline && o.headline.assigned !== null && o.headline.assigned !== o.headline.budget ? t("overview.assigned", { amount: money(o.headline.assigned) }) : undefined} testId="tile-budget" /> : null,
     layout.shows("tile.actual") ? <Tile key="a" label={t("overview.actual")} value={o ? money(head.actual) : ""} hint={o ? t("overview.spendToDate", { pct: pct(head.spentPct) }) : undefined} /> : null,
     // % of the budget spent (product feedback 8), against how much of the period has gone.
-    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(head.spentPct) : ""} hint={o?.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" /> : null,
+    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(head.spentPct) : ""} hint={o?.period.elapsed ? (o.asOf.through ? t("overview.elapsedBy", { pct: pct(o.period.elapsed), date: shortDate(o.asOf.through) }) : t("overview.elapsed", { pct: pct(o.period.elapsed) })) : undefined} testId="tile-spent" /> : null,
     // A projection needs projection facts; without them it would read 0%.
     layout.shows("tile.projected") ? <Tile key="p" label={t("overview.projectedClose")} value={o ? (Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])) : ""} hint={o && Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} /> : null,
     layout.shows("tile.alerts") ? <Tile key="al" label={t("overview.openAlerts")} value={o ? String(o.alerts.open) : ""} to="alerts" ws={ws} testId="tile-alerts" /> : null,
@@ -209,11 +183,13 @@ function OverviewPage(): ReactElement {
               ) : null}
             </Select>
           </label>
+          {o ? <AsOfChip through={o.asOf.through} stale={o.asOf.stale} staleDays={o.asOf.staleDays} grain={o.asOf.grain} testId="overview-as-of" /> : null}
           <Customise layout={layout} />
         </div>
       }
     >
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
+      {o?.asOf.stale && o.asOf.through ? <StaleBanner ws={ws} through={o.asOf.through} days={o.asOf.staleDays ?? 0} /> : null}
       {isPending || !o ? (
         <p className="text-sm text-muted-foreground" data-testid="overview-loading">{t("shell.loading")}</p>
       ) : (
@@ -355,6 +331,21 @@ function OverviewPage(): ReactElement {
       )}
       {cell && o ? <CellEditor ws={ws} cell={cell} period={periodSpec} currency={o.currency} onClose={() => setCell(null)} /> : null}
     </Page>
+  );
+}
+
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** HO-003: the actuals are late; every pace on the page is read as of their last day. */
+function StaleBanner({ ws, through, days }: { ws: string; through: string; days: number }): ReactElement {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning-soft px-4 py-2.5 text-sm text-warning-text" data-testid="overview-stale">
+      <AlertTriangle className="size-4 shrink-0" aria-hidden />
+      <span className="flex-1">{t("overview.stale", { date: shortDate(through), days })}</span>
+      <Link to="/w/$ws/sources" params={{ ws }} className="font-medium underline">
+        {t("overview.staleOpen")}
+      </Link>
+    </div>
   );
 }
 
@@ -535,7 +526,7 @@ function Heatmap({ h, money, onAxes, onCell }: { h: NonNullable<Overview["heatma
   );
 }
 
-function LeafList({ ws, rows, icon, money, testId }: { ws: string; rows: z.infer<typeof Leaf>[]; icon: ReactNode; money: (v: string | null | undefined) => string; testId: string }): ReactElement {
+function LeafList({ ws, rows, icon, money, testId }: { ws: string; rows: OverviewLeaf[]; icon: ReactNode; money: (v: string | null | undefined) => string; testId: string }): ReactElement {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground" data-testid={testId}>{t("overview.noneHere")}</p>;
   return (
     <ol className="flex flex-col gap-1.5" data-testid={testId}>

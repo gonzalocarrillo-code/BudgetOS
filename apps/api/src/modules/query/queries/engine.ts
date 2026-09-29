@@ -105,10 +105,11 @@ function cacheSafe(g: FilterGroupT): boolean {
 }
 
 /** The cache key of a scoped query, or null when it may not be cached. */
-export function cacheKey(q: QueryRequest, dataVersion: number, today: string): string | null {
+export function cacheKey(q: QueryRequest, dataVersion: number, today: string, elapsedThrough?: string): string | null {
   if (!cacheSafe(q.filter ?? { logic: "and", children: [] })) return null;
-  // `today` is part of the answer (pace, relative periods).
-  return `q:${q.workspaceId}:${dataVersion}:${today}:${createHash("sha256").update(JSON.stringify(q)).digest("hex")}`;
+  // `today` is part of the answer (pace, relative periods), and so is the day time gone is counted to (ADR-062).
+  const day = elapsedThrough === undefined || elapsedThrough >= today ? today : `${today}~${elapsedThrough}`;
+  return `q:${q.workspaceId}:${dataVersion}:${day}:${createHash("sha256").update(JSON.stringify(q)).digest("hex")}`;
 }
 
 /** Months the period spans, counting partial months. */

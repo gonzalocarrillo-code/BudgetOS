@@ -1,6 +1,6 @@
 import { HomeResponse } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
-import { cn, Skeleton, SkeletonRows } from "@budget/ui";
+import { AsOfChip, cn, Skeleton, SkeletonRows } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -45,9 +45,12 @@ function HomePage(): ReactElement {
 
   return (
     <Page title={name ? t(greetingKey(today.getHours()), { name }) : t("home.titleNoName")}>
-      <p className="-mt-3 text-sm text-muted-foreground" data-testid="home-subtitle">
-        {home?.workspace ? t("home.subtitle", { workspace: home.workspace.name, date: dateLine, elapsed: pct(home.workspace.period.elapsed) }) : dateLine}
-      </p>
+      <div className="-mt-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm text-muted-foreground" data-testid="home-subtitle">
+          {home?.workspace ? t("home.subtitle", { workspace: home.workspace.name, date: dateLine, elapsed: pct(home.workspace.period.elapsed) }) : dateLine}
+        </p>
+        {home?.asOf ? <AsOfChip through={home.asOf.through} stale={home.asOf.stale} staleDays={home.asOf.staleDays} grain={home.asOf.grain} testId="home-as-of" /> : null}
+      </div>
       <TourInvite ws={ws} />
       {demo && demo.envelopes > 0 ? (
         <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2.5 text-sm" data-testid="home-demo">
@@ -141,7 +144,9 @@ function Summary({ ws, home }: { ws: string; home: HomeResponse }): ReactElement
   // The same count as the "Waiting on you" card below (unmatched spend is one item there).
   const waiting = home.waitingOnMe.approvals.length + home.waitingOnMe.mentions.length + home.waitingOnMe.alerts.length + (home.waitingOnMe.unmatched > 0 ? 1 : 0);
   const spent = totals.spentPct === null ? null : Number(totals.spentPct);
-  const elapsed = home.workspace?.period.elapsed === null || home.workspace?.period.elapsed === undefined ? null : Number(home.workspace.period.elapsed);
+  // HO-003: the tick is the year gone by the day the actuals cover, which pace is read against.
+  const gone = home.asOf?.elapsed ?? home.workspace?.period.elapsed ?? null;
+  const elapsed = gone === null ? null : Number(gone);
   const stat = "flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 shadow-xs hover:border-primary/50";
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3" data-testid="home-summary">
@@ -156,7 +161,7 @@ function Summary({ ws, home }: { ws: string; home: HomeResponse }): ReactElement
           <span className={cn("absolute inset-y-0 left-0 rounded-full", spent !== null && elapsed !== null && spent > elapsed * 1.1 ? "bg-warning" : "bg-primary")} style={{ width: `${Math.round(Math.min(1, spent ?? 0) * 100)}%` }} />
           {elapsed !== null ? <span className="absolute inset-y-0 w-0.5 bg-foreground/60" style={{ left: `${Math.round(Math.min(1, elapsed) * 100)}%` }} /> : null}
         </span>
-        <span className="text-xs text-muted-foreground">{t("home.sum.spentOf", { actual: totals.actual ? formatMoney(totals.actual, currency) : "—", elapsed: pct(home.workspace?.period.elapsed ?? null) })}</span>
+        <span className="text-xs text-muted-foreground">{t("home.sum.spentOf", { actual: totals.actual ? formatMoney(totals.actual, currency) : "—", elapsed: pct(gone) })}</span>
       </Link>
       <Link to="/w/$ws/alerts" params={{ ws }} className={stat}>
         <span className="text-xs text-muted-foreground">{t("home.sum.alerts")}</span>

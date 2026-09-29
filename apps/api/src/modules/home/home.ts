@@ -1,13 +1,14 @@
 import { QueryRequest, canInScope, elapsedFraction, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
 import { headline } from "../../common/headline.js";
-import { plannerOptions, unmatchedSpend, withTenant, fiscalCalendar, workspaceSetup } from "@budget/db";
-import { compileQuery, compileTotals } from "@budget/query-planner";
+import { dataAsOf, plannerOptions, unmatchedSpend, withTenant, fiscalCalendar, workspaceSetup } from "@budget/db";
+import { compileQuery, compileTotals, elapsedDay } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../common/parse-input.js";
 import { envelopeScopeTargets } from "../../common/scope.guard.js";
 import type { AuthContext } from "../../common/tenant.js";
 import { listApprovals } from "../approvals/queries/approvals.js";
+import { openAlerts } from "../pacing/queries.js";
 
 /**
  * GET /me/home (spec §27, plan §11.7 "Home is a to-do list"): what is waiting on the caller first —
@@ -23,7 +24,8 @@ const ratio = (v: unknown) => (v === null || v === undefined ? null : new Decima
 
 export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date = new Date()): Promise<HomeResponse> {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const approvals = (await listApprovals(prisma, auth, { assignee: "me", limit: "10" } as never)).rows as Array<{ id: string; summary: string | null; entityType: string; requestedAt: string; dueAt: string | null }>;
+  const [approvalPage, alertsOpen] = await Promise.all([listApprovals(prisma, auth, { assignee: "me", limit: "10" } as never), openAlerts(prisma, auth)]);
+  const approvals = approvalPage.rows as Array<{ id: string; summary: string | null; entityType: string; requestedAt: string; dueAt: string | null }>;
   return withTenant(prisma, auth.ctx, async (tx) => {
     const me = auth.user.id;
     const today = now.toISOString().slice(0, 10);
@@ -48,7 +50,9 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     const picked = [...mine.filter((r) => r.ownerId === me), ...mine.filter((r) => r.ownerId !== me)].slice(0, MAX_SCOPES);
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true, name: true, reportingCurrency: true } });
     const period = resolvePeriod({ kind: "relative", preset: "current_year" }, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
-    const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period);
+    // HO-003 (ADR-062): pace counts time gone through the last day the actuals cover, as on the Overview.
+    const asOf = await dataAsOf(tx, workspaceId, today);
+    const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period)), elapsedThrough: asOf.through ?? undefined };
     // Each strip is that budget's own row in the budget structure (UX-008, ADR-051): its approved
     // amount against everything spent under it, found by parent links, not by dimension values.
     const scopes: HomeResponse["scopes"] = [];
@@ -93,8 +97,8 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       const q = QueryRequest.parse({ workspaceId, filter: head.filter, subtree: head.subtree, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct"], limit: 1 });
       const tt = compileTotals(q, period, today, opts);
       const [row] = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(tt.sql, ...tt.values);
-      const openAlerts = await tx.alert.count({ where: { workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });
-      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts };
+      // HO-001: the Overview's count: open alerts the caller may read.
+      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts: alertsOpen.length };
     }
 
     // UX-011: two recent budgets with the same name (two "LATAM"s) read with their parent's name.
@@ -120,6 +124,7 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       recents: touched.filter((x) => titles.has(x.entity_id)).map((x) => ({ entityType: x.entity_type, entityId: x.entity_id, title: titles.get(x.entity_id) as string, at: new Date(x.at).toISOString() })),
       pinnedViews: views.map((v) => ({ id: v.id, name: v.name, screen: v.screen, definition: v.definition as Record<string, unknown> })),
       workspace: { name: ws.name, currency: ws.reportingCurrency, period: { start: period.start, end: period.end, elapsed: ratio(elapsedFraction(period, today).toString()) } },
+      asOf: { ...asOf, elapsed: ratio(elapsedFraction(period, elapsedDay(today, opts)).toString()) },
       totals,
       setup,
     };

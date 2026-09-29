@@ -11,7 +11,7 @@ export type {
 export { BudgetGrid, columnWidth } from "./BudgetGrid.js";
 export { buildCell, chipsCellRenderer, customRenderers, moneyCellRenderer, paceCellRenderer, pathCellRenderer, statusCellRenderer, targetCellRenderer } from "./cells.js";
 export type { BudgetCell } from "./cells.js";
-export { editorAction, formatChange, formatMoney, formatPctChange, parseDate, parseMoney, parsePercent } from "./editors.js";
+export { editorAction, formatChange, formatMoney, formatMoneyCompact, formatPctChange, parseDate, parseMoney, parsePercent } from "./editors.js";
 export type { EditorAction } from "./editors.js";
 export { DateEditor, DimensionPicker, MoneyEditor, PercentEditor, TagPicker, TextEditor } from "./editor-fields.js";
 export { forwardPaste } from "./paste.js";
