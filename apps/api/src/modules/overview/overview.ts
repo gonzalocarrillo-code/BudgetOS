@@ -176,7 +176,16 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   // Worst first: the largest gap over target leads (a gap-less row goes last).
   kpiRows.sort((a, b) => (b.vsTargetPct === null ? -Infinity : Number(b.vsTargetPct)) - (a.vsTargetPct === null ? -Infinity : Number(a.vsTargetPct)));
 
-  const attention = attentionOf({ over, under, noSpend, kpiOff });
+  // Each budget's open alerts, for the bell's hover card (worst first).
+  const ruleName = new Map(rules.map((r) => [r.id, r.name]));
+  const alertsByBudget = new Map<string, OpenAlert[]>();
+  for (const a of alerts) alertsByBudget.set(a.envelopeId, [...(alertsByBudget.get(a.envelopeId) ?? []), a]);
+  const alertListOf = (envelopeId: string) =>
+    (alertsByBudget.get(envelopeId) ?? [])
+      .slice()
+      .sort((x, y) => (SEVERITY_RANK[x.severity] ?? 9) - (SEVERITY_RANK[y.severity] ?? 9) || y.openedAt.getTime() - x.openedAt.getTime())
+      .map((x) => ({ id: x.id, rule: ruleName.get(x.ruleId) ?? null, severity: x.severity, openedAt: x.openedAt.toISOString() }));
+  const attention = attentionOf({ over, under, noSpend, kpiOff }, alertListOf);
   const byRule = await rulesOf(alerts, rules, place, rowKey, labels.rows, (scope) => q({ filter: scope, measures: ["budget"], limit: 1 }));
   const headRow = headTotals?.totals ?? null;
   const assigned = (heat?.totals ?? over.totals)["budget"] ?? null;
@@ -296,7 +305,7 @@ async function rulesOf(
 }
 
 /** The four lists of budgets that need attention, and all of them together by money at stake (ADR-064). */
-function attentionOf(res: { over: QueryResponse; under: QueryResponse; noSpend: QueryResponse; kpiOff: QueryResponse | null }): NonNullable<OverviewResponse["attention"]> {
+function attentionOf(res: { over: QueryResponse; under: QueryResponse; noSpend: QueryResponse; kpiOff: QueryResponse | null }, alertListOf: (envelopeId: string) => OverviewAttentionItem["alertList"]): NonNullable<OverviewResponse["attention"]> {
   const item = (category: OverviewAttentionItem["category"], r: QueryRow): OverviewAttentionItem | null => {
     if (r.envelopeId === null) return null;
     const ahead = r.measures["ahead_of_plan_abs"] ?? "0";
@@ -317,6 +326,7 @@ function attentionOf(res: { over: QueryResponse; under: QueryResponse; noSpend: 
       ahead_of_plan_abs: r.measures["ahead_of_plan_abs"] ?? null,
       money,
       alerts: r.openAlerts,
+      alertList: alertListOf(r.envelopeId),
       pending: r.status === "PENDING",
       endDate: r.endDate ?? null,
       kpi: category === "kpi" && t ? { metric: "cpa", actual: t.actual, target: t.target, vsTargetPct: t.vsTargetPct } : null,

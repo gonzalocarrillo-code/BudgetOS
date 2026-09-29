@@ -73,6 +73,8 @@ export const OverviewAttentionItem = z.object({
   ...MEASURES,
   money: z.string(),
   alerts: z.number().int(),
+  /** Its open alerts (as the caller may read them), worst first: what the bell shows on hover. */
+  alertList: z.array(z.object({ id: z.string().uuid(), rule: z.string().nullable(), severity: z.string(), openedAt: z.string() })).default([]),
   pending: z.boolean(),
   endDate: z.string().nullable(),
   kpi: z.object({ metric: z.string(), actual: Num, target: Num, vsTargetPct: Num }).nullable(),

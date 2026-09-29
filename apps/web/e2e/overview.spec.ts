@@ -217,6 +217,15 @@ test("overview: needs attention, alerts by rule and the approval queue", async (
   const money = o.attention.all.map((i) => Math.abs(Number(i.money)));
   expect(money).toEqual([...money].sort((a, b) => b - a));
   await expect(page.getByTestId("attention-row").first()).toContainText(o.attention.all[0]?.name ?? "—");
+  // Alerts are a bell: hovering lists them, a click opens them in Alerts for that budget (feedback).
+  const bell = page.getByTestId("attention-alerts").first();
+  await bell.hover();
+  await expect(page.getByTestId("attention-alerts-card")).toContainText(/open alerts/);
+  await bell.click();
+  await expect(page).toHaveURL(/\/alerts\?.*under=/);
+  await expect(page.getByTestId("alerts-only-under")).toBeVisible();
+  await page.goto(`/w/${ws()}`);
+  await ready(page);
   await page.getByTestId("attention-over").click();
   if (o.attention.over.length) {
     await expect(page.getByTestId("attention-row").first()).toHaveAttribute("data-category", "over");
