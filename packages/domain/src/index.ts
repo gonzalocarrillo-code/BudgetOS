@@ -23,6 +23,7 @@ export type { CalendarPeriod, DateRange, PeriodPattern } from "./period.js";
 export {
   CreateRuleInput,
   ListAlertsQuery,
+  OPEN_ALERT_STATUSES,
   RuleComparator,
   RuleDelivery,
   RuleMetric,
@@ -151,7 +152,8 @@ export {
 } from "./threads.js";
 export type { Mention, Reference } from "./threads.js";
 
-export { CreateSavedViewInput, ListSavedViewsQuery, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput } from "./views.js";
+export { CreateSavedViewInput, ListSavedViewsQuery, OVERVIEW_BLOCKS, OVERVIEW_SECTIONS, OverviewLayout, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput, readOverviewLayout } from "./views.js";
+export type { OverviewBlock } from "./views.js";
 export { SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, UpdateSlackSettingsInput, shortRequestId } from "./slack.js";
 export { OUTBOX_TOPICS, topicsFor } from "./outbox-topics.js";
 export { parseRequestRef, parseSlackCommand } from "./slack-command.js";
@@ -224,10 +226,13 @@ export {
   issueSummary,
 } from "./manual-entry.js";
 
-export { CompleteTourInput, CreateWorkspaceInput, HomeResponse, HomeScope, ListToursQuery, TemplateSavedView, TourRole, TourStep, UpdateMeInput, UpdateTourInput, UpdateWorkspaceInput, tourRolesFor, MarkNotificationsReadInput, NotificationItem, NotificationsResponse } from "./home.js";
+export { CompleteTourInput, CreateWorkspaceInput, HomeAlertGroup, HomeRequestCard, HomeResponse, HomeScope, ListToursQuery, TemplateSavedView, TourRole, TourStep, UpdateMeInput, UpdateTourInput, UpdateWorkspaceInput, tourRolesFor, MarkNotificationsReadInput, NotificationItem, NotificationsResponse } from "./home.js";
 export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";
+export { ON_PLAN, PACE_BANDS, paceBand } from "./pace.js";
+export { ATTENTION_CATEGORIES, DataAsOfView, HEATMAP_SORTS, OverviewAttention, OverviewAttentionItem, OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewMargin, OverviewResponse, OverviewRuleAlerts } from "./overview.js";
+export type { PaceBandKey } from "./pace.js";
 export type { GroupSums } from "./rollup-measures.js";
 export { BaselineKind, BaselineReport, BaselineReportQuery, BaselineRowsQuery, BaselineRowsResponse, BaselineTreeRow, BaselineScope, BaselineView, BaselinesResponse, CreateBaselineInput, EndEnvelopeInput, ReintroduceInput, UpdateBaselineInput } from "./baselines.js";
 export {

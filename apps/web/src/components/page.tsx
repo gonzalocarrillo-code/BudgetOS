@@ -1,3 +1,4 @@
+import { cn } from "@budget/ui";
 import type { ReactElement, ReactNode } from "react";
 
 /**
@@ -18,10 +19,16 @@ export function Page({ title, actions, children }: { title: string; actions?: Re
   );
 }
 
-export function Card({ title, children, tour }: { title?: string; children: ReactNode; tour?: string }): ReactElement {
+/** A card: a title with what acts on it (`actions`, right side of the header), then its content. */
+export function Card({ title, children, tour, actions, testId, className }: { title?: ReactNode; children: ReactNode; tour?: string; actions?: ReactNode; testId?: string; className?: string }): ReactElement {
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-card shadow-xs" {...(tour ? { "data-tour": tour } : {})}>
-      {title ? <div className="border-b border-border px-5 py-4 text-[15px] font-semibold">{title}</div> : null}
+    <div className={cn("min-w-0 rounded-xl border border-border bg-card shadow-xs", className)} {...(tour ? { "data-tour": tour } : {})} {...(testId ? { "data-testid": testId } : {})}>
+      {title ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-4">
+          <div className="text-[15px] font-semibold">{title}</div>
+          {actions ? <div className="ml-auto flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{actions}</div> : null}
+        </div>
+      ) : null}
       <div className="px-5 py-4">{children}</div>
     </div>
   );

@@ -79,11 +79,11 @@ test.describe("snapshots (H-006, H-007)", () => {
   test("Overview shows the change since the plan, and opens Budgets comparing with it", async ({ page }) => {
     await as(page, "finance1");
     await page.goto(`/w/${ws()}/`);
-    const tile = page.getByTestId("tile-since-plan");
-    await expect(tile).toContainText("Since the plan");
-    await expect(tile).toContainText(plan);
+    // HO-012: a line under the Budget tile, with a way to Budgets comparing with the snapshot.
+    const line = page.getByTestId("tile-since");
+    await expect(line).toContainText(`since ${plan}`);
     await expect(page.getByTestId("since-plan-counts")).toContainText("down");
-    await tile.click();
+    await line.getByRole("link").click();
     await expect(page.getByTestId("compare-banner")).toContainText(plan);
   });
 
