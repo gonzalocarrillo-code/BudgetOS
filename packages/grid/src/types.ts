@@ -18,7 +18,11 @@ export type MeasureKey =
   | "variance_abs"
   | "variance_pct"
   | "remaining"
-  | "pace_index";
+  | "pace_index"
+  /** Phase E compare columns (with the query's compareTo): the budget then, and the change since. */
+  | "budget_baseline"
+  | "budget_change_abs"
+  | "budget_change_pct";
 
 /** `title` and `width` are display only; the caller localises titles (AGENTS §4). */
 export type ColumnSpec = (

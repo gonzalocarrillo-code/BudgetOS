@@ -450,7 +450,7 @@ Plan: `docs/BUDGET_HISTORY_PLAN.md` (Phase E, revision 2: snapshots by hand for 
 | H-011 | E2 | End a budget through the approval policy | done (ADR-053) |
 | H-012 | E2 | Reintroduce a budget; lineage `continues` | done (ADR-053) |
 | H-004 | E3 | Planner `compareTo` and change measures | done (ADR-053) |
-| H-006 | E4 | Budgets: Compare to, Plan · Now · Change, Save snapshot | pending |
-| H-007 | E4 | Drawer, Overview, Closures, Settings › Snapshots | pending |
+| H-006 | E4 | Budgets: Compare to, Plan · Now · Change, Save snapshot | done (ADR-053) |
+| H-007 | E4 | Drawer, Overview, Closures, Settings › Snapshots | done (ADR-053) |
 | H-008 | E5 | MCP tools | pending |
 | H-009 | E5 | Golden seed and assertions | pending |

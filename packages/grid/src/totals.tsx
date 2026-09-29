@@ -1,5 +1,5 @@
 import type { ColumnSpec } from "./types.js";
-import { formatMoney } from "./editors.js";
+import { formatChange, formatMoney, formatPctChange } from "./editors.js";
 
 /**
  * The pinned totals row above the canvas. Values are the API's totals (never summed here), laid
@@ -44,6 +44,8 @@ function totalText(column: ColumnSpec, totals: Readonly<Record<string, string | 
     const value = totals[column.key];
     if (value === undefined || value === null) return "";
     if (column.key === "pace_index") return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : value;
+    if (column.key === "budget_change_pct") return formatPctChange(value);
+    if (column.key === "budget_change_abs") return formatChange(value, currency);
     return formatMoney(value, currency);
   }
   if (column.kind === "target") {

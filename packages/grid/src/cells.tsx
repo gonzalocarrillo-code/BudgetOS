@@ -18,7 +18,7 @@ import {
   TagPicker,
   TextEditor,
 } from "./editor-fields.js";
-import { formatMoney } from "./editors.js";
+import { formatChange, formatMoney, formatPctChange } from "./editors.js";
 import type { ColumnSpec } from "./types.js";
 
 export type BudgetCell = GridCell & {
@@ -330,11 +330,21 @@ export function buildCell(row: QueryRow, column: ColumnSpec, options: { currency
         };
       }
       const editable = column.editable === true;
+      const display =
+        raw === null || raw.length === 0
+          ? column.key === "budget_baseline"
+            ? "—"
+            : ""
+          : column.key === "budget_change_pct"
+            ? formatPctChange(raw)
+            : column.key === "budget_change_abs"
+              ? formatChange(raw, options.currency)
+              : moneyDisplay(raw, options.currency);
       const data: MoneyCellData = {
         kind: "money",
         value: raw,
         currency: options.currency,
-        display: moneyDisplay(raw, options.currency),
+        display,
         editable,
       };
       return {

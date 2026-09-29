@@ -25,7 +25,9 @@ import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } f
 import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
-import { Plus } from "lucide-react";
+import { Camera, Plus } from "lucide-react";
+import { SaveSnapshotDialog } from "../features/snapshots/save-snapshot-dialog.js";
+import { snapshotLabel, snapshotsQuery, savedOn } from "../features/snapshots/queries.js";
 
 /** Explorer search params are the source of truth for filter / grouping state (spec §18.1). */
 const ExplorerSearch = z.object({
@@ -39,6 +41,8 @@ const ExplorerSearch = z.object({
   period: PeriodSpec.default({ kind: "relative", preset: "current_year" }),
   grain: Grain.default("total"),
   asOf: z.string().datetime().optional(),
+  /** Phase E (H-006): a snapshot the budgets are compared with (Snapshot · Now · Change). */
+  compareTo: z.string().uuid().optional(),
   view: z.enum(["tree", "pivot", "timeline"]).default("tree"),
   zoom: z.enum(["week", "month", "quarter", "fy"]).default("month"),
   select: z.string().uuid().optional(),
@@ -66,6 +70,8 @@ const MEASURE_COLUMNS: Array<{ key: "budget" | "actual" | "projected" | "remaini
   { key: "remaining", label: "explorer.col.remaining" },
   { key: "pace_index", label: "explorer.col.pace" },
 ];
+
+const COMPARE_COLUMNS = [{ key: "budget_baseline" }, { key: "budget_change_abs" }, { key: "budget_change_pct" }] as const;
 
 type Notice = { kind: "ok" | "error"; text: string; requestId?: string; envelopeId?: string } | { kind: "conflict"; name: string; amount: string };
 
@@ -99,17 +105,23 @@ function ExplorerPage(): ReactElement {
   const isTimeline = search.view === "timeline";
   // The timeline groups like the tree (structure or hierarchy template); it has its own data source.
   const view = search.view === "timeline" ? "tree" : search.view;
-  const measures = useMemo(() => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures])], [search.measures]);
+  const { data: snapshots = [] } = useQuery(snapshotsQuery(ws));
+  const comparing = search.compareTo ? (snapshots.find((x) => x.id === search.compareTo) ?? null) : null;
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const measures = useMemo(
+    () => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures, ...(search.compareTo ? COMPARE_COLUMNS.map((c) => c.key) : [])])],
+    [search.measures, search.compareTo],
+  );
 
   const labels = useExplorerLabels(ws);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, search.compareTo ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
   const source = useMemo(
     () =>
       !isTimeline && (byStructure || template || view === "pivot")
         ? new ExplorerRowSource(
-            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
+            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, compareTo: search.compareTo, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
             // Only the current source reports: a replaced one (older filter) whose response lands
@@ -129,12 +141,25 @@ function ExplorerPage(): ReactElement {
       view === "pivot" && search.groupBy.length
         ? search.groupBy.map((key): ColumnSpec => ({ kind: "dimension", key, title: dimensions.find((d) => d.key === key)?.label ?? key, width: 160 }))
         : [{ kind: "path", width: 340, title: t("explorer.col.name") }];
+    const status: ColumnSpec = { kind: "status", title: t("explorer.col.status"), width: 150, labels: STATUS_LABELS(), pendingLabel: (count: number) => t("status.groupPending", { count }) };
+    // H-006: comparing, the columns read Snapshot · Now · Change · Change %, then spend.
+    if (search.compareTo) {
+      return [
+        ...leading,
+        { kind: "measure", key: "budget_baseline", title: comparing?.name ?? t("snapshots.compareTo"), width: 150 },
+        { kind: "measure", key: "budget", title: t("snapshots.col.now"), width: 150, editable: true },
+        { kind: "measure", key: "budget_change_abs", title: t("snapshots.col.change"), width: 150 },
+        { kind: "measure", key: "budget_change_pct", title: t("snapshots.col.changePct"), width: 100 },
+        { kind: "measure", key: "actual", title: t("explorer.col.actual"), width: 150 },
+        status,
+      ];
+    }
     return [
       ...leading,
       ...MEASURE_COLUMNS.map((m): ColumnSpec => ({ kind: "measure", key: m.key, title: t(m.label), width: m.key === "pace_index" ? 110 : 150, ...(m.key === "budget" ? { editable: true } : {}) })),
-      { kind: "status", title: t("explorer.col.status"), width: 150, labels: STATUS_LABELS(), pendingLabel: (count: number) => t("status.groupPending", { count }) },
+      status,
     ];
-  }, [view, search.groupBy, dimensions]);
+  }, [view, search.groupBy, dimensions, search.compareTo, comparing?.name]);
 
   const events: GridEvents = {
     onSelect: () => undefined,
@@ -261,6 +286,23 @@ function ExplorerPage(): ReactElement {
             ) : null}
           </Select>
         </label>
+        {!isTimeline ? (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground" data-tour="compare-to">
+            {t("snapshots.compareTo")}
+            <Select className="max-w-56 text-foreground" size="sm" value={search.compareTo ?? ""} onChange={(e) => setSearch({ compareTo: e.target.value || undefined })} data-testid="compare-picker">
+              <option value="">{t("snapshots.compareNone")}</option>
+              {snapshots.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {snapshotLabel(x)}
+                </option>
+              ))}
+            </Select>
+          </label>
+        ) : null}
+        <Button size="sm" variant="outline" onClick={() => setSavingSnapshot(true)} data-testid="save-snapshot" data-tour="save-snapshot">
+          <Camera className="size-4" aria-hidden />
+          {t("snapshots.save")}
+        </Button>
         {isTimeline ? (
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             {t("timeline.zoom")}
@@ -304,6 +346,17 @@ function ExplorerPage(): ReactElement {
           </Button>
         </div>
       ) : null}
+      {comparing && !isTimeline ? (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2 text-sm" data-testid="compare-banner">
+          <span className="flex-1">
+            {t("snapshots.comparing", { name: comparing.name, date: savedOn(comparing.asOf) })}
+            {comparing.scopeLabel && Object.keys(comparing.scope).length ? ` ${t("snapshots.comparingScoped", { scope: comparing.scopeLabel })}` : ""}
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setSearch({ compareTo: undefined })} data-testid="compare-stop">
+            {t("snapshots.stopComparing")}
+          </Button>
+        </div>
+      ) : null}
       {notice ? <NoticeBar ws={ws} notice={notice} onDismiss={() => setNotice(null)} onReload={() => (setNotice(null), setReload((n) => n + 1))} onOpen={(id) => setSearch({ select: id })} /> : null}
       <div className="flex min-h-0 gap-0">
         <div className="min-w-0 flex-1">
@@ -320,7 +373,7 @@ function ExplorerPage(): ReactElement {
               </div>
             ) : (
               <>
-                <div className="relative h-[calc(100dvh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""}>
+                <div className="relative h-[calc(100dvh-19rem)] min-h-80" data-testid="explorer-grid" data-rows={loaded?.total ?? ""} data-budget-total={loaded?.totals["budget"] ?? ""} data-change-total={loaded?.totals["budget_change_abs"] ?? ""}>
                   {source ? <BudgetGrid key={sourceKey} source={source} columns={columns} events={events} totals={loaded?.totals ?? {}} currency="USD" theme={gridTheme} totalsLabel={t("explorer.totals")} selectRows={selecting} /> : <SkeletonRows rows={6} className="p-2" />}
                   {loaded && loaded.total === 0 ? (
                     // UX-007: an empty tree says why and offers the next step.
@@ -354,7 +407,20 @@ function ExplorerPage(): ReactElement {
             }}
           />
         ) : null}
-        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} onChanged={() => setReload((n) => n + 1)} /> : null}
+        {savingSnapshot ? (
+          <SaveSnapshotDialog
+            ws={ws}
+            budget={search.select && selected ? { id: selected.id, name: selected.name } : null}
+            filter={search.filter}
+            periodKey={search.period.kind === "fiscal" ? search.period.key : null}
+            onClose={() => setSavingSnapshot(false)}
+            onSaved={(x) => {
+              setSavingSnapshot(false);
+              setNotice({ kind: "ok", text: t("snapshots.saved", { name: x.name, count: x.rowCount }) });
+            }}
+          />
+        ) : null}
+        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} compareTo={search.compareTo} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} onChanged={() => setReload((n) => n + 1)} /> : null}
         {familyOf ? (
           <FamilyEditor
             ws={ws}

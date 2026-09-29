@@ -45,6 +45,8 @@ export const BaselineView = z.object({
   archivedAt: z.string().nullable(),
   rowCount: z.number().int(),
   total: money,
+  /** Listed for one budget (`?envelopeId=`): what the snapshot holds for it, in its currency. */
+  row: z.object({ versionId: z.string().uuid().nullable(), amount: money, currency: z.string(), name: z.string(), parentId: z.string().uuid().nullable() }).nullable().optional(),
 });
 export type BaselineView = z.infer<typeof BaselineView>;
 export const BaselinesResponse = z.object({ baselines: z.array(BaselineView) });

@@ -31,6 +31,8 @@ export interface ExplorerQuery {
   period: unknown;
   measures: string[];
   asOf?: string | undefined;
+  /** Phase E (H-006): a snapshot every row is compared with (the change measures need it). */
+  compareTo?: string | undefined;
   /** tree: follow parent links instead of a hierarchy template (ADR-050). */
   structure?: boolean | undefined;
   /** tree: the hierarchy template (its id for the roll-up cache, its path for the levels). */
@@ -71,7 +73,8 @@ export class ExplorerRowSource implements RowSource {
     private readonly onLoaded: (s: ExplorerRowSource) => void = () => undefined,
   ) {
     this.expanded = new Set(q.expanded);
-    this.cached = q.view === "tree" && !q.structure && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf;
+    // The roll-up cache holds no snapshot: comparing reads /query.
+    this.cached = q.view === "tree" && !q.structure && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf && !q.compareTo;
     this.ready = this.load();
   }
 
@@ -96,7 +99,7 @@ export class ExplorerRowSource implements RowSource {
     let cursor: string | null = null;
     let last: QueryResponse | undefined;
     do {
-      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : {}), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(cursor ? { cursor } : {}) };
+      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : {}), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), ...(cursor ? { cursor } : {}) };
       last = (await unwrap(api.POST("/api/v1/workspaces/{ws}/query", { params: { path: { ws: this.q.ws } }, body: body as never }))) as QueryResponse;
       rows.push(...last.rows);
       cursor = last.nextCursor;

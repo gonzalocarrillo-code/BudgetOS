@@ -9216,6 +9216,39 @@
                           "total": {
                             "type": "string",
                             "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "row": {
+                            "type": "object",
+                            "properties": {
+                              "versionId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "amount": {
+                                "type": "string",
+                                "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "parentId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "versionId",
+                              "amount",
+                              "currency",
+                              "name",
+                              "parentId"
+                            ],
+                            "nullable": true
                           }
                         },
                         "required": [

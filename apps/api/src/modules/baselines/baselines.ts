@@ -112,7 +112,17 @@ export async function listBaselines(prisma: PrismaClient, auth: AuthContext, raw
       orderBy: { createdAt: "desc" },
       take: 200,
     });
-    return { baselines: await Promise.all(rows.map((b) => view(tx, b))) };
+    const views = await Promise.all(rows.map((b) => view(tx, b)));
+    if (!raw.envelopeId) return { baselines: views };
+    // One budget's drawer (Phase E4): what each snapshot holds for it.
+    const envelopeId = parseId(raw.envelopeId);
+    const held = new Map(
+      (await tx.budgetBaselineRow.findMany({ where: { envelopeId, baselineId: { in: rows.map((b) => b.id) } }, select: { baselineId: true, versionId: true, amount: true, currency: true, name: true, parentId: true } })).map((r) => [
+        r.baselineId,
+        { versionId: r.versionId, amount: r.amount.toFixed(2), currency: r.currency, name: r.name, parentId: r.parentId },
+      ]),
+    );
+    return { baselines: views.map((v) => ({ ...v, row: held.get(v.id) ?? null })) };
   });
 }
 

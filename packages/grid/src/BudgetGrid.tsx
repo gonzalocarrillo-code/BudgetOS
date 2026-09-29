@@ -42,8 +42,8 @@ function columnTitle(column: ColumnSpec): string {
 }
 
 /** DS-005: money needs room for "USD 150,000,000.00" in the bold totals row; ratios need little. */
-const MONEY = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "budget_in_period"]);
-const RATIO = new Set(["pace_index", "variance_pct", "spend_to_date_pct", "projected_close_pct"]);
+const MONEY = new Set(["budget", "actual", "projected", "remaining", "variance_abs", "budget_in_period", "budget_baseline", "budget_change_abs"]);
+const RATIO = new Set(["pace_index", "variance_pct", "spend_to_date_pct", "projected_close_pct", "budget_change_pct"]);
 export function columnWidth(column: ColumnSpec): number {
   if (column.width !== undefined) return column.width;
   if (column.kind === "path") return 240;

@@ -42,6 +42,18 @@ export function formatMoney(value: string, currency: string): string {
   return `${negative ? "-" : ""}${currency} ${grouped}.${fraction}`;
 }
 
+/** A change of money, signed: "+USD 300.00", "-USD 500.00", "USD 0.00" (Phase E compare columns). */
+export function formatChange(value: string, currency: string): string {
+  const d = new Decimal(value);
+  return `${d.gt(0) ? "+" : ""}${formatMoney(value, currency)}`;
+}
+
+/** A ratio as a signed percent with one decimal: 0.032 → "+3.2%", -0.7143 → "-71.4%". */
+export function formatPctChange(value: string): string {
+  const pct = new Decimal(value).mul(100).toDecimalPlaces(1);
+  return `${pct.gt(0) ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
 export function parsePercent(input: string): string | null {
   const match = PERCENT.exec(input.trim());
   if (match === null) return null;

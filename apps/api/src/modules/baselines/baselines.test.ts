@@ -84,6 +84,10 @@ describe("snapshots (Phase E)", () => {
     expect(leafRow?.measures).toMatchObject({ budget_baseline: row.amountReporting.toFixed(2), budget_change_abs: "-100.00" });
     expect((await query({ baselineId: randomUUID() })).status).toBe(404);
 
+    // Listed for one budget, each snapshot says what it holds for it (the drawer, Phase E4).
+    const forLeaf = (await as("planner", "GET", `/api/v1/workspaces/${ws}/baselines?envelopeId=${leaf}`)).body as unknown as { baselines: Array<{ id: string; row: { amount: string; versionId: string | null } | null }> };
+    expect(forLeaf.baselines.find((b) => b.id === snap.id)?.row).toMatchObject({ amount: new Decimal(before.current.amount).toFixed(2), versionId: before.currentVersionId });
+
     // The version History shows which snapshot saved it.
     const versions = (await as("planner", "GET", `/api/v1/envelopes/${leaf}/versions`)).body as unknown as Array<{ id: string; snapshots: Array<{ name: string }> }>;
     expect(versions.find((v) => v.id === before.currentVersionId)?.snapshots.map((x) => x.name)).toEqual(["Q4 plan"]);
