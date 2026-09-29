@@ -560,21 +560,30 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
   const R = A.rollup;
   const MONEY = ["budget", "actual", "projected"] as const;
   const leavesFilter: FilterGroupT = { logic: "and", children: LIVE_LEAVES };
+  // ADR-059: the cache counts what each live budget holds itself, like the Budgets pivot.
+  const liveFilter: FilterGroupT = { logic: "and", children: LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status") };
   const dec = (v: unknown) => new Decimal(String(v ?? 0)).toFixed(2);
+  /** Budget structure's total (ADR-050): the top-level budgets' own amounts. */
+  async function topLevelBudget(): Promise<string> {
+    const c = compileTotals(request({ filter: { logic: "and", children: [...liveFilter.children, { field: { kind: "attr", key: "parent_id" }, op: "is_empty" }] }, measures: ["budget"], subtree: true }), period, TODAY);
+    const [t] = await withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<Record<string, unknown>>>(c.sql, ...c.values));
+    return dec(t?.["budget"]);
+  }
 
   async function tree(templateId: string) {
     const c = compileTree({ workspaceId: golden.workspaceId, templateId, period });
     return withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<{ node_path: string; depth: number; measures: Record<string, string | null> }>>(c.sql, ...c.values));
   }
-  /** The live pivot for one depth: planner groupBy over the same leaves, straight from the facts. */
-  async function pivot(path: string[], depth: number): Promise<Map<string, Record<string, string>>> {
+  /** The live pivot for one depth: planner groupBy over the same budgets' holdings, straight from the facts. */
+  async function pivot(path: string[], depth: number, held = true): Promise<Map<string, Record<string, string>>> {
+    const over = held ? { filter: liveFilter, unallocated: true } : { filter: leavesFilter };
     if (depth === 0) {
-      const c = compileTotals(request({ filter: leavesFilter, measures: [...MONEY] }), period, TODAY);
+      const c = compileTotals(request({ ...over, measures: [...MONEY] }), period, TODAY);
       const [t] = await withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<Record<string, unknown>>>(c.sql, ...c.values));
       return new Map([["", Object.fromEntries(MONEY.map((m) => [m, dec(t?.[m])]))]]);
     }
     const keys = path.slice(0, depth);
-    const out = await rows({ filter: leavesFilter, groupBy: keys, measures: [...MONEY] });
+    const out = await rows({ ...over, groupBy: keys, measures: [...MONEY] });
     return new Map(out.map((r) => [keys.map((k) => (r[`dim_${k}`] === null ? "∅" : String(r[`dim_${k}`]))).join("/"), Object.fromEntries(MONEY.map((m) => [m, dec(r[m])]))]));
   }
   async function assertTreeEqualsPivot() {
@@ -582,8 +591,9 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     expect(templates.map((t) => t.name).sort()).toEqual(Object.keys(R.nodesByTemplate).sort());
     for (const t of templates) {
       const nodes = await tree(t.id);
-      const byDepth = t.path.map((_, d) => nodes.filter((n) => Number(n.depth) === d + 1).length);
-      expect([nodes.filter((n) => Number(n.depth) === 0).length, ...byDepth], t.name).toEqual(R.nodesByTemplate[t.name]);
+      // The plan's leaves still make exactly the plan's node counts; the cache holds those and the parents' own nodes.
+      const leafCounts = [1, ...(await Promise.all(t.path.map(async (_, d) => (await pivot(t.path, d + 1, false)).size)))];
+      expect(leafCounts, t.name).toEqual(R.nodesByTemplate[t.name]);
       for (let d = 0; d <= t.path.length; d += 1) {
         const live = await pivot(t.path, d);
         const cached = new Map(nodes.filter((n) => Number(n.depth) === d).map((n) => [n.node_path, Object.fromEntries(MONEY.map((m) => [m, dec(n.measures[m])]))]));
@@ -596,7 +606,9 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     await assertTreeEqualsPivot();
     const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
     const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
-    expect({ budget: dec(root?.measures["budget"]), actual: dec(root?.measures["actual"]) }).toEqual({ budget: R.rootBudget, actual: R.rootActual });
+    // ADR-059: the root is Budget structure's total, the top-level budgets, not the leaves' 'rootBudget'.
+    expect({ budget: dec(root?.measures["budget"]), actual: dec(root?.measures["actual"]) }).toEqual({ budget: await topLevelBudget(), actual: R.rootActual });
+    expect(new Decimal(dec(root?.measures["budget"])).gte(R.rootBudget)).toBe(true);
   });
 
   it("an approved change reaches the cache through the rollup handler, and the tree still equals the pivot", async () => {
@@ -617,7 +629,8 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     await assertTreeEqualsPivot();
     const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
     const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
-    expect(dec(root?.measures["budget"])).toBe(new Decimal(R.rootBudget).plus("10.00").toFixed(2));
+    // The 10.00 comes out of what its parent holds: the top-level total does not move.
+    expect(dec(root?.measures["budget"])).toBe(await topLevelBudget());
   });
 });
 
@@ -642,7 +655,7 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
       return EXACT.has(m) ? new Decimal(x).equals(new Decimal(y)) : new Decimal(x).toDecimalPlaces(10).equals(new Decimal(y).toDecimalPlaces(10));
     });
 
-  it("each level equals /query's groups for the same leaves, and the root equals its totals", async () => {
+  it("each level equals /query's groups for the same budgets' holdings (ADR-059), and the root equals its totals", async () => {
     const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
     let parent = "";
     for (let d = 0; d < t.path.length; d += 1) {
@@ -650,7 +663,7 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
       expect(tree.available).toBe(true);
       const segs = parent === "" ? [] : parent.split("/");
       const prefix = segs.map((code, i) => (code === "∅" ? { field: { kind: "dimension" as const, key: t.path[i] as string }, op: "is_empty" as const } : { field: { kind: "dimension" as const, key: t.path[i] as string }, op: "eq" as const, value: code }));
-      const live = await runQuery(app, who(), { workspaceId: golden.workspaceId, filter: { logic: "and", children: [...LIVE_LEAVES, ...prefix] }, groupBy: t.path.slice(0, d + 1), measures: [...ALL], period: range, limit: 1000 }, now);
+      const live = await runQuery(app, who(), { workspaceId: golden.workspaceId, filter: { logic: "and", children: [...LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status"), ...prefix] }, unallocated: true, groupBy: t.path.slice(0, d + 1), measures: [...ALL], period: range, limit: 1000 }, now);
       expect(tree.rows.map((r) => r.key).sort(), `depth ${d + 1} under '${parent}'`).toEqual(live.rows.map((r) => r.key).sort());
       for (const r of tree.rows) {
         const l = live.rows.find((x) => x.key === r.key);

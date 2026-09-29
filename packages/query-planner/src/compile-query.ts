@@ -81,11 +81,17 @@ interface Base {
   targetSql: (metric: string) => string;
   /** `LEFT JOIN LATERAL … p ON TRUE`: p.projected of the envelope `envelopeId` refers to; "" without projections. */
   projectionJoin: (envelopeId: string) => string;
+  /** ADR-059: rows hold their unsplit amounts (`unallocated`). */
+  held: boolean;
+  /** The group and totals `leaf_count` expression. */
+  leafCount: string;
 }
 
 function compileBase(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions): Base {
   if (q.grain !== "total") throw new DomainError("VALIDATION", `grain ${q.grain} is not supported by the Postgres planner`);
   if (q.templateId !== undefined) throw new DomainError("VALIDATION", "templateId tree order is not supported by the Postgres planner");
+  const held = q.unallocated === true;
+  if (held && q.subtree === true) throw new DomainError("VALIDATION", "unallocated rows cannot be combined with subtree");
   const b = new SqlBuilder();
   const ctx: CompileCtx = { workspaceId: q.workspaceId, periodStart: period.start, periodEnd: period.end, today };
   const asOf = q.asOf ? `${b.p(q.asOf)}::timestamptz` : "now()";
@@ -100,23 +106,27 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const filter = q.filter ?? { logic: "and" as const, children: [] };
   const kpiMetrics = [...new Set([...q.targets, ...filterMetrics(filter)])];
   const defs = opts.metrics ?? metricRegistry;
-  const budgetSql = `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
+  const budgetOf = (alias: string) => `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = ${alias}.id AND v.amount_type = 'BUDGET'
            AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${asOf}
            ORDER BY v.approved_at DESC LIMIT 1)`;
+  const budgetSql = budgetOf("e");
+  // The share of an envelope's days that fall in the period (its budget's share, below).
+  const shareOf = (alias: string) => `(LEAST(${alias}.end_date, ${pEnd}) - GREATEST(${alias}.start_date, ${pStart}) + 1)::numeric / NULLIF(${alias}.end_date - ${alias}.start_date + 1, 0)`;
   // Phase E (H-004): the budget to compare with, per envelope: a snapshot's frozen amount, or the
   // version approved at another instant (the same rule as budgetSql). Change = now − then.
   const compare = q.compareTo;
   if (compare === undefined && (q.measures.some((mk) => COMPARE_MEASURES.has(mk)) || filterReads(filter, COMPARE_MEASURES) || q.sort.some((s) => COMPARE_MEASURES.has(s.key.replace(/^[em]\./, ""))))) {
     throw new DomainError("VALIDATION", "budget_baseline and the change measures need compareTo (a snapshot or an instant)");
   }
-  const baselineSql =
+  const baselineOf = (alias: string) =>
     compare === undefined
       ? "NULL::numeric"
       : "baselineId" in compare
-        ? `(SELECT br.amount_reporting FROM budget_baseline_row br WHERE br.baseline_id = ${b.p(compare.baselineId)}::uuid AND br.workspace_id = ${ws}::uuid AND br.envelope_id = e.id)`
-        : `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
+        ? `(SELECT br.amount_reporting FROM budget_baseline_row br WHERE br.baseline_id = ${b.p(compare.baselineId)}::uuid AND br.workspace_id = ${ws}::uuid AND br.envelope_id = ${alias}.id)`
+        : `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = ${alias}.id AND v.amount_type = 'BUDGET'
            AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${b.p(compare.asOf)}::timestamptz
            ORDER BY v.approved_at DESC LIMIT 1)`;
+  const baselineSql = baselineOf("e");
   // Only a comparing query carries the change columns (the check above refuses them otherwise).
   const compareCols =
     compare === undefined
@@ -188,22 +198,41 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       FROM m_own o
       LEFT JOIN (SELECT s.root, sum(d.actual) AS actual, sum(d.projected) AS projected FROM sub s JOIN m_own d ON d.envelope_id = s.node GROUP BY s.root) x ON x.root = o.envelope_id
     )`;
+  // Unallocated (ADR-059): each envelope holds its amount less its live children's in the period, so
+  // Σ over any set of rows telescopes to the budgets at its top. Children are read from `envelope`,
+  // not from m_own, so a roll-up refresh scoped to `envelopeIds` still subtracts every child.
+  const minus = (own: string, kids: string) => `CASE WHEN ${own} IS NULL AND ${kids} IS NULL THEN NULL ELSE coalesce(${own}, 0) - coalesce(${kids}, 0) END`;
+  const heldCte = !held
+    ? ""
+    : `,
+    kids AS (
+      SELECT c.parent_id, sum(${budgetOf("c")}) AS budget, sum(${budgetOf("c")} * ${shareOf("c")}) AS budget_in_period,${compare === undefined ? "" : ` sum(${baselineOf("c")}) AS budget_baseline,`} count(*) AS n
+      FROM envelope c
+      WHERE c.workspace_id = ${ws}::uuid AND c.parent_id IS NOT NULL AND c.status <> 'ARCHIVED'
+        AND c.start_date <= ${pEnd} AND c.end_date >= ${pStart}${opts.envelopeIds === undefined ? "" : ` AND c.parent_id = ANY(${b.p([...opts.envelopeIds])}::uuid[])`}
+      GROUP BY c.parent_id
+    ),
+    m AS (
+      SELECT o.envelope_id, ${minus("o.budget", "k.budget")} AS budget,${compare === undefined ? "" : ` ${minus("o.budget_baseline", "k.budget_baseline")} AS budget_baseline,`}
+        o.period_share, ${minus("o.budget * o.period_share", "k.budget_in_period")} AS budget_in_period,
+        o.actual, o.projected${kpiNames.map((n) => `, o.${n}`).join("")}, coalesce(k.n, 0) AS child_count
+      FROM m_own o LEFT JOIN kids k ON k.parent_id = o.envelope_id
+    )`;
   const measuresCte = `${subtree ? "RECURSIVE " : ""}
-    ${subtree ? "m_own" : "m"} AS (
+    ${subtree || held ? "m_own" : "m"} AS (
       SELECT e.id AS envelope_id,
         ${budgetSql} AS budget,${compare === undefined ? "" : `
         ${baselineSql} AS budget_baseline,`}
-        -- The share of the envelope's days that fall in the period (its budget's share, below).
-        (LEAST(e.end_date, ${pEnd}) - GREATEST(e.start_date, ${pStart}) + 1)::numeric / NULLIF(e.end_date - e.start_date + 1, 0) AS period_share,
+        ${shareOf("e")} AS period_share,
         ${spendSql(b, period, ws)} AS actual,
         ${opts.hasProjections === false ? "0::numeric" : "coalesce(p.projected, 0)"} AS projected
         ${kpiCols}
       FROM envelope e${projectionJoin("e.id")}
       WHERE e.workspace_id = ${ws}::uuid
         AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${subtree ? "" : onlyIds}
-    )${subtreeCte},
+    )${subtreeCte}${heldCte},
     m1 AS (
-      SELECT *, budget * period_share AS budget_in_period FROM m
+      SELECT *${held ? "" : ", budget * period_share AS budget_in_period"} FROM m
     ),
     m2 AS (
       SELECT *, (budget - actual) AS remaining,
@@ -228,7 +257,12 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   };
   ctx.targetSql = targetSql;
 
-  const where = onlyIds ? `(${compileFilter(filter, b, ctx)})${onlyIds}` : compileFilter(filter, b, ctx);
+  const own = onlyIds ? `(${compileFilter(filter, b, ctx)})${onlyIds}` : compileFilter(filter, b, ctx);
+  // A parent that has split all of its amount and has no spend of its own holds nothing: no row.
+  const where = !held
+    ? own
+    : `(${own}) AND NOT (m.child_count > 0 AND coalesce(m.budget, 0) = 0${compare === undefined ? "" : " AND coalesce(m.budget_baseline, 0) = 0"} AND m.actual = 0 AND m.projected = 0)`;
+  const leafCount = held ? "sum(CASE WHEN m.child_count = 0 THEN 1 ELSE 0 END)" : "count(*)";
   const measures = [...new Set(q.measures)];
   const measureAgg = measures
     .map((mk) => {
@@ -241,11 +275,11 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       return `sum(m.${mk}) AS ${mk}`;
     })
     .join(", ");
-  return { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin };
+  return { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin, held, leafCount };
 }
 
 export function compileQuery(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
-  const { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin } = compileBase(q, period, today, opts);
+  const { b, measuresCte, where, measureAgg, measures, kpiAgg, targetSql, projectionJoin, held, leafCount } = compileBase(q, period, today, opts);
   const subtree = q.subtree === true;
   const groupKeys = q.groupBy.map(sanitize);
   if (new Set(groupKeys).size !== groupKeys.length) throw new DomainError("VALIDATION", "groupBy keys must be unique");
@@ -278,7 +312,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const columns = new Set<string>(
     grouped
       ? [...groupKeys.flatMap((k) => [`dim_${k}`, `lbl_${k}`]), ...measures, ...targetKeys.map((s) => `kpi_${s}`), "leaf_count", "pending_count"]
-      : ["envelope_id", "name", "status", "parent_id", ...(subtree ? ["child_count"] : []), ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
+      : ["envelope_id", "name", "status", "parent_id", ...(subtree || held ? ["child_count"] : []), ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
   );
   const orderKeys = resolveOrder(q, columns, grouped ? groupKeys.map((k) => `dim_${k}`) : ["envelope_id"], grouped ? [] : ["name"]);
   const after = q.cursor === undefined ? "TRUE" : keysetAfter(orderKeys, decodeCursor(q.cursor, orderKeys.length), b);
@@ -289,16 +323,16 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   // its own rows only (ADR-030): a lateral over every envelope would cost more than the page.
   const tail =
     !grouped &&
-    !subtree && opts.hasProjections !== false && measures.some((mk) => PROJECTION.has(mk)) && !orderKeys.some((o) => PROJECTION.has(o.col)) && !filterReads(q.filter ?? { logic: "and", children: [] }, PROJECTION);
+    !subtree && !held && opts.hasProjections !== false && measures.some((mk) => PROJECTION.has(mk)) && !orderKeys.some((o) => PROJECTION.has(o.col)) && !filterReads(q.filter ?? { logic: "and", children: [] }, PROJECTION);
   const flatMeasures = tail ? measures.filter((mk) => !PROJECTION.has(mk)) : measures;
 
   const groupSql = grouped
-    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, count(*) AS leaf_count,${opts.groupDates ? " min(e.start_date)::text AS start_date, max(e.end_date)::text AS end_date," : ""}
+    ? `SELECT ${dimSelect}, ${measureAgg}${kpiAgg}, ${leafCount} AS leaf_count,${opts.groupDates ? " min(e.start_date)::text AS start_date, max(e.end_date)::text AS end_date," : ""}
          sum(CASE WHEN e.status='PENDING' THEN 1 ELSE 0 END) AS pending_count
        FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
        WHERE ${where}
        GROUP BY ${q.groupBy.map((_, i) => `g${i}.code, g${i}.label`).join(", ")}`
-    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, CASE WHEN e.ended_at IS NOT NULL THEN 'ENDED' ELSE e.status::text END AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values${subtree ? `, (SELECT count(*) FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED') AS child_count` : ""}${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
+    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, CASE WHEN e.ended_at IS NOT NULL THEN 'ENDED' ELSE e.status::text END AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values${subtree ? `, (SELECT count(*) FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED') AS child_count` : held ? ", m.child_count" : ""}${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
          ${kpiSelect},
          (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
          (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads
@@ -325,8 +359,8 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
 
 /** One row of totals over every envelope the filter selects; same measure semantics as a group. */
 export function compileTotals(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
-  const { b, measuresCte, where, measureAgg, kpiAgg } = compileBase(q, period, today, opts);
-  const sql = `WITH ${measuresCte} SELECT ${measureAgg}${kpiAgg}, count(*) AS leaf_count FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where}`;
+  const { b, measuresCte, where, measureAgg, kpiAgg, leafCount } = compileBase(q, period, today, opts);
+  const sql = `WITH ${measuresCte} SELECT ${measureAgg}${kpiAgg}, ${leafCount} AS leaf_count FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where}`;
   return { sql, values: b.values, orderKeys: [] };
 }
 
@@ -355,7 +389,7 @@ export function resolveOrder(q: QueryRequest, columns: Set<string>, tieBreak: st
 }
 
 const UUID_COLS = new Set(["envelope_id", "parent_id"]);
-const NUMERIC_COLS = new Set(["budget", "budget_in_period", "budget_baseline", "budget_change_abs", "budget_change_pct", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "open_alerts", "open_threads"]);
+const NUMERIC_COLS = new Set(["budget", "budget_in_period", "budget_baseline", "budget_change_abs", "budget_change_pct", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct", "leaf_count", "pending_count", "child_count", "open_alerts", "open_threads"]);
 const castFor = (col: string) => (UUID_COLS.has(col) ? "uuid" : NUMERIC_COLS.has(col) || /^(kpi|tgt|vs)_/.test(col) ? "numeric" : "text");
 
 /** Rows strictly after the cursor row in `ORDER BY … NULLS LAST` order. */

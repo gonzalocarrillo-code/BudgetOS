@@ -477,3 +477,9 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 | D-013 | F5 | Composite FKs on snapshot rows; two-workspace isolation test | done (ADR-058) |
 | D-014 | F5 | BigQuery authorized views per workspace | built; applying it is blocked with D-001 (ADR-058) |
 | D-015 | F5 | Weekly snapshot integrity check | done (ADR-058) |
+
+## Product feedback, round 9: totals that agree, editable dates (2026-09-29)
+
+| ID | Task | Status |
+|---|---|---|
+| R9-001 | Pivot, template tree and totals count what each budget holds itself, so they equal Budget structure | done (ADR-059) |

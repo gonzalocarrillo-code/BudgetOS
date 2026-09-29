@@ -804,6 +804,8 @@ const en = {
   "approval.send.working": "Sending\u2026",
   "explorer.open": "Open",
   "explorer.noneOf": "No {dimension}",
+  "explorer.notSplit": "{name} · not split",
+  "explorer.edit.notSplit": "This row is the part of a budget that is not split into its children yet. Open the budget to change its amount.",
   "explorer.col.name": "Name",
   "explorer.col.budget": "Budget",
   "explorer.col.actual": "Actual",

@@ -8,8 +8,8 @@ import { handleRollupEvent, rebuildWorkspace } from "./rollup.js";
 
 /**
  * T-022 rollup-worker on a small workspace: a missing dimension is a `∅` segment, a node knows the
- * envelope whose tuple it is, parents never count twice, and archiving a leaf removes a node that
- * becomes empty. The golden tree == pivot check is in apps/api/src/seed/golden.test.ts.
+ * envelope whose tuple it is, a parent counts only for what it has not split (ADR-059), and
+ * archiving a leaf removes a node that becomes empty. The golden tree == pivot check is in apps/api/src/seed/golden.test.ts.
  */
 
 const url = (key: string) => {
@@ -62,7 +62,7 @@ beforeAll(async () => {
     for (const code of codes) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), id, code);
   }
   await owner.hierarchyTemplate.create({ data: { id: templateId, workspaceId: ws, name: "Region > platform", path: ["region", "platform"], createdBy: userId } });
-  env["latam"] = await envelope("LATAM", { region: "LATAM" }, "1000.00"); // a parent: a cap, never summed
+  env["latam"] = await envelope("LATAM", { region: "LATAM" }, "1000.00"); // a parent: counts for the 500 it has not split
   env["latamMeta"] = await envelope("LATAM meta", { region: "LATAM", platform: "meta" }, "300.00", env["latam"]);
   env["latamTiktok"] = await envelope("LATAM tiktok", { region: "LATAM", platform: "tiktok" }, "200.00", env["latam"]);
   env["emea"] = await envelope("EMEA (no platform)", { region: "EMEA" }, "50.00");
@@ -96,9 +96,10 @@ afterAll(async () => {
 });
 
 describe("rollup-worker", () => {
-  it("builds the tree over live leaves: parents never add, a missing dimension is ∅", async () => {
+  it("builds the tree over what each budget holds: a parent adds only its unsplit part, a missing dimension is ∅", async () => {
     await rebuildWorkspace(app, { workspaceId: ws, orgId }, { today: TODAY, periods: [period] });
-    expect(await tree()).toEqual({ "": "550.00", EMEA: "50.00", "EMEA/∅": "50.00", LATAM: "500.00", "LATAM/meta": "300.00", "LATAM/tiktok": "200.00" });
+    // The root is the top-level budgets: LATAM 1000 + EMEA 50. LATAM's own 500 sits at LATAM/∅.
+    expect(await tree()).toEqual({ "": "1050.00", EMEA: "50.00", "EMEA/∅": "50.00", LATAM: "1000.00", "LATAM/∅": "500.00", "LATAM/meta": "300.00", "LATAM/tiktok": "200.00" });
     expect(await envelopeOfNode("LATAM")).toBe(env["latam"]);
     expect(await envelopeOfNode("LATAM/meta")).toBe(env["latamMeta"]);
     expect(await envelopeOfNode("EMEA/∅")).toBeNull();
@@ -111,7 +112,8 @@ describe("rollup-worker", () => {
     const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId: env["latamTiktok"], kind: "archived" })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: "m" }, subscription: "rollup-worker" };
     const first = await handleRollupEvent(app, body, TODAY);
     expect(first).toMatchObject({ outcome: "applied", deleted: 2 }); // LATAM/tiktok, in the fiscal year and the current quarter (ADR-038)
-    expect(await tree()).toEqual({ "": "350.00", EMEA: "50.00", "EMEA/∅": "50.00", LATAM: "300.00", "LATAM/meta": "300.00" });
+    // Its 200 goes back to what LATAM holds itself: the parent's node is refreshed with the leaf's.
+    expect(await tree()).toEqual({ "": "1050.00", EMEA: "50.00", "EMEA/∅": "50.00", LATAM: "1000.00", "LATAM/∅": "700.00", "LATAM/meta": "300.00" });
     expect((await handleRollupEvent(app, body, TODAY)).outcome).toBe("duplicate");
   });
 
@@ -138,7 +140,7 @@ describe("rollup-worker", () => {
       expect((await handleRollupEvent(app, body, TODAY)).outcome).toBe("applied");
     }
     const refreshed = await snapshot();
-    expect(await tree()).toEqual({ "": "420.00", EMEA: "120.00", "EMEA/∅": "50.00", "EMEA/tiktok": "70.00", LATAM: "300.00", "LATAM/meta": "300.00" });
+    expect(await tree()).toEqual({ "": "1120.00", EMEA: "120.00", "EMEA/∅": "50.00", "EMEA/tiktok": "70.00", LATAM: "1000.00", "LATAM/∅": "700.00", "LATAM/meta": "300.00" });
     await rebuildWorkspace(app, { workspaceId: ws, orgId }, { today: TODAY, periods: [period] });
     expect(refreshed).toEqual(await snapshot());
   });

@@ -7,11 +7,12 @@ import { PORTS } from "./env.js";
 
 /**
  * T-027 done-when (spec §22): filter → URL → reload; the inline edit conflict flow; pivot totals ==
- * tree totals. The grid draws on canvas, so rows are read from the /query responses the page made
+ * tree totals == Budget structure's (ADR-059). The grid draws on canvas, so rows are read from the /query responses the page made
  * and from the DOM totals row; cells are edited by position.
  */
 
 const FY = { kind: "relative", preset: "current_year" };
+const LIVE = LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status");
 const enc = (v: unknown) => LZString.compressToEncodedURIComponent(JSON.stringify(v));
 const signIn = async (page: Page, persona = "planner") => {
   const token = await tokenFor(persona);
@@ -54,7 +55,12 @@ const totalBudget = (page: Page) => page.getByTestId("explorer-grid").getAttribu
 
 test.describe("Explorer (T-027)", () => {
   test("filter → URL → reload: the filter is in the URL and survives a reload", async ({ page }) => {
-    await signIn(page);
+    const token = await signIn(page);
+    // ADR-059: the region's total is what its budgets hold, parents' unsplit amounts included.
+    const region = { field: { kind: "dimension", key: "region" }, op: "eq", value: "LATAM" };
+    const latam = await api(token, "POST", `/workspaces/${state().workspaceId}/query`, { workspaceId: state().workspaceId, period: FY, filter: { logic: "and", children: [...LIVE, region] }, unallocated: true, measures: ["budget"], limit: 1 });
+    const expected = (latam.body["totals"] as { budget: string }).budget;
+    expect(new Decimal(expected).gt("565373.37"), "more than the LATAM leaves alone").toBe(true);
     await page.goto(budgetsUrl({ period: FY }));
     await pick(page, "template-picker", { label: "Region first" });
     await page.getByTestId("filter-add").click();
@@ -63,23 +69,26 @@ test.describe("Explorer (T-027)", () => {
     await page.getByTestId("filter-apply").click();
     await expect(page.getByTestId("filter-chip")).toHaveCount(1);
     await expect(page).toHaveURL(/[?&]filter=[A-Za-z0-9+\-$]+/);
-    await expect.poll(() => totalBudget(page)).toBe("565373.37");
+    await expect.poll(() => totalBudget(page)).toBe(expected);
 
     await page.reload();
     await expect(page.getByTestId("filter-chip")).toHaveCount(1);
     await expect(page.getByTestId("filter-chip")).toContainText("Region");
     await expect(page.getByTestId("template-picker").locator("option:checked")).toHaveText("Region first");
-    await expect.poll(() => totalBudget(page)).toBe("565373.37");
+    await expect.poll(() => totalBudget(page)).toBe(expected);
   });
 
-  test("pivot totals == tree totals, and the pivot's rows add up to them", async ({ page }) => {
+  test("pivot totals == tree totals == the budget structure's, and the pivot's rows add up to them", async ({ page }) => {
     await signIn(page);
     await page.goto(budgetsUrl({ period: FY }));
     // Budgets opens on the budget structure (ADR-050); wait for it, then for the template's own tree.
     await expect.poll(() => totalBudget(page)).not.toBe("");
     const structureTotal = await totalBudget(page);
+    const treeRead = page.waitForResponse((r) => (r.url().endsWith("/tree") || r.url().endsWith("/query")) && r.request().method() === "POST" && !JSON.parse(r.request().postData() ?? "{}").subtree);
     await pick(page, "template-picker", { label: "Region first" });
-    await expect.poll(() => totalBudget(page)).not.toBe(structureTotal);
+    await treeRead;
+    // Every budget counts for what it has not split (ADR-059): the template's tree adds up to the top-level budgets.
+    await expect.poll(() => totalBudget(page)).toBe(structureTotal);
     const treeTotal = await totalBudget(page);
     const treeText = await page.getByTestId("grid-totals").locator('[data-column="budget"]').textContent();
 
@@ -103,7 +112,7 @@ test.describe("Explorer (T-027)", () => {
     await page.goto(budgetsUrl({ period: FY }));
     await pick(page, "template-picker", { label: "Region first" });
     await expect.poll(() => trees.some((t) => t.parentPath === "" && t.available)).toBe(true);
-    const live = await api(token, "POST", `/workspaces/${state().workspaceId}/query`, { workspaceId: state().workspaceId, period: FY, filter: { logic: "and", children: LIVE_LEAVES }, groupBy: ["region"], measures: ["budget"], limit: 1 });
+    const live = await api(token, "POST", `/workspaces/${state().workspaceId}/query`, { workspaceId: state().workspaceId, period: FY, filter: { logic: "and", children: LIVE }, unallocated: true, groupBy: ["region"], measures: ["budget"], limit: 1 });
     await expect.poll(() => totalBudget(page)).toBe((live.body["totals"] as { budget: string }).budget);
 
     await page.goto(`${page.url()}&expanded=${enc(["LATAM"])}`);

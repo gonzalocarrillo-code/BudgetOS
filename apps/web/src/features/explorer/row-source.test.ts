@@ -40,7 +40,7 @@ vi.mock("../../lib/api.js", () => ({
 }));
 
 const { ExplorerRowSource } = await import("./row-source.js");
-const labels = { value: (_d: string, code: string) => code, none: (d: string) => `No ${d}` };
+const labels = { value: (_d: string, code: string) => code, none: (d: string) => `No ${d}`, notSplit: (name: string) => `${name} · not split` };
 
 describe("the Budgets tree folds no-value groups into the level above", () => {
   it("a budget with no granularities is at the top; a client-less region sits beside the clients", async () => {

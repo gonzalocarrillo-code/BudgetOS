@@ -17,6 +17,7 @@ export function explorerLabels(dimensions: readonly Dimension[], account: string
   return {
     value: (dim, code) => values.get(dim)?.get(code) ?? code,
     none: (dim, level) => (level === 0 && account !== null ? account : t("explorer.noneOf", { dimension: dimension.get(dim) ?? dim })),
+    notSplit: (name) => t("explorer.notSplit", { name }),
   };
 }
 
