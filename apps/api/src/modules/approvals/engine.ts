@@ -1,5 +1,5 @@
 import { DomainError, newId } from "@budget/domain";
-import { applyEnd, archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
+import { applyDates, applyEnd, archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { clock } from "../../common/clock.js";
 import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
 import { approveVersion } from "./commands/approve-version.js";
@@ -55,6 +55,7 @@ export async function finalizeBulk(tx: Tx, ctx: TenantContext, bulkChangeId: str
   }
   await archiveEnvelopes(tx, bulk.archiveIds);
   if (bulk.payload.end) await applyEnd(tx, bulk.payload.end, bulk.createdBy); // H-011
+  if (bulk.payload.dates) await applyDates(tx, bulk.payload.dates); // ADR-060
 }
 
 /** Envelope depth (0 = root) so bulk approvals run parents first and child caps see the parent's new amount. */

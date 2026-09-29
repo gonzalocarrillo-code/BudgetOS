@@ -1,0 +1,41 @@
+# ADR-060: A budget's dates are editable, through approval once it has an approved amount
+
+## Status
+
+Accepted (product feedback 2026-09-29). Decisions by the product owner:
+- A date change to an approved budget goes through approval, like ending early.
+- When a parent's new dates leave children outside, the app asks before moving them too.
+
+## Context
+
+"Dates should be editable, everywhere." Until now a budget's dates were set on create and changed only by ending early. `PATCH /envelopes/:id` accepted `startDate` and `endDate`, but no screen used it: it changed an approved budget's dates in place, with no approval, left the phasing outside the new dates, and left the children where they were.
+
+## Decision
+
+- **`POST /envelopes/:id/dates`**, with `/dates/preview` beside it. The preview writes nothing and lists every budget the change moves (the budget, then the children it trims), whether each one's phasing is re-spread, and whether the change needs approval.
+- **Approval.** When any budget in the change has an approved amount, the change is one bulk change of kind `dates`, routed through the approval policy like an early end:
+  - Each budget with an approved amount gets a new version with the same amount, its phasing re-spread into the new dates.
+  - The dates apply when the change is approved. A rejection or withdrawal leaves every budget as it was.
+  - An admin's change applies at once (ADR-048).
+- **What the policy judges.** The policy reads the share of the budget's days that move (1 − overlap ÷ the longer of the two ranges), as `deltaPct` and as that share of the amount in `deltaAbs`. A one-day extension is therefore minor (the "Auto-approve minor" default), and a quarter shifted by a month goes to approval. A change with no amount difference would otherwise always match "Auto-approve minor".
+- **A budget never approved** changes at once. If its draft has phasing outside the new dates, that phasing moves into a new draft.
+- **Parents and children.**
+  - The new dates must fit inside the parent's dates; otherwise, change the parent first.
+  - Children that would fall outside are trimmed to the new dates (and their children to theirs), but only with `trimChildren`. Without it the change is refused with the list of those children, which the dialog shows with a tick box.
+  - A child entirely outside the new dates, or one that has ended, must be moved or ended first.
+- **Phasing.** Months still inside the new dates keep their shape, scaled back to the same amount. When no month is left, the amount spreads over the new months by their days. A version without phasing stays without phasing.
+- **Guards.** A budget waiting for approval, or with an unsent draft, is refused: withdraw the request, or send or discard the draft, first. `PATCH /envelopes/:id` refuses dates on a budget with an approved amount.
+- **Screens.**
+  - A pencil beside the dates in the budget drawer.
+  - A Dates column in the Budgets tree and flat pivot (query rows now carry `startDate` and `endDate`); a click opens the same dialog.
+  - A parent's "not split" row (ADR-059) refuses, because the row is a remainder, not the budget.
+  - While a change waits, the drawer shows it as pending.
+- Every write is one audit event and one outbox row:
+  - `envelope.dates_changed` when the change applies at once;
+  - `envelope.dates_requested` when it waits, then approval's own events once decided;
+  - outbox `budget.changed` with kind `dates`, whose `envelopeIds` the roll-up and search workers read.
+
+## Consequences
+
+- Other dated records (targets, experiments, fiscal periods, manual entries, alert snoozes) are the next step. Snapshots keep the moment they were taken: a snapshot's date is the fact it records, not a plan.
+- The timeline's bars cannot be dragged yet; the plan's epic 2.5 does that through this endpoint.

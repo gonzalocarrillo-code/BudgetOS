@@ -9,6 +9,7 @@ import { createDraftVersion } from "./commands/create-draft-version.js";
 import { createEnvelope } from "./commands/create-envelope.js";
 import { restoreVersion } from "./commands/restore-version.js";
 import { mergeEnvelopes, moveEnvelope, splitEnvelope } from "./commands/structure.js";
+import { changeDates, previewDates } from "./commands/change-dates.js";
 import { endEnvelope, reintroduceEnvelope } from "./commands/end-reintroduce.js";
 import { budgetImportTemplate, commitBudgetImport, previewBudgetImport } from "./import/budget-import.js";
 import { addChild, previewStructure } from "./commands/structure-ui.js";
@@ -44,6 +45,14 @@ export class EnvelopesService {
 
   importCommit(auth: AuthContext, body: unknown) {
     return commitBudgetImport(this.prisma, auth, body, this.previews);
+  }
+
+  datesPreview(auth: AuthContext, id: string, body: unknown) {
+    return previewDates(this.prisma, auth, id, body);
+  }
+
+  changeDates(auth: AuthContext, id: string, body: unknown) {
+    return changeDates(this.prisma, auth, id, body);
   }
 
   end(auth: AuthContext, id: string, body: unknown) {

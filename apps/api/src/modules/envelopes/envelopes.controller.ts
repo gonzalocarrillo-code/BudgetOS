@@ -3,7 +3,7 @@ import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { AddChildDto, BudgetImportCommitDto, BudgetImportDto, BudgetImportTemplateDto, BulkRequestDto, EndEnvelopeDto, ReintroduceDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { AddChildDto, BudgetImportCommitDto, BudgetImportDto, BudgetImportTemplateDto, BulkRequestDto, ChangeDatesDto, EndEnvelopeDto, ReintroduceDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -160,6 +160,20 @@ export class EnvelopesController {
   @Permission("envelope.move")
   end(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: EndEnvelopeDto) {
     return this.envelopes.end(auth, id, body);
+  }
+
+  /** ADR-060: what new dates would move (the children they trim, phasing re-spread) and whether they need approval. */
+  @Post("envelopes/:id/dates/preview")
+  @Permission("envelope.edit_draft")
+  datesPreview(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: ChangeDatesDto) {
+    return this.envelopes.datesPreview(auth, id, body);
+  }
+
+  /** ADR-060: new dates; through the approval policy once the budget has an approved amount. */
+  @Post("envelopes/:id/dates")
+  @Permission("envelope.edit_draft")
+  changeDates(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: ChangeDatesDto) {
+    return this.envelopes.changeDates(auth, id, body);
   }
 
   /** H-012: a successor for an ended budget (lineage `continues`), through the approval policy. */

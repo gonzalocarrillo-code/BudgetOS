@@ -408,6 +408,20 @@ export function buildCell(row: QueryRow, column: ColumnSpec, options: { currency
         accessibilityString: announce(row, `${data.pending} ${data.alerts} ${data.threads}`),
       };
     }
+    case "dates": {
+      const start = row.startDate ?? null;
+      const end = row.endDate ?? null;
+      const value = start === null || end === null ? "" : column.format ? column.format(start, end) : `${start} – ${end}`;
+      return {
+        kind: GridCellKind.Text,
+        allowOverlay: false,
+        data: value,
+        displayData: value,
+        copyData: start === null || end === null ? "" : `${start} – ${end}`,
+        readonly: true,
+        accessibilityString: announce(row, value),
+      };
+    }
     case "dimension": {
       const value = row.dimensions[column.key] ?? "";
       if (column.editable === true) {

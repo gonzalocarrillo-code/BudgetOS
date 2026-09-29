@@ -38,6 +38,8 @@ function columnTitle(column: ColumnSpec): string {
       return "chips";
     case "dimension":
       return column.key;
+    case "dates":
+      return "dates";
   }
 }
 
@@ -195,6 +197,10 @@ export function BudgetGrid({
         }}
         onCellClicked={([col, row], event) => {
           const record = cache.get(row);
+          if (record !== undefined && columns[col]?.kind === "dates" && record.envelopeId !== null && record.startDate) {
+            events.onDates?.(record);
+            return;
+          }
           if (col !== 0 || record === undefined) return;
           // A group's marker (▸/▾) expands it; its name opens it when an envelope is the group
           // (a parent budget), like a leaf. A group with no envelope expands from anywhere.

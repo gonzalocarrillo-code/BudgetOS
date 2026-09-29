@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BudgetImportCommitInput, BudgetImportInput, BudgetImportTemplateQuery, AddChildInput, BulkRequest, EndEnvelopeInput, ReintroduceInput, MergeEnvelopesInput, MoveEnvelopeInput, SplitEnvelopeInput, CreateDraftVersionInput, CreateEnvelopeInput, CsvExportInput, CsvImportInput, RestoreVersionInput, UpdateEnvelopeInput, UpdatePhasingInput, FamilyInput } from "@budget/domain";
+import { BudgetImportCommitInput, BudgetImportInput, BudgetImportTemplateQuery, AddChildInput, BulkRequest, EndEnvelopeInput, ReintroduceInput, MergeEnvelopesInput, MoveEnvelopeInput, SplitEnvelopeInput, CreateDraftVersionInput, CreateEnvelopeInput, CsvExportInput, CsvImportInput, RestoreVersionInput, UpdateEnvelopeInput, UpdatePhasingInput, FamilyInput, ChangeDatesInput } from "@budget/domain";
 import { createZodDto } from "nestjs-zod";
 
 export class CreateEnvelopeDto extends createZodDto(CreateEnvelopeInput) {}
@@ -13,6 +13,7 @@ export class CsvImportDto extends createZodDto(CsvImportInput) {}
 export class MoveEnvelopeDto extends createZodDto(MoveEnvelopeInput) {}
 export class SplitEnvelopeDto extends createZodDto(SplitEnvelopeInput) {}
 export class EndEnvelopeDto extends createZodDto(EndEnvelopeInput) {}
+export class ChangeDatesDto extends createZodDto(ChangeDatesInput) {}
 export class ReintroduceDto extends createZodDto(ReintroduceInput) {}
 export class MergeEnvelopesDto extends createZodDto(MergeEnvelopesInput) {}
 export class AddChildDto extends createZodDto(AddChildInput) {}
