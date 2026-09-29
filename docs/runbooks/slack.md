@@ -89,10 +89,11 @@ The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_P
 
 ## 7. Commands
 
-`/budget` answers only the person who typed it (an ephemeral reply), for the workspace linked to their Slack team where they have a role.
+`/budget` answers only the person who typed it (an ephemeral reply). With roles in several linked workspaces, it answers for the one whose channel it was typed in, else the one they chose with `/budget workspace`, else the first by name.
 
 | Command | Answers |
 |---|---|
+| `/budget` | your summary: the fiscal year so far, what waits on you, your budgets with pace |
 | `/budget help` | this list |
 | `/budget approvals` | the requests waiting on you, with Approve / Request changes / Reject; acting replaces the list with what is left |
 | `/budget show #a1b2c3d4` | one request as a card: buttons if you may decide it, the reason if not |
@@ -101,7 +102,9 @@ The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_P
 | `/budget withdraw #a1b2c3d4` · `remind #a1b2c3d4` | your own request: withdraw it, or remind its approvers (once an hour) |
 | `/budget alerts` | open alerts you can see |
 | `/budget search <text>` | budgets, approvals, alerts, targets |
-| `/budget <budget name>` | a budget's amount, spend and pace |
+| `/budget <budget name>` | the budget's card: where it sits, budget, spent, projected and pace over its dates, its open request and alerts. Several matches give a choice |
+| `/budget workspace [name]` | which workspace answers you, with a button for each of yours; with a name, answer for that one from now on (a workspace's own channel still answers for it) |
+| `/budget list [text]` | the top-level budgets this fiscal year (or yours, for a scoped role), or the budgets matching the text |
 
 A request's id is on every request message (`Request #a1b2c3d4`): the last eight characters of its full id. A pasted link to the request works too.
 

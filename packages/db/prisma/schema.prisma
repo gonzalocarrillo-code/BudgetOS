@@ -49,6 +49,8 @@ model User {
   googleSub String?  @unique @map("google_sub")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  /// The person's own settings (S-010): `slack.defaultWorkspaceId`. Written only through app_set_my_slack_settings.
+  settings  Json     @default("{}")
 
   @@map("app_user")
 }

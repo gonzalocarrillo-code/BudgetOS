@@ -6,6 +6,12 @@ export async function setMyName(tx: Tx, name: string): Promise<string> {
   return row?.name ?? name;
 }
 
+/** The caller's own Slack settings (app_set_my_slack_settings: only `settings.slack`, only their own row). Returns what was saved. */
+export async function setMySlackSettings(tx: Tx, value: Record<string, unknown>): Promise<unknown> {
+  const [row] = await tx.$queryRaw<Array<{ saved: unknown }>>`SELECT app_set_my_slack_settings(${JSON.stringify(value)}::jsonb) AS saved`;
+  return row?.saved ?? null;
+}
+
 /** What a workspace has set up (Home's getting-started steps). */
 export async function workspaceSetup(tx: Tx, workspaceId: string): Promise<{ budgets: number; sources: number; people: number; spend: boolean; tags: number }> {
   const [r] = await tx.$queryRaw<Array<{ budgets: bigint; sources: bigint; people: bigint; spend: boolean; tags: bigint }>>`

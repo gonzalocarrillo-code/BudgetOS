@@ -1,15 +1,18 @@
 import { DomainError, SLACK_ACTIONS, SlackActionValue, shortRequestId, type SlackActionId } from "@budget/domain";
+import { withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { authorize } from "../../common/auth/authenticate.js";
 import type { RoutePermission } from "../../common/permission.decorator.js";
 import type { AuthContext } from "../../common/tenant.js";
+import { setSlackWorkspace } from "../auth/commands/slack-workspace.js";
 import { decide } from "../approvals/commands/decide.js";
 import { updateAlert } from "../pacing/rules.js";
 import { slackAuth, type SlackDeps } from "./identity.js";
 import { slackResponder } from "./respond.js";
 import { slackApi } from "./slack-api.js";
 import { approvalsReply, requestCard } from "./slash/approvals.js";
-import { changesForm, messageModal, messageOf, rejectForm } from "./views.js";
+import { budgetCardReply } from "./slash/budgets.js";
+import { changesForm, messageModal, messageOf, rejectForm, reply } from "./views.js";
 
 /**
  * Buttons and forms (POST /slack/interactions, ADR-046). Each runs the app's command as the Slack
@@ -52,10 +55,29 @@ const ACTIONS: Record<SlackActionId, { permission: RoutePermission; done?: false
   "approval.approve": { permission: "approval.decide", run: async (c) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "approve", channel: "slack" })) },
   "approval.reject": { permission: "approval.decide", done: false, run: async (c) => openView(c.payload, rejectForm(withReply(c))) },
   "approval.changes": { permission: "approval.decide", done: false, run: async (c) => openView(c.payload, changesForm(withReply(c))) },
+  // S-010: answer /budget for this workspace from now on (the person must hold a role in it).
+  "workspace.use": { permission: "workspace.member", done: false, run: async (c) => useWorkspace(c) },
+  // S-009: one budget of a "which one?" choice; its card replaces the choice.
+  "budget.show": { permission: "envelope.read", done: false, run: async (c) => showBudget(c) },
   "alert.acknowledge": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "ACKNOWLEDGED" })) },
   "alert.snooze": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "SNOOZED", snoozedUntil: snoozeUntil() })) },
   "alert.resolve": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "RESOLVED" })) },
 };
+
+/** Saves the person's choice, and says so in place of the choice. */
+async function useWorkspace(c: Clicked): Promise<void> {
+  await setSlackWorkspace(c.prisma, c.auth);
+  const ws = await withTenant(c.prisma, c.auth.ctx, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: c.value.ws }, select: { name: true } }));
+  const done = reply(`:white_check_mark: /budget answers for *${ws.name}* from now on, except in another workspace's channel.`);
+  if (c.payload.response_url) await slackResponder().respond(c.payload.response_url, { replace_original: true, ...done });
+}
+
+/** A budget's card in place of the message the button sat on (or, without a response_url, in a form). */
+async function showBudget(c: Clicked): Promise<void> {
+  const card = await budgetCardReply(c.prisma, c.auth, c.value.ws, c.value.id);
+  if (c.payload.response_url) await slackResponder().respond(c.payload.response_url, { replace_original: true, ...card });
+  else await openView(c.payload, messageModal("BudgetOS", String(card["text"] ?? "")));
+}
 
 /** Every form (view_submission, by callback_id): the field its errors show under, its permission, and the action it finishes. */
 const FORMS: Record<string, { permission: RoutePermission; field: string; action: SlackActionId; submit: (c: Clicked, fields: (block: string) => string) => Promise<void> }> = {
