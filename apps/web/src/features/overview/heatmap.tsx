@@ -197,7 +197,7 @@ function Grid({ ws, h, currency, period, compareName, onEdit, rows, cols, label 
                         </span>
                         <span className="text-xs opacity-80">{compact(x.budget)}</span>
                         {x.alerts > 0 ? (
-                          <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-0.5 text-[11px] font-semibold text-danger-text" data-testid="heatmap-cell-alerts">
+                          <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-0.5 text-xs font-semibold text-danger-text" data-testid="heatmap-cell-alerts">
                             <span className="inline-block size-1.5 rounded-full bg-destructive" aria-hidden />
                             {x.alerts}
                           </span>
