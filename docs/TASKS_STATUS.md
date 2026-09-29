@@ -455,3 +455,19 @@ Plan: `docs/BUDGET_HISTORY_PLAN.md` (Phase E, revision 2: snapshots by hand for 
 | H-008 | E5 | MCP tools | done (ADR-053) |
 | H-009 | E5 | Golden seed and assertions | done (ADR-053) |
 | H-010 | E6 | Snapshots page: list, open (header, change since, frozen rows as a tree), rename, archive, download CSV; `get_baseline` MCP tool | done (ADR-053) |
+
+## Product feedback, round 8: history storage, source mappings, budget import (2026-09-28)
+
+Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| D-001 | F1 | Datastream replication into BigQuery | pending |
+| D-002 | F1 | Fact retention (13 months hot) and raw files in Cloud Storage | pending |
+| D-003 | F1 | Snapshot rows and audit in the replica, `v_snapshots` | pending |
+| D-004 | F2 | Mapping profiles | pending |
+| D-005 | F2 | Column and value synonyms for the guesser | pending |
+| D-006 | F2 | Mapping preview and validation | pending |
+| D-007 | F3 | Budget import template from the registry | pending |
+| D-008 | F3 | Budget import: validate, preview, commit as drafts | pending |
+| D-009 | F3 | Import UI in Budgets, Playwright | pending |
