@@ -19,20 +19,21 @@ export interface DatesResult {
  * preview lists every budget the new dates move — the budget, then the children they would trim —
  * and says whether the change waits for approval. Children move only when the box is ticked.
  */
-export function DatesDialog({ ws, envelopeId, onDone, onClose }: { ws: string; envelopeId: string; onDone: (r: DatesResult) => void; onClose: () => void }): ReactElement {
+export function DatesDialog({ ws, envelopeId, proposed, onDone, onClose }: { ws: string; envelopeId: string; proposed?: { startDate: string; endDate: string } | undefined; onDone: (r: DatesResult) => void; onClose: () => void }): ReactElement {
   const { data: env } = useQuery(envelopeQuery(ws, envelopeId));
   return (
     <Modal onClose={onClose} labelledBy="dates-title" testId="dates-dialog">
       <div className="flex max-h-[88vh] w-full max-w-xl flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg">
-        {env ? <DatesForm ws={ws} env={env} onDone={onDone} onClose={onClose} /> : <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>}
+        {env ? <DatesForm ws={ws} env={env} proposed={proposed} onDone={onDone} onClose={onClose} /> : <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>}
       </div>
     </Modal>
   );
 }
 
-function DatesForm({ ws, env, onDone, onClose }: { ws: string; env: EnvelopeDetail; onDone: (r: DatesResult) => void; onClose: () => void }): ReactElement {
-  const [startDate, setStart] = useState(env.startDate);
-  const [endDate, setEnd] = useState(env.endDate);
+function DatesForm({ ws, env, proposed, onDone, onClose }: { ws: string; env: EnvelopeDetail; proposed?: { startDate: string; endDate: string } | undefined; onDone: (r: DatesResult) => void; onClose: () => void }): ReactElement {
+  // From a timeline drag (ADR-061), the dates it was dropped on; the preview shows what they move.
+  const [startDate, setStart] = useState(proposed?.startDate ?? env.startDate);
+  const [endDate, setEnd] = useState(proposed?.endDate ?? env.endDate);
   const [trim, setTrim] = useState(false);
   const [rationale, setRationale] = useState("");
   const valid = DATE.test(startDate) && DATE.test(endDate) && startDate <= endDate;
