@@ -1,16 +1,16 @@
 import { parseSlackCommand } from "@budget/domain";
 import type { PrismaClient } from "@prisma/client";
-import { authenticateVerifiedEmail, authorize } from "../../../common/auth/authenticate.js";
-import type { AuthContext } from "../../../common/tenant.js";
+import { authorize } from "../../../common/auth/authenticate.js";
 import { listAlerts } from "../../pacing/queries.js";
 import { search } from "../../search/search.js";
-import { linkedWorkspaces, slackRequestId, type SlackDeps } from "../identity.js";
+import { chooseWorkspace, type SlackDeps } from "../identity.js";
 import { appUrl } from "../slack-config.js";
 import { slackApi } from "../slack-api.js";
 import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
 import { budgetReply, listReply } from "./budgets.js";
 import { summaryReply } from "./summary.js";
+import { workspaceReply } from "./workspace.js";
 
 /**
  * /budget (POST /slack/commands, ADR-046, ADR-063): replies only the person who typed it
@@ -32,6 +32,7 @@ export const HELP = [
   "• `/budget search <text>` — budgets, approvals, alerts, targets",
   "• `/budget <budget name>` — a budget's card: amount, spend, projected, pace, what waits on it",
   "• `/budget list [text]` — the top-level budgets this fiscal year, or those matching the text",
+  "• `/budget workspace [name]` — which workspace /budget answers for, and choosing another",
 ].join("\n");
 
 export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {
@@ -44,24 +45,13 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
   if (cmd.verb === "help") return reply(HELP);
   const email = await api.userEmail(userId);
   if (!email) return reply("Your Slack profile has no email BudgetOS can match.");
-  const linked = await linkedWorkspaces(prisma, deps, teamId, email);
-  let auth: AuthContext | null = null;
-  let chosen: { id: string; name: string } | null = null;
-  for (const w of linked) {
-    try {
-      auth = await authenticateVerifiedEmail(deps, { email, workspaceId: w.id, requestId: slackRequestId() });
-      if (auth.roles.length > 0) {
-        chosen = w;
-        break;
-      }
-    } catch {
-      // no access to this one; try the next
-    }
-  }
-  if (!auth || !chosen) return reply("No BudgetOS workspace linked to this Slack workspace gives you access. An admin links one in Admin › Slack.");
-  const ws = chosen.id;
+  // S-010: the workspace whose channel this is, else the person's choice, else their only one.
+  const chosen = await chooseWorkspace(prisma, deps, { teamId, email, channelId: body["channel_id"], channelName: body["channel_name"] });
+  if (chosen === null) return reply("No BudgetOS workspace linked to this Slack workspace gives you access. An admin links one in Admin › Slack.");
+  const auth = chosen.auth;
+  const ws = chosen.workspace.id;
   const url = (path: string) => `${appUrl()}/w/${ws}${path}`;
-  const footer = linked.length > 1 ? ` · workspace *${chosen.name}*` : "";
+  const footer = chosen.mine.length > 1 ? ` · workspace *${chosen.workspace.name}*${chosen.how === "first" ? " (`/budget workspace` to choose)" : ""}` : "";
   try {
     switch (cmd.verb) {
       case "summary":
@@ -105,8 +95,9 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
         );
         return reply(`Results for “${cmd.text}”${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*Search: ${cmd.text}*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);
       }
-      case "request":
       case "workspace":
+        return await workspaceReply(prisma, chosen, cmd.text);
+      case "request":
         return reply(HELP);
     }
   } catch (e) {

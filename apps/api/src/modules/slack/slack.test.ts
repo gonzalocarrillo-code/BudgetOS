@@ -477,3 +477,49 @@ describe("/budget <name> and /budget list (S-009)", () => {
   });
 });
 
+describe("which workspace /budget answers for (S-010)", () => {
+  const second = randomUUID();
+  const cmd = async (persona: string, text: string, channelName?: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}`, ...(channelName ? { channel_name: channelName, channel_id: "C0TESTING1" } : {}) })).body;
+  const said = (body: Record<string, unknown>) => JSON.stringify(body);
+
+  beforeAll(async () => {
+    await owner.workspace.create({ data: { id: second, orgId: golden.orgId, slug: `${slug}-second`, name: "Second", reportingCurrency: "USD", settings: { slack: { teamId: TEAM, defaultChannel: "#second-budgets" } } } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: second, principalType: "user", principalId: golden.users.planner, role: "PLANNER", createdBy: golden.users.orgAdmin } });
+    // The golden workspace posts to #budget (the settings test linked it and set it).
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", link: true })).status).toBe(200);
+  });
+
+  it("a workspace's own channel answers for it", async () => {
+    expect(said(await cmd("planner", "alerts", "second-budgets"))).toContain("workspace *Second*");
+    expect(said(await cmd("planner", "alerts", "budget"))).toContain("workspace *Golden*");
+  });
+
+  it("elsewhere, the first by name until the person chooses; the choice is saved, audited, and a channel still wins", async () => {
+    expect(said(await cmd("planner", "alerts"))).toContain("workspace *Golden* (`/budget workspace` to choose)");
+    const choice = await cmd("planner", "workspace");
+    expect(said(choice)).toContain("/budget answers for *Golden*, the first of yours by name.");
+    expect(said(choice)).toContain('"action_id":"workspace.use"');
+    expect(said(await cmd("planner", "workspace second"))).toContain("/budget answers for *Second* from now on");
+    const [saved] = await owner.$queryRawUnsafe<Array<{ ws: string | null }>>(`SELECT settings->'slack'->>'defaultWorkspaceId' AS ws FROM app_user WHERE id = $1::uuid`, golden.users.planner);
+    expect(saved?.ws).toBe(second);
+    const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'user.slack_settings_changed' AND workspace_id = $2::uuid`, golden.users.planner, second);
+    expect(Number(a?.n)).toBe(1);
+    const [o] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'user.updated' AND payload->>'userId' = $2`, second, golden.users.planner);
+    expect(Number(o?.n)).toBe(1);
+    expect(said(await cmd("planner", "alerts"))).toContain("workspace *Second*");
+    expect(said(await cmd("planner", "workspace"))).toContain("/budget answers for *Second*, because you chose it.");
+    expect(said(await cmd("planner", "alerts", "budget"))).toContain("workspace *Golden*");
+  });
+
+  it("the Use button saves the choice and says so in place of it", async () => {
+    responses.length = 0;
+    await slack("interactions", { payload: JSON.stringify({ type: "block_actions", team: { id: TEAM }, user: { id: "U-planner" }, trigger_id: `trig-${randomUUID()}`, response_url: "https://hooks.slack.com/actions/T0GOLDEN1/4/ws", actions: [{ action_id: "workspace.use", value: JSON.stringify({ ws: golden.workspaceId, id: golden.workspaceId }) }] }) });
+    expect(JSON.stringify(responses[0]?.body)).toContain("/budget answers for *Golden* from now on");
+    expect(said(await cmd("planner", "alerts"))).toContain("workspace *Golden*");
+  });
+
+  it("names only workspaces where the person holds a role", async () => {
+    expect(said(await cmd("planner", "workspace other client"))).toContain("You have no role in a linked workspace called “other client”");
+  });
+});
+
