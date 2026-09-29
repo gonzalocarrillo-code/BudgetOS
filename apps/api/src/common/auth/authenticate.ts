@@ -66,7 +66,7 @@ function actingAsIn(access: WorkspaceAccess): "superadmin" | null {
 export async function authenticateVerifiedEmail(deps: Pick<AuthDeps, "access" | "cache">, input: { email: string; workspaceId: string; requestId: string }): Promise<AuthContext> {
   const email = input.email.trim().toLowerCase();
   const user = await deps.access.findUser({ sub: `external:${email}`, email, emailVerified: true, googleSub: null });
-  if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "No active Budget OS account for this Slack user's email");
+  if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "No active BudgetOS account for this Slack user's email");
   const ws = await deps.access.workspaceInfo(input.workspaceId, user, input.requestId);
   if (ws === null || ws.orgId !== user.orgId || ws.deleted) throw new DomainError("FORBIDDEN", "No access to this workspace");
   if (ws.status === "ARCHIVED") throw new DomainError("FORBIDDEN", "This workspace is archived", { archived: true });

@@ -3,12 +3,13 @@ import { audit, outbox, withTenant } from "@budget/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
+import { slackManifest } from "./manifest.js";
 import { apiUrl, slackSettingsOf as settingsOf } from "./slack-config.js";
 import { slackApi } from "./slack-api.js";
 
 /**
- * Slack (product feedback 2026-09-28, ADR-046): the workspace's Slack settings, the app manifest and
- * the test message. The bot's buttons are in interactions.ts, /budget in slash/, and who acts in
+ * Slack (product feedback 2026-09-28, ADR-046): the workspace's Slack settings, the app manifest
+ * (manifest.ts) and the test message. The bot's buttons are in interactions.ts, /budget in slash/, and who acts in
  * identity.ts: a Slack user acts as the Budget OS account with the same email, in a workspace linked
  * to their Slack team, with that account's permissions. The notify worker posts and edits messages.
  */
@@ -16,19 +17,6 @@ import { slackApi } from "./slack-api.js";
 // ---------------------------------------------------------------------------------------------
 // Settings (Admin › Slack)
 // ---------------------------------------------------------------------------------------------
-
-/** The app manifest to paste at api.slack.com/apps (Create app › From a manifest). */
-export function slackManifest(): Record<string, unknown> {
-  return {
-    display_information: { name: "Budget OS", description: "Budgets, pacing alerts and approvals", background_color: "#1f4ed8" },
-    features: {
-      bot_user: { display_name: "Budget OS", always_online: true },
-      slash_commands: [{ command: "/budget", url: `${apiUrl()}/api/v1/slack/commands`, description: "Alerts, search and budgets from Budget OS", usage_hint: "alerts | search <text> | <budget name>", should_escape: false }],
-    },
-    oauth_config: { scopes: { bot: ["chat:write", "chat:write.public", "commands", "users:read", "users:read.email", "im:write"] } },
-    settings: { interactivity: { is_enabled: true, request_url: `${apiUrl()}/api/v1/slack/interactions` }, org_deploy_enabled: false, socket_mode_enabled: false, token_rotation_enabled: false },
-  };
-}
 
 /** GET /workspaces/:ws/integrations/slack */
 export async function getSlackSettings(prisma: PrismaClient, auth: AuthContext) {

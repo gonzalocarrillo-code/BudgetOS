@@ -58,7 +58,7 @@ export function alertMessage(a: AlertMessageInput): SlackMessage {
           button("Open budget", link(a.baseUrl, a.workspaceId, `/budgets?select=${a.envelopeId}`), "open_envelope"),
         ],
       },
-      context(`Evaluated for ${a.evaluatedFor}`, "Budget OS pacing"),
+      context(`Evaluated for ${a.evaluatedFor}`, "BudgetOS pacing"),
     ],
   };
 }

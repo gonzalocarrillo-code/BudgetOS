@@ -17,7 +17,7 @@ const pct = (v: unknown) => (v === null || v === undefined || v === "" ? "—" :
 const money = (v: unknown) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("en", { maximumFractionDigits: 0 }));
 
 const HELP = [
-  "*Budget OS* — `/budget` answers only you:",
+  "*BudgetOS* — `/budget` answers only you:",
   "• `/budget alerts` — open alerts you can see",
   "• `/budget search <text>` — budgets, approvals, alerts, targets",
   "• `/budget <budget name>` — a budget's amount, spend and pace",
@@ -29,10 +29,10 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
   const userId = body["user_id"] ?? "";
   const text = (body["text"] ?? "").trim();
   const api = slackApi();
-  if (api === null) return reply("Budget OS is not connected to Slack yet.");
+  if (api === null) return reply("BudgetOS is not connected to Slack yet.");
   if (text === "" || text === "help") return reply(HELP);
   const email = await api.userEmail(userId);
-  if (!email) return reply("Your Slack profile has no email Budget OS can match.");
+  if (!email) return reply("Your Slack profile has no email BudgetOS can match.");
   const linked = await linkedWorkspaces(prisma, deps, teamId, email);
   let auth: AuthContext | null = null;
   let chosen: { id: string; name: string } | null = null;
@@ -47,7 +47,7 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
       // no access to this one; try the next
     }
   }
-  if (!auth || !chosen) return reply("No Budget OS workspace linked to this Slack workspace gives you access. An admin links one in Admin › Slack.");
+  if (!auth || !chosen) return reply("No BudgetOS workspace linked to this Slack workspace gives you access. An admin links one in Admin › Slack.");
   const ws = chosen.id;
   const url = (path: string) => `${appUrl()}/w/${ws}${path}`;
   const footer = linked.length > 1 ? ` · workspace *${chosen.name}*` : "";

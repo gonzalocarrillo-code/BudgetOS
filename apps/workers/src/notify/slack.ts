@@ -305,9 +305,9 @@ async function lastActor(tx: Tx, entityType: string, id: string): Promise<string
 
 function testMessage(baseUrl: string, workspaceId: string, by: string | null): SlackMessage {
   return {
-    text: ":white_check_mark: Budget OS is connected",
+    text: ":white_check_mark: BudgetOS is connected",
     blocks: [
-      { type: "section", text: { type: "mrkdwn", text: `:white_check_mark: *Budget OS is connected.*${by ? ` Test sent by ${by}.` : ""} Alerts and approvals for this workspace post here.` } },
+      { type: "section", text: { type: "mrkdwn", text: `:white_check_mark: *BudgetOS is connected.*${by ? ` Test sent by ${by}.` : ""} Alerts and approvals for this workspace post here.` } },
       { type: "context", elements: [{ type: "mrkdwn", text: `<${baseUrl.replace(/\/$/, "")}/w/${workspaceId}/admin/slack|Slack settings>` }] },
     ],
   };

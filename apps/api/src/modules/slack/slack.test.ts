@@ -100,7 +100,7 @@ describe("Slack requests", () => {
     await click("stranger", "alert.resolve", alert!.id);
     const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
     expect(still?.status).toBe("SNOOZED");
-    expect(views.map((v) => JSON.stringify(v.view))).toEqual([expect.stringContaining("not linked"), expect.stringContaining("No active Budget OS account")]);
+    expect(views.map((v) => JSON.stringify(v.view))).toEqual([expect.stringContaining("not linked"), expect.stringContaining("No active BudgetOS account")]);
   });
 
   it("approves from Slack, and rejects with a reason through the form", async () => {
@@ -146,7 +146,7 @@ describe("Slack requests", () => {
     expect(budget.body).toMatchObject({ response_type: "ephemeral" });
     expect(JSON.stringify(budget.body)).toMatch(/budget [\d,]+/);
     const nobody = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-stranger" });
-    expect(String(nobody.body["text"])).toContain("No Budget OS workspace");
+    expect(String(nobody.body["text"])).toContain("No BudgetOS workspace");
   });
 });
 
@@ -194,7 +194,7 @@ describe("Slack acts with the app's permissions (S-001)", () => {
     const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
     expect(still?.status).toBe("OPEN");
     // /budget shows them nothing of this workspace either.
-    expect(String((await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-outsider" })).body["text"])).toContain("No Budget OS workspace");
+    expect(String((await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-outsider" })).body["text"])).toContain("No BudgetOS workspace");
   });
 
   it("finds the account when the Slack profile's email is in capitals", async () => {

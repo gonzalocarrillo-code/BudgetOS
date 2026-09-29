@@ -74,7 +74,7 @@ USD 812,345.50",
           "type": "mrkdwn",
         },
         {
-          "text": "Budget OS pacing",
+          "text": "BudgetOS pacing",
           "type": "mrkdwn",
         },
       ],
@@ -159,7 +159,7 @@ EUR 0",
           "type": "mrkdwn",
         },
         {
-          "text": "Budget OS pacing",
+          "text": "BudgetOS pacing",
           "type": "mrkdwn",
         },
       ],
@@ -224,7 +224,7 @@ Finance Fay",
     {
       "elements": [
         {
-          "text": "Budget OS approvals",
+          "text": "BudgetOS approvals",
           "type": "mrkdwn",
         },
       ],
@@ -302,7 +302,7 @@ Owner Olga",
     {
       "elements": [
         {
-          "text": "Budget OS approvals",
+          "text": "BudgetOS approvals",
           "type": "mrkdwn",
         },
       ],
@@ -372,7 +372,7 @@ BUDGET_OWNER, due 2026-09-26",
     {
       "elements": [
         {
-          "text": "Budget OS approvals",
+          "text": "BudgetOS approvals",
           "type": "mrkdwn",
         },
       ],
@@ -410,7 +410,7 @@ exports[`mention blocks > mention DM 1`] = `
           "style": "primary",
           "text": {
             "emoji": true,
-            "text": "Reply in Budget OS",
+            "text": "Reply in BudgetOS",
             "type": "plain_text",
           },
           "type": "button",

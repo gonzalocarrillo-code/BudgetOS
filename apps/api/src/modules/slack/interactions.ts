@@ -93,7 +93,7 @@ export async function handleInteraction(prisma: PrismaClient, deps: SlackDeps, r
     return {};
   } catch (e) {
     // Tell the person why, privately (a small form they close); nothing changed.
-    await openView(p, messageModal("Budget OS", `:no_entry: ${messageOf(e)}`)).catch(() => undefined);
+    await openView(p, messageModal("BudgetOS", `:no_entry: ${messageOf(e)}`)).catch(() => undefined);
     return {};
   }
 }

@@ -20,11 +20,11 @@ export async function slackAuth(prisma: PrismaClient, deps: SlackDeps, workspace
   const api = slackApi();
   if (api === null) throw new DomainError("FORBIDDEN", "Slack is not connected");
   const email = await api.userEmail(slackUserId);
-  if (!email) throw new DomainError("FORBIDDEN", "Your Slack profile has no email Budget OS can match");
+  if (!email) throw new DomainError("FORBIDDEN", "Your Slack profile has no email BudgetOS can match");
   const auth = await authenticateVerifiedEmail(deps, { email, workspaceId, requestId: slackRequestId() });
   // Only the Slack team this workspace is linked to may act on it.
   const ws = await withTenant(prisma, auth.ctx, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { settings: true } }));
-  if (slackSettingsOf(ws.settings).teamId !== teamId) throw new DomainError("FORBIDDEN", "This Budget OS workspace is not linked to your Slack workspace");
+  if (slackSettingsOf(ws.settings).teamId !== teamId) throw new DomainError("FORBIDDEN", "This BudgetOS workspace is not linked to your Slack workspace");
   return auth;
 }
 
