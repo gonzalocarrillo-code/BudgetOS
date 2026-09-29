@@ -501,3 +501,10 @@ Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The 
 | HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-063) |
 | HO-007 | G2 | Decide from Home in a side sheet; the approval detail parts shared with the request page | done |
 | HO-008 | G2 | Home steps in the planner, approver and finance tours; strings; status rows | done |
+| HO-009 | G3 | `ahead_of_plan_abs` (actual − budget in period × time gone) in both planner dialects, derived at query time | done (ADR-064) |
+| HO-010 | G3 | `/overview` v2: heatmap margins, per-cell alerts and waiting, server-side sort, Compare to, needs attention by money at stake, alerts by rule with coverage, the workspace queue, projections' freshness | done |
+| HO-011 | G3 | Overview header: `<PeriodPicker/>` on Budgets' periods, Compare to, as-of chip, stale banner | done |
+| HO-012 | G3 | Headline in money: Budget with the assigned split and the change since the plan, Spent with the pace bar, Remaining with the daily rate, Projected close only with projections | done |
+| HO-013 | G3 | Heatmap v2: margins, band tints, alert dots, popover with Open in Budgets and Edit these budgets, arrow keys, sort, legend chips, a list on phones | done |
+| HO-014 | G3 | Needs attention (four kinds, ranked by money), alerts by rule with a threshold hint, KPI bullet bars, approval queue, data footer | done |
+| HO-015 | G3 | Customise v2: reorder, remembered rows/columns/sort, "Set as the workspace default" for admins, `OverviewLayout` in `@budget/domain` | done |

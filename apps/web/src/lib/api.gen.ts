@@ -3435,7 +3435,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -3446,7 +3446,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "is_ended" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -3582,7 +3582,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -3593,7 +3593,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "is_ended" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -6085,7 +6085,7 @@ export interface operations {
                                 /** @enum {string} */
                                 kind: "measure";
                                 /** @enum {string} */
-                                key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                             } | {
                                 /** @enum {string} */
                                 kind: "target";
@@ -6096,7 +6096,7 @@ export interface operations {
                                 /** @enum {string} */
                                 kind: "attr";
                                 /** @enum {string} */
-                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "is_ended" | "parent_id" | "experiment";
                             };
                             /** @enum {string} */
                             op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -6122,7 +6122,7 @@ export interface operations {
                      *       "pace_index"
                      *     ]
                      */
-                    measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct")[];
+                    measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs")[];
                     /** @default [] */
                     targets?: string[];
                     period: {
@@ -6626,7 +6626,7 @@ export interface operations {
                                         /** @enum {string} */
                                         kind: "measure";
                                         /** @enum {string} */
-                                        key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                        key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                     } | {
                                         /** @enum {string} */
                                         kind: "target";
@@ -6637,7 +6637,7 @@ export interface operations {
                                         /** @enum {string} */
                                         kind: "attr";
                                         /** @enum {string} */
-                                        key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                        key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "is_ended" | "parent_id" | "experiment";
                                     };
                                     /** @enum {string} */
                                     op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -7145,7 +7145,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -7156,7 +7156,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "is_ended" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -8447,7 +8447,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -8458,7 +8458,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "attr";
                                     /** @enum {string} */
-                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "parent_id" | "experiment";
+                                    key: "status" | "owner_id" | "approver_id" | "requested_by" | "tag" | "currency" | "source_system" | "has_open_thread" | "mentions_user" | "commented_by" | "created_at" | "updated_at" | "start_date" | "end_date" | "name" | "has_attachments" | "alert_severity" | "is_leaf" | "is_ended" | "parent_id" | "experiment";
                                 };
                                 /** @enum {string} */
                                 op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty" | "between" | "gt" | "gte" | "lt" | "lte" | "descends_from" | "within";
@@ -8484,7 +8484,7 @@ export interface operations {
                          *       "pace_index"
                          *     ]
                          */
-                        measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct")[];
+                        measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs")[];
                         /** @default [] */
                         targets?: string[];
                         period: {
@@ -8820,6 +8820,10 @@ export interface operations {
                 rows?: string;
                 /** @description Heatmap columns: another granularity key (default platform) */
                 cols?: string;
+                /** @description Heatmap row order: by budget (default), pace, or money ahead of plan */
+                sort?: "budget" | "pace" | "ahead";
+                /** @description A snapshot to compare with: the headline's change and each cell's budget then (default: the latest plan snapshot, headline only) */
+                compareTo?: string;
             };
             header?: never;
             path: {
@@ -8829,7 +8833,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness */
+            /** @description The Overview dashboard: headline, heatmap with its margins (any two granularities), budgets that need attention by money at stake, KPI vs target, alerts by rule, the approval queue, data freshness */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8843,6 +8847,7 @@ export interface operations {
                             end?: string;
                             elapsed?: string;
                             elapsedToday?: string;
+                            daysLeft?: number;
                         };
                         asOf: {
                             lastFactDate: string | null;
@@ -8863,6 +8868,28 @@ export interface operations {
                             spentPct: string | null;
                             paceIndex: string | null;
                             assigned: string | null;
+                            unassigned?: string | null;
+                            assignedPct?: string | null;
+                            remaining?: string | null;
+                            runRateNeeded?: string | null;
+                            projected?: string | null;
+                            projectedClosePct?: string | null;
+                        } | null;
+                        compare?: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            kind: string;
+                            asOf: string;
+                            explicit: boolean;
+                            changeAbs: string | null;
+                            changePct: string | null;
+                            counts: {
+                                increased: number;
+                                decreased: number;
+                                new: number;
+                                ended: number;
+                            };
                         } | null;
                         heatmap: {
                             rowDimension: {
@@ -8887,40 +8914,193 @@ export interface operations {
                                 row: string | null;
                                 col: string | null;
                                 budget?: string | null;
+                                budget_in_period?: string | null;
                                 actual?: string | null;
                                 pace_index?: string | null;
                                 spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                budget_baseline?: string | null;
+                                budget_change_abs?: string | null;
+                                /** @default 0 */
+                                alerts: number;
+                                /** @default 0 */
+                                pending: number;
                             }[];
                             /** @default [] */
                             dimensions: {
                                 key: string;
                                 label: string;
                             }[];
-                        } | null;
-                        variances: {
-                            over: {
-                                /** Format: uuid */
-                                envelopeId: string | null;
-                                name: string;
-                                path: string[];
+                            /** @default [] */
+                            rowTotals: {
+                                code: string | null;
                                 budget?: string | null;
+                                budget_in_period?: string | null;
                                 actual?: string | null;
                                 pace_index?: string | null;
                                 spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                /** @default 0 */
+                                alerts: number;
+                            }[];
+                            /** @default [] */
+                            colTotals: {
+                                code: string | null;
+                                budget?: string | null;
+                                budget_in_period?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                /** @default 0 */
+                                alerts: number;
+                            }[];
+                            /** @default null */
+                            total: {
+                                budget?: string | null;
+                                budget_in_period?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                            } | null;
+                            /**
+                             * @default budget
+                             * @enum {string}
+                             */
+                            sort: "budget" | "pace" | "ahead";
+                        } | null;
+                        attention?: {
+                            all: {
+                                /** @enum {string} */
+                                category: "over" | "under" | "no_spend" | "kpi";
+                                /** Format: uuid */
+                                envelopeId: string;
+                                name: string;
+                                path: string[];
+                                budget?: string | null;
+                                budget_in_period?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                money: string;
+                                alerts: number;
+                                pending: boolean;
+                                endDate: string | null;
+                                kpi: {
+                                    metric: string;
+                                    actual?: string | null;
+                                    target?: string | null;
+                                    vsTargetPct?: string | null;
+                                } | null;
+                            }[];
+                            over: {
+                                /** @enum {string} */
+                                category: "over" | "under" | "no_spend" | "kpi";
+                                /** Format: uuid */
+                                envelopeId: string;
+                                name: string;
+                                path: string[];
+                                budget?: string | null;
+                                budget_in_period?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                money: string;
+                                alerts: number;
+                                pending: boolean;
+                                endDate: string | null;
+                                kpi: {
+                                    metric: string;
+                                    actual?: string | null;
+                                    target?: string | null;
+                                    vsTargetPct?: string | null;
+                                } | null;
                             }[];
                             under: {
+                                /** @enum {string} */
+                                category: "over" | "under" | "no_spend" | "kpi";
                                 /** Format: uuid */
-                                envelopeId: string | null;
+                                envelopeId: string;
                                 name: string;
                                 path: string[];
                                 budget?: string | null;
+                                budget_in_period?: string | null;
                                 actual?: string | null;
                                 pace_index?: string | null;
                                 spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                money: string;
+                                alerts: number;
+                                pending: boolean;
+                                endDate: string | null;
+                                kpi: {
+                                    metric: string;
+                                    actual?: string | null;
+                                    target?: string | null;
+                                    vsTargetPct?: string | null;
+                                } | null;
                             }[];
+                            noSpend: {
+                                /** @enum {string} */
+                                category: "over" | "under" | "no_spend" | "kpi";
+                                /** Format: uuid */
+                                envelopeId: string;
+                                name: string;
+                                path: string[];
+                                budget?: string | null;
+                                budget_in_period?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                money: string;
+                                alerts: number;
+                                pending: boolean;
+                                endDate: string | null;
+                                kpi: {
+                                    metric: string;
+                                    actual?: string | null;
+                                    target?: string | null;
+                                    vsTargetPct?: string | null;
+                                } | null;
+                            }[];
+                            kpi: {
+                                /** @enum {string} */
+                                category: "over" | "under" | "no_spend" | "kpi";
+                                /** Format: uuid */
+                                envelopeId: string;
+                                name: string;
+                                path: string[];
+                                budget?: string | null;
+                                budget_in_period?: string | null;
+                                actual?: string | null;
+                                pace_index?: string | null;
+                                spend_to_date_pct?: string | null;
+                                ahead_of_plan_abs?: string | null;
+                                money: string;
+                                alerts: number;
+                                pending: boolean;
+                                endDate: string | null;
+                                kpi: {
+                                    metric: string;
+                                    actual?: string | null;
+                                    target?: string | null;
+                                    vsTargetPct?: string | null;
+                                } | null;
+                            }[];
+                            counts: {
+                                over: number;
+                                under: number;
+                                noSpend: number;
+                                kpi: number;
+                            };
                         };
                         kpi: {
                             metric: string;
+                            direction?: string;
                             dimension: {
                                 key: string;
                                 label: string;
@@ -8939,22 +9119,40 @@ export interface operations {
                             counts: {
                                 [key: string]: number;
                             };
-                            latest: {
-                                id: string;
-                                severity: string;
-                                envelopeId: string;
-                                envelopeName: string | null;
+                            /** @default [] */
+                            byRule: {
+                                /** Format: uuid */
+                                ruleId: string;
                                 ruleName: string | null;
+                                severity: string;
+                                metric: string | null;
+                                count: number;
+                                budgets: number;
+                                covered: number | null;
+                                byRow: {
+                                    code: string | null;
+                                    label: string | null;
+                                    count: number;
+                                }[];
+                            }[];
+                            /** @default [] */
+                            byRow: {
+                                code: string | null;
+                                label: string | null;
+                                count: number;
                             }[];
                         };
-                        approvals: {
-                            mine: number;
+                        queue?: {
+                            waiting: number;
                             overdue: number;
-                            due: {
-                                id: string;
-                                summary: string | null;
-                                dueAt: string | null;
-                                requestedByName?: string | null;
+                            oldestDays: number | null;
+                            byRole: {
+                                role: string;
+                                count: number;
+                            }[];
+                            byKind: {
+                                kind: string;
+                                count: number;
                             }[];
                         };
                         freshness: {
@@ -8971,6 +9169,10 @@ export interface operations {
                                     matchCoverage: string | null;
                                 } | null;
                             }[];
+                            projections?: {
+                                loadedAt: string;
+                                source: string | null;
+                            } | null;
                         };
                         elapsedMs: number;
                     };

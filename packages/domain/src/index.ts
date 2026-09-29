@@ -152,7 +152,8 @@ export {
 } from "./threads.js";
 export type { Mention, Reference } from "./threads.js";
 
-export { CreateSavedViewInput, ListSavedViewsQuery, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput } from "./views.js";
+export { CreateSavedViewInput, ListSavedViewsQuery, OVERVIEW_BLOCKS, OVERVIEW_SECTIONS, OverviewLayout, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput, readOverviewLayout } from "./views.js";
+export type { OverviewBlock } from "./views.js";
 export { SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, UpdateSlackSettingsInput } from "./slack.js";
 export type { SlackActionId } from "./slack.js";
 
@@ -226,7 +227,7 @@ export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";
 export { ON_PLAN, PACE_BANDS, paceBand } from "./pace.js";
-export { DataAsOfView, OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewResponse } from "./overview.js";
+export { ATTENTION_CATEGORIES, DataAsOfView, HEATMAP_SORTS, OverviewAttention, OverviewAttentionItem, OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewMargin, OverviewResponse, OverviewRuleAlerts } from "./overview.js";
 export type { PaceBandKey } from "./pace.js";
 export type { GroupSums } from "./rollup-measures.js";
 export { BaselineKind, BaselineReport, BaselineReportQuery, BaselineRowsQuery, BaselineRowsResponse, BaselineTreeRow, BaselineScope, BaselineView, BaselinesResponse, CreateBaselineInput, EndEnvelopeInput, ReintroduceInput, UpdateBaselineInput } from "./baselines.js";
