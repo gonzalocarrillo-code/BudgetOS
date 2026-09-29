@@ -16,7 +16,12 @@ export function SnapshotsCard({ ws, currency }: { ws: string; currency: string }
     <Card title={t("snapshots.settings.title")}>
       <div className="flex flex-col gap-3 text-sm" data-testid="snapshots-card">
         <div className="flex flex-wrap items-center gap-3">
-          <p className="flex-1 text-muted-foreground">{t("snapshots.settings.help")}</p>
+          <p className="flex-1 text-muted-foreground">
+            {t("snapshots.settings.help")}{" "}
+            <Link to="/w/$ws/snapshots" params={{ ws }} className="text-primary hover:underline" data-testid="snapshots-open-page">
+              {t("snapshots.openPage")}
+            </Link>
+          </p>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} data-testid="snapshots-show-archived" />
             {t("snapshots.settings.showArchived")}

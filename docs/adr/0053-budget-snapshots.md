@@ -70,6 +70,14 @@ Amounts already have history, because `envelope_version` is immutable and the pl
   - Its FY2027 successor gets USD 750, which fits in the parent's room.
   - FY2026 totals are unchanged. The envelope count gains 1, and the approved-version and search counts change with it.
 
+## Decision: the Snapshots page (round 8)
+
+The owner asked for a place to keep, watch and open snapshots, and for them to be stored and reachable.
+
+- **A Snapshots page** in the workspace nav lists every snapshot, archived ones on request. Opening one shows its header, the change since it (the change report), and what it kept: the frozen rows as the tree they were saved in, parents before children, with the amount then, the amount now and the change per row. Rename, archive, restore, compare in Budgets and download as CSV live there. The Settings card links to it.
+- **Reads for it:** `GET /baselines/:id`, `GET /baselines/:id/rows` (tree order, cut to the caller's read scope by the granularities the row was saved with, a `limit` with `truncated`), and `GET /baselines/:id/export.csv` (every row, one granularity per column). MCP gains `get_baseline` with the same rows.
+- **Storage is unchanged:** Postgres, never deleted, replicated to BigQuery with every other table once Datastream exists (docs/DATA_PLAN.md §1 and §4).
+
 ## Consequences
 
 - A snapshot of a large workspace copies one row per budget. At the planned sizes of up to 50,000 budgets, that is one INSERT…SELECT inside the request transaction.

@@ -1207,13 +1207,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["getBaseline"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch: operations["updateBaseline"];
+        trace?: never;
+    };
+    "/api/v1/baselines/{id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBaselineRows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/baselines/{id}/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportBaselineCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/baselines/{id}/report": {
@@ -5884,6 +5916,61 @@ export interface operations {
             };
         };
     };
+    getBaseline: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        /** @enum {string} */
+                        kind: "plan" | "close" | "other";
+                        scope: {
+                            [key: string]: unknown;
+                        };
+                        scopeLabel: string | null;
+                        periodKey: string | null;
+                        asOf: string;
+                        note: string | null;
+                        takenBy: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                        } | null;
+                        createdAt: string;
+                        archivedAt: string | null;
+                        rowCount: number;
+                        total: string;
+                        row?: {
+                            /** Format: uuid */
+                            versionId: string | null;
+                            amount: string;
+                            currency: string;
+                            name: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                        } | null;
+                    };
+                };
+            };
+        };
+    };
     updateBaseline: {
         parameters: {
             query?: never;
@@ -5908,6 +5995,111 @@ export interface operations {
         };
         responses: {
             /** @description Renamed, re-noted or archived; its rows never change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getBaselineRows: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The snapshot's frozen rows as the tree they were saved in, cut to the caller's scope */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        baseline: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** @enum {string} */
+                            kind: "plan" | "close" | "other";
+                            scope: {
+                                [key: string]: unknown;
+                            };
+                            scopeLabel: string | null;
+                            periodKey: string | null;
+                            asOf: string;
+                            note: string | null;
+                            takenBy: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                            } | null;
+                            createdAt: string;
+                            archivedAt: string | null;
+                            rowCount: number;
+                            total: string;
+                            row?: {
+                                /** Format: uuid */
+                                versionId: string | null;
+                                amount: string;
+                                currency: string;
+                                name: string;
+                                /** Format: uuid */
+                                parentId: string | null;
+                            } | null;
+                        };
+                        rows: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            /** Format: uuid */
+                            parentId: string | null;
+                            depth: number;
+                            name: string;
+                            isLeaf: boolean;
+                            amount: string;
+                            amountReporting: string;
+                            currency: string;
+                            /** Format: uuid */
+                            versionId: string | null;
+                            dimensionValues: {
+                                [key: string]: string;
+                            };
+                            startDate: string;
+                            endDate: string;
+                            now: string | null;
+                            change: string;
+                            ended: boolean;
+                        }[];
+                        currency: string;
+                        truncated: boolean;
+                    };
+                };
+            };
+        };
+    };
+    exportBaselineCsv: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The snapshot's rows as CSV (text/csv) */
             200: {
                 headers: {
                     [name: string]: unknown;

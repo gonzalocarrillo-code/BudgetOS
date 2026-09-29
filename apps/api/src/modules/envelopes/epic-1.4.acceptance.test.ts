@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GOLDEN_ASSERTIONS, GOLDEN_ROUNDS, GOLDEN_SPLIT, goldenPlan } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_ROUNDS, GOLDEN_SPLIT, goldenPlan, GOLDEN_HISTORY } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -70,6 +70,10 @@ describe("a reconstruction test replays 12 months of synthetic history and match
         expect(approvals.at(-1)?.amount.toFixed(2)).toBe("0.00");
       } else if (leaf.key.includes("#")) {
         expect(approvals.map((a) => a.at)).toEqual([GOLDEN_SPLIT.at]);
+      } else if (leaf.key === GOLDEN_HISTORY.end.key) {
+        // Three planned rounds, then the version its end approved (Phase E5), which keeps its amount.
+        expect(approvals.map((a) => a.at)).toEqual([...GOLDEN_ROUNDS.map((r) => r.approvedAt), GOLDEN_HISTORY.end.at]);
+        expect(approvals.at(-1)?.amount.toFixed(2)).toBe(A.history.end.finalAmount);
       } else {
         expect(approvals.map((a) => a.at)).toEqual(GOLDEN_ROUNDS.map((r) => r.approvedAt));
       }

@@ -43,7 +43,8 @@ describe("snapshots (Phase E)", () => {
     expect(saved.status, JSON.stringify(saved.body)).toBe(201);
     const snap = saved.body as { id: string; rowCount: number; total: string };
     expect(snap.rowCount).toBe(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "ARCHIVED" } } }));
-    expect(Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'baseline.saved'`, ws))[0]?.n)).toBe(1);
+    // One audit row for this save (the golden seed saves its own plan snapshot, GOLDEN_HISTORY).
+    expect(Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'baseline.saved' AND entity_id = $2::uuid`, ws, snap.id))[0]?.n)).toBe(1);
 
     // Change a leaf's amount (an admin's change applies directly) and move another budget.
     const leafKey = plan.find((e) => e.level === 4)?.key as string;
@@ -87,6 +88,30 @@ describe("snapshots (Phase E)", () => {
     // Listed for one budget, each snapshot says what it holds for it (the drawer, Phase E4).
     const forLeaf = (await as("planner", "GET", `/api/v1/workspaces/${ws}/baselines?envelopeId=${leaf}`)).body as unknown as { baselines: Array<{ id: string; row: { amount: string; versionId: string | null } | null }> };
     expect(forLeaf.baselines.find((b) => b.id === snap.id)?.row).toMatchObject({ amount: new Decimal(before.current.amount).toFixed(2), versionId: before.currentVersionId });
+
+    // The Snapshots page: the header alone, the rows as the tree they were saved in, and a CSV.
+    expect((await as("planner", "GET", `/api/v1/baselines/${snap.id}`)).body).toMatchObject({ id: snap.id, name: "Q4 plan", rowCount: snap.rowCount });
+    const tree = (await as("planner", "GET", `/api/v1/baselines/${snap.id}/rows?limit=20000`)).body as unknown as { rows: Array<{ envelopeId: string; parentId: string | null; depth: number; amountReporting: string; now: string | null; change: string }>; truncated: boolean };
+    expect(tree.rows).toHaveLength(snap.rowCount);
+    expect(tree.truncated).toBe(false);
+    expect(tree.rows.filter((r) => r.depth === 0).every((r) => r.parentId === null)).toBe(true);
+    const seen = new Set<string>();
+    for (const r of tree.rows) {
+      if (r.parentId !== null) expect(seen.has(r.parentId), "a parent comes before its children").toBe(true);
+      seen.add(r.envelopeId);
+    }
+    const frozenLeaf = tree.rows.find((r) => r.envelopeId === leaf);
+    expect(frozenLeaf).toMatchObject({ amountReporting: row.amountReporting.toFixed(2), change: "-100.00" });
+    expect(frozenLeaf?.parentId).toBe(was.parentId); // the tree as saved, not as moved since
+    const first = (await as("planner", "GET", `/api/v1/baselines/${snap.id}/rows?limit=3`)).body as unknown as { rows: unknown[]; truncated: boolean };
+    expect(first).toMatchObject({ truncated: true });
+    expect(first.rows).toHaveLength(3);
+    const csv = await as("planner", "GET", `/api/v1/baselines/${snap.id}/export.csv`);
+    expect(csv.status).toBe(200);
+    const lines = csv.text.trim().split("\r\n");
+    expect(lines).toHaveLength(snap.rowCount + 1);
+    expect(lines[0]).toMatch(/^envelope_id,parent_id,depth,name,is_leaf,.*,currency,amount,amount_reporting,start_date,end_date,version_id,snapshot,as_of$/);
+    expect((await as("planner", "GET", `/api/v1/baselines/${randomUUID()}/rows`)).status).toBe(404);
 
     // The version History shows which snapshot saved it.
     const versions = (await as("planner", "GET", `/api/v1/envelopes/${leaf}/versions`)).body as unknown as Array<{ id: string; snapshots: Array<{ name: string }> }>;

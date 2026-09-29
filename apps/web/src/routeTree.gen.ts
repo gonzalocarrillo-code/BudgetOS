@@ -23,6 +23,7 @@ import { Route as WWsClosuresRouteImport } from './routes/w.$ws.closures'
 import { Route as WWsExperimentsRouteImport } from './routes/w.$ws.experiments'
 import { Route as WWsHomeRouteImport } from './routes/w.$ws.home'
 import { Route as WWsSearchRouteImport } from './routes/w.$ws.search'
+import { Route as WWsSnapshotsRouteImport } from './routes/w.$ws.snapshots'
 import { Route as WWsSourcesRouteImport } from './routes/w.$ws.sources'
 import { Route as WWsTargetsRouteImport } from './routes/w.$ws.targets'
 import { Route as WWsAdminNamingRouteImport } from './routes/w.$ws.admin.naming'
@@ -113,6 +114,11 @@ const WWsHomeRoute = WWsHomeRouteImport.update({
 const WWsSearchRoute = WWsSearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => WWsRoute,
+} as any)
+const WWsSnapshotsRoute = WWsSnapshotsRouteImport.update({
+  id: '/snapshots',
+  path: '/snapshots',
   getParentRoute: () => WWsRoute,
 } as any)
 const WWsSourcesRoute = WWsSourcesRouteImport.update({
@@ -235,6 +241,7 @@ export interface FileRoutesByFullPath {
   '/w/$ws/experiments': typeof WWsExperimentsRouteWithChildren
   '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
+  '/w/$ws/snapshots': typeof WWsSnapshotsRoute
   '/w/$ws/sources': typeof WWsSourcesRouteWithChildren
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws/': typeof WWsIndexRoute
@@ -268,6 +275,7 @@ export interface FileRoutesByTo {
   '/w/$ws/closures': typeof WWsClosuresRoute
   '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
+  '/w/$ws/snapshots': typeof WWsSnapshotsRoute
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws': typeof WWsIndexRoute
   '/w/$ws/admin/naming': typeof WWsAdminNamingRoute
@@ -305,6 +313,7 @@ export interface FileRoutesById {
   '/w/$ws/experiments': typeof WWsExperimentsRouteWithChildren
   '/w/$ws/home': typeof WWsHomeRoute
   '/w/$ws/search': typeof WWsSearchRoute
+  '/w/$ws/snapshots': typeof WWsSnapshotsRoute
   '/w/$ws/sources': typeof WWsSourcesRouteWithChildren
   '/w/$ws/targets': typeof WWsTargetsRoute
   '/w/$ws/': typeof WWsIndexRoute
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/w/$ws/experiments'
     | '/w/$ws/home'
     | '/w/$ws/search'
+    | '/w/$ws/snapshots'
     | '/w/$ws/sources'
     | '/w/$ws/targets'
     | '/w/$ws/'
@@ -377,6 +387,7 @@ export interface FileRouteTypes {
     | '/w/$ws/closures'
     | '/w/$ws/home'
     | '/w/$ws/search'
+    | '/w/$ws/snapshots'
     | '/w/$ws/targets'
     | '/w/$ws'
     | '/w/$ws/admin/naming'
@@ -413,6 +424,7 @@ export interface FileRouteTypes {
     | '/w/$ws/experiments'
     | '/w/$ws/home'
     | '/w/$ws/search'
+    | '/w/$ws/snapshots'
     | '/w/$ws/sources'
     | '/w/$ws/targets'
     | '/w/$ws/'
@@ -541,6 +553,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/w/$ws/search'
       preLoaderRoute: typeof WWsSearchRouteImport
+      parentRoute: typeof WWsRoute
+    }
+    '/w/$ws/snapshots': {
+      id: '/w/$ws/snapshots'
+      path: '/snapshots'
+      fullPath: '/w/$ws/snapshots'
+      preLoaderRoute: typeof WWsSnapshotsRouteImport
       parentRoute: typeof WWsRoute
     }
     '/w/$ws/sources': {
@@ -757,6 +776,7 @@ interface WWsRouteChildren {
   WWsExperimentsRoute: typeof WWsExperimentsRouteWithChildren
   WWsHomeRoute: typeof WWsHomeRoute
   WWsSearchRoute: typeof WWsSearchRoute
+  WWsSnapshotsRoute: typeof WWsSnapshotsRoute
   WWsSourcesRoute: typeof WWsSourcesRouteWithChildren
   WWsTargetsRoute: typeof WWsTargetsRoute
   WWsIndexRoute: typeof WWsIndexRoute
@@ -783,6 +803,7 @@ const WWsRouteChildren: WWsRouteChildren = {
   WWsExperimentsRoute: WWsExperimentsRouteWithChildren,
   WWsHomeRoute: WWsHomeRoute,
   WWsSearchRoute: WWsSearchRoute,
+  WWsSnapshotsRoute: WWsSnapshotsRoute,
   WWsSourcesRoute: WWsSourcesRouteWithChildren,
   WWsTargetsRoute: WWsTargetsRoute,
   WWsIndexRoute: WWsIndexRoute,
