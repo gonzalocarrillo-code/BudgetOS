@@ -1,6 +1,6 @@
 # Runbook: the Slack bot
 
-The bot posts alerts and approval requests, sends each request to its approvers and its outcome to the requester by direct message, and people act from Slack as their own BudgetOS account: Approve and Reject on requests; Acknowledge, Snooze and Resolve on alerts; `/budget` for answers. Design: ADR-046 and `docs/SLACK_TOOLSET_PLAN.md`. Delivery and in-app notifications: `docs/runbooks/notify.md`.
+The bot posts alerts and approval requests, sends each request to its approvers and its outcome to the requester by direct message, and people act from Slack as their own BudgetOS account: Approve, Request changes and Reject on requests; Acknowledge, Snooze and Resolve on alerts; `/budget` for answers. Design: ADR-046 and `docs/SLACK_TOOLSET_PLAN.md`. Delivery and in-app notifications: `docs/runbooks/notify.md`.
 
 ## 1. Create the Slack app (once per environment)
 
@@ -64,6 +64,7 @@ Admin › Slack → *Link to Slack* (records the team from `auth.test`) → set 
 - [ ] A planner submits a change in the app; the channel gets "Approval requested" with Approve / Reject.
 - [ ] Approve in Slack: the message becomes "Approved … by <you>"; the request is approved in the app; `approval_decision.channel = 'slack'`.
 - [ ] Reject asks for a reason; the requester sees it in the app.
+- [ ] Request changes asks what should change; the budget gets a blocking thread the requester resolves before sending it again.
 - [ ] A VIEWER clicking Approve gets a private refusal; nothing changes.
 - [ ] `/budget help`, `/budget alerts`, `/budget <budget name>` answer, privately.
 - [ ] An unsigned or stale request to `/api/v1/slack/commands` is refused (403 in the API log).

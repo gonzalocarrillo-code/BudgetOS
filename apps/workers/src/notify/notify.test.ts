@@ -206,7 +206,7 @@ describe("Slack bot: buttons, routing and keeping messages current (feedback 202
     const slack = new RecordingSlack();
     const id = await request();
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
-    expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
+    expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.changes"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
     await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "approve" } });
     const res = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
     expect(res.posted).toEqual([]);

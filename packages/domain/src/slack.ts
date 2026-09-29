@@ -52,5 +52,8 @@ export const SlackTestInput = z.object({ channel: Channel.optional() });
 export const SlackActionValue = z.object({ ws: z.string().uuid(), id: z.string().uuid() });
 export type SlackActionValue = z.infer<typeof SlackActionValue>;
 
-export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject"] as const;
+export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject", "approval.changes"] as const;
 export type SlackActionId = (typeof SLACK_ACTIONS)[number];
+
+/** How a request is shown in Slack, and typed in /budget: `#` and the last eight characters of its id (S-005). */
+export const shortRequestId = (id: string): string => `#${id.slice(-8).toLowerCase()}`;

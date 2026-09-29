@@ -168,20 +168,27 @@ async function approvalMessageFor(tx: Tx, workspaceId: string, requestId: string
   let before: string | null = null;
   let after: string | null = null;
   let currency = "";
+  let path: string | null = null;
+  let period: { start: string; end: string } | null = null;
+  let rationale: string | null = null;
   if (r.entityType === "envelope_version") {
-    const v = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, include: { envelope: { select: { name: true, currency: true } } } });
+    const v = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, include: { envelope: { select: { name: true, displayName: true, currency: true, startDate: true, endDate: true } } } });
     const base = v?.basedOnVersionId ? await tx.envelopeVersion.findUnique({ where: { id: v.basedOnVersionId }, select: { amount: true } }) : null;
-    subject = v?.envelope.name ?? subject;
+    subject = v?.envelope.displayName ?? v?.envelope.name ?? subject;
     currency = v?.envelope.currency ?? "";
     after = v ? v.amount.toFixed(2) : null;
     before = base ? base.amount.toFixed(2) : null;
+    path = v ? ((await envelopePaths(tx, [v.envelopeId])).get(v.envelopeId)?.join(" › ") ?? null) : null;
+    period = v ? { start: v.envelope.startDate.toISOString().slice(0, 10), end: v.envelope.endDate.toISOString().slice(0, 10) } : null;
+    rationale = v?.rationale ?? null;
   } else if (r.entityType === "target_version") {
     const tv = await tx.targetVersion.findUnique({ where: { id: r.entityId }, include: { target: true } });
     const env = tv?.target.envelopeId ? await tx.envelope.findUnique({ where: { id: tv.target.envelopeId }, select: { name: true } }) : null;
     subject = `${(tv?.target.metricKey ?? "kpi").toUpperCase()} target · ${env?.name ?? "filter scope"}`;
   } else if (r.entityType === "bulk_change") {
     const bulk = await loadBulkChange(tx, r.entityId);
-    subject = `Bulk change (${bulk?.versionIds.length ?? 0} rows)`;
+    const n = bulk?.versionIds.length ?? 0;
+    subject = `${BULK_LABEL[bulk?.kind ?? "edit"] ?? "Bulk change"} (${n} ${n === 1 ? "budget" : "budgets"})`;
   }
   const decider = r.decisions[0]?.decidedBy;
   const people = await names(tx, [r.requestedBy, ...(decider ? [decider] : [])]);
@@ -202,8 +209,15 @@ async function approvalMessageFor(tx: Tx, workspaceId: string, requestId: string
     dueAt: r.dueAt?.toISOString() ?? null,
     comment,
     actions: Boolean(s.teamId) && s.approvals !== false,
+    path,
+    period,
+    rationale,
+    step: { index: r.currentStep, count: snapshot.chain?.length ?? 1 },
   });
 }
+
+/** What a bulk change's request is called in Slack, by the kind of change (bulk_change.kind). */
+const BULK_LABEL: Record<string, string> = { edit: "Bulk change", split: "Split", merge: "Merge", end: "End a budget", reintroduce: "Reintroduce a budget", import: "Budget import", dates: "Change dates" };
 
 const OPEN = ["PENDING", "ESCALATED"];
 /** At most this many direct messages per event; a larger step is a group's job. */

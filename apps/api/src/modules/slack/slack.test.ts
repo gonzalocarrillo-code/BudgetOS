@@ -237,3 +237,36 @@ describe("every approval request reaches Slack (S-003)", () => {
     expect(Number(told?.n), "the first step's approver (the budget owner)").toBe(1);
   });
 });
+
+/** A change the planner sends that the policies do not auto-approve: its open request's id. */
+async function openRequest(from = 120, to = 200): Promise<string> {
+  for (const envelopeId of [...golden.envelopeIds.values()].slice(from, to)) {
+    const env = (await as("planner", "GET", `/envelopes/${envelopeId}`)).body as { current?: { id: string; amount: string } | null; draft?: unknown; status?: string };
+    if (!env.current || env.draft || env.status !== "APPROVED") continue;
+    const draft = await as("planner", "PATCH", `/envelopes/${envelopeId}/draft`, { amount: (Number(env.current.amount) * 3 + 100000).toFixed(2), basedOnVersionId: env.current.id, rationale: "Black Friday push" });
+    if (draft.status !== 200) continue;
+    const sent = await as("planner", "POST", `/envelopes/${envelopeId}/submit`, { versionId: draft.body["id"] });
+    if (sent.body["autoApproved"] === false) return String(sent.body["requestId"]);
+  }
+  throw new Error("no budget could be sent for approval");
+}
+
+describe("Request changes from Slack (S-005)", () => {
+  it("opens a form; the comment returns the request for changes and opens a blocking thread", async () => {
+    const requestId = await openRequest();
+    views.length = 0;
+    await click("orgAdmin", "approval.changes", requestId);
+    expect(views[0]?.view).toMatchObject({ callback_id: "approval.changes" });
+    const submit = (comment: string) =>
+      slack("interactions", { payload: JSON.stringify({ type: "view_submission", team: { id: TEAM }, user: { id: "U-orgAdmin" }, view: { callback_id: "approval.changes", private_metadata: views[0]?.view["private_metadata"], state: { values: { comment: { comment: { value: comment } } } } } }) });
+    expect((await submit(" ")).body).toMatchObject({ response_action: "errors", errors: { comment: expect.stringContaining("Comment required") } });
+    expect((await submit("Split it by month first")).body).toEqual({});
+    const [r] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId);
+    expect(r?.status).toBe("CHANGES_REQUESTED");
+    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    expect(d).toEqual({ decision: "request_changes", channel: "slack", comment: "Split it by month first" });
+    const [thread] = await owner.$queryRawUnsafe<Array<{ is_blocking: boolean }>>(`SELECT is_blocking FROM thread WHERE anchor_meta->>'approvalRequestId' = $1`, requestId);
+    expect(thread?.is_blocking).toBe(true);
+  });
+});
+

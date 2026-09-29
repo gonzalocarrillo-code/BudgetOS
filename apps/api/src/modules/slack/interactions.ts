@@ -7,7 +7,7 @@ import { decide } from "../approvals/commands/decide.js";
 import { updateAlert } from "../pacing/rules.js";
 import { slackAuth, type SlackDeps } from "./identity.js";
 import { slackApi } from "./slack-api.js";
-import { messageModal, rejectForm } from "./views.js";
+import { changesForm, messageModal, rejectForm } from "./views.js";
 
 /**
  * Buttons and forms (POST /slack/interactions, ADR-046). Each runs the app's command as the Slack
@@ -38,6 +38,7 @@ const snoozeUntil = () => new Date(Date.now() + 7 * 86_400_000).toISOString();
 const ACTIONS: Record<SlackActionId, { permission: RoutePermission; run: (c: Clicked) => Promise<void> }> = {
   "approval.approve": { permission: "approval.decide", run: async (c) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "approve", channel: "slack" })) },
   "approval.reject": { permission: "approval.decide", run: async (c) => openView(c.payload, rejectForm(c.value)) },
+  "approval.changes": { permission: "approval.decide", run: async (c) => openView(c.payload, changesForm(c.value)) },
   "alert.acknowledge": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "ACKNOWLEDGED" })) },
   "alert.snooze": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "SNOOZED", snoozedUntil: snoozeUntil() })) },
   "alert.resolve": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "RESOLVED" })) },
@@ -46,6 +47,7 @@ const ACTIONS: Record<SlackActionId, { permission: RoutePermission; run: (c: Cli
 /** Every form (view_submission, by callback_id): the field its errors show under, and its permission. */
 const FORMS: Record<string, { permission: RoutePermission; field: string; submit: (c: Clicked, fields: (block: string) => string) => Promise<void> }> = {
   "approval.reject": { permission: "approval.decide", field: "reason", submit: async (c, fields) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "reject", comment: fields("reason"), channel: "slack" })) },
+  "approval.changes": { permission: "approval.decide", field: "comment", submit: async (c, fields) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "request_changes", comment: fields("comment"), channel: "slack" })) },
 };
 
 /** Slack posts `payload=<json>` (form-encoded); the fields used here are checked, the rest ignored. */
@@ -62,7 +64,15 @@ async function openView(p: InteractionPayload, view: Record<string, unknown>): P
   if (api && p.trigger_id) await api.openView(p.trigger_id, view);
 }
 
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** What to tell the person: the command's message, or, when the input was refused, its first problem ("Comment required…"). */
+export function messageOf(e: unknown): string {
+  if (e instanceof DomainError && e.code === "VALIDATION") {
+    const issues = e.details?.["issues"] as { formErrors?: string[]; fieldErrors?: Record<string, string[] | undefined> } | undefined;
+    const first = issues?.formErrors?.[0] ?? Object.values(issues?.fieldErrors ?? {}).flat()[0];
+    if (first) return first;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
 
 /** One button click or form submission. Returns the HTTP body Slack expects. */
 export async function handleInteraction(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {

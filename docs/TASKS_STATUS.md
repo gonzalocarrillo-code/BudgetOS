@@ -498,7 +498,7 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is me
 | S-003 | S1 | Every request type posts on creation (bulk commit and the structural requests: split, merge, end, reintroduce, import, dates) | done (`approval.requested` audit + `approval.changed` outbox in the creating transaction; the roll-up skips it, since the `budget.changed` written with it already refreshed those envelopes) |
 | S-015 | S1 | GCP hosting: Secret Manager, the non-IAP path for `/api/v1/slack/*`, Pub/Sub topics and push subscriptions, `min_instances`, the staging app | blocked on T-008 |
 | S-004 | S2 | DMs to approvers and requesters, recorded and edited; the `dms` toggle; `/budget remind` | done (the step's approvers get a DM on request, escalation and each completed step, and the requester the outcome; in-app follows completed steps too. `remindApprovers` writes `approval.reminded`, once an hour; `/budget remind #id` is wired with the other commands in S-007) |
-| S-005 | S2 | Request changes button and form; the richer approval card with `#id` | pending |
+| S-005 | S2 | Request changes button and form; the richer approval card with `#id` | done (the card shows the budget's path, dates, the requester's reason, the change with its percentage, the step of how many and `#id`; bulk requests read as Split, Merge, End…; refused form input shows its first problem. Snooze stays a week, decision S8) |
 | S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | pending |
 | S-007 | S2 | `/budget approve`, `reject`, `changes`, `withdraw`, `show #id`; id resolution | pending |
 | S-008 | S3 | `/budget` summary from `getHome` | pending |

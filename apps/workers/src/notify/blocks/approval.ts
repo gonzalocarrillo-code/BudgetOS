@@ -1,4 +1,5 @@
-import { actionButton, button, context, esc, header, link, money, section, type SlackMessage } from "./common.js";
+import { shortRequestId } from "@budget/domain";
+import { actionButton, button, context, dateRange, esc, header, link, money, pctChange, section, type SlackMessage } from "./common.js";
 
 /** Approval request / outcome posted to the workspace channel (spec §19 blocks/approval.ts). */
 export interface ApprovalMessageInput {
@@ -17,8 +18,13 @@ export interface ApprovalMessageInput {
   policyName: string;
   dueAt: string | null;
   comment: string | null;
-  /** Approve / Reject buttons on a request waiting for a decision (the bot is connected). */
+  /** Approve / Request changes / Reject buttons on a request waiting for a decision (the bot is connected). */
   actions?: boolean;
+  /** S-005: where the budget sits (Region › Country › …), its dates, the requester's reason, and which step of how many. */
+  path?: string | null;
+  period?: { start: string; end: string } | null;
+  rationale?: string | null;
+  step?: { index: number; count: number } | null;
 }
 
 const TITLE: Record<ApprovalMessageInput["kind"], string> = {
@@ -31,28 +37,38 @@ const TITLE: Record<ApprovalMessageInput["kind"], string> = {
 };
 const ICON: Record<ApprovalMessageInput["kind"], string> = { requested: "📝", approved: "✅", rejected: "⛔", changes_requested: "↩️", withdrawn: "🗑️", escalated: "⏫" };
 
+const role = (r: string | null) => (r ? r.toLowerCase().replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "—");
+
 export function approvalMessage(a: ApprovalMessageInput): SlackMessage {
   const url = link(a.baseUrl, a.workspaceId, `/approvals/${a.requestId}`);
+  const open = a.kind === "requested" || a.kind === "escalated";
+  const delta = pctChange(a.before, a.after);
+  const step = a.step && a.step.count > 1 ? ` (step ${a.step.index + 1} of ${a.step.count})` : "";
   const fields = [
     `*Requested by*\n${esc(a.requesterName)}`,
     `*Policy*\n${esc(a.policyName)}`,
-    ...(a.before !== null || a.after !== null ? [`*Change*\n${money(a.before, a.currency)} → ${money(a.after, a.currency)}`] : []),
-    ...(a.kind === "requested" || a.kind === "escalated" ? [`*Waiting on*\n${a.stepRole ?? "—"}${a.dueAt ? `, due ${a.dueAt.slice(0, 10)}` : ""}`] : [`*By*\n${a.deciderName ? esc(a.deciderName) : "—"}`]),
+    ...(a.before !== null || a.after !== null ? [`*Change*\n${money(a.before, a.currency)} → ${money(a.after, a.currency)}${delta ? ` (${delta})` : ""}`] : []),
+    ...(open ? [`*Waiting on*\n${role(a.stepRole)}${step}${a.dueAt ? `, due ${a.dueAt.slice(0, 10)}` : ""}`] : [`*By*\n${a.deciderName ? esc(a.deciderName) : "—"}`]),
+    ...(a.period ? [`*Period*\n${dateRange(a.period.start, a.period.end)}`] : []),
   ];
+  // The budget's place in the tree, then why it changes (the requester's words, else the summary).
+  const text = a.path ? `*${esc(a.path)}*\n${esc(a.rationale ? `“${a.rationale}”` : a.summary)}` : esc(a.summary);
   return {
     text: `${ICON[a.kind]} ${TITLE[a.kind]}: ${a.subject}`,
     blocks: [
       header(`${ICON[a.kind]} ${TITLE[a.kind]}: ${a.subject}`),
-      section(esc(a.summary), fields),
+      section(text, fields),
       ...(a.comment ? [section(`> ${esc(a.comment).replace(/\n/g, "\n> ")}`)] : []),
       {
         type: "actions",
         elements: [
-          ...(a.actions && (a.kind === "requested" || a.kind === "escalated") ? [actionButton("Approve", "approval.approve", a.workspaceId, a.requestId, "primary"), actionButton("Reject", "approval.reject", a.workspaceId, a.requestId, "danger")] : []),
-          button(a.kind === "requested" || a.kind === "escalated" ? "Review" : "Open", url, "open_approval", a.actions ? undefined : "primary"),
+          ...(a.actions && open
+            ? [actionButton("Approve", "approval.approve", a.workspaceId, a.requestId, "primary"), actionButton("Request changes", "approval.changes", a.workspaceId, a.requestId), actionButton("Reject", "approval.reject", a.workspaceId, a.requestId, "danger")]
+            : []),
+          button(open ? "Review" : "Open", url, "open_approval", a.actions ? undefined : "primary"),
         ],
       },
-      context(a.actions && (a.kind === "requested" || a.kind === "escalated") ? "Approve or reject here, or review the change in BudgetOS" : "BudgetOS approvals"),
+      context(`Request ${shortRequestId(a.requestId)}`, a.actions && open ? "Decide here, or review the change in BudgetOS" : "BudgetOS approvals"),
     ],
   };
 }
