@@ -10,11 +10,11 @@ import type { GoldenTotals } from "./golden.plan.js";
  */
 export const GOLDEN_ASSERTIONS: GoldenTotals = {
   "envelopes": {
-    "total": 332,
+    "total": 333,
     "leaves": 192,
     "parents": 138
   },
-  "approvedVersions": 717,
+  "approvedVersions": 719,
   "leafBudget": {
     "2026-02-01": {
       "total": "1072300.00",
@@ -201,8 +201,22 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
     "actual": "245158.16"
   },
   "savedViews": 1,
+  "history": {
+    "plan": {
+      "rows": 330,
+      "leafByRegion": {
+        "EMEA": "529600.00",
+        "LATAM": "542700.00"
+      }
+    },
+    "end": {
+      "key": "EMEA/ES/tiktok/consideration/retargeting",
+      "finalAmount": "4725.12",
+      "successorAmount": "750.00"
+    }
+  },
   "search": {
-    "envelope": 332,
+    "envelope": 333,
     "target": 105,
     "alert": 193,
     "comment": 5,

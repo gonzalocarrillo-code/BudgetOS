@@ -81,6 +81,25 @@ export function splitAmounts(plan: PlannedEnvelope[]): Array<{ name: string; ret
 }
 
 /**
+ * Phase E's rows (ADR-053): finance saves the plan by hand as it stood on 1 February, after round 1
+ * and before the re-plans; after the split, an admin ends one FY2026 leaf on its own last day with
+ * its approved amount and starts its FY2027 successor (lineage `continues`) with an amount that fits
+ * in its parent's room (USD 796.40). FY2026 totals are unchanged; the successor adds 1 envelope,
+ * and the end and the successor 2 approved versions.
+ */
+export const GOLDEN_HISTORY = {
+  plan: { name: "FY2026 plan", kind: "plan", periodKey: "FY2026", asOf: "2026-02-01T00:00:00.000Z", by: "finance1" },
+  end: {
+    key: "EMEA/ES/tiktok/consideration/retargeting",
+    at: "2026-09-15T12:00:00.000Z",
+    endDate: "2026-12-31",
+    reason: "The FY2026 flight ends; it continues in FY2027 (golden)",
+    successor: { name: "ES tiktok consideration retargeting FY2027", startDate: "2027-01-01", endDate: "2027-12-31", amount: "750.00" },
+    by: "admin",
+  },
+} as const;
+
+/**
  * T-015's rows: a CPA target on every country envelope (leaves inherit it), an override on every
  * other leaf in plan order (never the split source), and one filter-scoped ROAS target on EMEA. A
  * workspace policy auto-approves target versions, so every target is current after the seed.
@@ -488,6 +507,11 @@ export interface GoldenTotals {
   closure: { lockedEnvelopes: number; rows: number; budget: string; actual: string };
   /** T-027: saved views in the golden workspace. */
   savedViews: number;
+  /**
+   * Phase E (GOLDEN_HISTORY): the plan snapshot (every envelope at round 1; its leaves' budget per
+   * region as of 1 Feb) and the ended leaf with its successor's amount, which is the leaf's own.
+   */
+  history: { plan: { rows: number; leafByRegion: Record<string, string> }; end: { key: string; finalAmount: string; successorAmount: string } };
 }
 
 const AS_OF: Record<"2026-02-01" | "2026-05-01" | "2026-08-01" | "current", 1 | 2 | 3> = { "2026-02-01": 1, "2026-05-01": 2, "2026-08-01": 3, current: 3 };
@@ -519,8 +543,9 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
   const phasing = sumBy(currentPhasing.map((p) => ({ k: quarter(p.month), v: new Decimal(p.amount) })));
   return {
     // The split adds its parts (envelopes) and a zero version for the source plus one per part.
-    envelopes: { total: plan.length + GOLDEN_SPLIT.parts.length, leaves: leaves.length, parents: parents.length },
-    approvedVersions: plan.reduce((n, e) => n + e.versions.length, 0) + 1 + GOLDEN_SPLIT.parts.length,
+    // …and GOLDEN_HISTORY adds the successor (an envelope) and two versions (the end, the successor).
+    envelopes: { total: plan.length + GOLDEN_SPLIT.parts.length + 1, leaves: leaves.length, parents: parents.length },
+    approvedVersions: plan.reduce((n, e) => n + e.versions.length, 0) + 1 + GOLDEN_SPLIT.parts.length + 2,
     leafBudget,
     leafBudgetCurrent: { byCountry: current("country"), byPlatform: current("platform"), byObjective: current("objective") },
     parentBudget: { byRegion: sumBy(parents.filter((p) => p.level === 0).map((p) => ({ k: p.dimensionValues["region"] as string, v: at(p, 1) }))) },
@@ -614,8 +639,12 @@ export function computeTotals(plan: PlannedEnvelope[]): GoldenTotals {
       return { lockedEnvelopes, rows: nodes * 4, budget: leaves.reduce((s, e) => s.plus(at(e, 3)), new Decimal(0)).toFixed(2), actual: actual.toFixed(2) };
     })(),
     savedViews: 1,
+    history: {
+      plan: { rows: plan.length, leafByRegion: leafBudget["2026-02-01"].byRegion },
+      end: { key: GOLDEN_HISTORY.end.key, finalAmount: at(leaves.find((e) => e.key === GOLDEN_HISTORY.end.key) as PlannedEnvelope, 3).toFixed(2), successorAmount: GOLDEN_HISTORY.end.successor.amount },
+    },
     search: {
-      envelope: plan.length + GOLDEN_SPLIT.parts.length,
+      envelope: plan.length + GOLDEN_SPLIT.parts.length + 1, // + the GOLDEN_HISTORY successor
       target: goldenTargets(plan).length + 1,
       alert: Object.values(expectedPacing(plan)).reduce((n, c) => n + c, 0),
       comment: GOLDEN_COLLAB.threads.reduce((n, t) => n + t.comments.length, 0),

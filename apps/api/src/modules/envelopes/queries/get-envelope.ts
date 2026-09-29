@@ -8,7 +8,7 @@ import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../
 import { computeDiff } from "../../approvals/diff.js";
 import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { parseAsOf } from "./timeline.js";
-import { snapshotsByVersion } from "../../baselines/baselines.js";
+import { snapshotsByVersion } from "../../baselines/queries/baselines.js";
 import type { AuthContext } from "../../../common/tenant.js";
 
 type VersionRow = NonNullable<Awaited<ReturnType<typeof loadVersion>>>;

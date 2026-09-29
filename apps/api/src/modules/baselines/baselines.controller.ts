@@ -4,7 +4,8 @@ import { PrismaClient } from "@prisma/client";
 import { createZodDto } from "nestjs-zod";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { baselineReport, listBaselines, saveBaseline, updateBaseline } from "./baselines.js";
+import { saveBaseline, updateBaseline } from "./commands/baselines.js";
+import { baselineReport, listBaselines } from "./queries/baselines.js";
 
 class CreateBaselineDto extends createZodDto(CreateBaselineInput) {}
 class UpdateBaselineDto extends createZodDto(UpdateBaselineInput) {}
