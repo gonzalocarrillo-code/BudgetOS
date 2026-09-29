@@ -928,6 +928,7 @@ model BudgetBaseline {
   totalReporting Decimal             @map("total_reporting") @db.Decimal(18, 2)
   rows           BudgetBaselineRow[]
 
+  @@unique([id, workspaceId])
   @@index([workspaceId, createdAt])
   @@map("budget_baseline")
 }
@@ -935,7 +936,8 @@ model BudgetBaseline {
 /// One budget as it was when the snapshot was saved: amount and structure. Written once.
 model BudgetBaselineRow {
   baselineId      String         @map("baseline_id") @db.Uuid
-  baseline        BudgetBaseline @relation(fields: [baselineId], references: [id], onDelete: Restrict)
+  /// D-013: a row belongs to its snapshot's workspace (composite key; and to its budget's, in SQL).
+  baseline        BudgetBaseline @relation(fields: [baselineId, workspaceId], references: [id, workspaceId], onDelete: Restrict)
   workspaceId     String         @map("workspace_id") @db.Uuid
   envelopeId      String         @map("envelope_id") @db.Uuid
   versionId       String?        @map("version_id") @db.Uuid

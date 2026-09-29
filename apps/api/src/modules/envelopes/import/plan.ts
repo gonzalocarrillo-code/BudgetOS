@@ -212,6 +212,7 @@ export async function buildImportPlan(tx: Tx, auth: AuthContext, workspaceId: st
     }
     if (existing?.ended) problem(null, `${existing.name} has ended; reintroduce it instead`);
     if (existing?.status === "LOCKED") problem(null, `${existing.name} is in a closed period`);
+    if (existing?.status === "PENDING") problem(null, `${existing.name} has a change waiting for approval; decide it first`);
     if (!idCell && Object.keys(r.dimensionValues).length === 0 && r.problems.every((p) => !p.message.includes("registry"))) problem(null, "A new budget needs at least one granularity");
     const dupKey = existing ? `id:${existing.id}` : `${tupleKey(r.dimensionValues)}|${startDate}|${endDate}`;
     if (seen.has(dupKey)) problem(null, "The same budget appears on an earlier line");

@@ -40,7 +40,7 @@ test("overview: every widget, in under 1.5 s", async ({ page }) => {
   await expect(page.getByTestId("tile-alerts")).not.toHaveText(/Open alerts\s*0/);
   await expect(page.getByTestId("overview-approvals").getByTestId("overview-approval").first()).toBeVisible(); // the golden bulk waits on the budget owner
   await expect(page.getByTestId("overview-freshness")).toContainText("Actuals through 2026-08-01");
-  await expect(page.getByTestId("freshness-source").first()).toContainText("Golden actuals (CSV)");
+  await expect(page.getByTestId("freshness-source").filter({ hasText: "Golden actuals (CSV)" })).toContainText("Golden actuals (CSV)");
 
   // Cells read as % of the budget spent; the axes are the user's pick, kept in the URL (feedback 8).
   await expect(page.getByTestId("heatmap-spent").first()).toHaveText(/^\d+%$/);

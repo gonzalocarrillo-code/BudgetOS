@@ -53,6 +53,23 @@ describe("BigQuery curated views (infra/modules/bigquery)", () => {
     expect(mainTf).toContain("depends_on          = [google_bigquery_table.view]");
   });
 
+  it("D-014: every curated view carries workspace_id, and clients read one workspace through authorized views only", async () => {
+    await inRolledBackTx(async (tx) => {
+      for (const v of PLAN_VIEWS) {
+        const cols = await tx.$queryRawUnsafe<Array<{ column_name: string }>>(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, v);
+        expect(cols.map((c) => c.column_name), v).toContain("workspace_id");
+      }
+    });
+    // Each per-workspace view filters the base view to its workspace, lives in its own dataset, and is authorized on the base.
+    expect(mainTf).toMatch(/WHERE workspace_id = '\$\{var\.workspace_readers\[each\.value\.workspace\]\.workspace_id\}'/);
+    expect(mainTf).toContain('dataset_id  = "${local.dataset_id}_ws_${each.key}"');
+    expect(mainTf).toMatch(/resource "google_bigquery_dataset_access" "authorized_view"[\s\S]*?dataset_id = google_bigquery_dataset\.budget_os\.dataset_id[\s\S]*?view \{/);
+    // Workspace readers get the per-workspace dataset, never the base one.
+    const workspaceGrant = /resource "google_bigquery_dataset_iam_member" "workspace_readers" \{([\s\S]*?)\n\}/.exec(mainTf)?.[1] ?? "";
+    expect(workspaceGrant).toContain("dataset_id = google_bigquery_dataset.workspace[each.value.workspace].dataset_id");
+    expect(workspaceGrant).not.toContain("budget_os.dataset_id");
+  });
+
   it("every view runs against the Postgres schema the replica mirrors", async () => {
     await inRolledBackTx(async (tx) => {
       for (const v of PLAN_VIEWS) await tx.$queryRawUnsafe(`SELECT * FROM ${v} LIMIT 0`);

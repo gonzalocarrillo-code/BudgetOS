@@ -89,9 +89,9 @@ export { DEFAULT_TEMPLATE_KEY, defaultAgencyTemplate, ensureDefaultTemplate, ens
 export { purgeDemoData, seedDemoData } from "./demo.js";
 export { setMyName, workspaceSetup } from "./people.js";
 export type { DemoSummary } from "./demo.js";
-export { baselineTree, captureBaselineRows, comparedRows, subtreeIds } from "./baselines.js";
+export { baselineTree, captureBaselineRows, comparedRows, snapshotIntegrity, subtreeIds } from "./baselines.js";
 export { FACT_TABLES, deleteFactMonth, factMonthTotals, factMonthsBefore, lastFactDate } from "./retention.js";
 export { importEnvelopesById, importEnvelopesByTuple, liveChildrenApproved } from "./budget-import.js";
 export type { ImportEnvelope } from "./budget-import.js";
 export type { FactTable, MonthTotals } from "./retention.js";
-export type { BaselineTreeRow, ComparedRow } from "./baselines.js";
+export type { BaselineTreeRow, ComparedRow, SnapshotIntegrity } from "./baselines.js";
