@@ -486,3 +486,24 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 | R9-002 | A budget's dates are editable: drawer and Budgets Dates column; through approval once approved; children trimmed on request; phasing re-spread | done (ADR-060) |
 | R9-003 | Dates editable on targets (new endpoint), experiments, fiscal periods, manual entry batches and alert snoozes | done (ADR-060) |
 | R9-004 | Timeline bars drag and resize to change a budget's dates, through Change dates (plan epic 2.5) | done (ADR-061) |
+
+## Product feedback, round 10: Slack as a working toolset (2026-09-29)
+
+Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is merged but has never run against a real Slack app; S-002 is the live gate. Decisions S1–S9 in the plan's §6 are open for the product owner; builds follow the defaults.
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| S-001 | S1 | Fixes: lowercase Slack emails, `authorize()` on every Slack action, `slack.settings.changed` consumed, worker warns without `APP_BASE_URL` | pending |
+| S-002 | S1 | Live setup: `docs/runbooks/slack.md`, `pnpm slack:manifest`, the checklist against the owner's Slack | pending (live gate) |
+| S-003 | S1 | Every request type posts on creation (bulk commit and the structural requests: split, merge, end, reintroduce, import) | pending |
+| S-004 | S2 | DMs to approvers and requesters, recorded and edited; the `dms` toggle; `/budget remind` | pending |
+| S-005 | S2 | Request changes button and form; the richer approval card with `#id` | pending |
+| S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | pending |
+| S-007 | S2 | `/budget approve`, `reject`, `changes`, `withdraw`, `show #id`; id resolution | pending |
+| S-008 | S3 | `/budget` summary from `getHome` | pending |
+| S-009 | S3 | `/budget <name>` card, `/budget list [text]`, disambiguation | pending |
+| S-010 | S3 | Workspace choice by channel, `/budget workspace`, the remembered link in `app_user.settings` | pending |
+| S-011 | S4 | `/budget request <name>`: draft + submit in one transaction, from a Slack form | pending |
+| S-012 | S5 | Deferred replies within Slack's three seconds; Slack call timeouts | pending (optional) |
+| S-013 | S5 | App Home tab through the Events API | pending (decision S6) |
+| S-014 | S5 | ADR-060, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | pending |

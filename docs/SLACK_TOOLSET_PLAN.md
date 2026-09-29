@@ -1,0 +1,228 @@
+# Slack as a working toolset: approvals, commands and budgets from Slack
+
+Product feedback, round 10 (2026-09-29): "set up our Slack integration to work as a real toolset: approve or send approvals of budgets through Slack, through commands; approve and reject with buttons; view budgets with simple commands." What exists is in §1, what is missing in §2, the design in §3, tasks in §5, decisions for the product owner in §6, how it is verified in §7. Status rows live in `docs/TASKS_STATUS.md`.
+
+Related: ADR-046 (the Slack bot, PR #71), ADR-015 (notify-worker Slack delivery, PR #24), `docs/runbooks/notify.md`, plan §6.3 and §8.5, Epic 2.2, spec §19, AGENTS.md §4 (audit + outbox, "never send Slack from a request handler").
+
+## 0. The short answer
+
+**The bot exists and is merged, but it has never talked to a real Slack app.** Round 3 (PR #71, ADR-046) built signed `/budget` and interaction endpoints, Approve / Reject buttons with a reject-reason form, alert buttons, the worker that posts and edits messages, and Admin › Slack with the app manifest. `docs/TASKS_STATUS.md` still lists T-021 as "blocked: live Slack workspace"; the local stack runs with no `SLACK_*` variables; neither `ngrok` nor `cloudflared` is installed on this machine.
+
+Three things turn it into a toolset:
+
+1. **Connect it for real, and fix what reading the code found** (Phase S1): a Slack app from the manifest, the two secrets, a tunnel to the API, a Budget OS account with your real Slack email, then a live checklist. Four bugs come with it: email case, a missing permission check on the Slack path, request types that never reach Slack, and an outbox topic nobody consumes.
+2. **Complete approvals** (Phase S2): approvers get a direct message with the buttons, requesters get the outcome; Request changes and Withdraw from Slack; `/budget approvals` lists what waits on you; `approve`, `reject`, `changes` and `withdraw` as commands with short ids that fit in a message.
+3. **Budgets by command, and a request from Slack** (Phases S3 and S4): `/budget` is your summary, `/budget <name>` is a budget card, `/budget list` the top-level budgets; `/budget request <name>` opens a form that creates a draft and sends it through the approval policy, exactly as the app would.
+
+Phase S5 (hardening: replies within Slack's three seconds, an App Home tab) is optional and decided in §6. Nothing here changes how approvals work: Slack runs the same commands as the app, as the person's own account, with the same permissions, audit rows and outbox rows.
+
+## 1. What exists, precisely
+
+| Capability | Where | Notes |
+|---|---|---|
+| Signed Slack endpoints, no JWT | `apps/api/src/modules/slack/slack.controller.ts` (`POST /slack/interactions`, `POST /slack/commands`, permission `slack.signed`), `signature.ts`, `apps/api/src/common/tenant.interceptor.ts:44-47` | HMAC `v0=` over the raw form body, five-minute window. Form bodies keep their raw text (`configure-app.ts`); JSON bodies do not. |
+| Who acts | `slack.service.ts` `slackAuth()` → `users.info` → `authenticateVerifiedEmail()` (`common/auth/authenticate.ts:61-79`) | The Slack user becomes the Budget OS account with the same email, in a workspace whose `settings.slack.teamId` is their Slack team. |
+| Approve / Reject buttons | `slack.service.ts` `handleInteraction()`; `decide()` with `channel: "slack"` | Reject opens a modal asking for the reason. Refusals show in a small modal. |
+| Alert buttons | same; `updateAlert()` | Acknowledge, Snooze (fixed seven days), Resolve. |
+| `/budget` | `slack.service.ts` `handleCommand()` | `help`, `alerts`, `search <text>`, `<budget name>` (one line each from the search index). Ephemeral replies. Answers for the first linked workspace, alphabetically, where the person has a role. |
+| Posting and editing | `apps/workers/src/notify/slack.ts`; `blocks/alert.ts`, `blocks/approval.ts`, `blocks/mention.ts` | New requests, escalations and outcomes post to the default channel; `slack_message` records channel and ts; `approval.changed` / `alert.changed` edit every recorded message. Mentions are DMs found by email. |
+| Settings | `packages/domain/src/slack.ts` `SlackSettings` in `workspace.settings.slack`; `apps/web/src/routes/w.$ws.admin.slack.tsx` | Team link (`auth.test`), default and alerts channels, severities, the Approve / Reject toggle, a test message, setup steps with the manifest. |
+| Configuration | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `API_PUBLIC_URL`, `APP_BASE_URL` (`packages/db/.env.example:11-16`) | Environment only, one Slack app per deployment. `pnpm dev:local` passes `packages/db/.env` to the API and the runner. |
+| Local delivery | `apps/workers/src/local-runner.ts` | Polls the outbox for the notify topics and calls the real handlers; posts when the token is set. |
+| Tests | `apps/api/src/modules/slack/slack.test.ts` (fake Slack, signed requests, golden workspace), `apps/workers/src/notify/notify.test.ts`, `blocks/blocks.test.ts` (snapshots), `apps/web/e2e/slack.spec.ts`, permission-matrix rows | Nothing runs against Slack itself. |
+
+## 2. What is missing or wrong
+
+Found reading the code on 2026-09-29; each becomes a task in §5.
+
+| # | Finding | Where | Effect |
+|---|---|---|---|
+| a | Never connected: no Slack app, no secrets in `packages/db/.env`, no tunnel tool installed, the personas' emails are fake (`<persona>@local.golden.test`) | environment | Buttons and `/budget` have never been exercised live. |
+| b | The Slack profile email is not lowercased before matching; `app_user.email` is stored lowercase and matched exactly | `slack-api.ts:25`, `access.repository.ts:33` | A profile with capitals finds no account. |
+| c | The Slack path never calls `authorize()`; `decide()` checks step eligibility, not `approval.decide` | `slack.service.ts:176-184`, `authenticate.ts:82-94` | A PLANNER on a planner step can decide from Slack and is refused in the app (`ChainStep.role` allows PLANNER). |
+| d | Bulk commits and structural requests (split, merge, end, reintroduce, import) create requests without an `approval.changed` outbox row | `envelopes/bulk/commit.ts`, `envelopes/commands/structure.ts` `routeStructural`; only `recordRequestChange` emits it | Those requests never post to Slack and never notify approvers in-app; only their outcome does. |
+| e | `slack.settings.changed` has no consumer and the local runner does not poll it | `slack.service.ts:84`, `local-runner.ts:29` | Rows stay unpublished locally; a deployed publisher needs the topic to exist. |
+| f | Approval requests go to the default channel only; approvers get no DM; requesters learn the outcome in-app only | `notify/slack.ts` `approvalPosts` | An approver who is not watching the channel is not told. |
+| g | Request ids are UUIDs, nowhere shown in Slack | messages, `/budget` | Nothing to type in a command. |
+| h | No Request changes, no Withdraw from Slack | `SLACK_ACTIONS` | Parity with the app's inbox is missing. |
+| i | `/budget` picks the first linked workspace alphabetically; no way to choose | `slack.service.ts:210-242` | Wrong workspace for people in several. |
+| j | Everything runs inside Slack's three-second window; `response_url` is never used | `handleCommand`, `handleInteraction` | Slow answers time out silently; ephemeral messages with buttons cannot be refreshed. |
+| k | The worker posts to Slack inside the `handleOnce` transaction (15 s timeout) | `notify/slack.ts:242-289` | A slow Slack call rolls the dedupe row back; the post is repeated on redelivery (at least once, ADR-015). Accepted; noted. |
+| l | The worker's default `APP_BASE_URL` is `https://budget-os.example` | `notify/slack.ts:238` | Links in messages are dead unless the variable is set. |
+
+## 3. Design
+
+### 3.1 Rules that do not change (ADR-046), and one that is added
+
+- **Slack runs the app's commands as the person's own account.** Same permissions, scope, separation of duties, audit rows and outbox rows. New: every Slack action first calls `authorize(auth, <the route's permission>)`, so Slack refuses exactly what the app refuses.
+- **The API never posts to a channel.** The notify worker posts and edits. **Added:** the API may answer *the interaction it is handling* through Slack's `response_url`: replace the ephemeral message that carried a button, or deliver a command's answer after acknowledging it. That is the reply to a request Slack made, not a channel post; it is valid for thirty minutes and five uses, and it needs no scope.
+- **No new dependency.** `@slack/web-api` 8.1.1 stays. Bolt would own the HTTP server for signature checking and routing the API already has.
+- **One Slack app per deployment, secrets in the environment.** OAuth "Add to Slack" with per-team tokens waits for a second client Slack (decision S9).
+
+### 3.2 The command surface
+
+Every reply is ephemeral: only the person who typed sees it. An error is the command's `DomainError.message`, the same text the app shows.
+
+| Command | Answers | Runs (existing code) | Permission |
+|---|---|---|---|
+| `/budget` | Your summary: budget, spent, spent %, open alerts; what waits on you; the top-level budgets with pace | `getHome` (`modules/home/home.ts`) | `workspace.member` |
+| `/budget <name>`, `/budget show <name>` | One budget's card: path, period, budget, spent, projected, spent %, pace, owner, status, the open request if any, open alerts. Buttons: Open budget, Request a change | `search` (type envelope) then `getEnvelope` + the planner totals over the subtree (the same query as Home's strip and MCP `get_budget`) | `envelope.read` |
+| `/budget list [text]` | The top-level budgets (or those matching the text) with budget, spent, pace | Home's planner query / `search` | `envelope.read` |
+| `/budget approvals` | Requests waiting on you, each with Approve / Reject / Changes / Review | `listApprovals({ assignee: "me" })` | `workspace.member` |
+| `/budget show #id` | One request's card: what changes, who asked, which step, due date, buttons | `getApproval` | `envelope.read` |
+| `/budget approve #id [comment]` | Approves the step | `decide` | `approval.decide` |
+| `/budget reject #id <reason>` | Rejects | `decide` | `approval.decide` |
+| `/budget changes #id <comment>` | Requests changes (opens the blocking thread) | `decide` | `approval.decide` |
+| `/budget withdraw #id [comment]` | Withdraws your own request | `withdrawRequest` | `envelope.submit` |
+| `/budget remind #id` | Tells the current step's approvers again (decision S3) | outbox `approval.reminded` → worker DMs | requester or admins |
+| `/budget request <name>` | Opens the request form (§3.7) | `submitDraft` (new, §3.7) | `envelope.edit_draft` + `envelope.submit` |
+| `/budget alerts` | Open alerts you can see (exists) | `listAlerts` | `envelope.read` |
+| `/budget search <text>` | Budgets, approvals, alerts, targets (exists) | `search` | `workspace.member` |
+| `/budget workspace [name]` | Which workspace answers you (§3.6) | `app_user.settings.slack` | any member |
+| `/budget help` | The list above | | |
+
+The parser is a zod schema in `packages/domain/src/slack.ts` (`SlackCommand`): verb, id, free text. Unknown verbs fall back to `<name>`, as today.
+
+### 3.3 Buttons, and keeping messages current
+
+| Message | Buttons |
+|---|---|
+| Approval request (channel post, DM, `/budget approvals` row, `/budget show #id`) | Approve (primary), Reject (danger, reason form), Request changes (comment form), Review (link) |
+| Approval outcome | Open (link) |
+| Budget card | Open budget (link), Request a change (form, hidden without `envelope.submit` in scope) |
+| Alert | Acknowledge, Snooze, Resolve, Open alert, Open budget (unchanged; snooze length is decision S8) |
+| Disambiguation ("which budget?") | One button per candidate (`budget.show`) |
+
+Channel posts and DMs are recorded in `slack_message` and edited by the worker when the request changes, from Slack or from the app (exists). Ephemeral messages cannot be edited by the worker, so the interaction handler replaces them through the interaction's `response_url` ("✅ Approved · #a1b2c3d4 · Open"). Buttons disappear once there is nothing left to do (exists).
+
+Double clicks and late clicks are already safe: `decide()` answers `CONFLICT` ("You already decided this step", "Request is APPROVED") and the person sees that message.
+
+### 3.4 Short ids
+
+`#` followed by the last eight hexadecimal characters of the request id. Ids are UUID v7 (`@budget/domain/ids`): the head is the time, so it repeats for requests made in the same minute; the tail is random, so eight characters tell requests apart. Shown in every Slack message and list. Commands accept `#a1b2c3d4`, `a1b2c3d4`, the full UUID, or a pasted Budget OS link (`/approvals/<uuid>`). Resolved with `right(id::text, 8)` among the workspace's requests (a new helper in `packages/db/src/approvals.ts`); two matches answer "say which: …". Nothing new is stored.
+
+### 3.5 Who is told, and where (S2)
+
+| Event | Channel | Direct messages |
+|---|---|---|
+| Request created or escalated | Default channel, with buttons (exists) | Each eligible approver of the current step: the list the in-app consumer already computes (`notify/in-app.ts` `stepApprovers`), found in Slack by email; with buttons; recorded in `slack_message` so the worker edits it too |
+| Approved, rejected, changes requested, withdrawn | The original post is edited; a final outcome also posts (exists) | The requester (never the person who decided) |
+| `/budget remind #id` | nothing | The step's approvers again (decision S3) |
+
+- Admin › Slack gains one toggle, "Direct messages to approvers and requesters" (`SlackSettings.dms`, default on). Per-person opt-out and digests stay Epic 2.2.
+- Every request type posts on creation: bulk, split, merge, end, reintroduce and import requests emit `approval.changed` with action `approval.requested`, as single-version, target and manual-entry requests already do (finding d). One audit row and one outbox row per request, in the creating transaction, like `submitVersion`.
+- The approval card grows: budget path (`envelopePaths`), period, before → after in the envelope's currency with the delta %, the rationale, the dimension values, the step and the due date. Pure builder, snapshot-tested (ADR-015).
+
+### 3.6 Identity and workspace choice (S3)
+
+- **Remembered link.** `app_user` gets a `settings` JSON column (Prisma-owned, default `{}`), mirroring `workspace.settings`; `settings.slack = { teamId, userId, defaultWorkspaceId? }` (`UserSettings` in `@budget/domain`). Written the first time a Slack user is matched by email, so later calls need no `users.info`; `AccessRepository.findBySlackUser(teamId, slackUserId)` reads it under `withIdentity()`. Also editable through `PATCH /me` (exists for the name), and the place Epic 2.2 will put notification preferences. Decision S4 chooses this over a table.
+- **Which workspace answers `/budget`.** In order: the workspace whose default or alerts channel is the channel the command was typed in (`channel_name` in the payload against `SlackSettings` channels); else `settings.slack.defaultWorkspaceId`; else the only linked workspace where the person has a role; else the first alphabetically, with a footer "answering for *Local* · `/budget workspace <name>` to change". `/budget workspace` with no name lists the choices as buttons.
+- Buttons carry `{ ws, id }` already, so a click always acts in the right workspace.
+
+### 3.7 Sending a budget for approval from Slack (S4)
+
+`/budget request <name>` (or the card's button) resolves the budget, then opens a modal (`views.open`, within the three seconds the trigger allows): the budget and its current amount, **New amount** (the envelope's currency; digits with optional thousands separators and decimals), **Why** (required, becomes the rationale). Submitting runs a new command `submitDraft(prisma, auth, envelopeId, { amount, rationale })` in `apps/api/src/modules/envelopes/commands/submit-draft.ts`: one transaction that writes the draft version (`version-writer.ts` helpers, based on the head version) and submits it (`submitVersionIn`). It is the same path as editing a cell and pressing Submit in the app:
+
+- a planner's change becomes a PENDING request: "Sent for approval as #a1b2c3d4; the approvers were told" (the worker posts the request and DMs the approvers, §3.5);
+- an admin's change applies directly (ADR-048, "Admins apply directly"): "Applied: USD 120,000 is the new budget";
+- a draft already waiting → the modal shows "A request is already open (#…)" with a link; a closed period → the LOCKED message; out of scope → the FORBIDDEN message.
+
+Period dates, phasing and structure stay in the app (decision S5). Audit and outbox: `envelope.version.created` and `approval.requested`, one pair each, in that transaction.
+
+### 3.8 Hardening (S5, optional)
+
+- **Three seconds.** A command races its work against a 2,500 ms timer: if the work wins, the reply is the answer; if the timer wins, the reply is "Working on it…" and the answer goes to `response_url` (ephemeral, `replace_original`). Slack API calls made by the handler get a two-second timeout. Elapsed time is logged with the request id.
+- **App Home** (decision S6): the Events API needs a JSON content-type parser that keeps the raw body (`configure-app.ts`), `POST /slack/events` (`url_verification` echo; `app_home_opened` → `views.publish` of the same summary as `/budget`), the manifest's `app_home` feature and event subscription, an OpenAPI path and a permission-matrix row.
+- **Manifest.** The bot's display name (decision S7), the `/budget` usage hint, `app_home` when S6 says so. Scopes stay `chat:write`, `chat:write.public`, `commands`, `users:read`, `users:read.email`, `im:write`; DMs need nothing more.
+
+### 3.9 Local development and the live gate (S1)
+
+- **Tunnel.** `brew install ngrok`, a free ngrok account, its one static domain: `ngrok http --url=<name>.ngrok-free.app 3000`. `API_PUBLIC_URL=https://<name>.ngrok-free.app`. A quick tunnel (no account) changes its URL every run, so the Slack app's URLs would change every run: not recommended (decision S1).
+- **Environment** in `packages/db/.env`, which `pnpm dev:local` passes to the API and the runner: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `API_PUBLIC_URL`, `APP_BASE_URL=http://localhost:5173`. Restart the stack: the API reads the token once. The stack must run from the branch under test (today it runs from `BudgetOS-real`, which is `main`).
+- **The Slack app.** Admin › Slack → Copy the manifest → api.slack.com/apps → Create from a manifest → Install to the workspace → invite the bot to its channel (`/invite @Budget OS`) → bot token (OAuth & Permissions) and signing secret (Basic Information) into the environment. Creating and installing the app is the owner's action, in their Slack.
+- **Account.** Add yourself to the `local` workspace with your real Slack email and a role that decides (Org › People or Admin › Roles; the personas' emails are fake). For refusal tests, a second person with VIEWER.
+- **Link and test.** Admin › Slack → Link to Slack → default channel → Send a test message.
+- **Checklist (the live gate for S-002; later phases add rows):** the test message arrives; a planner submits a change in the app and the channel gets "Approval requested" with buttons; Approve edits the message to "Approved … by you"; `approval_decision.channel = 'slack'`; Reject asks for a reason and the requester sees it; a viewer clicking Approve gets the refusal form; `/budget help`, `/budget alerts`, `/budget <name>` answer; a stale or unsigned request is refused (403 in the API log).
+- `pnpm slack:manifest` prints the manifest with the current `API_PUBLIC_URL` (a twenty-line tsx script), for the times the tunnel changes.
+
+## 4. Alternatives considered
+
+| Option | Why not |
+|---|---|
+| Slack Bolt | Owns the HTTP server and routing; the API already verifies signatures and routes; one more dependency for what exists. |
+| Socket Mode for local development (no tunnel) | Needs an app-level token and a long-lived WebSocket process, a second code path next to the HTTP one Cloud Run needs. A tunnel is one command. |
+| OAuth install with per-team tokens in a table | Only needed when several Slack workspaces install the app; the org runs one. ADR-046 stands (decision S9). |
+| A `slack_identity` table for the link and the default workspace | A JSON column on `app_user` mirrors `workspace.settings`, needs no RLS work, and is where notification preferences go next. |
+| A per-workspace sequence number for requests | A new column and a counter; the UUID's random tail is free and unique enough. |
+| Posting from the API when a button is clicked | ADR-046 and AGENTS.md §9: the worker posts and edits; `response_url` covers the one case (ephemeral messages) the worker cannot reach. |
+
+## 5. Tasks
+
+One PR per task, stacked per phase (`feat/slack-s1-fixes` → …), like rounds 6 to 8. The next free ADR number is 0060 (0059 is on `fix/pivot-totals`).
+
+| Phase | ID | Task | Files | Done when |
+|---|---|---|---|---|
+| S1 | S-001 | Fixes: lowercase the Slack email; `authorize()` before every Slack action (`approval.decide`, `envelope.edit_draft` for alerts, `envelope.submit` for withdraw); the local runner polls `slack.settings.changed` and the worker acknowledges it; the worker warns at start when the token is set without `APP_BASE_URL` | `apps/api/src/modules/slack/slack-api.ts`, `slack.service.ts`, `apps/workers/src/local-runner.ts`, `notify/slack.ts`, `notify/main.ts` | `slack.test.ts`: a PLANNER on a planner step is refused from Slack as in the app; `Planner@Example.com` is matched; the runner's topic list covers every topic the API writes |
+| S1 | S-002 | Live setup: `docs/runbooks/slack.md` (tunnel, app, secrets, account, checklist), `.env.example` notes, `pnpm slack:manifest`, manifest name per S7, Admin › Slack copy | `docs/runbooks/slack.md`, `packages/db/.env.example`, `apps/api/src/modules/slack/manifest.cli.ts`, `package.json`, `packages/ui/src/i18n.ts` | The §3.9 checklist passes on the local stack against the owner's Slack (a live gate, recorded like T-021's) |
+| S1 | S-003 | Every request type posts on creation: `approval.changed` (`approval.requested`) from bulk commit, `routeStructural` (split, merge, end, reintroduce, import) (targets and manual entry already do) | `apps/api/src/modules/envelopes/bulk/commit.ts`, `envelopes/commands/structure.ts`, `approvals/engine.ts` | `notify.test.ts`: a split request is posted with buttons and its approvers get in-app rows; the epic 1.4 acceptance asserts the audit + outbox pair |
+| S2 | S-004 | DMs: approvers on request and escalation, the requester on the outcome, recorded in `slack_message` and edited on change; the `dms` toggle; `/budget remind #id` (decision S3) | `apps/workers/src/notify/slack.ts`, `notify/in-app.ts` (export `stepApprovers`), `packages/domain/src/slack.ts`, `apps/web/src/routes/w.$ws.admin.slack.tsx`, `packages/ui/src/i18n.ts`, `apps/api/src/modules/slack/*` (remind) | `notify.test.ts`: two eligible approvers get a DM by email, the requester gets the outcome, the DM is edited when the request is approved, the toggle off sends none; remind writes audit + outbox and DMs again |
+| S2 | S-005 | Request changes button and form; the richer card (path, period, delta %, rationale, dimension values, `#id`); snooze length per S8 | `apps/workers/src/notify/blocks/approval.ts`, `blocks/alert.ts`, `notify/slack.ts`, `packages/domain/src/slack.ts` (`SLACK_ACTIONS`), `slack.service.ts`, snapshots | Snapshots updated; `slack.test.ts`: request changes from Slack closes the request and opens the blocking thread |
+| S2 | S-006 | `/budget approvals` and ephemeral flows: the list with buttons; `response_url` replacement after a click; `SlackActionValue.origin`; the Slack module split into `commands/`, `interactions.ts`, `respond.ts` (an injectable `response_url` client) | `apps/api/src/modules/slack/commands/approvals.ts`, `interactions.ts`, `respond.ts`, `blocks/` (API-side builders), `packages/domain/src/slack.ts` | `slack.test.ts` with a fake `response_url`: the list shows the golden pending request with buttons; Approve from the list decides and replaces the ephemeral message |
+| S2 | S-007 | Decision commands: `approve`, `reject`, `changes`, `withdraw`, `show #id`; id resolution (short, UUID, link); the `SlackCommand` parser | `packages/domain/src/slack.ts`, `packages/db/src/approvals.ts` (find by suffix), `apps/api/src/modules/slack/commands/approvals.ts` | `slack.test.ts` covers each command, the refusals (not eligible, already decided, reason missing, not the requester) and a pasted link |
+| S3 | S-008 | `/budget` summary from `getHome`: totals, waiting on me, top-level strip with pace, buttons | `apps/api/src/modules/slack/commands/summary.ts`, `blocks/summary.ts` | Snapshot and golden test; a viewer with no budgets in scope gets "nothing to show" not an error |
+| S3 | S-009 | `/budget <name>` card and `/budget list [text]`: resolution by search, disambiguation buttons, the card from `getEnvelope` plus the subtree totals | `commands/budgets.ts`, `blocks/budget.ts` | Tests: exact name, ambiguous name (two candidates), unknown name, a viewer sees numbers but no Request button |
+| S3 | S-010 | Workspace choice and the remembered link: `app_user.settings` (migration, `UserSettings`), `findBySlackUser`, channel inference, `/budget workspace [name]`, the footer, `PATCH /me` accepts `settings.slack.defaultWorkspaceId` | `packages/db/prisma/schema.prisma` + migration, `packages/domain/src/access.ts` or `home.ts`, `apps/api/src/common/auth/access.repository.ts`, `modules/auth/commands/*` (me), `modules/slack/identity.ts` | Tests: a command typed in workspace B's alerts channel answers for B; `/budget workspace openai` sticks across calls; the second call makes no `users.info` call (the fake counts) |
+| S4 | S-011 | `/budget request <name>` and the card button → modal → `submitDraft` (draft + submit in one transaction); outcomes and errors in the modal | `apps/api/src/modules/envelopes/commands/submit-draft.ts`, `modules/slack/commands/request.ts`, `interactions.ts`, `packages/domain/src/slack.ts` (amount parsing) | `slack.test.ts`: a planner's request is PENDING with both audit + outbox pairs and the worker posts it and DMs the approver; an admin's applies directly; a pending draft is refused in the modal; `120,000`, `120000.50` parse, `12k` does not |
+| S5 | S-012 | Deferred replies and timeouts (§3.8) | `modules/slack/respond.ts`, `slack-api.ts`, `commands/*` | A fake slow query gets "Working on it…" within three seconds and the answer through `response_url` |
+| S5 | S-013 | App Home (decision S6): JSON raw-body parser, `POST /slack/events`, `views.publish`, manifest, OpenAPI, matrix row | `apps/api/src/configure-app.ts`, `modules/slack/slack.controller.ts`, `events.ts`, `openapi.ts`, `common/permission-matrix.test.ts` | A signed JSON event is verified and an unsigned one refused; `app_home_opened` publishes the summary (fake) |
+| S5 | S-014 | ADR-060 (amends ADR-046: `response_url`, DMs, `app_user.settings`, commands, short ids), runbooks, `LOCAL_BUILD_PHASES.md` note that Epic 2.2's "interactive Slack approve/reject" is delivered, OpenAPI and web client regenerated | `docs/adr/0060-slack-toolset.md`, `docs/runbooks/notify.md`, `docs/runbooks/slack.md`, `docs/LOCAL_BUILD_PHASES.md`, `apps/api/openapi.json`, `apps/web/src/lib/api.gen.ts` | Merged with the round's last PR |
+
+Every task: `pnpm typecheck && pnpm lint && pnpm test && pnpm license-check`, `docs/TASKS_STATUS.md` updated, the PR template in AGENTS.md §7. Any new route gets a permission and a permission-matrix row; any new write asserts its audit and outbox rows.
+
+## 6. Decisions for the product owner
+
+| # | Question | Default if unanswered |
+|---|---|---|
+| S1 | Tunnel for local development: ngrok with a free static domain, a `cloudflared` named tunnel, or test only on a deployed environment (needs the GCP project, T-008)? | ngrok, static domain |
+| S2 | Direct messages: approvers on request and escalation, requesters on the outcome, on by default per workspace? | Yes, with the workspace toggle; per-person opt-out in Epic 2.2 |
+| S3 | `/budget remind #id`: build it? | Yes (small; the worker DMs the step's approvers again) |
+| S4 | Where a person's Slack link and default workspace live: `app_user.settings` JSON, or a `slack_identity` table? | `app_user.settings` |
+| S5 | What a request from Slack may change: the amount and the reason only, or also period dates and phasing? | Amount and reason; the rest in the app |
+| S6 | App Home tab (the `/budget` summary as the bot's Home): now (S-013) or later? | Later |
+| S7 | The bot's display name: "BudgetOS" like the product (round 6), or keep "Budget OS"? | "BudgetOS" (a one-time manifest paste) |
+| S8 | Snooze from Slack: keep one week, or a choice (a day, a week, until month end)? | Keep one week |
+| S9 | Keep one Slack app per deployment with environment secrets (ADR-046), or build the OAuth install now? | Keep; revisit with a second client Slack |
+
+## 7. How this is verified
+
+**Automated** (every task; DB tests need the local Postgres on port 5434 and turbo's loose env mode, and the API test files run one at a time):
+
+```bash
+export PATH=~/.nvm/versions/node/v22.23.3/bin:$PATH
+DATABASE_URL=postgresql://budget:budget@localhost:5434/budget APP_DATABASE_URL=postgresql://budget_app:replace-in-secret-manager@localhost:5434/budget pnpm --filter @budget/api exec vitest run src/modules/slack/slack.test.ts
+DATABASE_URL=postgresql://budget:budget@localhost:5434/budget APP_DATABASE_URL=postgresql://budget_app:replace-in-secret-manager@localhost:5434/budget pnpm --filter @budget/workers exec vitest run src/notify
+pnpm typecheck && pnpm lint && pnpm license-check
+```
+
+- `slack.test.ts` drives every command and button through the real HTTP stack with a fake `SlackApi` (`setSlackApi`), signed bodies (`signSlackBody`), the golden workspace and its personas; new tests add a fake `response_url` client. Assertions read `approval_decision.channel`, `audit_event.actor_id` and the outbox.
+- `notify.test.ts` runs the worker against the database with a fake `SlackClient`; `blocks.test.ts` pins every message shape by snapshot.
+- `pnpm test:acceptance` for the approvals epic after S-003; `apps/web/e2e/slack.spec.ts` for the settings page after S-004.
+
+**Live** (S-002's gate, repeated as each phase lands): the §3.9 checklist on the local stack with the owner's Slack app. The app side (Admin › Slack, submitting a change, the inbox) can be driven in the built-in browser; the clicks in Slack and `/budget` need a person in Slack. Proof after each step: the edited message in the channel, and
+
+```sql
+SELECT decision, channel, decided_by, decided_at FROM approval_decision ORDER BY decided_at DESC LIMIT 3;
+```
+
+The Slack connector attached to this Claude session can read the channel to confirm posts and edits without a screenshot.
+
+## 8. Out of scope, for later
+
+Per-person notification preferences and digests (Epic 2.2, the settings column from S-010 is where they go), email, the Slack thread mirror (Epic 2.7), webhooks (Epic 2.5), OAuth multi-team install (S9), Slack commands for targets, closures and experiments (their buttons already work where a request exists), Snowflake or Sheets from Slack.
+
+## 9. Assumptions
+
+- "Send approvals of budgets through Slack" means both: the request reaches its approvers in Slack (S2, DMs and the channel post) and a person can send a budget change for approval from Slack (S4). If only one was meant, S2 stays and S4 waits.
+- The org uses one Slack workspace; one Slack app per Budget OS deployment.
+- Slack profile emails match Budget OS emails (both from Google Workspace). Where they do not, the person is told and an admin fixes the Budget OS email.
+- The live gate uses the `local` workspace and the owner's Slack; nothing is deployed to GCP for this round.
