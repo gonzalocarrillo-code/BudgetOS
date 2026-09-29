@@ -50,7 +50,7 @@ export function setCommandDeadline(ms: number | undefined): void {
 /**
  * POST /slack/commands. The answer comes within Slack's three seconds when it can; a slower one
  * (a large workspace, a cold start) is acknowledged with "Working on it…" and sent through the
- * command's response_url once ready, replacing that line (ADR-063). Deployed, the API must keep
+ * command's response_url once ready, replacing that line (ADR-065). Deployed, the API must keep
  * CPU after answering for that to finish (Cloud Run: CPU always allocated).
  */
 export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {

@@ -442,7 +442,7 @@ Spec §22, last paragraph: Phase 2 tasks are written in follow-up ADRs after Pha
 | Plan epic | Goal, one line | Starts |
 |---|---|---|
 | 2.1 | Scenarios, compare up to 3, promote one to draft | after Phase 1 exit |
-| 2.2 | Per-user notification preferences, digests, Slack approve/reject | after Phase 1 exit. Slack approve/reject, and approvers told by direct message, were built at the product owner's request in rounds 3 and 10 (ADR-046, ADR-063); preferences, digests, email and quiet hours remain |
+| 2.2 | Per-user notification preferences, digests, Slack approve/reject | after Phase 1 exit. Slack approve/reject, and approvers told by direct message, were built at the product owner's request in rounds 3 and 10 (ADR-046, ADR-065); preferences, digests, email and quiet hours remain |
 | 2.3 | Auto-approve, carry-forward, scheduled exports, audited as system | after Phase 1 exit |
 | 2.4 | Copilot over MCP tools, every number links to a query | after Phase 1 exit |
 | 2.5 | Timeline drag-edit, PDF closure, webhooks, ES/PT | after Phase 1 exit |

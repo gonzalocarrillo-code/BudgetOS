@@ -489,7 +489,7 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 
 ## Product feedback, round 10: Slack as a working toolset (2026-09-29)
 
-Plan: `docs/SLACK_TOOLSET_PLAN.md`; decisions: ADR-063; runbook: `docs/runbooks/slack.md`. Built on 2026-09-29 as stacked branches `feat/slack-s1` to `feat/slack-s5`. The bot from round 3 (ADR-046, PR #71) has still never run against a real Slack app; S-002's live checklist is the gate. Decisions S1–S13 in the plan's §6 are open for the product owner; the build follows the defaults.
+Plan: `docs/SLACK_TOOLSET_PLAN.md`; decisions: ADR-065; runbook: `docs/runbooks/slack.md`. Built on 2026-09-29 as stacked branches `feat/slack-s1` to `feat/slack-s5`. The bot from round 3 (ADR-046, PR #71) has still never run against a real Slack app; S-002's live checklist is the gate. Decisions S1–S13 in the plan's §6 are open for the product owner; the build follows the defaults.
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
@@ -507,7 +507,7 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`; decisions: ADR-063; runbook: `docs/runbooks/
 | S-011 | S4 | `/budget request <name>`: draft + submit in one transaction, from a Slack form | done (`submitDraft`; the amount and the reason only, decision S5; a stale form, a waiting budget and a parent's cap are refused in the form) |
 | S-012 | S5 | Deferred replies within Slack's three seconds; Slack call timeouts | done (past 2.5 s, "Working on it…" and the answer through response_url; Slack calls from the API time out at 2 s without retries; on Cloud Run this needs CPU always allocated) |
 | S-013 | S5 | App Home tab through the Events API | pending (decision S6's default is later; it also needs the Slack app's event subscription) |
-| S-014 | S5 | ADR-063, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | done (ADR-063; `docs/runbooks/slack.md` and `notify.md`; the Epic 2.2 note; OpenAPI and the web client regenerated with S-004) |
+| S-014 | S5 | ADR-065, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | done (ADR-065; `docs/runbooks/slack.md` and `notify.md`; the Epic 2.2 note; OpenAPI and the web client regenerated with S-004) |
 
 ## Product feedback: Home and Overview (2026-09-29)
 

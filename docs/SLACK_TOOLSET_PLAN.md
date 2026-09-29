@@ -223,7 +223,7 @@ The bot runs where the rest of the system runs (spec §20): the API as the `budg
 
 ## 5. Tasks
 
-As built: one PR per phase (`feat/slack-s1` → `feat/slack-s5`, stacked), one commit per task, like rounds 6 to 8. The round's decisions are ADR-063 (0060 to 0062 went to round 9 and the Home rework).
+As built: one PR per phase (`feat/slack-s1` → `feat/slack-s5`, stacked), one commit per task, like rounds 6 to 8. The round's decisions are ADR-065 (0060 to 0062 went to round 9 and the Home rework).
 
 | Phase | ID | Task | Files | Done when |
 |---|---|---|---|---|
