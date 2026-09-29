@@ -84,7 +84,7 @@ The bot runs where everything else runs (spec §20): the API as `budget-api` and
 - **Secrets:** `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` of that environment's app in Secret Manager, mounted as environment variables (`secret_env`) on `budget-api` (both) and `notify-worker` (the token).
 - **Slack must reach `/api/v1/slack/*` without IAP**, since Slack has no Google identity: a path rule on the load balancer sends those paths to a backend with IAP off; everything else stays behind IAP. The routes accept only Slack-signed requests.
 - **Pub/Sub:** one topic per entry of `OUTBOX_TOPICS` (`packages/domain/src/outbox-topics.ts`), with push subscriptions for the workers it names.
-- **Three seconds:** keep one warm API instance (`min_instances = 1`) so a cold start never makes Slack time out.
+- **Three seconds:** keep one warm API instance (`min_instances = 1`) so a cold start never makes Slack time out, and CPU always allocated: a `/budget` answer slower than 2.5 seconds is sent after the "Working on it…" reply.
 - **Logs:** Slack requests carry request ids starting `slack-`.
 
 The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_PLAN.md` §3.12 has the detail.

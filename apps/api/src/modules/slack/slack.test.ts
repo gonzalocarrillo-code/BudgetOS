@@ -7,6 +7,7 @@ import { cleanupGolden } from "../../test-support/golden-cleanup.js";
 import { appDb, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
 import { signSlackBody } from "./signature.js";
 import { setSlackResponder } from "./respond.js";
+import { setCommandDeadline } from "./slash/index.js";
 import { setSlackApi, type SlackApi } from "./slack-api.js";
 
 /**
@@ -25,8 +26,15 @@ const TEAM = "T0GOLDEN1";
 const email = (p: string) => `${p.toLowerCase()}@${slug}.golden.test`;
 const views: Array<{ trigger: string; view: Record<string, unknown> }> = [];
 const fake: SlackApi = {
-  // "U-<persona>" is that persona; "U-CAPS-<persona>" has the same email in capitals, as some Slack profiles do.
-  userEmail: async (slackUserId) => (slackUserId.startsWith("U-CAPS-") ? email(slackUserId.slice(7)).toUpperCase() : slackUserId.startsWith("U-") ? email(slackUserId.slice(2)) : null),
+  // "U-<persona>" is that persona; "U-CAPS-<persona>" has the same email in capitals, as some Slack
+  // profiles do; "U-SLOW-<persona>" answers after 300 ms, like a slow Slack (S-012).
+  userEmail: async (slackUserId) => {
+    if (slackUserId.startsWith("U-SLOW-")) {
+      await new Promise((r) => setTimeout(r, 300));
+      return email(slackUserId.slice(7));
+    }
+    return slackUserId.startsWith("U-CAPS-") ? email(slackUserId.slice(7)).toUpperCase() : slackUserId.startsWith("U-") ? email(slackUserId.slice(2)) : null;
+  },
   openView: async (trigger, view) => void views.push({ trigger, view }),
   team: async () => ({ id: TEAM, name: "Golden Slack" }),
 };
@@ -609,6 +617,28 @@ describe("sending a budget for approval from Slack (S-011)", () => {
     const other = take();
     expect(JSON.stringify((await cmd("planner", other.name))["blocks"])).toContain('"action_id":"budget.request"');
     expect(JSON.stringify((await cmd("approver", other.name))["blocks"])).not.toContain('"action_id":"budget.request"');
+  });
+});
+
+describe("answers slower than Slack waits (S-012)", () => {
+  it("says it is working on it, then sends the answer through the command's response_url", async () => {
+    setCommandDeadline(50);
+    try {
+      responses.length = 0;
+      const url = "https://hooks.slack.com/commands/T0GOLDEN1/5/late";
+      const first = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-SLOW-planner", response_url: url });
+      expect(first.body).toEqual({ response_type: "ephemeral", text: ":hourglass_flowing_sand: Working on it…" });
+      for (let i = 0; i < 100 && !responses.some((r) => r.url === url); i += 1) await new Promise((r) => setTimeout(r, 50));
+      const late = responses.find((r) => r.url === url);
+      expect(late?.body).toMatchObject({ replace_original: true, response_type: "ephemeral" });
+      expect(JSON.stringify(late?.body)).toMatch(/open alerts/i);
+    } finally {
+      setCommandDeadline(undefined);
+    }
+  });
+
+  it("a quick answer comes at once", async () => {
+    expect(String((await slack("commands", { text: "help", team_id: TEAM, user_id: "U-planner", response_url: "https://hooks.slack.com/commands/T0GOLDEN1/6/quick" })).body["text"])).toContain("/budget approvals");
   });
 });
 
