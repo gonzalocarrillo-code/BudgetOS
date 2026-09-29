@@ -42,6 +42,33 @@ export function formatMoney(value: string, currency: string): string {
   return `${negative ? "-" : ""}${currency} ${grouped}.${fraction}`;
 }
 
+const COMPACT = [
+  { div: new Decimal(1), suffix: "", places: () => 0 },
+  { div: new Decimal(1_000), suffix: "k", places: (x: Decimal) => (x.lt(10) ? 1 : 0) },
+  { div: new Decimal(1_000_000), suffix: "M", places: (x: Decimal) => (x.lt(10) ? 2 : x.lt(100) ? 1 : 0) },
+  { div: new Decimal(1_000_000_000), suffix: "B", places: (x: Decimal) => (x.lt(10) ? 2 : x.lt(100) ? 1 : 0) },
+] as const;
+
+/**
+ * Money for a tile or a strip (HO-002): "USD 1.39M", "USD 654k", "USD 7.9k", "USD 950". At most two
+ * decimals of a unit, fewer as the number grows, trailing zeros dropped, and never "1000k" (it
+ * becomes "1M"). Decimal arithmetic, like formatMoney; the exact amount belongs in the tooltip.
+ */
+export function formatMoneyCompact(value: string, currency: string): string {
+  const d = new Decimal(value);
+  const abs = d.abs();
+  const sign = d.isNegative() && !abs.isZero() ? "-" : "";
+  for (let tier = COMPACT.reduce((best, t, i) => (abs.gte(t.div) ? i : best), 0); ; tier += 1) {
+    const t = COMPACT[tier] as (typeof COMPACT)[number];
+    const x = abs.div(t.div);
+    const places = t.places(x);
+    const rounded = x.toDecimalPlaces(places, Decimal.ROUND_HALF_UP);
+    // 999.95k rounds to 1000k: say 1M instead.
+    if (rounded.gte(1000) && tier < COMPACT.length - 1) continue;
+    return `${sign}${currency} ${rounded.toFixed(places).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")}${t.suffix}`;
+  }
+}
+
 /** A change of money, signed: "+USD 300.00", "-USD 500.00", "USD 0.00" (Phase E compare columns). */
 export function formatChange(value: string, currency: string): string {
   const d = new Decimal(value);

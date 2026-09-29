@@ -94,11 +94,19 @@ export const UpdateAlertInput = z
 export type UpdateAlertInput = z.infer<typeof UpdateAlertInput>;
 
 /** GET /alerts?status&severity&ruleId&envelopeId&filter (filter is a FilterGroup as JSON). */
+/**
+ * An alert is open until it is snoozed or resolved (HO-001): acknowledged means someone saw it, not
+ * that it is handled. Home, the Overview, the grid's chips and the MCP count the same statuses.
+ */
+export const OPEN_ALERT_STATUSES = ["OPEN", "ACKNOWLEDGED"] as const;
+
 export const ListAlertsQuery = z.object({
   status: z.string().regex(/^(OPEN|ACKNOWLEDGED|SNOOZED|RESOLVED)(,(OPEN|ACKNOWLEDGED|SNOOZED|RESOLVED))*$/).optional(),
   severity: RuleSeverity.optional(),
   ruleId: z.string().uuid().optional(),
   envelopeId: z.string().uuid().optional(),
+  /** HO-006: alerts on this budget or any budget under it (Home's "alerts on your budgets"). */
+  under: z.string().uuid().optional(),
   filter: z.string().max(20_000).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });

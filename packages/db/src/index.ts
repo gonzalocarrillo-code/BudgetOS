@@ -11,6 +11,10 @@ export type { DimensionValuePathRow, DimensionValueStateRow, UpsertDimensionValu
 export { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "../seed/defaults.registry.js";
 export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.registry.js";
 export { audit, bumpDataVersion, outbox } from "./sql.js";
+export { MONTHLY_GRACE_DAYS, STALE_AFTER_DAYS, coverage, dataAsOf, endOfMonth, projectionFreshness } from "./data-as-of.js";
+export type { DataAsOf } from "./data-as-of.js";
+export { descendantIds, envelopeLineage, failedRuns, recentActivity, unsentDrafts, unsettledInPeriod } from "./desk.js";
+export type { Activity, FailedRun, LineageStep, UnsentDraft } from "./desk.js";
 export { claimOutbox, markOutboxDelivered, markOutboxPublished, markProcessed } from "./outbox.js";
 export type { OutboxRow } from "./outbox.js";
 export { insertNotification, listNotifications, markNotificationsRead } from "./notifications.js";

@@ -118,5 +118,9 @@ describe("routing helpers", () => {
     const q = (filter: unknown) => QueryRequest.parse({ workspaceId: ws, period: { kind: "relative", preset: "current_year" }, filter });
     expect(cacheKey(q({ logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] }), 7, "2026-06-15")).toMatch(new RegExp(`^q:${ws}:7:2026-06-15:[0-9a-f]{64}$`));
     expect(cacheKey(q({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: "q4" }] }), 7, "2026-06-15")).toBeNull();
+    // ADR-062: pace counted through the data's last day is another answer; through today (or later) is the same one.
+    const latam = q({ logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] });
+    expect(cacheKey(latam, 7, "2026-06-15", "2026-05-31")).toMatch(new RegExp(`^q:${ws}:7:2026-06-15~2026-05-31:[0-9a-f]{64}$`));
+    expect(cacheKey(latam, 7, "2026-06-15", "2026-06-20")).toBe(cacheKey(latam, 7, "2026-06-15"));
   });
 });

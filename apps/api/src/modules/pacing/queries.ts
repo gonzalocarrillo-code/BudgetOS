@@ -1,5 +1,5 @@
-import { DomainError, FilterGroup, ListAlertsQuery, PeriodSpec, QueryRequest, canInScope, resolvePeriod, type FilterGroupT } from "@budget/domain";
-import { plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
+import { DomainError, FilterGroup, ListAlertsQuery, OPEN_ALERT_STATUSES, PeriodSpec, QueryRequest, canInScope, readScopeFilter, resolvePeriod, type FilterGroupT } from "@budget/domain";
+import { descendantIds, plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -57,7 +57,9 @@ export async function listAlerts(prisma: PrismaClient, auth: AuthContext, raw: u
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const statuses = (q.status ?? "OPEN,ACKNOWLEDGED,SNOOZED").split(",") as Array<"OPEN" | "ACKNOWLEDGED" | "SNOOZED" | "RESOLVED">;
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const inFilter = filter ? await envelopeIdsFor(tx, workspaceId, filter) : null;
+    const byFilter = filter ? await envelopeIdsFor(tx, workspaceId, filter) : null;
+    const under = q.under ? await descendantIds(tx, [q.under]) : null;
+    const inFilter = byFilter && under ? new Set([...byFilter].filter((id) => under.has(id))) : (byFilter ?? under);
     const rows = await tx.alert.findMany({
       where: {
         workspaceId,
@@ -79,6 +81,51 @@ export async function listAlerts(prisma: PrismaClient, auth: AuthContext, raw: u
       return { ...alertView(a), envelopeName: envelopes.get(a.envelopeId) ?? null, ruleName: rule?.name ?? null, metric: rule?.metric ?? null, comparator: rule?.comparator ?? null };
     });
   });
+}
+
+/** An open alert as Home and the Overview count it (HO-001): what the counts and groupings need. */
+export interface OpenAlert {
+  id: string;
+  envelopeId: string;
+  ruleId: string;
+  severity: string;
+  status: string;
+  ownerId: string | null;
+  openedAt: Date;
+}
+
+/**
+ * Every open alert (OPEN_ALERT_STATUSES) the caller may read, newest first: one population for
+ * Home's pulse, the Overview's counts and its groupings (HO-001). An alert is readable when its
+ * budget is in the caller's envelope.read scope, as on the Alerts page. No role that reads budgets:
+ * no alerts.
+ */
+export async function openAlerts(prisma: PrismaClient, auth: AuthContext): Promise<OpenAlert[]> {
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  let scope: FilterGroupT | null;
+  try {
+    scope = auth.isOrgAdmin ? null : readScopeFilter(auth.assignments, "envelope.read");
+  } catch {
+    return [];
+  }
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const rows = await tx.alert.findMany({
+      where: { workspaceId, status: { in: [...OPEN_ALERT_STATUSES] } },
+      orderBy: [{ openedAt: "desc" }, { id: "desc" }],
+      select: { id: true, envelopeId: true, ruleId: true, severity: true, status: true, ownerId: true, openedAt: true },
+    });
+    // Someone who reads the whole workspace reads every alert; skip the per-budget scope check.
+    if (scope === null || rows.length === 0) return rows;
+    const scopes = await envelopeScopeTargets(tx, [...new Set(rows.map((a) => a.envelopeId))]);
+    return rows.filter((a) => canInScope(auth.assignments, "envelope.read", scopes.get(a.envelopeId) ?? { dims: {} }));
+  });
+}
+
+/** Open alerts by severity, every severity present (0 when none). */
+export function alertCounts(alerts: readonly OpenAlert[]): { open: number; counts: Record<"critical" | "warning" | "info" | "data", number> } {
+  const counts = { critical: 0, warning: 0, info: 0, data: 0 };
+  for (const a of alerts) if (a.severity in counts) counts[a.severity as keyof typeof counts] += 1;
+  return { open: alerts.length, counts };
 }
 
 /**

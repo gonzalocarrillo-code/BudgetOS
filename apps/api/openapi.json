@@ -2684,7 +2684,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -2752,6 +2753,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "is_ended",
                                                     "parent_id",
                                                     "experiment"
                                                   ]
@@ -3242,7 +3244,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -3310,6 +3313,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "is_ended",
                                                     "parent_id",
                                                     "experiment"
                                                   ]
@@ -9996,7 +10000,8 @@
                                             "spend_to_date_pct",
                                             "budget_baseline",
                                             "budget_change_abs",
-                                            "budget_change_pct"
+                                            "budget_change_pct",
+                                            "ahead_of_plan_abs"
                                           ]
                                         }
                                       },
@@ -10064,6 +10069,7 @@
                                             "has_attachments",
                                             "alert_severity",
                                             "is_leaf",
+                                            "is_ended",
                                             "parent_id",
                                             "experiment"
                                           ]
@@ -10223,7 +10229,8 @@
                         "spend_to_date_pct",
                         "budget_baseline",
                         "budget_change_abs",
-                        "budget_change_pct"
+                        "budget_change_pct",
+                        "ahead_of_plan_abs"
                       ]
                     },
                     "default": [
@@ -11228,6 +11235,28 @@
                               "dueAt": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "requestedByName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "before": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "after": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "changePct": {
+                                "type": "string",
+                                "nullable": true
                               }
                             },
                             "required": [
@@ -11315,6 +11344,171 @@
                         },
                         "unmatched": {
                           "type": "integer"
+                        },
+                        "canMap": {
+                          "type": "boolean"
+                        },
+                        "drafts": {
+                          "type": "object",
+                          "properties": {
+                            "count": {
+                              "type": "integer"
+                            },
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "envelopeId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "versionId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "envelopeId",
+                                  "versionId",
+                                  "name",
+                                  "createdAt"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "count",
+                            "items"
+                          ]
+                        },
+                        "alertsOnMyBudgets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "assigned": {
+                                "type": "integer"
+                              },
+                              "rules": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "ruleId": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "ruleName": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "count": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "ruleId",
+                                    "ruleName",
+                                    "severity",
+                                    "count"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "envelopeId",
+                              "name",
+                              "severity",
+                              "count",
+                              "assigned",
+                              "rules"
+                            ]
+                          }
+                        },
+                        "closures": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "periodKey": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "type": "string"
+                              },
+                              "daysLeft": {
+                                "type": "integer"
+                              },
+                              "drafts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "periodKey",
+                              "start",
+                              "end",
+                              "daysLeft",
+                              "drafts",
+                              "pending"
+                            ]
+                          }
+                        },
+                        "failedRuns": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "sourceId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "sourceName": {
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "error": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "sourceId",
+                              "sourceName",
+                              "at",
+                              "error"
+                            ]
+                          }
                         }
                       },
                       "required": [
@@ -11323,6 +11517,66 @@
                         "alerts",
                         "unmatched"
                       ]
+                    },
+                    "sent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "summary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "entityType": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "waitingOn": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "before": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changePct": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "summary",
+                          "entityType",
+                          "requestedAt",
+                          "dueAt",
+                          "waitingOn",
+                          "title",
+                          "count",
+                          "before",
+                          "after"
+                        ]
+                      }
                     },
                     "scopes": {
                       "type": "array",
@@ -11398,7 +11652,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -11466,6 +11721,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "is_ended",
                                                     "parent_id",
                                                     "experiment"
                                                   ]
@@ -11622,6 +11878,19 @@
                           "spentPct": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "remaining": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "owner": {
+                            "type": "boolean"
+                          },
+                          "alerts": {
+                            "type": "integer"
+                          },
+                          "pending": {
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -11652,6 +11921,13 @@
                           },
                           "at": {
                             "type": "string"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "parent": {
+                            "type": "string",
+                            "nullable": true
                           }
                         },
                         "required": [
@@ -11741,7 +12017,17 @@
                           "type": "string",
                           "nullable": true
                         },
+                        "paceIndex": {
+                          "type": "string",
+                          "nullable": true
+                        },
                         "openAlerts": {
+                          "type": "integer"
+                        },
+                        "waiting": {
+                          "type": "integer"
+                        },
+                        "overdue": {
                           "type": "integer"
                         }
                       },
@@ -11752,6 +12038,46 @@
                         "openAlerts"
                       ],
                       "nullable": true
+                    },
+                    "asOf": {
+                      "type": "object",
+                      "properties": {
+                        "lastFactDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "through": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "grain": {
+                          "type": "string",
+                          "enum": [
+                            "day",
+                            "month"
+                          ],
+                          "nullable": true
+                        },
+                        "staleDays": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        },
+                        "elapsed": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "lastFactDate",
+                        "through",
+                        "grain",
+                        "staleDays",
+                        "stale",
+                        "elapsed"
+                      ]
                     },
                     "setup": {
                       "type": "object",
@@ -12686,7 +13012,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -12754,6 +13081,7 @@
                                                     "has_attachments",
                                                     "alert_severity",
                                                     "is_leaf",
+                                                    "is_ended",
                                                     "parent_id",
                                                     "experiment"
                                                   ]
@@ -15683,7 +16011,8 @@
                                                 "spend_to_date_pct",
                                                 "budget_baseline",
                                                 "budget_change_abs",
-                                                "budget_change_pct"
+                                                "budget_change_pct",
+                                                "ahead_of_plan_abs"
                                               ]
                                             }
                                           },
@@ -15751,6 +16080,7 @@
                                                 "has_attachments",
                                                 "alert_severity",
                                                 "is_leaf",
+                                                "is_ended",
                                                 "parent_id",
                                                 "experiment"
                                               ]
@@ -15910,7 +16240,8 @@
                             "spend_to_date_pct",
                             "budget_baseline",
                             "budget_change_abs",
-                            "budget_change_pct"
+                            "budget_change_pct",
+                            "ahead_of_plan_abs"
                           ]
                         },
                         "default": [
@@ -16868,11 +17199,1407 @@
               "type": "string"
             },
             "description": "Heatmap columns: another granularity key (default platform)"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "budget",
+                "pace",
+                "ahead"
+              ]
+            },
+            "description": "Heatmap row order: by budget (default), pace, or money ahead of plan"
+          },
+          {
+            "name": "compareTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "A snapshot to compare with: the headline's change and each cell's budget then (default: the latest plan snapshot, headline only)"
           }
         ],
         "responses": {
           "200": {
-            "description": "The Overview dashboard: heatmap (any two granularities; the registry's list for the pickers), top variances, KPI vs target, open alerts, approvals due, data freshness"
+            "description": "The Overview dashboard: headline, heatmap with its margins (any two granularities), budgets that need attention by money at stake, KPI vs target, alerts by rule, the approval queue, data freshness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "currency": {
+                      "type": "string"
+                    },
+                    "period": {
+                      "type": "object",
+                      "properties": {
+                        "preset": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        },
+                        "elapsed": {
+                          "type": "string"
+                        },
+                        "elapsedToday": {
+                          "type": "string"
+                        },
+                        "daysLeft": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "preset"
+                      ]
+                    },
+                    "asOf": {
+                      "type": "object",
+                      "properties": {
+                        "lastFactDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "through": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "grain": {
+                          "type": "string",
+                          "enum": [
+                            "day",
+                            "month"
+                          ],
+                          "nullable": true
+                        },
+                        "staleDays": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "lastFactDate",
+                        "through",
+                        "grain",
+                        "staleDays",
+                        "stale"
+                      ]
+                    },
+                    "dataAsOf": {
+                      "type": "string"
+                    },
+                    "totals": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "headline": {
+                      "type": "object",
+                      "properties": {
+                        "basis": {
+                          "type": "string"
+                        },
+                        "budget": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "actual": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "spentPct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "paceIndex": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "assigned": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "unassigned": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "assignedPct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "remaining": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "runRateNeeded": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "projected": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "projectedClosePct": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "basis",
+                        "budget",
+                        "actual",
+                        "spentPct",
+                        "paceIndex",
+                        "assigned"
+                      ],
+                      "nullable": true
+                    },
+                    "compare": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "asOf": {
+                          "type": "string"
+                        },
+                        "explicit": {
+                          "type": "boolean"
+                        },
+                        "changeAbs": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "changePct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "counts": {
+                          "type": "object",
+                          "properties": {
+                            "increased": {
+                              "type": "integer"
+                            },
+                            "decreased": {
+                              "type": "integer"
+                            },
+                            "new": {
+                              "type": "integer"
+                            },
+                            "ended": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "increased",
+                            "decreased",
+                            "new",
+                            "ended"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "kind",
+                        "asOf",
+                        "explicit",
+                        "changeAbs",
+                        "changePct",
+                        "counts"
+                      ],
+                      "nullable": true
+                    },
+                    "heatmap": {
+                      "type": "object",
+                      "properties": {
+                        "rowDimension": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "label"
+                          ]
+                        },
+                        "colDimension": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "label"
+                          ]
+                        },
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "cols": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "labels": {
+                          "type": "object",
+                          "properties": {
+                            "rows": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string"
+                              }
+                            },
+                            "cols": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "rows",
+                            "cols"
+                          ]
+                        },
+                        "cells": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "row": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "col": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_baseline": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_change_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "alerts": {
+                                "type": "integer",
+                                "default": 0
+                              },
+                              "pending": {
+                                "type": "integer",
+                                "default": 0
+                              }
+                            },
+                            "required": [
+                              "row",
+                              "col"
+                            ]
+                          }
+                        },
+                        "dimensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "label"
+                            ]
+                          },
+                          "default": []
+                        },
+                        "rowTotals": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "alerts": {
+                                "type": "integer",
+                                "default": 0
+                              }
+                            },
+                            "required": [
+                              "code"
+                            ]
+                          },
+                          "default": []
+                        },
+                        "colTotals": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "alerts": {
+                                "type": "integer",
+                                "default": 0
+                              }
+                            },
+                            "required": [
+                              "code"
+                            ]
+                          },
+                          "default": []
+                        },
+                        "total": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "budget_in_period": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "actual": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "pace_index": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "spend_to_date_pct": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "ahead_of_plan_abs": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "nullable": true,
+                          "default": null
+                        },
+                        "sort": {
+                          "type": "string",
+                          "enum": [
+                            "budget",
+                            "pace",
+                            "ahead"
+                          ],
+                          "default": "budget"
+                        }
+                      },
+                      "required": [
+                        "rowDimension",
+                        "colDimension",
+                        "rows",
+                        "cols",
+                        "labels",
+                        "cells"
+                      ],
+                      "nullable": true
+                    },
+                    "attention": {
+                      "type": "object",
+                      "properties": {
+                        "all": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "category": {
+                                "type": "string",
+                                "enum": [
+                                  "over",
+                                  "under",
+                                  "no_spend",
+                                  "kpi"
+                                ]
+                              },
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "money": {
+                                "type": "string"
+                              },
+                              "alerts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "boolean"
+                              },
+                              "endDate": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "kpi": {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string"
+                                  },
+                                  "actual": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "vsTargetPct": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ],
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "category",
+                              "envelopeId",
+                              "name",
+                              "path",
+                              "money",
+                              "alerts",
+                              "pending",
+                              "endDate",
+                              "kpi"
+                            ]
+                          }
+                        },
+                        "over": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "category": {
+                                "type": "string",
+                                "enum": [
+                                  "over",
+                                  "under",
+                                  "no_spend",
+                                  "kpi"
+                                ]
+                              },
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "money": {
+                                "type": "string"
+                              },
+                              "alerts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "boolean"
+                              },
+                              "endDate": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "kpi": {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string"
+                                  },
+                                  "actual": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "vsTargetPct": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ],
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "category",
+                              "envelopeId",
+                              "name",
+                              "path",
+                              "money",
+                              "alerts",
+                              "pending",
+                              "endDate",
+                              "kpi"
+                            ]
+                          }
+                        },
+                        "under": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "category": {
+                                "type": "string",
+                                "enum": [
+                                  "over",
+                                  "under",
+                                  "no_spend",
+                                  "kpi"
+                                ]
+                              },
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "money": {
+                                "type": "string"
+                              },
+                              "alerts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "boolean"
+                              },
+                              "endDate": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "kpi": {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string"
+                                  },
+                                  "actual": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "vsTargetPct": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ],
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "category",
+                              "envelopeId",
+                              "name",
+                              "path",
+                              "money",
+                              "alerts",
+                              "pending",
+                              "endDate",
+                              "kpi"
+                            ]
+                          }
+                        },
+                        "noSpend": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "category": {
+                                "type": "string",
+                                "enum": [
+                                  "over",
+                                  "under",
+                                  "no_spend",
+                                  "kpi"
+                                ]
+                              },
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "money": {
+                                "type": "string"
+                              },
+                              "alerts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "boolean"
+                              },
+                              "endDate": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "kpi": {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string"
+                                  },
+                                  "actual": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "vsTargetPct": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ],
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "category",
+                              "envelopeId",
+                              "name",
+                              "path",
+                              "money",
+                              "alerts",
+                              "pending",
+                              "endDate",
+                              "kpi"
+                            ]
+                          }
+                        },
+                        "kpi": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "category": {
+                                "type": "string",
+                                "enum": [
+                                  "over",
+                                  "under",
+                                  "no_spend",
+                                  "kpi"
+                                ]
+                              },
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget_in_period": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "pace_index": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "spend_to_date_pct": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "ahead_of_plan_abs": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "money": {
+                                "type": "string"
+                              },
+                              "alerts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "boolean"
+                              },
+                              "endDate": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "kpi": {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string"
+                                  },
+                                  "actual": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "vsTargetPct": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ],
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "category",
+                              "envelopeId",
+                              "name",
+                              "path",
+                              "money",
+                              "alerts",
+                              "pending",
+                              "endDate",
+                              "kpi"
+                            ]
+                          }
+                        },
+                        "counts": {
+                          "type": "object",
+                          "properties": {
+                            "over": {
+                              "type": "integer"
+                            },
+                            "under": {
+                              "type": "integer"
+                            },
+                            "noSpend": {
+                              "type": "integer"
+                            },
+                            "kpi": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "over",
+                            "under",
+                            "noSpend",
+                            "kpi"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "all",
+                        "over",
+                        "under",
+                        "noSpend",
+                        "kpi",
+                        "counts"
+                      ]
+                    },
+                    "kpi": {
+                      "type": "object",
+                      "properties": {
+                        "metric": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "type": "string"
+                        },
+                        "dimension": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "label"
+                          ]
+                        },
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "label": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "budget": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "actual": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "target": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "vsTargetPct": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "code",
+                              "label"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "metric",
+                        "dimension",
+                        "rows"
+                      ],
+                      "nullable": true
+                    },
+                    "alerts": {
+                      "type": "object",
+                      "properties": {
+                        "open": {
+                          "type": "number"
+                        },
+                        "counts": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        },
+                        "byRule": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "ruleId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ruleName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "metric": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "budgets": {
+                                "type": "integer"
+                              },
+                              "covered": {
+                                "type": "integer",
+                                "nullable": true
+                              },
+                              "byRow": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "label": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "count": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "code",
+                                    "label",
+                                    "count"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "ruleId",
+                              "ruleName",
+                              "severity",
+                              "metric",
+                              "count",
+                              "budgets",
+                              "covered",
+                              "byRow"
+                            ]
+                          },
+                          "default": []
+                        },
+                        "byRow": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "label": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "code",
+                              "label",
+                              "count"
+                            ]
+                          },
+                          "default": []
+                        }
+                      },
+                      "required": [
+                        "open",
+                        "counts"
+                      ]
+                    },
+                    "queue": {
+                      "type": "object",
+                      "properties": {
+                        "waiting": {
+                          "type": "integer"
+                        },
+                        "overdue": {
+                          "type": "integer"
+                        },
+                        "oldestDays": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "byRole": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "role": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "role",
+                              "count"
+                            ]
+                          }
+                        },
+                        "byKind": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "count"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "waiting",
+                        "overdue",
+                        "oldestDays",
+                        "byRole",
+                        "byKind"
+                      ]
+                    },
+                    "freshness": {
+                      "type": "object",
+                      "properties": {
+                        "lastFactDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "isActive": {
+                                "type": "boolean"
+                              },
+                              "lastRun": {
+                                "type": "object",
+                                "properties": {
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "startedAt": {
+                                    "type": "string"
+                                  },
+                                  "finishedAt": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "matchCoverage": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "required": [
+                                  "status",
+                                  "startedAt",
+                                  "finishedAt",
+                                  "matchCoverage"
+                                ],
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "kind",
+                              "isActive",
+                              "lastRun"
+                            ]
+                          }
+                        },
+                        "projections": {
+                          "type": "object",
+                          "properties": {
+                            "loadedAt": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "loadedAt",
+                            "source"
+                          ],
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "lastFactDate",
+                        "sources"
+                      ]
+                    },
+                    "elapsedMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "currency",
+                    "period",
+                    "asOf",
+                    "dataAsOf",
+                    "totals",
+                    "heatmap",
+                    "kpi",
+                    "alerts",
+                    "freshness",
+                    "elapsedMs"
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -17446,6 +19173,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "under",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Alerts on this budget or any budget under it"
           },
           {
             "name": "filter",
