@@ -166,7 +166,7 @@ const en = {
   "admin.policies": "Approval policies",
   "admin.slack": "Slack",
   "slack.title": "Slack",
-  "slack.intro": "Alerts post with Acknowledge, Snooze and Resolve buttons, approval requests with Approve and Reject, and /budget answers questions about alerts and budgets. Everyone acts in Slack as their own BudgetOS account (matched by email), with the same permissions as in the app, and sees only the workspaces they have a role in.",
+  "slack.intro": "Alerts post with Acknowledge, Snooze and Resolve buttons; approval requests go to the channel and to each approver, with Approve, Request changes and Reject; and /budget shows budgets and approvals, decides them, and sends changes for approval. Everyone acts in Slack as their own BudgetOS account (matched by email), with the same permissions as in the app, and sees only the workspaces they have a role in.",
   "slack.connection": "Connection",
   "slack.botToken": "Bot token (SLACK_BOT_TOKEN)",
   "slack.signingSecret": "Signing secret (SLACK_SIGNING_SECRET)",

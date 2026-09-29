@@ -1,10 +1,12 @@
 import { parseSlackCommand } from "@budget/domain";
+import { log } from "@budget/workers";
 import type { PrismaClient } from "@prisma/client";
 import { authorize } from "../../../common/auth/authenticate.js";
 import { listAlerts } from "../../pacing/queries.js";
 import { search } from "../../search/search.js";
 import { chooseWorkspace, type SlackDeps } from "../identity.js";
 import { appUrl } from "../slack-config.js";
+import { slackResponder } from "../respond.js";
 import { slackApi } from "../slack-api.js";
 import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
@@ -37,8 +39,37 @@ export const HELP = [
   "• `/budget workspace [name]` — which workspace /budget answers for, and choosing another",
 ].join("\n");
 
+/** Slack waits three seconds for a command's answer; past this, the answer follows through response_url (S-012). */
+const ANSWER_WITHIN_MS = 2_500;
+let deadlineMs = ANSWER_WITHIN_MS;
+/** Tests: a shorter wait before "Working on it…" (undefined puts the real one back). */
+export function setCommandDeadline(ms: number | undefined): void {
+  deadlineMs = ms ?? ANSWER_WITHIN_MS;
+}
+
+/**
+ * POST /slack/commands. The answer comes within Slack's three seconds when it can; a slower one
+ * (a large workspace, a cold start) is acknowledged with "Working on it…" and sent through the
+ * command's response_url once ready, replacing that line (ADR-065). Deployed, the API must keep
+ * CPU after answering for that to finish (Cloud Run: CPU always allocated).
+ */
 export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {
   const body = (raw ?? {}) as Record<string, string | undefined>;
+  const work = answer(prisma, deps, body).catch((e: unknown) => reply(`:no_entry: ${messageOf(e)}`));
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<"late">((resolve) => {
+    timer = setTimeout(() => resolve("late"), deadlineMs);
+  });
+  const first = await Promise.race([work, late]);
+  clearTimeout(timer);
+  if (first !== "late") return first;
+  const responseUrl = body["response_url"];
+  if (!responseUrl) return work; // nowhere to send it later: Slack may time out, but the person gets it if it can
+  void work.then((answered) => slackResponder().respond(responseUrl, { replace_original: true, ...answered })).catch((err: unknown) => log.error({ err, command: body["command"], userId: body["user_id"] }, "slack: a late /budget answer could not be sent"));
+  return reply(":hourglass_flowing_sand: Working on it…");
+}
+
+async function answer(prisma: PrismaClient, deps: SlackDeps, body: Record<string, string | undefined>): Promise<Record<string, unknown>> {
   const teamId = body["team_id"] ?? "";
   const userId = body["user_id"] ?? "";
   const cmd = parseSlackCommand(body["text"] ?? "");

@@ -16,7 +16,8 @@ class WebApiSlackApi implements SlackApi {
   private readonly client: WebClient;
   private readonly emails = new Map<string, { email: string | null; at: number }>();
   constructor(token: string) {
-    this.client = new WebClient(token);
+    // S-012: inside Slack's three seconds, a slow call fails fast instead of being retried.
+    this.client = new WebClient(token, { timeout: 2_000, retryConfig: { retries: 0 } });
   }
   async userEmail(slackUserId: string): Promise<string | null> {
     const hit = this.emails.get(slackUserId);

@@ -489,14 +489,14 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 
 ## Product feedback, round 10: Slack as a working toolset (2026-09-29)
 
-Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is merged but has never run against a real Slack app; S-002 is the live gate. Decisions S1–S13 in the plan's §6 are open for the product owner; builds follow the defaults.
+Plan: `docs/SLACK_TOOLSET_PLAN.md`; decisions: ADR-065; runbook: `docs/runbooks/slack.md`. Built on 2026-09-29 as stacked branches `feat/slack-s1` to `feat/slack-s5`. The bot from round 3 (ADR-046, PR #71) has still never run against a real Slack app; S-002's live checklist is the gate. Decisions S1–S13 in the plan's §6 are open for the product owner; the build follows the defaults.
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
 | S-001 | S1 | Fixes: lowercase Slack emails, `authorize()` on every Slack action, `slack.settings.changed` declared, worker warns without `APP_BASE_URL`, superadmin marking on the Slack path | done (every outbox topic is declared once in `OUTBOX_TOPICS`, @budget/domain, with its consumers; a guard test reads the source. `slack.settings.changed` has no consumer by design) |
 | S-002 | S1 | Slack apps and the runbook: the Slack-side steps and scopes, the access model, the dev app through the tunnel, the checklist against the owner's Slack | blocked (built: `docs/runbooks/slack.md`, the manifest with exactly five scopes and no `chat:write.public`, `pnpm -s slack:manifest --url …`, BudgetOS on the Slack surface, setup copy. The live checklist, runbook §5, waits on the Slack app, which only the owner can create) |
 | S-003 | S1 | Every request type posts on creation (bulk commit and the structural requests: split, merge, end, reintroduce, import, dates) | done (`approval.requested` audit + `approval.changed` outbox in the creating transaction; the roll-up skips it, since the `budget.changed` written with it already refreshed those envelopes) |
-| S-015 | S1 | GCP hosting: Secret Manager, the non-IAP path for `/api/v1/slack/*`, Pub/Sub topics and push subscriptions, `min_instances`, the staging app | blocked on T-008 |
+| S-015 | S1 | GCP hosting: Secret Manager, the non-IAP path for `/api/v1/slack/*`, Pub/Sub topics and push subscriptions, `min_instances`, the staging app | blocked on T-008 (the one topic list it reads is built, S-001; CPU always allocated is added to its list, S-012) |
 | S-004 | S2 | DMs to approvers and requesters, recorded and edited; the `dms` toggle; `/budget remind` | done (the step's approvers get a DM on request, escalation and each completed step, and the requester the outcome; in-app follows completed steps too. `remindApprovers` writes `approval.reminded`, once an hour; `/budget remind #id` is wired with the other commands in S-007) |
 | S-005 | S2 | Request changes button and form; the richer approval card with `#id` | done (the card shows the budget's path, dates, the requester's reason, the change with its percentage, the step of how many and `#id`; bulk requests read as Split, Merge, End…; refused form input shows its first problem. Snooze stays a week, decision S8) |
 | S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | done (ADR-065: the API answers only the interaction it handles, through its hooks.slack.com response_url; a refused one leaves the action standing and says so) |
@@ -505,9 +505,9 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is me
 | S-009 | S3 | `/budget <name>` card, `/budget list [text]`, disambiguation | done (a budget named exactly as typed wins over search, whose ranking does not favour exact names; the numbers are the planner's over the budget's own dates) |
 | S-010 | S3 | Workspace choice by channel, `/budget workspace`, the remembered link in `app_user.settings` | done (the channel, else the saved choice, else the only or first workspace; `app_user.settings` written only by `app_set_my_slack_settings`. The Slack-id lookup was left out, ADR-065) |
 | S-011 | S4 | `/budget request <name>`: draft + submit in one transaction, from a Slack form | done (`submitDraft`; the amount and the reason only, decision S5; a stale form, a waiting budget and a parent's cap are refused in the form) |
-| S-012 | S5 | Deferred replies within Slack's three seconds; Slack call timeouts | pending (optional) |
-| S-013 | S5 | App Home tab through the Events API | pending (decision S6) |
-| S-014 | S5 | ADR-060, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | pending |
+| S-012 | S5 | Deferred replies within Slack's three seconds; Slack call timeouts | done (past 2.5 s, "Working on it…" and the answer through response_url; Slack calls from the API time out at 2 s without retries; on Cloud Run this needs CPU always allocated) |
+| S-013 | S5 | App Home tab through the Events API | pending (decision S6's default is later; it also needs the Slack app's event subscription) |
+| S-014 | S5 | ADR-065, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | done (ADR-065; `docs/runbooks/slack.md` and `notify.md`; the Epic 2.2 note; OpenAPI and the web client regenerated with S-004) |
 
 ## Product feedback: Home and Overview (2026-09-29)
 
@@ -519,8 +519,8 @@ Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The 
 | HO-002 | G1 | `PaceBar`, `StatTile`, `HeadlineStrip`, `AsOfChip`, `PaceLegend` in `@budget/ui`; pace band tokens (AA in both themes); `formatMoneyCompact` | done |
 | HO-003 | G1 | Pace as of the data: coverage per source grain, `elapsedThrough` in both planner dialects, as-of chip, stale banner | done (ADR-062) |
 | HO-004 | G1 | Short country names; the ISO name kept as the external id `iso_name`; migration `20261008000000_short_country_labels` | done |
-| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-065) |
-| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-065) |
+| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-063) |
+| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-063) |
 | HO-007 | G2 | Decide from Home in a side sheet; the approval detail parts shared with the request page | done |
 | HO-008 | G2 | Home steps in the planner, approver and finance tours; strings; status rows | done |
 | HO-009 | G3 | `ahead_of_plan_abs` (actual − budget in period × time gone) in both planner dialects, derived at query time | done (ADR-064) |
