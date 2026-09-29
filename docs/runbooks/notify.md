@@ -1,6 +1,6 @@
 # Runbook: notifications (T-019, T-021, ADR-013, ADR-015)
 
-- **Service:** `apps/workers/src/notify/main.ts` is a push subscriber for `alert.triggered`, `approval.changed` and `thread.changed`. The in-app consumer runs first, then Slack.
+- **Service:** `apps/workers/src/notify/main.ts` is a push subscriber for the topics `OUTBOX_TOPICS` gives the notify worker (`packages/domain/src/outbox-topics.ts`). The in-app consumer runs first, then Slack. The Slack bot's setup and commands are in `docs/runbooks/slack.md`.
 - **Slack configuration:**
   - `SLACK_BOT_TOKEN` (Secret Manager). The bot needs `chat:write` and `users:read.email`.
   - `workspace.settings.slack.defaultChannel` (for example `#budget-ops`), and optionally `delivery.slackChannel` per pacing rule.

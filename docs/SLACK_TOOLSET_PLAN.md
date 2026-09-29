@@ -14,7 +14,9 @@ Three things turn it into a toolset:
 2. **Complete approvals** (Phase S2): approvers get a direct message with the buttons, requesters get the outcome; Request changes and Withdraw from Slack; `/budget approvals` lists what waits on you; `approve`, `reject`, `changes` and `withdraw` as commands with short ids that fit in a message.
 3. **Budgets by command, and a request from Slack** (Phases S3 and S4): `/budget` is your summary, `/budget <name>` is a budget card, `/budget list` the top-level budgets; `/budget request <name>` opens a form that creates a draft and sends it through the approval policy, exactly as the app would.
 
-Phase S5 (hardening: replies within Slack's three seconds, an App Home tab) is optional and decided in §6. The Slack side is written out step by step in §3.10, who may see which workspace in §3.11, and the GCP hosting in §3.12: like the rest of the system, the bot runs on Cloud Run behind the load balancer; the tunnel in §3.9 is only for clicking buttons on a laptop before the GCP project exists. Nothing here changes how approvals work: Slack runs the same commands as the app, as the person's own account, with the same permissions, audit rows and outbox rows.
+Phase S5 (hardening: replies within Slack's three seconds, an App Home tab) is optional and decided in §6.
+
+**As built (2026-09-29):** S-001 and S-003 to S-012 are done and S-014's documents are written, following the §6 defaults. What remains is S-002's live checklist, which waits on the Slack app only the owner can create; S-013 (App Home), which waits on decision S6; and S-015 (GCP), which waits on T-008. The status rows are in `docs/TASKS_STATUS.md`. The Slack side is written out step by step in §3.10, who may see which workspace in §3.11, and the GCP hosting in §3.12: like the rest of the system, the bot runs on Cloud Run behind the load balancer; the tunnel in §3.9 is only for clicking buttons on a laptop before the GCP project exists. Nothing here changes how approvals work: Slack runs the same commands as the app, as the person's own account, with the same permissions, audit rows and outbox rows.
 
 ## 1. What exists, precisely
 
@@ -185,7 +187,7 @@ One Slack team, the agency's, and many Budget OS workspaces: one per client acco
 
 **Where a workspace's data appears.** Its posts go only to its own channels (default, alerts, or the rule's), and its DMs only to its own eligible approvers and requesters. The rule for channels: one private channel per client workspace, with only that client's team in it, and a shared channel only for workspaces everyone in it may see. A message in a channel is readable by the channel's members whatever their roles; the buttons still refuse anyone without a role, but the amounts in the text are visible. Two workspaces should not share a channel unless that is intended (decision S13).
 
-**The checks, in order,** for the reviewer of any Slack change: Slack signature → team id → email → an active account in the same org → the workspace exists and is neither deleted nor archived → roles in that workspace → `authorize(<the route's permission>)` (S-001) → the command's own scope and eligibility checks → row-level security under `withTenant(ws)`, so a request id from another workspace is simply not found. `slack.test.ts` already covers another team and an unknown user; S-001 adds "no role in this workspace" and "a role in another workspace only"; S-010 adds channel inference and a refused workspace switch.
+**The checks, in order,** for the reviewer of any Slack change: Slack signature → email → an active account in the same org → the workspace exists and is neither deleted nor archived → the workspace is linked to the caller's Slack team → roles in that workspace → `authorize(<the route's permission>)` (S-001) → the command's own scope and eligibility checks → row-level security under `withTenant(ws)`, so a request id from another workspace is simply not found. `slack.test.ts` already covers another team and an unknown user; S-001 adds "no role in this workspace" and "a role in another workspace only"; S-010 adds channel inference and a refused workspace switch.
 
 **Why access lives in Budget OS, not in Slack.** Roles are assigned once (Admin › Roles, Org › People) and cover the app, MCP and Slack. A Slack allowlist per workspace would be a second list to keep in sync (§4).
 
@@ -221,7 +223,7 @@ The bot runs where the rest of the system runs (spec §20): the API as the `budg
 
 ## 5. Tasks
 
-One PR per task, stacked per phase (`feat/slack-s1-fixes` → …), like rounds 6 to 8. The next free ADR number is 0060 (0059 is on `fix/pivot-totals`).
+As built: one PR per phase (`feat/slack-s1` → `feat/slack-s5`, stacked), one commit per task, like rounds 6 to 8. The round's decisions are ADR-063 (0060 to 0062 went to round 9 and the Home rework).
 
 | Phase | ID | Task | Files | Done when |
 |---|---|---|---|---|
