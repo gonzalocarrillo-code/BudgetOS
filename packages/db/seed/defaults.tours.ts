@@ -14,6 +14,7 @@ export const DEFAULT_TOURS: readonly DefaultTourSeed[] = [
     role: "planner",
     name: "Planning budgets",
     steps: [
+      { path: "/home", element: '[data-tour="home-pulse"]', title: "Your desk", description: "Home starts with the workspace in one line, then what waits on you: drafts you have not sent, what others sent you, and your budgets' pace." },
       { path: "/budgets", element: '[data-tour="workspace-switcher"]', title: "Your workspace", description: "Budgets, approvals and results live in a workspace. Switch between the ones you work in here." },
       { path: "/budgets", element: '[data-tour="filter-bar"]', title: "Filter what you see", description: "Add filters by market, platform or any granularity. The filter is in the URL, so you can share it." },
       { path: "/budgets", element: '[data-tour="view-toggle"]', title: "Tree, pivot or timeline", description: "See budgets by your hierarchy, pivot them by any granularity, or lay them out on the calendar." },
@@ -26,6 +27,7 @@ export const DEFAULT_TOURS: readonly DefaultTourSeed[] = [
     role: "approver",
     name: "Approving changes",
     steps: [
+      { path: "/home", element: '[data-tour="home-waiting"]', title: "Decide from Home", description: "What waits on you comes first. Decide opens the request beside the list: what changes, the chain, and your decision." },
       { path: "/approvals", element: '[data-tour="nav-approvals"]', title: "Approvals", description: "Every change a policy routes to you arrives here, and on Home under “Waiting on you”." },
       { path: "/approvals", element: '[data-tour="approvals-tabs"]', title: "Mine first", description: "“Waiting for me” lists only the steps you can decide now; the other tabs show everything in your scope." },
       { path: "/approvals", element: '[data-tour="approvals-list"]', title: "Open a request", description: "Each request shows what changes, the policy chain and where it stands. Approve, reject or ask for changes with a comment." },
@@ -36,6 +38,7 @@ export const DEFAULT_TOURS: readonly DefaultTourSeed[] = [
     role: "finance",
     name: "Closing periods",
     steps: [
+      { path: "/home", element: '[data-tour="home-waiting"]', title: "What to close", description: "In a quarter's last two weeks, Home says what is still in draft or waiting for approval in it." },
       { path: "/closures", element: '[data-tour="nav-overview"]', title: "The overview", description: "Budget, spend to date, pacing and what is waiting for you, for the whole workspace." },
       { path: "/closures", element: '[data-tour="nav-closures"]', title: "Closures", description: "When a period ends, close it: its budgets lock and its numbers are frozen for reporting." },
       { path: "/closures", element: '[data-tour="closures-list"]', title: "Closed periods", description: "Every closure with the budgets it locked. Open one for its report; restate it if late actuals arrive." },
