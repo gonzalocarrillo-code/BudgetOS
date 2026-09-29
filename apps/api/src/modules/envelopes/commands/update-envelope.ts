@@ -9,7 +9,7 @@ import { headVersionId, lockForWrite, recordEnvelopeChange } from "./version-wri
 
 /**
  * PATCH /envelopes/:id: metadata with optimistic concurrency on rowVersion. Amounts never change
- * here. New granularities (product feedback 2026-09-28) follow the registry and the caller's
+ * here, nor the dates of a budget with an approved amount (ADR-060). New granularities (product feedback 2026-09-28) follow the registry and the caller's
  * scope, as on create; the budget moves in every hierarchy, so the roll-ups rebuild.
  */
 export async function updateEnvelope(prisma: PrismaClient, auth: AuthContext, rawId: string, raw: unknown) {
@@ -22,6 +22,10 @@ export async function updateEnvelope(prisma: PrismaClient, auth: AuthContext, ra
         currentRowVersion: env.rowVersion,
         currentVersionId: headVersionId(env),
       });
+    }
+    // ADR-060: an approved budget's dates change through POST /envelopes/:id/dates and its approval policy.
+    if ((input.startDate !== undefined || input.endDate !== undefined) && env.currentVersionId !== null) {
+      throw new DomainError("VALIDATION", "An approved budget's dates change through its approval policy: POST /envelopes/:id/dates", { envelopeId });
     }
     const startDate = input.startDate ?? env.startDate;
     const endDate = input.endDate ?? env.endDate;

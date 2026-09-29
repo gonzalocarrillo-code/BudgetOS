@@ -18,6 +18,7 @@ import { StructureActions } from "../structure/structure-actions.js";
 import { SendForApproval } from "./send-for-approval.js";
 import { FamilySumLine, familyQuery } from "./family-editor.js";
 import { DrawerSnapshots, SnapshotCompareLine } from "../snapshots/drawer-snapshots.js";
+import { DatesDialog } from "../structure/dates-dialog.js";
 
 type Tab = "details" | "history" | "comments";
 
@@ -39,6 +40,8 @@ export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFami
     },
   });
   const [editingDims, setEditingDims] = useState<Record<string, string> | null>(null);
+  const [changingDates, setChangingDates] = useState(false);
+  const [datesNotice, setDatesNotice] = useState<string | null>(null);
   const saveDims = useMutation({
     mutationFn: async (dimensionValues: Record<string, string>) => unwrap(api.PATCH("/api/v1/envelopes/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, body: { rowVersion: data?.rowVersion ?? 1, dimensionValues } as never })),
     onSuccess: async () => {
@@ -127,9 +130,9 @@ export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFami
           <p>{t("drawer.ended", { date: data.endDate })}</p>
           {data.ended.reason ? <p className="text-xs text-muted-foreground">{t("drawer.endedReason", { reason: data.ended.reason })}</p> : null}
         </div>
-      ) : data?.pendingKind === "end" ? (
-        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm" role="status" data-testid="drawer-pending-end">
-          {t("drawer.pendingEnd")}{" "}
+      ) : data?.pendingKind === "end" || data?.pendingKind === "dates" ? (
+        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm" role="status" data-testid={`drawer-pending-${data.pendingKind}`}>
+          {t(data.pendingKind === "end" ? "drawer.pendingEnd" : "drawer.pendingDates")}{" "}
           {data.openRequest ? (
             <Link to="/w/$ws/approvals/$id" params={{ ws, id: data.openRequest.id }} className="font-medium text-primary hover:underline">
               {t("structure.openRequest")}
@@ -184,9 +187,21 @@ export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFami
             {data.draft ? formatMoney(data.draft.amount, data.currency) : "—"}
           </dd>
           <dt className="text-muted-foreground">{t("drawer.dates")}</dt>
-          <dd className="text-right">
-            {data.startDate} – {data.endDate}
+          <dd className="flex items-center justify-end gap-1 text-right" data-testid="drawer-dates">
+            <span className="tabular">
+              {data.startDate} – {data.endDate}
+            </span>
+            {data.ended || data.status === "LOCKED" || data.status === "ARCHIVED" ? null : (
+              <button type="button" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={t("dates.edit")} title={t("dates.edit")} onClick={() => setChangingDates(true)} data-testid="drawer-edit-dates">
+                <Pencil className="size-3.5" aria-hidden />
+              </button>
+            )}
           </dd>
+          {datesNotice ? (
+            <dd className="col-span-2 text-right text-xs text-muted-foreground" role="status" data-testid="drawer-dates-notice">
+              {datesNotice}
+            </dd>
+          ) : null}
           {data.lineage.continues || data.lineage.continuedBy.length ? (
             <dd className="col-span-2">
               <LineageLinks ws={ws} env={data} />
@@ -308,6 +323,19 @@ export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFami
             <TagChips ws={ws} entity={{ type: "envelope", id }} tags={data.tags} onChanged={() => client.invalidateQueries({ queryKey: ["envelope", ws, id] })} />
           </dd>
         </dl>
+      ) : null}
+      {changingDates ? (
+        <DatesDialog
+          ws={ws}
+          envelopeId={id}
+          onClose={() => setChangingDates(false)}
+          onDone={async (r) => {
+            setChangingDates(false);
+            setDatesNotice(r.applied ? t("dates.done") : t("dates.sent"));
+            await client.invalidateQueries({ queryKey: ["envelope", ws] });
+            onChanged?.();
+          }}
+        />
       ) : null}
     </aside>
   );

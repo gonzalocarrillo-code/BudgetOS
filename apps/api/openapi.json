@@ -1701,6 +1701,217 @@
         }
       }
     },
+    "/api/v1/envelopes/{id}/dates/preview": {
+      "post": {
+        "operationId": "previewEnvelopeDates",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "trimChildren": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "default": ""
+                  }
+                },
+                "required": [
+                  "startDate",
+                  "endDate",
+                  "basedOnVersionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What new dates move: the budget and the children they trim, re-phased, and whether approval is needed (ADR-060)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "from": {
+                            "type": "object",
+                            "properties": {
+                              "startDate": {
+                                "type": "string"
+                              },
+                              "endDate": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "startDate",
+                              "endDate"
+                            ]
+                          },
+                          "to": {
+                            "type": "object",
+                            "properties": {
+                              "startDate": {
+                                "type": "string"
+                              },
+                              "endDate": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "startDate",
+                              "endDate"
+                            ]
+                          },
+                          "rephased": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "name",
+                          "from",
+                          "to",
+                          "rephased"
+                        ]
+                      }
+                    },
+                    "childrenOutside": {
+                      "type": "integer"
+                    },
+                    "needsApproval": {
+                      "type": "boolean"
+                    },
+                    "movedShare": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lines",
+                    "childrenOutside",
+                    "needsApproval",
+                    "movedShare"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/envelopes/{id}/dates": {
+      "post": {
+        "operationId": "changeEnvelopeDates",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "basedOnVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "trimChildren": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "default": ""
+                  }
+                },
+                "required": [
+                  "startDate",
+                  "endDate",
+                  "basedOnVersionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New dates: at once for a budget never approved, else through the approval policy, applied on approval (ADR-060)"
+          }
+        }
+      }
+    },
     "/api/v1/envelopes/{id}/reintroduce": {
       "post": {
         "operationId": "reintroduceEnvelope",

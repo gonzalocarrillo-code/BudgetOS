@@ -26,7 +26,7 @@ export interface StructureResult {
 }
 
 /** The body, once the user stops typing for a moment: every preview is a real (rolled-back) transaction. */
-function useSettled<T>(value: T, ms = 350): T {
+export function useSettled<T>(value: T, ms = 350): T {
   const [settled, setSettled] = useState(value);
   const key = JSON.stringify(value);
   useEffect(() => {

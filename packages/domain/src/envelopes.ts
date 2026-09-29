@@ -72,6 +72,47 @@ export const UpdateEnvelopeInput = z
   .refine((v) => !(v.useTemplateName && v.name !== undefined), { message: "Rename, or use the template name, not both", path: ["useTemplateName"] });
 export type UpdateEnvelopeInput = z.infer<typeof UpdateEnvelopeInput>;
 
+/**
+ * POST /envelopes/:id/dates and /dates/preview (ADR-060): new start and end dates. A budget with an
+ * approved amount changes through its approval policy, like an early end; one never approved
+ * changes at once. Children that would fall outside are trimmed only with `trimChildren`.
+ */
+export const ChangeDatesInput = z
+  .object({
+    startDate: IsoDate,
+    endDate: IsoDate,
+    /** Optimistic concurrency: the version the client saw (draft ?? current), null for none. */
+    basedOnVersionId: z.string().uuid().nullable(),
+    trimChildren: z.boolean().default(false),
+    rationale: z.string().trim().max(2000).default(""),
+  })
+  .strict()
+  .refine((v) => v.startDate <= v.endDate, { message: "The start date must not be after the end date", path: ["endDate"] });
+export type ChangeDatesInput = z.infer<typeof ChangeDatesInput>;
+
+const DateRange = z.object({ startDate: IsoDate, endDate: IsoDate });
+/** One budget a date change moves: the budget itself first, then each child it trims. */
+export const DateChangeLine = z.object({
+  envelopeId: z.string().uuid(),
+  name: z.string(),
+  from: DateRange,
+  to: DateRange,
+  /** The months of its phasing re-spread into the new dates (none when it has no phasing). */
+  rephased: z.boolean(),
+});
+export type DateChangeLine = z.infer<typeof DateChangeLine>;
+
+export const DateChangePreview = z.object({
+  lines: z.array(DateChangeLine),
+  /** Children that fall outside the new dates; they move only with `trimChildren`. */
+  childrenOutside: z.number().int(),
+  /** Whether the change goes through the approval policy (the budget has an approved amount). */
+  needsApproval: z.boolean(),
+  /** The share of the budget whose dates move, which the approval policy reads as the change. */
+  movedShare: z.string(),
+});
+export type DateChangePreview = z.infer<typeof DateChangePreview>;
+
 // ---------------------------------------------------------------------------------------------
 // Bulk edit (spec §7.4, plan §9.3)
 // ---------------------------------------------------------------------------------------------

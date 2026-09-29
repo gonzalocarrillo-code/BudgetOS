@@ -64,6 +64,9 @@ export const QueryRow = z.object({
    * a parent opens in the drawer like a leaf. Null when no single envelope is the group.
    */
   nodeEnvelopeId: z.string().uuid().nullable().optional(),
+  /** Flat rows: the budget's start and end dates (ADR-060). */
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
   /** Flat rows with `subtree` or `unallocated`: live children of this envelope; its parent. */
   childCount: z.number().int().optional(),
   parentId: z.string().uuid().nullable().optional(),

@@ -207,11 +207,22 @@ export async function insertBulkVersions(tx: Tx, rows: BulkVersionRow[], created
     SELECT vid, month, CASE WHEN rn = 1 THEN amt - (sum(scaled) OVER (PARTITION BY vid) - scaled) ELSE scaled END FROM r`;
 }
 
-export type BulkKind = "edit" | "split" | "merge" | "end" | "reintroduce" | "import";
+export type BulkKind = "edit" | "split" | "merge" | "end" | "reintroduce" | "import" | "dates";
 
-/** What an `end` applies on approval (H-011): the budget stops on `endDate`. */
+/** One budget's new dates, applied when its date change is approved (ADR-060). */
+export interface BulkDatesLine {
+  envelopeId: string;
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * What a structural change applies on approval: an `end` stops the budget on `endDate` (H-011);
+ * `dates` gives the budget, and the children it trims, their new dates (ADR-060).
+ */
 export interface BulkEndPayload {
   end?: { envelopeId: string; endDate: string; reason: string };
+  dates?: BulkDatesLine[];
 }
 
 export interface BulkChangeRow {
@@ -258,6 +269,15 @@ export async function applyEnd(tx: Tx, end: { envelopeId: string; endDate: strin
     UPDATE envelope SET end_date = ${end.endDate}::date, ended_at = now(), ended_by = ${endedBy}::uuid, ended_reason = ${end.reason},
            row_version = row_version + 1, updated_at = now()
     WHERE id = ${end.envelopeId}::uuid`;
+}
+
+/** New dates for budgets (ADR-060): at once for a budget never approved, else once its change is approved. */
+export async function applyDates(tx: Tx, lines: BulkDatesLine[]): Promise<void> {
+  for (const l of lines) {
+    await tx.$executeRaw`
+      UPDATE envelope SET start_date = ${l.startDate}::date, end_date = ${l.endDate}::date, row_version = row_version + 1, updated_at = now()
+      WHERE id = ${l.envelopeId}::uuid`;
+  }
 }
 
 /** Archives envelopes (split / merge sources after approval, never-approved parts after a rejection). */

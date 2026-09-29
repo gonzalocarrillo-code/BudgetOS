@@ -25,6 +25,7 @@ import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } f
 import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
+import { DatesDialog } from "../features/structure/dates-dialog.js";
 import { Camera, Plus, Upload } from "lucide-react";
 import { BudgetImportDialog } from "../features/import/budget-import-dialog.js";
 import { SaveSnapshotDialog } from "../features/snapshots/save-snapshot-dialog.js";
@@ -95,6 +96,7 @@ function ExplorerPage(): ReactElement {
   const [pasted, setPasted] = useState<BulkPreview | null>(null);
   const [familyOf, setFamilyOf] = useState<string | null>(null);
   const [structure, setStructure] = useState<StructureOp | null>(null);
+  const [datesOf, setDatesOf] = useState<string | null>(null);
   const { data: selected } = useQuery({ ...envelopeQuery(ws, search.select ?? ""), enabled: search.select !== undefined });
 
   const setSearch = (patch: Partial<ExplorerSearchT>) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, ...patch }), replace: false });
@@ -144,6 +146,8 @@ function ExplorerPage(): ReactElement {
         ? search.groupBy.map((key): ColumnSpec => ({ kind: "dimension", key, title: dimensions.find((d) => d.key === key)?.label ?? key, width: 160 }))
         : [{ kind: "path", width: 340, title: t("explorer.col.name") }];
     const status: ColumnSpec = { kind: "status", title: t("explorer.col.status"), width: 150, labels: STATUS_LABELS(), pendingLabel: (count: number) => t("status.groupPending", { count }) };
+    // ADR-060: budget rows show their dates; a click opens Change dates. Group rows have none.
+    const dates: ColumnSpec[] = view === "pivot" && search.groupBy.length ? [] : [{ kind: "dates", title: t("dates.column"), width: 200 }];
     // H-006: comparing, the columns read Snapshot · Now · Change · Change %, then spend.
     if (search.compareTo) {
       return [
@@ -153,12 +157,14 @@ function ExplorerPage(): ReactElement {
         { kind: "measure", key: "budget_change_abs", title: t("snapshots.col.change"), width: 150 },
         { kind: "measure", key: "budget_change_pct", title: t("snapshots.col.changePct"), width: 100 },
         { kind: "measure", key: "actual", title: t("explorer.col.actual"), width: 150 },
+        ...dates,
         status,
       ];
     }
     return [
       ...leading,
       ...MEASURE_COLUMNS.map((m): ColumnSpec => ({ kind: "measure", key: m.key, title: t(m.label), width: m.key === "pace_index" ? 110 : 150, ...(m.key === "budget" ? { editable: true } : {}) })),
+      ...dates,
       status,
     ];
   }, [view, search.groupBy, dimensions, search.compareTo, comparing?.name]);
@@ -191,6 +197,11 @@ function ExplorerPage(): ReactElement {
       )
         .then((preview) => setPasted(BulkPreview.parse(preview)))
         .catch((e: unknown) => setNotice({ kind: "error", text: t("explorer.error", { message: e instanceof Error ? e.message : String(e) }) }));
+    },
+    onDates: (row) => {
+      const r = row as ExplorerRow;
+      if (r.holding) return setNotice({ kind: "error", text: t("dates.remainder") });
+      if (r.envelopeId) setDatesOf(r.envelopeId);
     },
     onEdit: async ({ row, value }) => {
       const r = row as ExplorerRow;
@@ -463,6 +474,21 @@ function ExplorerPage(): ReactElement {
               // The new budget opens in the drawer, where Send for approval is.
               setSearch({ new: undefined, select: id, view: "tree" });
               setReload((n) => n + 1);
+            }}
+          />
+        ) : null}
+        {datesOf ? (
+          <DatesDialog
+            ws={ws}
+            envelopeId={datesOf}
+            onClose={() => setDatesOf(null)}
+            onDone={(r) => {
+              setDatesOf(null);
+              setNotice({ kind: "ok", text: r.applied ? t("dates.done") : t("dates.sent"), ...(r.requestId ? { requestId: r.requestId } : {}) });
+              setReload((n) => n + 1);
+              void client.invalidateQueries({ queryKey: ["envelope", ws] });
+              void client.invalidateQueries({ queryKey: ["approvals", ws] });
+              void client.invalidateQueries({ queryKey: ["timeline", ws] });
             }}
           />
         ) : null}

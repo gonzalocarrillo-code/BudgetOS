@@ -24,7 +24,7 @@ export async function targetsFor(tx: Tx, topic: string, payload: Record<string, 
   const t: Targets = {};
   switch (topic) {
     case "budget.changed": {
-      add(t, "envelope", [...strs(payload["envelopeId"]), ...strs(payload["sourceIds"]), ...strs(payload["targetId"]), ...strs(payload["sourceId"]), ...strs(payload["partIds"])]);
+      add(t, "envelope", [...strs(payload["envelopeId"]), ...strs(payload["envelopeIds"]), ...strs(payload["sourceIds"]), ...strs(payload["targetId"]), ...strs(payload["sourceId"]), ...strs(payload["partIds"])]);
       const versionIds = strs(payload["versionIds"]);
       if (versionIds.length) add(t, "envelope", (await tx.envelopeVersion.findMany({ where: { id: { in: versionIds } }, select: { envelopeId: true } })).map((v) => v.envelopeId));
       const bulkId = strs(payload["bulkChangeId"])[0];

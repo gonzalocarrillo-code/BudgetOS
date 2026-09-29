@@ -272,6 +272,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/envelopes/{id}/dates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewEnvelopeDates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["changeEnvelopeDates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/envelopes/{id}/reintroduce": {
         parameters: {
             query?: never;
@@ -3013,6 +3045,96 @@ export interface operations {
         };
         responses: {
             /** @description A final-amount version (and an optional successor) routed through the approval policy; the end date applies on approval (H-011) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewEnvelopeDates: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    startDate: string;
+                    endDate: string;
+                    /** Format: uuid */
+                    basedOnVersionId: string | null;
+                    /** @default false */
+                    trimChildren?: boolean;
+                    /** @default  */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description What new dates move: the budget and the children they trim, re-phased, and whether approval is needed (ADR-060) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        lines: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            from: {
+                                startDate: string;
+                                endDate: string;
+                            };
+                            to: {
+                                startDate: string;
+                                endDate: string;
+                            };
+                            rephased: boolean;
+                        }[];
+                        childrenOutside: number;
+                        needsApproval: boolean;
+                        movedShare: string;
+                    };
+                };
+            };
+        };
+    };
+    changeEnvelopeDates: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    startDate: string;
+                    endDate: string;
+                    /** Format: uuid */
+                    basedOnVersionId: string | null;
+                    /** @default false */
+                    trimChildren?: boolean;
+                    /** @default  */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description New dates: at once for a budget never approved, else through the approval policy, applied on approval (ADR-060) */
             200: {
                 headers: {
                     [name: string]: unknown;

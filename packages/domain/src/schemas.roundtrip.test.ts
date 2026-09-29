@@ -137,6 +137,9 @@ const samples: Record<string, readonly unknown[]> = {
   BaselineReportQuery: [{ limit: 20 }, { against: "01927a00-0000-7000-8000-0000000000a1", limit: 5 }],
   BaselineReport: [{ baseline: { id: "01927a00-0000-7000-8000-0000000000a1", name: "Q4 plan", asOf: "2026-10-01T00:00:00.000Z", total: "100.00" }, against: { kind: "working", id: null, name: "Now", asOf: "2026-10-02T00:00:00.000Z", total: "110.00" }, change: { abs: "10.00", pct: "0.1000" }, counts: { increased: 1, decreased: 0, new: 0, removed: 0, ended: 0, unchanged: 2 }, byDimension: {}, topMovers: [], currency: "USD" }],
   ReintroduceInput: [{ startDate: "2026-12-01", endDate: "2026-12-31", amount: "500.00", rationale: "" }],
+  ChangeDatesInput: [{ startDate: "2026-10-01", endDate: "2026-11-30", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1", trimChildren: true, rationale: "Moved" }],
+  DateChangeLine: [{ envelopeId: "01927a00-0000-7000-8000-0000000000b1", name: "EMEA", from: { startDate: "2026-01-01", endDate: "2026-12-31" }, to: { startDate: "2026-01-01", endDate: "2026-11-30" }, rephased: true }],
+  DateChangePreview: [{ lines: [{ envelopeId: "01927a00-0000-7000-8000-0000000000b1", name: "EMEA", from: { startDate: "2026-01-01", endDate: "2026-12-31" }, to: { startDate: "2026-01-01", endDate: "2026-11-30" }, rephased: false }], childrenOutside: 0, needsApproval: true, movedShare: "0.0849" }],
   EndEnvelopeInput: [{ endDate: "2026-11-15", finalAmount: "400.00", rationale: "Paused", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1" }, { endDate: "2026-11-15", finalAmount: "400.00", rationale: "", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1", successor: { startDate: "2026-12-01", endDate: "2026-12-31", amount: "600.00" } }],
   // ADR-052 / ORG-005: workspace lifecycle and the org console.
   WorkspaceStatus: ["ACTIVE", "ARCHIVED"],

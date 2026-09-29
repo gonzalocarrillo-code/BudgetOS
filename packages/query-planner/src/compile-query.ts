@@ -312,7 +312,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const columns = new Set<string>(
     grouped
       ? [...groupKeys.flatMap((k) => [`dim_${k}`, `lbl_${k}`]), ...measures, ...targetKeys.map((s) => `kpi_${s}`), "leaf_count", "pending_count"]
-      : ["envelope_id", "name", "status", "parent_id", ...(subtree || held ? ["child_count"] : []), ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
+      : ["envelope_id", "name", "status", "parent_id", "start_date", "end_date", ...(subtree || held ? ["child_count"] : []), ...measures, ...targetKeys.flatMap((s) => [`kpi_${s}`, `tgt_${s}`, `vs_${s}`]), "open_alerts", "open_threads"],
   );
   const orderKeys = resolveOrder(q, columns, grouped ? groupKeys.map((k) => `dim_${k}`) : ["envelope_id"], grouped ? [] : ["name"]);
   const after = q.cursor === undefined ? "TRUE" : keysetAfter(orderKeys, decodeCursor(q.cursor, orderKeys.length), b);
@@ -332,7 +332,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
        FROM envelope e JOIN m2 m ON m.envelope_id = e.id ${dimJoins}
        WHERE ${where}
        GROUP BY ${q.groupBy.map((_, i) => `g${i}.code, g${i}.label`).join(", ")}`
-    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, CASE WHEN e.ended_at IS NOT NULL THEN 'ENDED' ELSE e.status::text END AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values${subtree ? `, (SELECT count(*) FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED') AS child_count` : held ? ", m.child_count" : ""}${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
+    : `SELECT e.id AS envelope_id, coalesce(e.display_name, e.name) AS name, CASE WHEN e.ended_at IS NOT NULL THEN 'ENDED' ELSE e.status::text END AS status, e.parent_id, coalesce(e.draft_version_id, e.current_version_id) AS head_version_id, e.dimension_values, e.start_date::text AS start_date, e.end_date::text AS end_date${subtree ? `, (SELECT count(*) FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED') AS child_count` : held ? ", m.child_count" : ""}${flatMeasures.map((mk) => `, m.${mk}`).join("")}${tail ? ", m.budget AS tail_budget" : ""}
          ${kpiSelect},
          (SELECT count(*) FROM alert a WHERE a.envelope_id = e.id AND a.status IN ('OPEN','ACKNOWLEDGED')) AS open_alerts,
          (SELECT count(*) FROM thread t WHERE t.anchor_type='envelope' AND t.anchor_id = e.id AND t.status='open') AS open_threads
@@ -345,7 +345,7 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
   const measureCol = (mk: string) => (!PROJECTION.has(mk) ? `q.${mk}` : `${mk === "projected" ? "coalesce(p.projected, 0)" : derived[mk as keyof typeof derived]} AS ${mk}`);
   // Same columns in the same order as a page without the tail.
   const cols = [
-    ...["envelope_id", "name", "status", "parent_id", "head_version_id", "dimension_values"].map((c) => `q.${c}`),
+    ...["envelope_id", "name", "status", "parent_id", "head_version_id", "dimension_values", "start_date", "end_date"].map((c) => `q.${c}`),
     ...measures.map(measureCol),
     ...targetKeys.flatMap((s) => [`q.kpi_${s}`, `q.tgt_${s}`, `q.vs_${s}`]),
     "q.open_alerts",

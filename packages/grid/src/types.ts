@@ -33,6 +33,8 @@ export type ColumnSpec = (
   | { kind: "status"; labels?: Readonly<Record<string, string>>; pendingLabel?: (count: number) => string }
   | { kind: "chips" }
   | { kind: "dimension"; key: string; editable?: boolean }
+  /** A budget's start and end dates (ADR-060); `format` renders them, a click raises `onDates`. */
+  | { kind: "dates"; format?: (startDate: string, endDate: string) => string }
 ) & { title?: string; width?: number };
 
 export interface GridEvents {
@@ -45,6 +47,8 @@ export interface GridEvents {
   onSort?(column: ColumnSpec): void;
   /** With `selectRows`: the rows whose checkboxes are ticked, in grid order. */
   onRowsSelected?(rows: QueryRow[]): void;
+  /** A budget row's dates cell was clicked: change its dates. */
+  onDates?(row: QueryRow): void;
 }
 
 export type GridDensity = "compact" | "normal" | "comfortable";

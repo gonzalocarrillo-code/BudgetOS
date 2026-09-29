@@ -17,6 +17,8 @@ import {
   UpdateMappingSynonymInput,
   BaselineRowsResponse,
   BaselineView,
+  ChangeDatesInput,
+  DateChangePreview,
   EndEnvelopeInput,
   ReintroduceInput,
   BaselinesResponse,
@@ -210,6 +212,12 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/envelopes/{id}/end": {
         post: { operationId: "endEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(EndEnvelopeInput), responses: { "200": { description: "A final-amount version (and an optional successor) routed through the approval policy; the end date applies on approval (H-011)" } } },
+      },
+      "/api/v1/envelopes/{id}/dates/preview": {
+        post: { operationId: "previewEnvelopeDates", parameters: [idParam, workspaceHeader], requestBody: json(ChangeDatesInput), responses: { "200": { description: "What new dates move: the budget and the children they trim, re-phased, and whether approval is needed (ADR-060)", ...json(DateChangePreview) } } },
+      },
+      "/api/v1/envelopes/{id}/dates": {
+        post: { operationId: "changeEnvelopeDates", parameters: [idParam, workspaceHeader], requestBody: json(ChangeDatesInput), responses: { "200": { description: "New dates: at once for a budget never approved, else through the approval policy, applied on approval (ADR-060)" } } },
       },
       "/api/v1/envelopes/{id}/reintroduce": {
         post: { operationId: "reintroduceEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(ReintroduceInput), responses: { "200": { description: "A successor under the same parent with lineage `continues`, routed through the approval policy (H-012)" } } },
