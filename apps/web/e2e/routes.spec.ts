@@ -47,7 +47,7 @@ test.describe("web shell (T-026)", () => {
       const url = `/w/${s.workspaceId}${path.replace("{request}", s.approvalRequestId).replace("{uuid}", "0199b5a0-0000-7000-8000-00000000e001")}`;
       await page.goto(url);
       await expect(page.getByTestId("page-title")).toHaveText(title);
-      await expect(page.getByTestId("workspace-switcher")).toHaveValue(s.workspaceId);
+      await expect(page.getByTestId("workspace-switcher")).toHaveAttribute("data-value", s.workspaceId);
       await expect(page.getByTestId("user-email")).toHaveText(`admin@${s.slug}.golden.test`);
     });
   }

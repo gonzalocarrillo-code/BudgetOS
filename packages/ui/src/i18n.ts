@@ -57,6 +57,7 @@ const en = {
   "org.people.reactivate": "Turn access back on",
   "shell.archived": "Archived",
   "shell.manageWorkspaces": "Manage workspaces…",
+  "shell.currentWorkspace": "Current workspace",
   "shell.organization": "Organization",
   "shell.superadminHint": "You're here as a superadmin, not as a member of this workspace. What you change is marked in its history.",
   "shell.archivedBanner": "This workspace is archived: it's read-only and its members can't open it. Restore it to make changes.",

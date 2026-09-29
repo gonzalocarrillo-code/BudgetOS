@@ -61,7 +61,10 @@ test("org console: a workspace admin cannot open it, and has no way to it", asyn
   await page.goto(`/w/${state().workspaceId}/home`);
   await expect(page.getByTestId("page-title")).toBeVisible();
   await expect(page.getByTestId("nav-org-console")).toHaveCount(0);
-  await expect(page.getByTestId("workspace-switcher").locator("option", { hasText: "Manage workspaces" })).toHaveCount(0);
+  await page.getByTestId("workspace-switcher").click();
+  await expect(page.getByTestId("workspace-menu")).toBeVisible();
+  await expect(page.getByTestId("workspace-manage")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.goto("/org/workspaces");
   await expect(page.getByTestId("no-access")).toBeVisible();
 });
