@@ -3,10 +3,12 @@ import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { configureApp } from "./configure-app.js";
 import { AppModule } from "./app.module.js";
+import { serveWeb } from "./serve-web.js";
 
 export async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { bodyParser: false });
   configureApp(app);
+  serveWeb(app);
   const port = Number(process.env["PORT"] ?? 3000);
   await app.listen(port, "0.0.0.0");
 }

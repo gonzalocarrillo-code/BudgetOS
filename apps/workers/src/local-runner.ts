@@ -10,6 +10,7 @@ import { log } from "./log.js";
 import { purgeDueWorkspaces } from "./purge/purge.js";
 import { retentionFromEnv, runRetention } from "./retention/retention.js";
 import { checkSnapshotIntegrity } from "./integrity/snapshots.js";
+import { runPacing } from "./pacing/main.js";
 
 /**
  * Local stand-in for Pub/Sub + the ingest, roll-up and notify workers (T-032, ADR-038), for the
@@ -20,7 +21,10 @@ import { checkSnapshotIntegrity } from "./integrity/snapshots.js";
  * push handlers in-process, then is marked published. The roll-up worker keeps the cache the
  * Explorer's tree reads; the notify worker writes in-app notifications and posts to Slack when
  * SLACK_BOT_TOKEN is set. It also creates the uploads bucket in the GCS emulator.
- * Deployed environments use the outbox publisher and Cloud Run push.
+ * The single-org deployment (ADR-065) runs this same loop as an always-on Cloud Run service:
+ * LISTEN_HOST=0.0.0.0 for Cloud Run's port, and PACING_EVERY_MS evaluates the pacing rules of the
+ * org on that schedule (off by default, as locally). The multi-tenant design (outbox publisher,
+ * Pub/Sub push, Cloud Scheduler) stays spec §19.
  */
 const prefix = process.env["LOCAL_WORKSPACE_PREFIX"] ?? "e2e-";
 const orgFrom = process.env["LOCAL_ORG_FROM"] ?? null;
@@ -84,7 +88,7 @@ async function pass(): Promise<number> {
 
 await ensureBucket();
 const port = Number(process.env["PORT"] ?? 4799);
-createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, "127.0.0.1");
+createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, process.env["LISTEN_HOST"] ?? "127.0.0.1");
 log.info({ port, prefix, orgFrom, slack: slack !== null }, "local runner up");
 for (const warning of slackConfigWarnings()) log.warn(warning);
 // ADR-052: deleted workspaces past their retention window are purged, checked once a minute.
@@ -128,7 +132,25 @@ async function integrityPass(): Promise<void> {
   if (orgs.length) await checkSnapshotIntegrity(app, orgs.map((o) => o.org_id));
 }
 
+// Pacing (spec §11): the org's rules, every PACING_EVERY_MS (900000 = the spec's 15 minutes).
+let lastPacing = 0;
+async function pacingPass(): Promise<void> {
+  const every = Number(process.env["PACING_EVERY_MS"] ?? 0);
+  if (!every || Date.now() - lastPacing < every) return;
+  lastPacing = Date.now();
+  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
+    `SELECT DISTINCT org_id::text FROM workspace WHERE deleted_at IS NULL AND ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
+    `${prefix}%`,
+    orgFrom,
+  );
+  if (orgs.length === 0) return;
+  const now = new Date();
+  const result = await runPacing(app, orgs.map((o) => o.org_id), now.toISOString().slice(0, 10), now);
+  log.info({ workspaces: result.length }, "pacing pass finished");
+}
+
 for (;;) {
+  await pacingPass().catch((err: unknown) => log.error({ err }, "pacing pass failed"));
   await integrityPass().catch((err: unknown) => log.error({ err }, "local integrity pass failed"));
   await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
   await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
