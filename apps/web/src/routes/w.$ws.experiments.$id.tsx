@@ -13,6 +13,7 @@ import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { ConcludeDialog, CriterionBadge, LinkPicker, ReadoutCards, StatusBadge } from "../features/experiments/components.js";
 import { experimentQuery, type Experiment } from "../features/experiments/queries.js";
 import { can } from "../features/ops/queries.js";
+import { DateRangeEditor } from "../features/dates/date-range-editor.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
 
@@ -88,8 +89,15 @@ function ExperimentPage(): ReactElement {
             <StatusBadge status={x.status} />
             <span className="text-muted-foreground">{t(`experiments.kind.${x.kind}` as MessageKey)}</span>
             <span className="text-muted-foreground">·</span>
-            <span className="tabular-nums text-muted-foreground">
-              {x.startDate} – {x.endDate}
+            <span className="text-muted-foreground">
+              <DateRangeEditor
+                start={x.startDate}
+                end={x.endDate}
+                testId="experiment-dates"
+                locked={x.status === "CONCLUDED" || x.status === "ABANDONED" ? t("dates.experimentClosed") : null}
+                save={(range) => unwrap(api.PATCH("/api/v1/experiments/{id}", { params: { path: { id: x.id }, header: { "X-Workspace-Id": ws } }, body: range as never }))}
+                onSaved={() => void refresh()}
+              />
             </span>
           </div>
           <p className="text-[15px]" data-testid="experiment-hypothesis-text">

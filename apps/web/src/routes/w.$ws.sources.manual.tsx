@@ -12,6 +12,7 @@ import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { EntrySource, FIELD } from "../features/manual-entry/entry-source.js";
 import { Batch, batchQuery, batchesQuery, channelColor, type BatchSummary } from "../features/manual-entry/queries.js";
 import { can } from "../features/ops/queries.js";
+import { DateRangeEditor } from "../features/dates/date-range-editor.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, registryQuery, type Dimension } from "../lib/queries.js";
 
@@ -230,8 +231,19 @@ function BatchGrid({ ws, batch, dimensions, cols, blocked, onCols, onChanged }: 
     <div className="flex flex-col gap-4" data-testid="batch-editor" data-batch={batch.id}>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <StatusBadge status={batch.status} />
-        <span className="tabular-nums text-muted-foreground">
-          {batch.periodStart} – {batch.periodEnd}
+        <span className="text-muted-foreground">
+          {/* ADR-060: a draft batch's period is editable; its rows must still fall inside it. */}
+          <DateRangeEditor
+            start={batch.periodStart}
+            end={batch.periodEnd}
+            testId="batch-period"
+            locked={batch.status !== "DRAFT" ? t(`manual.reason.${batch.status}` as MessageKey) : blocked}
+            save={(range) => unwrap(api.PATCH("/api/v1/manual-entries/{id}", { params: { path: { id: batch.id }, header: { "X-Workspace-Id": ws } }, body: { periodStart: range.startDate, periodEnd: range.endDate } as never }))}
+            onSaved={() => {
+              void client.invalidateQueries({ queryKey: ["manual-entry", ws, batch.id] });
+              onChanged();
+            }}
+          />
         </span>
         {state.saving || save.isPending ? <span className="text-xs text-muted-foreground" data-testid="batch-saving">{t("manual.saving")}</span> : <span className="text-xs text-muted-foreground" data-testid="batch-saved">{t("manual.saved")}</span>}
         {batch.approvalRequestId ? (

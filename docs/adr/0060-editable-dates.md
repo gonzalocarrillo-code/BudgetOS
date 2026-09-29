@@ -35,7 +35,19 @@ Accepted (product feedback 2026-09-29). Decisions by the product owner:
   - `envelope.dates_requested` when it waits, then approval's own events once decided;
   - outbox `budget.changed` with kind `dates`, whose `envelopeIds` the roll-up and search workers read.
 
-## Consequences
+### Other dated records (R9-003)
 
-- Other dated records (targets, experiments, fiscal periods, manual entries, alert snoozes) are the next step. Snapshots keep the moment they were taken: a snapshot's date is the fact it records, not a plan.
+The same pencil, a shared `DateRangeEditor`, edits every other record's dates where it is shown. Each record keeps its own rules:
+
+- **Targets:** `PATCH /targets/:id/dates` (new). A target's values carry its versions and approvals; its dates are the period it covers, so they change in place, audited (`target.dates_changed`, outbox `target.changed` kind `dates`). An envelope's target stays inside the envelope's dates.
+- **Experiments:** the existing `PATCH /experiments/:id`, while planned or running. A concluded or abandoned experiment keeps its dates.
+- **Fiscal periods:** the existing `PATCH /periods/:id`, for people with `registry.manage`, until the period has a closure (ADR-041).
+- **Manual entry batches:** the existing `PATCH /manual-entries/:id`, while the batch is a draft. Its rows must still fall inside the period (ADR-034).
+- **Alert snoozes:** a snoozed alert's date picker re-snoozes it until the end of the chosen day.
+
+Not editable, on purpose:
+- **Snapshots:** they keep the moment they were taken; a snapshot's date is the fact it records, not a plan.
+- **Approval due dates:** they come from the policy's timeouts.
+
+## Consequences
 - The timeline's bars cannot be dragged yet; the plan's epic 2.5 does that through this endpoint.

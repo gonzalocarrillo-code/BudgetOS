@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { TagChips } from "../features/threads/tag-chips.js";
+import { DateRangeEditor } from "../features/dates/date-range-editor.js";
 import { Card, Page } from "../components/page.js";
 import { formatTarget, targetVersionsQuery, targetsQuery, type TargetRow } from "../features/targets/queries.js";
 import { threadsQuery } from "../features/threads/queries.js";
@@ -86,7 +87,9 @@ function TargetsPage(): ReactElement {
                         )}
                       </td>
                     ) : null}
-                    <td className="whitespace-nowrap py-2 text-muted-foreground">{r.startDate} – {r.endDate}</td>
+                    <td className="whitespace-nowrap py-2 text-muted-foreground">
+                      <TargetDates ws={ws} target={r} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -96,6 +99,20 @@ function TargetsPage(): ReactElement {
       </Card>
       {selected ? <TargetDrawer ws={ws} target={selected} onClose={() => set({ select: undefined })} /> : null}
     </Page>
+  );
+}
+
+/** ADR-060: a target's dates, editable in place (its values keep their versions). */
+function TargetDates({ ws, target }: { ws: string; target: TargetRow }): ReactElement {
+  const client = useQueryClient();
+  return (
+    <DateRangeEditor
+      start={target.startDate}
+      end={target.endDate}
+      testId="target-dates"
+      save={(range) => unwrap(api.PATCH("/api/v1/targets/{id}/dates", { params: { path: { id: target.id }, header: { "X-Workspace-Id": ws } }, body: range as never }))}
+      onSaved={() => void client.invalidateQueries({ queryKey: targetsQuery(ws).queryKey })}
+    />
   );
 }
 

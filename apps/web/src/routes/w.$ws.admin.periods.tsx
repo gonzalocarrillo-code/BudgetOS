@@ -10,6 +10,7 @@ import { Card, Page } from "../components/page.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, periodsQuery } from "../lib/queries.js";
 import { SnapshotsCard } from "../features/snapshots/snapshots-card.js";
+import { DateRangeEditor } from "../features/dates/date-range-editor.js";
 
 /**
  * The fiscal calendar (product feedback 7, ADR-041): what a year, a quarter and a month are for
@@ -37,6 +38,17 @@ function PeriodsPage(): ReactElement {
   const can = (action: string) => me?.isOrgAdmin === true || perms.includes(action);
   const [problem, setProblem] = useState<string | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ["periods", ws] });
+  // ADR-060: a period's dates are editable until it has a closure (ADR-041 keeps a closed period's dates).
+  const dates = (p: PeriodRow) => (
+    <DateRangeEditor
+      start={p.start}
+      end={p.end}
+      testId="period-dates"
+      locked={!can("registry.manage") ? t("dates.needManage") : p.closure ? t("dates.periodClosed") : null}
+      save={(range) => unwrap(api.PATCH("/api/v1/periods/{id}", { params: { path: { id: p.id }, header: { "X-Workspace-Id": ws } }, body: { start: range.startDate, end: range.endDate } as never }))}
+      onSaved={() => void refresh()}
+    />
+  );
   const act = useMutation({
     meta: { success: t("toast.periodUpdated") },
     mutationFn: async (fn: () => Promise<unknown>) => fn(),
@@ -72,7 +84,7 @@ function PeriodsPage(): ReactElement {
                 <tr key={p.id} className="border-t border-border first:border-t-0" data-testid="period" data-key={p.key} data-closure={p.closure?.status ?? "open"}>
                   <td className={cn("py-2 pr-3 font-medium", p.kind === "month" && "pl-6 font-normal", p.kind === "quarter" && "pl-3")}>{p.key}</td>
                   <td className="py-2 pr-3"><span className="rounded-md bg-secondary px-2 py-0.5 text-xs">{t(`periods.kind.${p.kind}` as MessageKey)}</span></td>
-                  <td className="py-2 pr-3 tabular-nums text-muted-foreground">{p.start} – {p.end}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{dates(p)}</td>
                   <td className="py-2 pr-3">
                     {p.closure?.status === "closed" ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-warning"><Lock className="size-3.5" aria-hidden />{t("periods.closed")}</span>
@@ -97,7 +109,7 @@ function PeriodsPage(): ReactElement {
             {groups.get(t("periods.otherYear"))?.map((p) => (
               <li key={p.id} className="flex items-center gap-3" data-testid="period" data-key={p.key} data-closure={p.closure?.status ?? "open"}>
                 <span className="font-medium">{p.key}</span>
-                <span className="tabular-nums text-muted-foreground">{p.start} – {p.end}</span>
+                <span className="text-muted-foreground">{dates(p)}</span>
                 <span className="ml-auto"><PeriodActions p={p} can={can} onClose={close} onReopen={reopen} onRemove={remove} /></span>
               </li>
             ))}

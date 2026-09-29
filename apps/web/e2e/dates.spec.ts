@@ -91,4 +91,26 @@ test.describe("change a budget's dates (R9-002)", () => {
     expect(back.status, JSON.stringify(back.body)).toBe(201);
     expect((await envOf(token, id)).endDate).toBe(before.endDate);
   });
+
+  test("a target's dates are editable on the Targets page (R9-003)", async ({ page }) => {
+    const token = await as(page, "planner");
+    const list = (await api(token, "GET", `/workspaces/${state().workspaceId}/targets`)).body as unknown as Array<{ id: string; startDate: string; endDate: string; scopeType: string }> | { items?: unknown };
+    const targets = (Array.isArray(list) ? list : ((list as { items?: Array<{ id: string; startDate: string; endDate: string; scopeType: string }> }).items ?? [])).filter((x) => x.scopeType === "envelope");
+    const target = targets[0];
+    if (!target) throw new Error("no envelope target in the golden workspace");
+    await page.goto(`/w/${state().workspaceId}/targets`);
+    const row = page.getByTestId("target-dates").filter({ hasText: `${target.startDate} – ${target.endDate}` }).first();
+    await row.getByTestId("target-dates-edit").click();
+    const endDate = monthEarlier(target.endDate);
+    await page.getByTestId("target-dates-end").fill(endDate);
+    await page.getByTestId("target-dates-save").click();
+    await expect(page.getByTestId("target-dates-form")).toHaveCount(0);
+    await expect.poll(async () => {
+      const again = (await api(token, "GET", `/workspaces/${state().workspaceId}/targets`)).body as unknown;
+      const rows = (Array.isArray(again) ? again : ((again as { items?: unknown[] }).items ?? [])) as Array<{ id: string; endDate: string }>;
+      return rows.find((x) => x.id === target.id)?.endDate;
+    }).toBe(endDate);
+    // Leave the shared workspace as it was.
+    expect((await api(token, "PATCH", `/targets/${target.id}/dates`, { startDate: target.startDate, endDate: target.endDate })).status).toBe(200);
+  });
 });

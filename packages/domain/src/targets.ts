@@ -61,6 +61,16 @@ export const CreateTargetInput = z
   .refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "startDate after endDate", path: ["endDate"] });
 export type CreateTargetInput = z.infer<typeof CreateTargetInput>;
 
+/**
+ * PATCH /targets/:id/dates (ADR-060): the period the target covers. Its values keep their versions and
+ * approvals; an envelope's target stays inside the envelope's dates.
+ */
+export const UpdateTargetDatesInput = z
+  .object({ startDate: IsoDate, endDate: IsoDate, rationale: z.string().trim().max(2000).optional() })
+  .strict()
+  .refine((v) => v.startDate <= v.endDate, { message: "startDate after endDate", path: ["endDate"] });
+export type UpdateTargetDatesInput = z.infer<typeof UpdateTargetDatesInput>;
+
 /** PATCH /targets/:id/draft. A stale basedOnVersionId is a 409 with currentVersionId. */
 export const CreateTargetDraftInput = z
   .object({ basedOnVersionId: z.string().uuid().nullable(), ...TargetValueFields })

@@ -64,6 +64,7 @@ import {
   CreateMetricInput,
   CreateTargetInput,
   CreateTargetDraftInput,
+  UpdateTargetDatesInput,
   CreateSourceInput,
   UpdateSourceInput,
   MapUnmatchedInput,
@@ -340,6 +341,9 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/targets/{id}/draft": {
         patch: { operationId: "createTargetDraft", parameters: [idParam, workspaceHeader], requestBody: json(CreateTargetDraftInput), responses: { "200": { description: "New draft version; 409 with currentVersionId when basedOnVersionId is stale" } } },
+      },
+      "/api/v1/targets/{id}/dates": {
+        patch: { operationId: "updateTargetDates", parameters: [idParam, workspaceHeader], requestBody: json(UpdateTargetDatesInput), responses: { "200": { description: "The target with its new dates; values keep their versions (ADR-060)" } } },
       },
       "/api/v1/targets/{id}/submit": {
         post: { operationId: "submitTarget", parameters: [idParam, workspaceHeader], requestBody: json(SubmitVersionInput), responses: { "201": { description: "Approval request, or auto-approved by policy (entityType target_version)" } } },

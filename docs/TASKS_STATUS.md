@@ -484,3 +484,4 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 |---|---|---|
 | R9-001 | Pivot, template tree and totals count what each budget holds itself, so they equal Budget structure | done (ADR-059) |
 | R9-002 | A budget's dates are editable: drawer and Budgets Dates column; through approval once approved; children trimmed on request; phasing re-spread | done (ADR-060) |
+| R9-003 | Dates editable on targets (new endpoint), experiments, fiscal periods, manual entry batches and alert snoozes | done (ADR-060) |

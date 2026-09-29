@@ -140,6 +140,7 @@ const samples: Record<string, readonly unknown[]> = {
   ChangeDatesInput: [{ startDate: "2026-10-01", endDate: "2026-11-30", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1", trimChildren: true, rationale: "Moved" }],
   DateChangeLine: [{ envelopeId: "01927a00-0000-7000-8000-0000000000b1", name: "EMEA", from: { startDate: "2026-01-01", endDate: "2026-12-31" }, to: { startDate: "2026-01-01", endDate: "2026-11-30" }, rephased: true }],
   DateChangePreview: [{ lines: [{ envelopeId: "01927a00-0000-7000-8000-0000000000b1", name: "EMEA", from: { startDate: "2026-01-01", endDate: "2026-12-31" }, to: { startDate: "2026-01-01", endDate: "2026-11-30" }, rephased: false }], childrenOutside: 0, needsApproval: true, movedShare: "0.0849" }],
+  UpdateTargetDatesInput: [{ startDate: "2026-01-01", endDate: "2026-06-30" }, { startDate: "2026-01-01", endDate: "2026-06-30", rationale: "Half year" }],
   EndEnvelopeInput: [{ endDate: "2026-11-15", finalAmount: "400.00", rationale: "Paused", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1" }, { endDate: "2026-11-15", finalAmount: "400.00", rationale: "", basedOnVersionId: "01927a00-0000-7000-8000-0000000000a1", successor: { startDate: "2026-12-01", endDate: "2026-12-31", amount: "600.00" } }],
   // ADR-052 / ORG-005: workspace lifecycle and the org console.
   WorkspaceStatus: ["ACTIVE", "ARCHIVED"],
