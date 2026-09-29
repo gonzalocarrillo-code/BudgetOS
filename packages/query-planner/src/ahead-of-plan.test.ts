@@ -2,7 +2,7 @@ import { QueryRequest, type Predicate } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compileAggregateBq, compileQuery, compileTotals } from "./index.js";
-import { closePools, runAsApp, type Row } from "./test-support/db.js";
+import { closePools, owner, runAsApp, type Row } from "./test-support/db.js";
 import { PERIOD, TODAY, cleanupOrg, createOrg, createWorkspace, insertEnvelope, type FixtureOrg } from "./test-support/fixtures.js";
 
 /**
@@ -19,6 +19,8 @@ beforeAll(async () => {
   ws = await createWorkspace(org);
   await insertEnvelope(org, ws, { name: "Search", parentId: null, platform: "google", geo: "br", status: "APPROVED", start: PERIOD.start, end: PERIOD.end, versions: [{ amount: "9000.00", status: "APPROVED", approvedAt: "2026-01-02T00:00:00Z" }], spend: [{ date: "2026-01-20", amount: "3000.00" }] });
   await insertEnvelope(org, ws, { name: "Unbudgeted", parentId: null, platform: "google", geo: "mx", status: "DRAFT", start: PERIOD.start, end: PERIOD.end, versions: [], spend: [{ date: "2026-01-15", amount: "500.00" }] });
+  const ended = await insertEnvelope(org, ws, { name: "Stopped", parentId: null, platform: "meta", geo: "br", status: "APPROVED", start: PERIOD.start, end: PERIOD.end, versions: [{ amount: "1000.00", status: "APPROVED", approvedAt: "2026-01-02T00:00:00Z" }] });
+  await owner.query(`UPDATE envelope SET ended_at = now() WHERE id = $1`, [ended.id]);
 });
 
 afterAll(async () => {
@@ -27,7 +29,8 @@ afterAll(async () => {
 });
 
 const LIVE: Predicate = { field: { kind: "attr", key: "status" }, op: "neq", value: "ARCHIVED" };
-const request = (over: Record<string, unknown> = {}) => QueryRequest.parse({ workspaceId: ws, period: { kind: "range", ...PERIOD }, limit: 10, measures: ["actual", "budget_in_period", "ahead_of_plan_abs"], filter: { logic: "and", children: [LIVE] }, sort: [{ key: "name", dir: "asc" }], ...over });
+const LIVE_NOT_ENDED: Predicate[] = [LIVE, { field: { kind: "attr", key: "is_ended" }, op: "eq", value: false }];
+const request = (over: Record<string, unknown> = {}) => QueryRequest.parse({ workspaceId: ws, period: { kind: "range", ...PERIOD }, limit: 10, measures: ["actual", "budget_in_period", "ahead_of_plan_abs"], filter: { logic: "and", children: LIVE_NOT_ENDED }, sort: [{ key: "name", dir: "asc" }], ...over });
 const as = () => ({ workspaceId: ws, userId: org.users.u1 });
 const money = (v: unknown) => new Decimal(String(v)).toFixed(2);
 
@@ -52,8 +55,13 @@ describe("ahead of plan (ADR-064)", () => {
     expect(rows.map((r) => r["name"])).toEqual(["Search", "Unbudgeted"]);
   });
 
+  it("is_ended keeps ended budgets out (HO-010), or picks them", async () => {
+    const ended = await runAsApp(compileQuery(request({ filter: { logic: "and", children: [LIVE, { field: { kind: "attr", key: "is_ended" }, op: "eq", value: true }] } }), PERIOD, TODAY, OPTS), as());
+    expect(ended.map((r) => r["name"])).toEqual(["Stopped"]);
+  });
+
   it("BigQuery computes it the same way from the group's sums", () => {
-    const bq = compileAggregateBq(request({ groupBy: ["platform"], sort: [] }), PERIOD, TODAY, "proj.ds", OPTS);
+    const bq = compileAggregateBq(request({ groupBy: ["platform"], sort: [], filter: { logic: "and", children: [LIVE] } }), PERIOD, TODAY, "proj.ds", OPTS);
     expect(bq.sql).toContain("SUM(m.actual) - COALESCE(SUM(m.budget_in_period), 0) * @elapsed AS ahead_of_plan_abs");
     expect(bq.params["elapsed"]).toBe(new Decimal(31).div(90).toString());
   });

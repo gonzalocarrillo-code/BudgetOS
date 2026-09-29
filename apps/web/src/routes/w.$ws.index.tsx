@@ -151,7 +151,7 @@ function OverviewPage(): ReactElement {
     // A projection needs projection facts; without them it would read 0%.
     layout.shows("tile.projected") ? <Tile key="p" label={t("overview.projectedClose")} value={o ? (Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])) : ""} hint={o && Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} /> : null,
     layout.shows("tile.alerts") ? <Tile key="al" label={t("overview.openAlerts")} value={o ? String(o.alerts.open) : ""} to="alerts" ws={ws} testId="tile-alerts" /> : null,
-    layout.shows("tile.approvals") ? <Tile key="ap" label={t("overview.approvalsMine")} value={o ? String(o.approvals.mine) : ""} hint={o?.approvals.overdue ? t("overview.overdue", { n: o.approvals.overdue }) : undefined} to="approvals" ws={ws} testId="tile-approvals" /> : null,
+    layout.shows("tile.approvals") ? <Tile key="ap" label={t("overview.approvalsMine")} value={o ? String(o.queue?.waiting ?? 0) : ""} hint={o?.queue?.overdue ? t("overview.overdue", { n: o.queue.overdue }) : undefined} to="approvals" ws={ws} testId="tile-approvals" /> : null,
     // Phase E (H-007, decision E4): the change since the latest plan snapshot.
     layout.shows("tile.sincePlan") ? <SincePlanTile key="sp" ws={ws} /> : null,
   ].filter((x) => x !== null);
@@ -207,12 +207,12 @@ function OverviewPage(): ReactElement {
             <div className="grid gap-5 lg:grid-cols-2">
               {layout.shows("overPace") ? (
                 <Card title={t("overview.overPace")}>
-                  <LeafList ws={ws} rows={o.variances.over} icon={<ArrowUpRight className="size-4 text-destructive" aria-hidden />} money={money} testId="over-pace" />
+                  <LeafList ws={ws} rows={o.attention?.over ?? []} icon={<ArrowUpRight className="size-4 text-destructive" aria-hidden />} money={money} testId="over-pace" />
                 </Card>
               ) : null}
               {layout.shows("underPace") ? (
                 <Card title={t("overview.underPace")}>
-                  <LeafList ws={ws} rows={o.variances.under} icon={<ArrowDownRight className="size-4 text-secondary-foreground" aria-hidden />} money={money} testId="under-pace" />
+                  <LeafList ws={ws} rows={o.attention?.under ?? []} icon={<ArrowDownRight className="size-4 text-secondary-foreground" aria-hidden />} money={money} testId="under-pace" />
                 </Card>
               ) : null}
             </div>
@@ -260,13 +260,11 @@ function OverviewPage(): ReactElement {
                   {o.alerts.open === 0 ? <span className="text-sm text-muted-foreground">{t("overview.noAlerts")}</span> : null}
                 </div>
                 <ul className="flex flex-col gap-1 text-sm">
-                  {o.alerts.latest.map((a) => (
-                    <li key={a.id} className="flex items-center gap-2">
+                  {o.alerts.byRule.map((r) => (
+                    <li key={r.ruleId} className="flex items-center gap-2">
                       <AlertTriangle className="size-3.5 shrink-0 text-warning" aria-hidden />
-                      <Link to="/w/$ws/budgets" params={{ ws }} search={{ select: a.envelopeId } as never} className="min-w-0 flex-1 truncate hover:text-primary">
-                        {a.envelopeName ?? a.envelopeId}
-                      </Link>
-                      <span className="truncate text-xs text-muted-foreground">{a.ruleName}</span>
+                      <span className="min-w-0 flex-1 truncate">{r.ruleName}</span>
+                      <span className="tabular text-xs text-muted-foreground">{r.count}</span>
                     </li>
                   ))}
                 </ul>
@@ -277,23 +275,7 @@ function OverviewPage(): ReactElement {
             {layout.shows("approvals") ? (
             <Card title={t("overview.approvals")}>
               <div className="flex flex-col gap-2" data-testid="overview-approvals">
-                {o.approvals.due.length === 0 ? <p className="text-sm text-muted-foreground">{t("overview.noApprovals")}</p> : null}
-                <ul className="flex flex-col gap-1.5 text-sm">
-                  {o.approvals.due.map((r) => {
-                    const overdue = r.dueAt !== null && Date.parse(r.dueAt) < Date.now();
-                    return (
-                      <li key={r.id}>
-                        <Link to="/w/$ws/approvals/$id" params={{ ws, id: r.id }} className="line-clamp-2 hover:text-primary" data-testid="overview-approval">
-                          {r.summary ?? r.id}
-                        </Link>
-                        <span className={cn("text-xs", overdue ? "text-destructive" : "text-muted-foreground")}>
-                          {r.dueAt ? t(overdue ? "overview.wasDue" : "overview.due", { date: new Date(r.dueAt).toLocaleDateString() }) : ""}
-                          {r.requestedByName ? ` · ${r.requestedByName}` : ""}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
+                {(o.queue?.waiting ?? 0) === 0 ? <p className="text-sm text-muted-foreground">{t("overview.noApprovals")}</p> : <p className="text-sm" data-testid="overview-approval">{o.queue?.waiting}</p>}
                 <Link to="/w/$ws/approvals" params={{ ws }} search={{ tab: "mine" }} className="text-sm text-primary hover:underline">{t("overview.allApprovals")}</Link>
               </div>
             </Card>

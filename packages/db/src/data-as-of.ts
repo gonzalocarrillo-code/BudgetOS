@@ -68,3 +68,13 @@ export async function dataAsOf(tx: Tx, workspaceId: string, today: string): Prom
     WHERE sf.workspace_id = ${workspaceId}::uuid AND sf.period_date = ${lastFactDate}::date`;
   return coverage(lastFactDate, sources.map((s) => s.format), today);
 }
+
+/** The latest projection load (HO-012): when, and from which source; null without projections. */
+export async function projectionFreshness(tx: Tx, workspaceId: string): Promise<{ loadedAt: string; source: string | null } | null> {
+  const [r] = await tx.$queryRaw<Array<{ at: Date; source: string | null }>>`
+    SELECT x.loaded_at AS at, ds.name AS source
+    FROM projection_fact x LEFT JOIN ingest_run r ON r.id = x.source_run_id LEFT JOIN data_source ds ON ds.id = r.source_id
+    WHERE x.workspace_id = ${workspaceId}::uuid
+    ORDER BY x.loaded_at DESC LIMIT 1`;
+  return r ? { loadedAt: r.at.toISOString(), source: r.source } : null;
+}
