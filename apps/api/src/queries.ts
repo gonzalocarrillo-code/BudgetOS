@@ -5,6 +5,8 @@
  */
 export { listApprovals } from "./modules/approvals/queries/approvals.js";
 export { baselineReport, baselineRows, listBaselines } from "./modules/baselines/queries/baselines.js";
+export { describeWorkspace, workspaceGlossary } from "./modules/workspaces/queries/describe.js";
+export { listUnmatched } from "./modules/sources/queries/sources.js";
 export { getMe } from "./modules/auth/queries/get-me.js";
 export { closureByPeriod, closureReport, listClosures } from "./modules/closures/queries/closures.js";
 export { getEnvelope } from "./modules/envelopes/queries/get-envelope.js";

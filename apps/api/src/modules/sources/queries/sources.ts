@@ -5,8 +5,13 @@ import { connectorFor, type ObjectStore } from "@budget/workers";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { sourceView } from "../commands/sources.js";
+import type { DataSource } from "@prisma/client";
 import { mappingHints } from "./mapping.js";
+
+/** A source as the API returns it. */
+export function sourceView(s: DataSource) {
+  return { id: s.id, workspaceId: s.workspaceId, kind: s.kind, name: s.name, config: s.config, mapping: s.mapping, schedule: s.schedule, parsePattern: s.parsePattern, isActive: s.isActive, mappingProfileId: s.mappingProfileId };
+}
 
 /** GET /workspaces/:ws/sources. */
 export function listSources(prisma: PrismaClient, auth: AuthContext) {

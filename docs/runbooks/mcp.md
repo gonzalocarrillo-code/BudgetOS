@@ -8,8 +8,10 @@ AUTH_AUDIENCE=<identity platform project> pnpm --filter @budget/mcp dev
 ```
 
 `POST http://localhost:8080/mcp` takes a Bearer token (Identity Platform JWT).
-- Tools: `list_workspaces`, `describe_dimensions`, `query_budgets`, `get_budget`, `get_pacing`, `query_targets`, `search`, `list_approvals`, `get_decision_timeline`, `list_alerts`, `list_threads`, `list_tags`, `get_closure`, `export_csv`.
-- Resource: `budget://workspace/<id>/registry`.
+- Instructions: sent at the handshake (`INSTRUCTIONS` in `apps/mcp/src/server.ts`). They tell an orchestrator to call `describe_workspace` first, and how filters, amounts and ratios work.
+- Tools: `list_workspaces`, `describe_workspace`, `describe_dimensions`, `query_budgets`, `get_budget`, `get_pacing`, `query_targets`, `search`, `list_approvals`, `get_decision_timeline`, `list_alerts`, `list_threads`, `list_tags`, `get_closure`, `list_baselines`, `get_baseline`, `compare_budgets`, `export_csv`.
+- Resources: `budget://workspace/<id>/registry`, `budget://workspace/<id>/glossary` (the workspace's words, fed by the mapping synonyms).
+- Prompts: `pacing_review`, `since_snapshot`, `unmatched_spend`. Each reads its numbers live under the caller's scope and is audited as `mcp.prompt.<name>`.
 
 ## Who did what
 

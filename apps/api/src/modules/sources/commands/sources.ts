@@ -10,9 +10,8 @@ import { learnSynonyms, profileForSource } from "./mapping.js";
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
-export function sourceView(s: DataSource) {
-  return { id: s.id, workspaceId: s.workspaceId, kind: s.kind, name: s.name, config: s.config, mapping: s.mapping, schedule: s.schedule, parsePattern: s.parsePattern, isActive: s.isActive, mappingProfileId: s.mappingProfileId };
-}
+export { sourceView } from "../queries/sources.js";
+import { sourceView } from "../queries/sources.js";
 
 async function recordSourceChange(tx: Tx, auth: AuthContext, args: { workspaceId: string; action: string; sourceId: string; before?: unknown; after: Record<string, unknown> }) {
   await audit(tx, { workspaceId: args.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: args.action, entityType: "data_source", entityId: args.sourceId, before: args.before ?? null, after: args.after, requestId: auth.ctx.requestId });
