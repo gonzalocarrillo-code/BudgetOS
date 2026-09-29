@@ -35,6 +35,11 @@ export const MeasureKey = z.enum([
   "budget_baseline",
   "budget_change_abs",
   "budget_change_pct",
+  /**
+   * HO-009 (ADR-064): money ahead of plan, `actual − budget_in_period × elapsed` (negative: behind).
+   * Pace in currency, so the largest gaps rank first whatever the budget's size. Derived, never stored.
+   */
+  "ahead_of_plan_abs",
 ]);
 /** The measures that need `QueryRequest.compareTo`. */
 export const COMPARE_MEASURES: ReadonlySet<string> = new Set(["budget_baseline", "budget_change_abs", "budget_change_pct"]);
@@ -59,6 +64,8 @@ export const AttrKey = z.enum([
   "has_attachments",
   "alert_severity",
   "is_leaf",
+  /** HO-010: ended early (ADR-053): eq true or false. An ended budget keeps its APPROVED status. */
+  "is_ended",
   /** The envelope's parent (ADR-050): eq / in an envelope id, or is_empty for top-level budgets. */
   "parent_id",
   /** T-038: linked to an experiment. Value: a status (RUNNING), an experiment id, or `<id>:TEST` / `<id>:CONTROL`. */

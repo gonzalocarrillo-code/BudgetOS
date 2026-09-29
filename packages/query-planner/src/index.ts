@@ -5,6 +5,7 @@ export {
   compileQuery,
   compileTotals,
   derivedMetricSql,
+  elapsedDay,
   encodeCursor,
   metricRegistry,
   monthSplit,

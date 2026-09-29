@@ -45,12 +45,29 @@ const PAIRS: Array<[string, string]> = [
   ["danger-text", "danger-soft"],
   ["info-text", "info-soft"],
   ["neutral-text", "neutral-soft"],
+  // HO-002: each pace band's text on its own tint (heatmap cells, legend chips).
+  ["pace-under-text", "pace-under"],
+  ["pace-low-text", "pace-low"],
+  ["pace-on-text", "pace-on"],
+  ["pace-high-text", "pace-high"],
+  ["pace-over-text", "pace-over"],
 ];
+
+/** Non-text contrast (WCAG 1.4.11): a pace bar's fill against the track it sits on. */
+const BARS: Array<[string, string]> = ["under", "low", "on", "high", "over"].map((b) => [`pace-${b}-text`, "muted"]);
 
 describe("design tokens meet WCAG AA contrast", () => {
   for (const [fg, bg] of PAIRS) {
     it(`--${fg} on --${bg} is at least 4.5:1`, () => {
       expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
+describe("pace bars stand out from their track (HO-002)", () => {
+  for (const [fg, bg] of BARS) {
+    it(`--${fg} on --${bg} is at least 3:1`, () => {
+      expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(3);
     });
   }
 });
@@ -66,6 +83,11 @@ describe("dark tokens meet WCAG AA contrast (UX-012)", () => {
   for (const [fg, bg] of PAIRS) {
     it(`--${fg} on --${bg} is at least 4.5:1`, () => {
       expect(contrast(dark(fg), dark(bg))).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+  for (const [fg, bg] of BARS) {
+    it(`bar --${fg} on --${bg} is at least 3:1`, () => {
+      expect(contrast(dark(fg), dark(bg))).toBeGreaterThanOrEqual(3);
     });
   }
 });

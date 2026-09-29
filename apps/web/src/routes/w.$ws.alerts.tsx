@@ -8,7 +8,7 @@ import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { alertsQuery, can, type Alert } from "../features/ops/queries.js";
 import { api, unwrap } from "../lib/api.js";
-import { meQuery } from "../lib/queries.js";
+import { envelopeQuery, meQuery } from "../lib/queries.js";
 import { appliedTagsQuery } from "../features/threads/queries.js";
 import { TagChips } from "../features/threads/tag-chips.js";
 
@@ -19,7 +19,8 @@ import { TagChips } from "../features/threads/tag-chips.js";
  */
 const TABS = ["OPEN", "ACKNOWLEDGED", "SNOOZED", "RESOLVED"] as const;
 const SEVERITIES = ["critical", "warning", "info", "data"] as const;
-const AlertsSearch = z.object({ status: z.enum(TABS).default("OPEN"), severity: z.enum(SEVERITIES).optional() });
+// `rule` and `under` (HO-006): Home and the Overview open one rule's alerts, on one budget and everything under it.
+const AlertsSearch = z.object({ status: z.enum(TABS).default("OPEN"), severity: z.enum(SEVERITIES).optional(), rule: z.string().uuid().optional(), under: z.string().uuid().optional() });
 type AlertsSearch = z.infer<typeof AlertsSearch>;
 
 export const Route = createFileRoute("/w/$ws/alerts")({ validateSearch: AlertsSearch, component: AlertsPage });
@@ -47,7 +48,8 @@ function AlertsPage(): ReactElement {
   const { data: me } = useQuery(meQuery);
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
   const canAct = can(perms, me?.isOrgAdmin ?? false, "envelope.edit_draft");
-  const { data: alerts = [], isPending, error } = useQuery(alertsQuery(ws, search.status, search.severity));
+  const { data: alerts = [], isPending, error } = useQuery(alertsQuery(ws, search.status, search.severity, { rule: search.rule, under: search.under }));
+  const { data: underBudget } = useQuery({ ...envelopeQuery(ws, search.under ?? ""), enabled: search.under !== undefined });
   // Every listed alert's tags in one request (chips on each row).
   const { data: alertTags = {} } = useQuery(appliedTagsQuery(ws, "alert", alerts.slice(0, 200).map((a) => a.id)));
   const set = (s: Partial<AlertsSearch>) => void navigate({ search: (prev: AlertsSearch) => ({ ...prev, ...s }) });
@@ -90,6 +92,15 @@ function AlertsPage(): ReactElement {
             </button>
           ))}
         </div>
+        {search.rule || search.under ? (
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="alerts-only">
+            {search.rule ? <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" data-testid="alerts-only-rule">{t("alerts.onlyRule", { name: alerts[0]?.ruleName ?? "…" })}</span> : null}
+            {search.under ? <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" data-testid="alerts-only-under">{t("alerts.onlyUnder", { name: underBudget?.name ?? "…" })}</span> : null}
+            <button type="button" className="text-xs text-primary hover:underline" onClick={() => set({ rule: undefined, under: undefined })} data-testid="alerts-only-clear">
+              {t("alerts.onlyClear")}
+            </button>
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("alerts.severity")}>
           {[undefined, ...SEVERITIES].map((s) => (
             <button key={s ?? "all"} type="button" aria-pressed={search.severity === s} className={cn("h-7 rounded-full border px-2.5 text-xs", search.severity === s ? "border-primary bg-secondary" : "border-border hover:bg-accent")} onClick={() => set({ severity: s })} data-testid={`alerts-severity-${s ?? "all"}`}>

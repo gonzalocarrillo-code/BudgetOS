@@ -176,6 +176,10 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
       // A leaf has no live child (archived children, e.g. merged-away envelopes, do not count).
       if (p.op !== "eq" || typeof p.value !== "boolean") throw invalid(`is_leaf needs eq true or false`, p);
       return `${p.value ? "NOT " : ""}EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED')`;
+    case "is_ended":
+      // ADR-053: ending a budget sets ended_at and leaves its status APPROVED.
+      if (p.op !== "eq" || typeof p.value !== "boolean") throw invalid(`is_ended needs eq true or false`, p);
+      return `e.ended_at IS ${p.value ? "NOT " : ""}NULL`;
     case "parent_id":
       if (p.op === "is_empty") return "e.parent_id IS NULL";
       if (p.op === "not_empty") return "e.parent_id IS NOT NULL";
