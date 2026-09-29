@@ -489,13 +489,14 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 
 ## Product feedback, round 10: Slack as a working toolset (2026-09-29)
 
-Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is merged but has never run against a real Slack app; S-002 is the live gate. Decisions S1–S9 in the plan's §6 are open for the product owner; builds follow the defaults.
+Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is merged but has never run against a real Slack app; S-002 is the live gate. Decisions S1–S13 in the plan's §6 are open for the product owner; builds follow the defaults.
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
-| S-001 | S1 | Fixes: lowercase Slack emails, `authorize()` on every Slack action, `slack.settings.changed` consumed, worker warns without `APP_BASE_URL` | pending |
-| S-002 | S1 | Live setup: `docs/runbooks/slack.md`, `pnpm slack:manifest`, the checklist against the owner's Slack | pending (live gate) |
+| S-001 | S1 | Fixes: lowercase Slack emails, `authorize()` on every Slack action, `slack.settings.changed` consumed, worker warns without `APP_BASE_URL`, superadmin marking on the Slack path | pending |
+| S-002 | S1 | Slack apps and the runbook: the Slack-side steps and scopes, the access model, the dev app through the tunnel, the checklist against the owner's Slack | pending (live gate) |
 | S-003 | S1 | Every request type posts on creation (bulk commit and the structural requests: split, merge, end, reintroduce, import) | pending |
+| S-015 | S1 | GCP hosting: Secret Manager, the non-IAP path for `/api/v1/slack/*`, Pub/Sub topics and push subscriptions, `min_instances`, the staging app | blocked on T-008 |
 | S-004 | S2 | DMs to approvers and requesters, recorded and edited; the `dms` toggle; `/budget remind` | pending |
 | S-005 | S2 | Request changes button and form; the richer approval card with `#id` | pending |
 | S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | pending |
