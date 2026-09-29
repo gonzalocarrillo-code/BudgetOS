@@ -471,3 +471,9 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 | D-007 | F3 | Budget import template from the registry | pending |
 | D-008 | F3 | Budget import: validate, preview, commit as drafts | pending |
 | D-009 | F3 | Import UI in Budgets, Playwright | pending |
+| D-010 | F4 | MCP `describe_workspace` and server instructions | pending |
+| D-011 | F4 | MCP glossary resource and per-workspace tool descriptions | pending |
+| D-012 | F4 | MCP prompts | pending |
+| D-013 | F5 | Composite FKs on snapshot rows; two-workspace isolation test | pending |
+| D-014 | F5 | BigQuery authorized views per workspace | pending |
+| D-015 | F5 | Weekly snapshot integrity check | pending |
