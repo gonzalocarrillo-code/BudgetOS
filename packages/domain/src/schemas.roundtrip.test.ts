@@ -454,6 +454,7 @@ const samples: Record<string, readonly unknown[]> = {
   ParsePattern: ["^(?<country>[A-Z]{2})_(?<platform>[a-z]+)"],
   MapUnmatchedInput: [{ dimensionValues: { country: "BR", platform: "meta" }, envelopeId: workspaceId }],
   CreateUploadInput: [{ filename: "spend 2026-Q1.csv" }],
+  OverviewLayout: [{ hidden: [], order: [], axes: {} }, { hidden: ["heatmap"], order: ["kpi", "heatmap"], axes: { rows: "region" }, sort: "pace" }],
   SavedViewScreen: ["explorer"],
   SavedViewVisibility: ["private", "workspace"],
   CreateSavedViewInput: [{ name: "LATAM by country", definition: { view: "pivot", groupBy: ["country"] } }, { name: "Everyone", screen: "explorer", definition: {}, visibility: "workspace" }],
