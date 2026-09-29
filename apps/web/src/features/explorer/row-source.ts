@@ -3,9 +3,11 @@ import type { RowSource } from "@budget/grid";
 import { api, unwrap } from "../../lib/api.js";
 
 /**
- * The Explorer's RowSource (spec §18.2), over POST /workspaces/:ws/query. Every query ANDs the
- * live-leaf filter (ADR-016: parents are caps and never count twice), so the tree, the pivot and
- * the totals row sum the same envelopes. The server groups, sorts and totals; nothing is summed here.
+ * The Explorer's RowSource (spec §18.2), over POST /workspaces/:ws/query. Every query reads live
+ * budgets with `unallocated` (ADR-059): each budget counts for what it holds itself, its amount
+ * less its children's, so the tree, the pivot and the totals row add up to the top-level budgets,
+ * as Budget structure does. A parent that holds a remainder is a row of its own ("Paid Search ·
+ * not split"). The server groups, sorts and totals; nothing is summed here.
  *
  * - tree: one level per hierarchy-template key. A node's children are the next level's groups
  *   under its prefix (eq on each ancestor, is_empty for "none"); below the last key, the envelopes.
@@ -22,7 +24,8 @@ import { api, unwrap } from "../../lib/api.js";
  */
 
 export const NONE = "∅";
-export type ExplorerRow = QueryRow & { hasChildren: boolean; expanded: boolean; level: number; name: string };
+/** `holding`: a parent's row outside the structure, which shows only what it has not split (ADR-059). */
+export type ExplorerRow = QueryRow & { hasChildren: boolean; expanded: boolean; level: number; name: string; holding?: boolean };
 
 export interface ExplorerQuery {
   ws: string;
@@ -48,9 +51,12 @@ export interface ExplorerQuery {
 export interface Labels {
   value(dimension: string, code: string): string;
   none(dimension: string, level: number): string;
+  /** A parent's row outside the structure: the part of its amount it has not split. */
+  notSplit(name: string): string;
 }
 
 const PAGE = 1000;
+const LIVE = LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status");
 const prefix = (keys: string[], segments: string[]): Predicate[] =>
   keys.map((key, i) => (segments[i] === NONE ? { field: { kind: "dimension", key }, op: "is_empty" } : { field: { kind: "dimension", key }, op: "eq", value: segments[i] as string }));
 
@@ -84,9 +90,8 @@ export class ExplorerRowSource implements RowSource {
 
   private filterWith(extra: Predicate[]): FilterGroupT {
     const own = this.q.filter.children.length ? [this.q.filter] : [];
-    // Structure: parents are rows too (each with its own amount), so every live budget, not only leaves.
-    const cut = this.structure ? LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status") : LIVE_LEAVES;
-    return { logic: "and", children: [...cut, ...own, ...extra] };
+    // Every live budget, not only leaves: structure rows carry their own amounts, the rest their holdings.
+    return { logic: "and", children: [...LIVE, ...own, ...extra] };
   }
 
   private underParent(id: string | null): Predicate[] {
@@ -99,7 +104,7 @@ export class ExplorerRowSource implements RowSource {
     let cursor: string | null = null;
     let last: QueryResponse | undefined;
     do {
-      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : {}), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), ...(cursor ? { cursor } : {}) };
+      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : { unallocated: true }), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), ...(cursor ? { cursor } : {}) };
       last = (await unwrap(api.POST("/api/v1/workspaces/{ws}/query", { params: { path: { ws: this.q.ws } }, body: body as never }))) as QueryResponse;
       rows.push(...last.rows);
       cursor = last.nextCursor;
@@ -145,8 +150,12 @@ export class ExplorerRowSource implements RowSource {
   private envelopeRows(rows: QueryRow[], level: number): ExplorerRow[] {
     return rows.map((r) => {
       const key = r.envelopeId ?? r.key;
-      const hasChildren = this.structure && (r.childCount ?? 0) > 0;
-      return { ...r, key, level, name: r.path.at(-1) ?? "", hasChildren, expanded: hasChildren && this.expanded.has(key) };
+      const parent = (r.childCount ?? 0) > 0;
+      const hasChildren = this.structure && parent;
+      const name = r.path.at(-1) ?? "";
+      // Outside the structure a parent's row is only the part it has not split (ADR-059).
+      const holding = parent && !this.structure;
+      return { ...r, key, level, name: holding ? this.labels.notSplit(name) : name, hasChildren, expanded: hasChildren && this.expanded.has(key), ...(holding ? { holding } : {}) };
     });
   }
 

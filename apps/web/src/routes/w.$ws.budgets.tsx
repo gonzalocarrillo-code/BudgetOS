@@ -179,7 +179,8 @@ function ExplorerPage(): ReactElement {
       const rows = cells.flatMap((line, i) => {
         const row = source?.rowAt(anchor.row + i);
         const amount = offset >= 0 ? parseMoney(line[offset] ?? "") : null;
-        return row?.envelopeId && amount !== null ? [{ envelopeId: row.envelopeId, amount }] : [];
+        // A parent's "not split" row shows its remainder, not its amount: a paste never sets it.
+        return row?.envelopeId && !row.holding && amount !== null ? [{ envelopeId: row.envelopeId, amount }] : [];
       });
       if (rows.length === 0) return setNotice({ kind: "error", text: t("paste.none") });
       void unwrap(
@@ -194,6 +195,7 @@ function ExplorerPage(): ReactElement {
     onEdit: async ({ row, value }) => {
       const r = row as ExplorerRow;
       if (!r.envelopeId) return setNotice({ kind: "error", text: t("explorer.edit.notEnvelope") });
+      if (r.holding) return setNotice({ kind: "error", text: t("explorer.edit.notSplit") });
       const amount = parseMoney(value);
       if (amount === null) return setNotice({ kind: "error", text: t("explorer.edit.invalid", { value }) });
       const res = await api.PATCH("/api/v1/envelopes/{id}/draft", {

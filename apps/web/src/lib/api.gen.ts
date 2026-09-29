@@ -5989,6 +5989,7 @@ export interface operations {
                     /** Format: uuid */
                     templateId?: string;
                     subtree?: boolean;
+                    unallocated?: boolean;
                     /** @default [] */
                     sort?: {
                         key: string;
@@ -8266,6 +8267,7 @@ export interface operations {
                         /** Format: uuid */
                         templateId?: string;
                         subtree?: boolean;
+                        unallocated?: boolean;
                         /** @default [] */
                         sort?: {
                             key: string;

@@ -10,8 +10,8 @@ import { targetsFor } from "../search-indexer/indexer.js";
 /**
  * rollup-worker (spec §19, plan §5.3): rollup_cache holds each hierarchy template's tree for a
  * period, so the grid reads roll-ups instead of computing them. Node measures come from the
- * planner itself — `groupBy` = the template path up to the node's depth over the live leaf
- * envelopes — so the cached tree and a live pivot always agree. A change recomputes only the nodes
+ * planner itself — `groupBy` = the template path up to the node's depth over what each live budget
+ * holds itself (ADR-059) — so the cached tree and a live pivot always agree. A change recomputes only the nodes
  * on its envelopes' paths; registry changes rebuild every template.
  */
 
@@ -25,6 +25,18 @@ interface Ctx {
   orgId: string;
   today: string;
 }
+
+/**
+ * ADR-059: the cache counts every live budget for what it holds itself (its amount less its live
+ * children's), so the cached tree adds up to the top-level budgets, as the Budgets pivot does.
+ * Closures (T-024) keep reading live leaves, as every closure before them did.
+ */
+export interface NodeOptions {
+  unallocated?: boolean | undefined;
+}
+const LIVE = LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status");
+const liveSet = (o: NodeOptions) => (o.unallocated ? LIVE : LIVE_LEAVES);
+const CACHE: NodeOptions = { unallocated: true };
 type Period = { start: string; end: string };
 
 const SUMS = ["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs"] as const;
@@ -49,7 +61,10 @@ interface Sums {
   pendingCount: number;
 }
 const zero = (): Sums => ({ budget: null, budget_in_period: null, actual: null, projected: null, remaining: null, variance_abs: null, leafCount: 0, pendingCount: 0 });
-const dec = (v: unknown) => (v === null || v === undefined ? null : new Decimal(String(v)));
+// Node sums are exact: a parent's holding is a difference (ADR-059), and at decimal.js's default 20
+// digits a refresh (summing cached children) and a rebuild would round in a different order.
+const Exact = Decimal.clone({ precision: 60 });
+const dec = (v: unknown): Decimal | null => (v === null || v === undefined ? null : new Exact(String(v)));
 const plus = (a: Decimal | null, b: Decimal | null) => (a === null ? b : b === null ? a : a.plus(b));
 function add(into: Sums, x: Sums): void {
   for (const k of SUMS) into[k] = plus(into[k], x[k]);
@@ -85,9 +100,9 @@ function prefixFilter(keys: string[], segments: string[]): FilterGroupT {
 }
 
 /** Nodes at `depth` (≥ 1) of a template through the planner, optionally only those under the given prefixes. */
-async function nodesAtDepth(tx: Tx, ctx: Ctx, path: string[], depth: number, period: Period, only: string[][] | null): Promise<Array<{ nodePath: string; sums: Sums }>> {
+async function nodesAtDepth(tx: Tx, ctx: Ctx, path: string[], depth: number, period: Period, only: string[][] | null, o: NodeOptions): Promise<Array<{ nodePath: string; sums: Sums }>> {
   const keys = path.slice(0, depth);
-  const children: Array<Predicate | FilterGroupT> = [...LIVE_LEAVES];
+  const children: Array<Predicate | FilterGroupT> = [...liveSet(o)];
   if (only !== null) {
     if (only.length === 0) return [];
     children.push({ logic: "or", children: only.map((segs) => prefixFilter(keys, segs)) });
@@ -99,7 +114,7 @@ async function nodesAtDepth(tx: Tx, ctx: Ctx, path: string[], depth: number, per
   const opts = { hasProjections: await hasProjections(tx, ctx.workspaceId), ...(ids === undefined ? {} : { envelopeIds: ids }) };
   let cursor: string | null = null;
   do {
-    const q = QueryRequest.parse({ workspaceId: ctx.workspaceId, filter: { logic: "and", children }, groupBy: keys, measures: [...SUMS], period: { kind: "range", ...period }, limit: 1000, ...(cursor ? { cursor } : {}) });
+    const q = QueryRequest.parse({ workspaceId: ctx.workspaceId, filter: { logic: "and", children }, groupBy: keys, measures: [...SUMS], period: { kind: "range", ...period }, limit: 1000, ...(o.unallocated ? { unallocated: true } : {}), ...(cursor ? { cursor } : {}) });
     const c = compileQuery(q, period, ctx.today, opts);
     const page = pageOf(c, await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values), q.limit);
     for (const r of page.rows) out.push({ nodePath: keys.map((k) => segment(r[`dim_${k.replace(/[^a-z0-9_]/gi, "_").toLowerCase()}`])).join("/"), sums: sumsOfRow(r) });
@@ -108,8 +123,8 @@ async function nodesAtDepth(tx: Tx, ctx: Ctx, path: string[], depth: number, per
   return out;
 }
 
-async function rootSums(tx: Tx, ctx: Ctx, period: Period): Promise<Sums> {
-  const q = QueryRequest.parse({ workspaceId: ctx.workspaceId, filter: { logic: "and", children: LIVE_LEAVES }, measures: [...SUMS], period: { kind: "range", ...period }, limit: 1 });
+async function rootSums(tx: Tx, ctx: Ctx, period: Period, o: NodeOptions): Promise<Sums> {
+  const q = QueryRequest.parse({ workspaceId: ctx.workspaceId, filter: { logic: "and", children: liveSet(o) }, measures: [...SUMS], period: { kind: "range", ...period }, limit: 1, ...(o.unallocated ? { unallocated: true } : {}) });
   const c = compileTotals(q, period, ctx.today);
   const [t] = await tx.$queryRawUnsafe<Row[]>(c.sql, ...c.values);
   return sumsOfRow(t ?? {});
@@ -149,12 +164,12 @@ const dataVersionOf = async (tx: Tx, workspaceId: string) => {
  * Every node of a template for a period (root first, then each depth), not stored. The deepest
  * level comes from the planner; each level above is the sum of the one below. Also used by closures (T-024).
  */
-export async function templateNodes(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "path">, period: Period): Promise<RollupNode[]> {
+export async function templateNodes(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "path">, period: Period, o: NodeOptions = {}): Promise<RollupNode[]> {
   const depth = template.path.length;
   const sums = new Map<string, Sums>([[ROOT_PATH, zero()]]);
-  if (depth === 0) sums.set(ROOT_PATH, await rootSums(tx, ctx, period));
+  if (depth === 0) sums.set(ROOT_PATH, await rootSums(tx, ctx, period, o));
   else {
-    for (const n of await nodesAtDepth(tx, ctx, template.path, depth, period, null)) {
+    for (const n of await nodesAtDepth(tx, ctx, template.path, depth, period, null, o)) {
       const segs = n.nodePath.split("/");
       for (let d = 0; d <= depth; d += 1) {
         const p = segs.slice(0, d).join("/");
@@ -172,7 +187,7 @@ export async function templateNodes(tx: Tx, ctx: Ctx, template: Pick<HierarchyTe
 
 export async function buildTemplate(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "id" | "path">, period: Period): Promise<number> {
   const scope = { workspaceId: ctx.workspaceId, templateId: template.id, periodStart: period.start, periodEnd: period.end, dataVersion: await dataVersionOf(tx, ctx.workspaceId) };
-  const nodes = await templateNodes(tx, ctx, template, period);
+  const nodes = await templateNodes(tx, ctx, template, period, CACHE);
   for (let i = 0; i < nodes.length; i += 1000) await upsertRollupNodes(tx, scope, nodes.slice(i, i + 1000));
   await deleteRollupNodesExcept(tx, scope, nodes.map((n) => n.nodePath));
   return nodes.length;
@@ -184,12 +199,15 @@ export async function buildTemplate(tx: Tx, ctx: Ctx, template: Pick<HierarchyTe
  * empty are deleted; the root always stays.
  */
 export async function refreshTemplate(tx: Tx, ctx: Ctx, template: Pick<HierarchyTemplate, "id" | "path">, period: Period, envelopeIds: string[]): Promise<{ upserted: number; deleted: number }> {
-  const envs = await tx.envelope.findMany({ where: { id: { in: envelopeIds } }, select: { dimensionValues: true } });
+  // A child's amount changes what its parent holds (ADR-059): the parents' nodes are refreshed too.
+  const changed = await tx.envelope.findMany({ where: { id: { in: envelopeIds } }, select: { id: true, parentId: true } });
+  const withParents = [...new Set([...changed.map((e) => e.id), ...changed.flatMap((e) => (e.parentId === null ? [] : [e.parentId]))])];
+  const envs = await tx.envelope.findMany({ where: { id: { in: withParents } }, select: { dimensionValues: true } });
   const scope = { workspaceId: ctx.workspaceId, templateId: template.id, periodStart: period.start, periodEnd: period.end, dataVersion: await dataVersionOf(tx, ctx.workspaceId) };
   const depth = template.path.length;
   const frac = elapsedFraction(period, ctx.today);
   if (depth === 0) {
-    return { upserted: await upsertRollupNodes(tx, scope, [{ nodePath: ROOT_PATH, envelopeId: null, measures: measuresOf(await rootSums(tx, ctx, period), frac) }]), deleted: 0 };
+    return { upserted: await upsertRollupNodes(tx, scope, [{ nodePath: ROOT_PATH, envelopeId: null, measures: measuresOf(await rootSums(tx, ctx, period, CACHE), frac) }]), deleted: 0 };
   }
   const deepest = new Map<string, string[]>();
   for (const e of envs) {
@@ -197,7 +215,7 @@ export async function refreshTemplate(tx: Tx, ctx: Ctx, template: Pick<Hierarchy
     const segs = template.path.map((k) => segment(dims[k]));
     deepest.set(segs.join("/"), segs);
   }
-  const found = new Map((await nodesAtDepth(tx, ctx, template.path, depth, period, [...deepest.values()])).map((n) => [n.nodePath, n.sums]));
+  const found = new Map((await nodesAtDepth(tx, ctx, template.path, depth, period, [...deepest.values()], CACHE)).map((n) => [n.nodePath, n.sums]));
   const touched = new Set<string>(deepest.keys());
   for (const p of deepest.keys()) for (let q = parentOf(p); ; q = parentOf(q)) {
     touched.add(q);
@@ -314,7 +332,9 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
     const templates = await tx.hierarchyTemplate.findMany({ where: { workspaceId: event.workspaceId } });
     result.templates = templates.length;
     // A budget's granularities changed: it left one path for another in every template, so rebuild.
-    if (event.topic === "registry.changed" || (event.topic === "budget.changed" && (event.payload as { kind?: unknown } | null)?.kind === "granularities")) {
+    // A move changes what its old parent holds (ADR-059), and the event names only the new one.
+    const kind = (event.payload as { kind?: unknown } | null)?.kind;
+    if (event.topic === "registry.changed" || (event.topic === "budget.changed" && (kind === "granularities" || kind === "moved"))) {
       // Values merged or re-parented, templates saved: rebuild (spec §19).
       for (const t of templates) for (const p of await periodsFor(tx, ctx, t.id, [])) result.upserted += await buildTemplate(tx, ctx, t, p);
       result = { ...result, rebuilt: true };

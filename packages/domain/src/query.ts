@@ -41,6 +41,12 @@ export const QueryRequest = z.object({
    * it (parent links), so a parent reads against its own amount; rows carry `childCount`.
    */
   subtree: z.boolean().optional(),
+  /**
+   * ADR-059: every live budget counts for what it holds itself: its amount less its live children's
+   * in the period (a leaf holds all of it), plus its own spend. Groups and totals then add up to the
+   * top-level budgets however they group, and each flat row carries `childCount`. Not with `subtree`.
+   */
+  unallocated: z.boolean().optional(),
   sort: z.array(z.object({ key: z.string(), dir: z.enum(["asc", "desc"]) })).max(3).default([]),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(1000).default(200),
@@ -58,7 +64,7 @@ export const QueryRow = z.object({
    * a parent opens in the drawer like a leaf. Null when no single envelope is the group.
    */
   nodeEnvelopeId: z.string().uuid().nullable().optional(),
-  /** Flat rows with `subtree`: live children of this envelope; its parent. */
+  /** Flat rows with `subtree` or `unallocated`: live children of this envelope; its parent. */
   childCount: z.number().int().optional(),
   parentId: z.string().uuid().nullable().optional(),
   path: z.array(z.string()),

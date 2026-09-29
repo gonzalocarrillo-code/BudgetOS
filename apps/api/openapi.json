@@ -10095,6 +10095,9 @@
                   "subtree": {
                     "type": "boolean"
                   },
+                  "unallocated": {
+                    "type": "boolean"
+                  },
                   "sort": {
                     "type": "array",
                     "maxItems": 3,
@@ -15761,6 +15764,9 @@
                         "format": "uuid"
                       },
                       "subtree": {
+                        "type": "boolean"
+                      },
+                      "unallocated": {
                         "type": "boolean"
                       },
                       "sort": {
