@@ -17,6 +17,8 @@ export interface RequestCard {
   count: number;
   before: string | null;
   after: string | null;
+  /** (after − before) ÷ before, 4 decimals; null for a new budget or when it is not money. */
+  changePct: string | null;
 }
 
 interface RequestRef {
@@ -45,14 +47,15 @@ export async function requestCards(tx: Tx, requests: readonly RequestRef[]): Pro
       const before = currents.length === 0 ? null : currents.reduce((s, v) => s.plus(v.amountReporting.toString()), new Decimal(0));
       const first = versions[0];
       const title = r.entityType === "bulk_change" ? (first?.rationale?.trim() || fallback) : first ? (first.envelope.displayName ?? first.envelope.name) : fallback;
-      out.set(r.id, { title, count: versions.length, before: money(before), after: versions.length ? money(after) : null });
+      const changePct = before !== null && before.gt(0) && versions.length ? after.minus(before).div(before).toDecimalPlaces(4).toString() : null;
+      out.set(r.id, { title, count: versions.length, before: money(before), after: versions.length ? money(after) : null, changePct });
     } else if (r.entityType === "target_version") {
       const tv = await tx.targetVersion.findUnique({ where: { id: r.entityId }, select: { target: { select: { metricKey: true, envelopeId: true } } } });
       const env = tv?.target.envelopeId ? await tx.envelope.findUnique({ where: { id: tv.target.envelopeId }, select: { name: true, displayName: true } }) : null;
-      out.set(r.id, { title: tv ? `${tv.target.metricKey.toUpperCase()} target${env ? ` · ${env.displayName ?? env.name}` : ""}` : fallback, count: 1, before: null, after: null });
+      out.set(r.id, { title: tv ? `${tv.target.metricKey.toUpperCase()} target${env ? ` · ${env.displayName ?? env.name}` : ""}` : fallback, count: 1, before: null, after: null, changePct: null });
     } else {
       const b = r.entityType === "manual_entry" ? await tx.manualEntryBatch.findUnique({ where: { id: r.entityId }, select: { rows: true } }) : null;
-      out.set(r.id, { title: fallback, count: b && Array.isArray(b.rows) ? b.rows.length : 1, before: null, after: null });
+      out.set(r.id, { title: fallback, count: b && Array.isArray(b.rows) ? b.rows.length : 1, before: null, after: null, changePct: null });
     }
   }
   return out;
@@ -139,7 +142,7 @@ export async function sentByMe(prisma: PrismaClient, auth: AuthContext, limit = 
     const cards = await requestCards(tx, rows);
     return rows.map((r) => {
       const snap = PolicySnapshot.safeParse(r.policySnapshot);
-      const card = cards.get(r.id) ?? { title: r.summary, count: 1, before: null, after: null };
+      const card = cards.get(r.id) ?? { title: r.summary, count: 1, before: null, after: null, changePct: null };
       return { id: r.id, summary: r.summary, entityType: r.entityType, requestedAt: r.requestedAt.toISOString(), dueAt: r.dueAt?.toISOString() ?? null, waitingOn: snap.success ? (snap.data.chain[r.currentStep]?.role ?? null) : null, ...card };
     });
   });

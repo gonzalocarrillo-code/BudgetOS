@@ -30,7 +30,7 @@ type Desk = {
     unmatched: number;
     canMap: boolean;
     drafts: { count: number; items: Array<{ envelopeId: string; versionId: string; name: string }> };
-    alertsOnMyBudgets: Array<{ envelopeId: string; name: string; ruleName: string | null; severity: string; count: number; assigned: number }>;
+    alertsOnMyBudgets: Array<{ envelopeId: string; name: string; severity: string; count: number; assigned: number; rules: Array<{ ruleId: string; ruleName: string | null; severity: string; count: number }> }>;
     closures: Array<{ periodKey: string; daysLeft: number; drafts: number; pending: number }>;
     failedRuns: unknown[];
   };
@@ -79,12 +79,16 @@ describe("Home is each person's desk (HO-005)", () => {
     expect(bulk?.count).toBe(24); // EMEA × amazon: 4 countries × 3 objectives × 2 audiences
     const up = new Decimal(bulk?.after ?? 0).div(bulk?.before ?? 1).minus(1);
     expect(up.toDecimalPlaces(2).toNumber()).toBe(0.05);
+    expect(new Decimal((bulk as { changePct?: string }).changePct ?? 0).toDecimalPlaces(2).toNumber()).toBe(0.05);
     expect(bulk?.requestedByName).toBe("Golden planner");
     // … and, owning every budget through a workspace-wide role, the alerts on them, by budget and rule.
     const groups = desks.budgetOwner.waitingOnMe.alertsOnMyBudgets;
     expect(groups.length).toBeGreaterThan(0);
-    expect(new Set(groups.map((g) => g.name))).toEqual(new Set(["EMEA", "LATAM"]));
-    expect(groups.every((g) => g.ruleName !== null && g.count > 0 && g.assigned === 0)).toBe(true);
+    expect(groups.map((g) => g.name).sort()).toEqual(["EMEA", "LATAM"]);
+    // Each group's count is its rules' counts; together they are every open alert (all of them are the budget owner's).
+    for (const g of groups) expect(g.rules.reduce((n, r) => n + r.count, 0), g.name).toBe(g.count);
+    expect(groups.reduce((n, g) => n + g.count, 0)).toBe(desks.budgetOwner.totals.openAlerts);
+    expect(groups.every((g) => g.assigned === 0 && g.rules.every((r) => r.ruleName !== null))).toBe(true);
 
     // The planner who sent it sees it waiting on a budget owner; they own no budget, so no alerts are theirs.
     const sent = desks.planner.sent.find((s) => s.title === GOLDEN_PENDING_BULK.rationale);
@@ -104,6 +108,17 @@ describe("Home is each person's desk (HO-005)", () => {
     // Not one page for everyone: the four roles that act differently get four different desks.
     const shape = (d: Desk) => JSON.stringify({ w: d.waitingOnMe, s: d.sent });
     expect(new Set((["planner", "budgetOwner", "orgAdmin", "finance1"] as const).map((p) => shape(desks[p]))).size).toBe(4);
+  });
+
+  it("the Alerts list opens on one top-level budget and one rule, as Home links a group (HO-006)", async () => {
+    const [group] = (await desk("budgetOwner")).waitingOnMe.alertsOnMyBudgets;
+    const rule = group?.rules[0];
+    expect(rule).toBeDefined();
+    const listed = await as("budgetOwner", "GET", `/alerts?status=OPEN,ACKNOWLEDGED&limit=500&under=${group?.envelopeId ?? ""}&ruleId=${rule?.ruleId ?? ""}`);
+    expect(listed.status, JSON.stringify(listed.body).slice(0, 300)).toBe(200);
+    expect((listed.body as unknown as unknown[]).length).toBe(rule?.count);
+    const all = await as("budgetOwner", "GET", `/alerts?status=OPEN,ACKNOWLEDGED&limit=500&under=${group?.envelopeId ?? ""}`);
+    expect((all.body as unknown as unknown[]).length).toBe(group?.count);
   });
 
   it("a draft the planner never sent waits on them until they send it", async () => {

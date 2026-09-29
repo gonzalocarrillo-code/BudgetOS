@@ -11246,6 +11246,10 @@
                               "after": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "changePct": {
+                                "type": "string",
+                                "nullable": true
                               }
                             },
                             "required": [
@@ -11389,14 +11393,6 @@
                               "name": {
                                 "type": "string"
                               },
-                              "ruleId": {
-                                "type": "string",
-                                "format": "uuid"
-                              },
-                              "ruleName": {
-                                "type": "string",
-                                "nullable": true
-                              },
                               "severity": {
                                 "type": "string"
                               },
@@ -11405,16 +11401,43 @@
                               },
                               "assigned": {
                                 "type": "integer"
+                              },
+                              "rules": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "ruleId": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "ruleName": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "count": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "ruleId",
+                                    "ruleName",
+                                    "severity",
+                                    "count"
+                                  ]
+                                }
                               }
                             },
                             "required": [
                               "envelopeId",
                               "name",
-                              "ruleId",
-                              "ruleName",
                               "severity",
                               "count",
-                              "assigned"
+                              "assigned",
+                              "rules"
                             ]
                           }
                         },
@@ -11526,6 +11549,10 @@
                             "nullable": true
                           },
                           "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changePct": {
                             "type": "string",
                             "nullable": true
                           }
@@ -11978,6 +12005,10 @@
                           "nullable": true
                         },
                         "spentPct": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "paceIndex": {
                           "type": "string",
                           "nullable": true
                         },
@@ -18319,6 +18350,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "under",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Alerts on this budget or any budget under it"
           },
           {
             "name": "filter",

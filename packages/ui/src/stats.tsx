@@ -147,8 +147,12 @@ export function HeadlineStrip({ title, items, action, className, testId }: { tit
           </span>
           <span className="font-semibold" title={i.exact}>
             {i.value}
-          </span>
-          {i.bar ? <span className="w-20">{i.bar}</span> : null}
+          </span>{" "}
+          {i.bar ? (
+            <>
+              <span className="w-20">{i.bar}</span>{" "}
+            </>
+          ) : null}
           <span className="text-muted-foreground">{i.label}</span>
         </span>
       ))}
@@ -157,7 +161,8 @@ export function HeadlineStrip({ title, items, action, className, testId }: { tit
   );
 }
 
-const shortDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+// English, like every string in Phase 1 (plan §11.8); "Aug 31, 2026".
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 /**
  * How current the actuals are (HO-003): the last day they cover, and how old that is once they are

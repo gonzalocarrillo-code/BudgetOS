@@ -428,7 +428,7 @@ const samples: Record<string, readonly unknown[]> = {
     },
   ],
   HomeRequestCard: [{ title: "Q4 retail push", count: 24, before: "137599.59", after: "144479.57" }, { title: "CPA target · MX meta conversion", count: 1, before: null, after: null }],
-  HomeAlertGroup: [{ envelopeId: workspaceId, name: "EMEA", ruleId: "01927a00-0000-7000-8000-0000000000b1", ruleName: "CPA over target", severity: "warning", count: 12, assigned: 0 }],
+  HomeAlertGroup: [{ envelopeId: workspaceId, name: "EMEA", severity: "critical", count: 12, assigned: 1, rules: [{ ruleId: "01927a00-0000-7000-8000-0000000000b1", ruleName: "CPA far over target", severity: "critical", count: 5 }, { ruleId: "01927a00-0000-7000-8000-0000000000b2", ruleName: "CPA over target", severity: "warning", count: 7 }] }],
   UpdateMeInput: [{ name: "Maya Chen" }],
   UpdateWorkspaceInput: [{ name: "OpenAI" }],
   AppliedTagsQuery: [{ type: "alert", ids: "01927a00-0000-7000-8000-0000000000a1,01927a00-0000-7000-8000-0000000000a2" }],

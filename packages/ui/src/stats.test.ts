@@ -54,6 +54,8 @@ describe("HeadlineStrip", () => {
     expect(out).toContain("Golden this year");
     expect(out).toContain("USD 1.39M");
     expect(out).toContain("open alerts");
+    // Words, not glued spans: "191 open alerts" reads the same to a screen reader.
+    expect(out.replace(/<[^>]+>/g, "")).toContain("191 open alerts");
   });
 });
 

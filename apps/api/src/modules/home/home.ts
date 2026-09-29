@@ -167,11 +167,11 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     // no role that reads budgets gets no totals.
     const head = headline(auth);
     if (setup.budgets > 0 && head !== undefined) {
-      const q = QueryRequest.parse({ workspaceId, filter: head.filter, subtree: head.subtree, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct"], limit: 1 });
+      const q = QueryRequest.parse({ workspaceId, filter: head.filter, subtree: head.subtree, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct", "pace_index"], limit: 1 });
       const tt = compileTotals(q, period, today, opts);
       const [row] = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(tt.sql, ...tt.values);
       // HO-001: the Overview's count: open alerts the caller may read. HO-005: the approval queue too.
-      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts: alertsOpen.length, waiting: queue.waiting, overdue: queue.overdue };
+      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), paceIndex: ratio(row?.["pace_index"]), openAlerts: alertsOpen.length, waiting: queue.waiting, overdue: queue.overdue };
     }
 
     return {
@@ -201,7 +201,8 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
 /**
  * Open alerts on budgets that are the caller's (HO-005): assigned to them, on a budget they own or
  * one under it, or inside a Budget owner role's scope (a workspace-wide Budget owner owns every
- * budget). Grouped by top-level budget and rule; assigned first, then the most severe and the largest.
+ * budget). One group per top-level budget, with the count per rule; assigned first, then the most
+ * severe and the largest.
  */
 async function myAlertGroups(tx: Tx, auth: AuthContext, alerts: readonly OpenAlert[], lineage: Map<string, LineageStep[]>): Promise<NonNullable<HomeResponse["waitingOnMe"]["alertsOnMyBudgets"]>> {
   const me = auth.user.id;
@@ -212,18 +213,25 @@ async function myAlertGroups(tx: Tx, auth: AuthContext, alerts: readonly OpenAle
     (a) => a.ownerId === me || ownsAll || (lineage.get(a.envelopeId) ?? []).some((s) => s.ownerId === me) || (scoped !== null && owners.some((o) => matchesScope(o.scope, scoped.get(a.envelopeId) ?? { dims: {} }))),
   );
   if (mine.length === 0) return [];
-  const rules = new Map((await tx.pacingRule.findMany({ where: { id: { in: [...new Set(mine.map((a) => a.ruleId))] } }, select: { id: true, name: true } })).map((r) => [r.id, r.name]));
-  const groups = new Map<string, { envelopeId: string; name: string; ruleId: string; ruleName: string | null; severity: string; count: number; assigned: number }>();
+  const ruleNames = new Map((await tx.pacingRule.findMany({ where: { id: { in: [...new Set(mine.map((a) => a.ruleId))] } }, select: { id: true, name: true } })).map((r) => [r.id, r.name]));
+  const worse = (a: string, b: string) => ((SEVERITY_RANK[a] ?? 9) <= (SEVERITY_RANK[b] ?? 9) ? a : b);
+  const groups = new Map<string, { envelopeId: string; name: string; severity: string; count: number; assigned: number; rules: Map<string, { ruleId: string; ruleName: string | null; severity: string; count: number }> }>();
   for (const a of mine) {
     const chain = lineage.get(a.envelopeId) ?? [];
     const root = chain[chain.length - 1] ?? { id: a.envelopeId, name: "" };
-    const key = `${root.id}/${a.ruleId}`;
-    const g = groups.get(key) ?? { envelopeId: root.id, name: root.name, ruleId: a.ruleId, ruleName: rules.get(a.ruleId) ?? null, severity: a.severity, count: 0, assigned: 0 };
+    const g = groups.get(root.id) ?? { envelopeId: root.id, name: root.name, severity: a.severity, count: 0, assigned: 0, rules: new Map() };
     g.count += 1;
     if (a.ownerId === me) g.assigned += 1;
-    if ((SEVERITY_RANK[a.severity] ?? 9) < (SEVERITY_RANK[g.severity] ?? 9)) g.severity = a.severity;
-    groups.set(key, g);
+    g.severity = worse(a.severity, g.severity);
+    const r = g.rules.get(a.ruleId) ?? { ruleId: a.ruleId, ruleName: ruleNames.get(a.ruleId) ?? null, severity: a.severity, count: 0 };
+    r.count += 1;
+    r.severity = worse(a.severity, r.severity);
+    g.rules.set(a.ruleId, r);
+    groups.set(root.id, g);
   }
-  return [...groups.values()].sort((x, y) => y.assigned - x.assigned || (SEVERITY_RANK[x.severity] ?? 9) - (SEVERITY_RANK[y.severity] ?? 9) || y.count - x.count || x.name.localeCompare(y.name)).slice(0, 6);
+  const bySeverity = (x: { severity: string; count: number }, y: { severity: string; count: number }) => (SEVERITY_RANK[x.severity] ?? 9) - (SEVERITY_RANK[y.severity] ?? 9) || y.count - x.count;
+  return [...groups.values()]
+    .sort((x, y) => y.assigned - x.assigned || bySeverity(x, y) || x.name.localeCompare(y.name))
+    .slice(0, 6)
+    .map((g) => ({ envelopeId: g.envelopeId, name: g.name, severity: g.severity, count: g.count, assigned: g.assigned, rules: [...g.rules.values()].sort(bySeverity) }));
 }
-

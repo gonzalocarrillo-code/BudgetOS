@@ -96,18 +96,22 @@ export const HomeRequestCard = z.object({
   count: z.number().int(),
   before: z.string().nullable(),
   after: z.string().nullable(),
+  /** (after − before) ÷ before; null for a new budget or when it is not money. */
+  changePct: z.string().nullable().optional(),
 });
 
-/** Open alerts on budgets that are the caller's, by top-level budget and rule (HO-005). */
+/**
+ * Open alerts on budgets that are the caller's, per top-level budget (HO-005): how many, how many
+ * assigned to them, the most severe, and the count per rule.
+ */
 export const HomeAlertGroup = z.object({
   envelopeId: z.string().uuid(),
   name: z.string(),
-  ruleId: z.string().uuid(),
-  ruleName: z.string().nullable(),
   severity: z.string(),
   count: z.number().int(),
   /** Of these, assigned to the caller. */
   assigned: z.number().int(),
+  rules: z.array(z.object({ ruleId: z.string().uuid(), ruleName: z.string().nullable(), severity: z.string(), count: z.number().int() })),
 });
 export type HomeAlertGroup = z.infer<typeof HomeAlertGroup>;
 
@@ -140,7 +144,7 @@ export const HomeResponse = z.object({
    * (Home's pulse); null when there are none. `waiting` and `overdue`: approval requests open in the
    * workspace the caller may read.
    */
-  totals: z.object({ budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), openAlerts: z.number().int(), waiting: z.number().int().optional(), overdue: z.number().int().optional() }).nullable().optional(),
+  totals: z.object({ budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), paceIndex: z.string().nullable().optional(), openAlerts: z.number().int(), waiting: z.number().int().optional(), overdue: z.number().int().optional() }).nullable().optional(),
   /** HO-003: how current the actuals are; `elapsed` is the fiscal year gone by then (pace counts to it). */
   asOf: DataAsOfView.extend({ elapsed: z.string().nullable() }).optional(),
   /** What the workspace has set up (Home's getting-started steps). */

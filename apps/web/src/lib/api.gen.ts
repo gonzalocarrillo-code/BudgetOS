@@ -6530,6 +6530,7 @@ export interface operations {
                                 count?: number;
                                 before?: string | null;
                                 after?: string | null;
+                                changePct?: string | null;
                             }[];
                             mentions: {
                                 /** Format: uuid */
@@ -6569,12 +6570,16 @@ export interface operations {
                                 /** Format: uuid */
                                 envelopeId: string;
                                 name: string;
-                                /** Format: uuid */
-                                ruleId: string;
-                                ruleName: string | null;
                                 severity: string;
                                 count: number;
                                 assigned: number;
+                                rules: {
+                                    /** Format: uuid */
+                                    ruleId: string;
+                                    ruleName: string | null;
+                                    severity: string;
+                                    count: number;
+                                }[];
                             }[];
                             closures?: {
                                 periodKey: string;
@@ -6604,6 +6609,7 @@ export interface operations {
                             count: number;
                             before: string | null;
                             after: string | null;
+                            changePct?: string | null;
                         }[];
                         scopes: {
                             label: string;
@@ -6690,6 +6696,7 @@ export interface operations {
                             budget: string | null;
                             actual: string | null;
                             spentPct: string | null;
+                            paceIndex?: string | null;
                             openAlerts: number;
                             waiting?: number;
                             overdue?: number;
@@ -9184,6 +9191,8 @@ export interface operations {
                 severity?: "info" | "warning" | "critical" | "data";
                 ruleId?: string;
                 envelopeId?: string;
+                /** @description Alerts on this budget or any budget under it */
+                under?: string;
                 /** @description FilterGroup as JSON */
                 filter?: string;
                 limit?: number;

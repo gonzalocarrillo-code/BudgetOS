@@ -28,10 +28,12 @@ export const Alert = z
   .passthrough();
 export type Alert = z.infer<typeof Alert>;
 
-export const alertsQuery = (ws: string, status: string, severity: string | undefined) =>
+/** `rule` and `under` (HO-006): one rule's alerts, on one budget and everything under it. */
+export const alertsQuery = (ws: string, status: string, severity: string | undefined, only: { rule?: string | undefined; under?: string | undefined } = {}) =>
   queryOptions({
-    queryKey: ["alerts", ws, status, severity ?? ""],
-    queryFn: async () => z.array(Alert).parse(await unwrap(api.GET("/api/v1/alerts", { params: { header: H(ws), query: { status, limit: 200, ...(severity ? { severity } : {}) } as never } }))),
+    queryKey: ["alerts", ws, status, severity ?? "", only.rule ?? "", only.under ?? ""],
+    queryFn: async () =>
+      z.array(Alert).parse(await unwrap(api.GET("/api/v1/alerts", { params: { header: H(ws), query: { status, limit: 200, ...(severity ? { severity } : {}), ...(only.rule ? { ruleId: only.rule } : {}), ...(only.under ? { under: only.under } : {}) } as never } }))),
   });
 
 export const Rule = z
