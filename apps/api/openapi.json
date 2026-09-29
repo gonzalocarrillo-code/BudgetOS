@@ -17333,6 +17333,14 @@
                           "type": "string",
                           "nullable": true
                         },
+                        "unassigned": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "assignedPct": {
+                          "type": "string",
+                          "nullable": true
+                        },
                         "remaining": {
                           "type": "string",
                           "nullable": true

@@ -8868,6 +8868,8 @@ export interface operations {
                             spentPct: string | null;
                             paceIndex: string | null;
                             assigned: string | null;
+                            unassigned?: string | null;
+                            assignedPct?: string | null;
                             remaining?: string | null;
                             runRateNeeded?: string | null;
                             projected?: string | null;
