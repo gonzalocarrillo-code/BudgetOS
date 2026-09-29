@@ -153,6 +153,8 @@ export type { Mention, Reference } from "./threads.js";
 
 export { CreateSavedViewInput, ListSavedViewsQuery, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput } from "./views.js";
 export { SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, UpdateSlackSettingsInput } from "./slack.js";
+export { OUTBOX_TOPICS, topicsFor } from "./outbox-topics.js";
+export type { OutboxConsumer, OutboxTopic } from "./outbox-topics.js";
 export type { SlackActionId } from "./slack.js";
 
 export { newId } from "./ids.js";

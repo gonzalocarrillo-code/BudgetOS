@@ -29,7 +29,9 @@ export async function slackAuth(prisma: PrismaClient, deps: SlackDeps, workspace
 }
 
 /** The workspaces of the Slack user's org that are linked to their Slack team, by name. */
-export async function linkedWorkspaces(prisma: PrismaClient, deps: SlackDeps, teamId: string, email: string): Promise<Array<{ id: string; name: string }>> {
+export async function linkedWorkspaces(prisma: PrismaClient, deps: SlackDeps, teamId: string, rawEmail: string): Promise<Array<{ id: string; name: string }>> {
+  // Emails are stored lower-case; a Slack profile's may not be (S-001).
+  const email = rawEmail.trim().toLowerCase();
   const user = await deps.access.findUser({ sub: `external:${email}`, email, emailVerified: true, googleSub: null });
   if (user === null || !user.isActive) return [];
   const ctx = { workspaceId: null, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user" as const, requestId: slackRequestId() };

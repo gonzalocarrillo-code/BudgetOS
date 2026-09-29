@@ -1,9 +1,10 @@
 import { createServer } from "node:http";
+import { topicsFor } from "@budget/domain";
 import { PrismaClient } from "@prisma/client";
 import { handleIngestRequested } from "./ingest/worker.js";
 import { handleRollupEvent } from "./rollup/rollup.js";
 import { handleInApp } from "./notify/in-app.js";
-import { handleSlackEvent, slackFromEnv } from "./notify/slack.js";
+import { handleSlackEvent, slackConfigWarnings, slackFromEnv } from "./notify/slack.js";
 import { objectStoreFromEnv, uploadBucket } from "./ingest/object-store.js";
 import { log } from "./log.js";
 import { purgeDueWorkspaces } from "./purge/purge.js";
@@ -23,10 +24,10 @@ import { checkSnapshotIntegrity } from "./integrity/snapshots.js";
  */
 const prefix = process.env["LOCAL_WORKSPACE_PREFIX"] ?? "e2e-";
 const orgFrom = process.env["LOCAL_ORG_FROM"] ?? null;
-/** The workers' subscriptions (spec §19): ingest, roll-up, notify. approval.changed goes to both roll-up and notify. */
-const INGEST = ["ingest.requested"];
-const ROLLUP = ["budget.changed", "facts.loaded", "registry.changed", "naming.changed", "approval.changed", "period.closed", "period.restated"];
-const NOTIFY = ["alert.triggered", "alert.changed", "approval.changed", "thread.changed", "slack.test"];
+/** The workers' subscriptions, from the one list in @budget/domain (spec §19). approval.changed goes to both roll-up and notify. */
+const INGEST: string[] = topicsFor("ingest");
+const ROLLUP: string[] = topicsFor("rollup");
+const NOTIFY: string[] = topicsFor("notify");
 const TOPICS = [...new Set([...INGEST, ...ROLLUP, ...NOTIFY])];
 const slack = slackFromEnv();
 const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
@@ -85,6 +86,7 @@ await ensureBucket();
 const port = Number(process.env["PORT"] ?? 4799);
 createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, "127.0.0.1");
 log.info({ port, prefix, orgFrom, slack: slack !== null }, "local runner up");
+for (const warning of slackConfigWarnings()) log.warn(warning);
 // ADR-052: deleted workspaces past their retention window are purged, checked once a minute.
 let lastPurge = 0;
 async function purgePass(): Promise<void> {

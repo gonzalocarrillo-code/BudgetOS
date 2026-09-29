@@ -493,7 +493,7 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is me
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
-| S-001 | S1 | Fixes: lowercase Slack emails, `authorize()` on every Slack action, `slack.settings.changed` consumed, worker warns without `APP_BASE_URL`, superadmin marking on the Slack path | pending |
+| S-001 | S1 | Fixes: lowercase Slack emails, `authorize()` on every Slack action, `slack.settings.changed` declared, worker warns without `APP_BASE_URL`, superadmin marking on the Slack path | done (every outbox topic is declared once in `OUTBOX_TOPICS`, @budget/domain, with its consumers; a guard test reads the source. `slack.settings.changed` has no consumer by design) |
 | S-002 | S1 | Slack apps and the runbook: the Slack-side steps and scopes, the access model, the dev app through the tunnel, the checklist against the owner's Slack | pending (live gate) |
 | S-003 | S1 | Every request type posts on creation (bulk commit and the structural requests: split, merge, end, reintroduce, import) | pending |
 | S-015 | S1 | GCP hosting: Secret Manager, the non-IAP path for `/api/v1/slack/*`, Pub/Sub topics and push subscriptions, `min_instances`, the staging app | blocked on T-008 |

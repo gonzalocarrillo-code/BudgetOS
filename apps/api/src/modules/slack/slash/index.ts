@@ -1,4 +1,4 @@
-import { authenticateVerifiedEmail } from "../../../common/auth/authenticate.js";
+import { authenticateVerifiedEmail, authorize } from "../../../common/auth/authenticate.js";
 import type { PrismaClient } from "@prisma/client";
 import type { AuthContext } from "../../../common/tenant.js";
 import { listAlerts } from "../../pacing/queries.js";
@@ -7,7 +7,10 @@ import { linkedWorkspaces, slackRequestId, type SlackDeps } from "../identity.js
 import { appUrl } from "../slack-config.js";
 import { slackApi } from "../slack-api.js";
 
-/** /budget (POST /slack/commands, ADR-046): replies only the person who typed it (ephemeral). */
+/**
+ * /budget (POST /slack/commands, ADR-046): replies only the person who typed it (ephemeral). Each
+ * answer first passes the permission of the app route that gives the same answer (S-001).
+ */
 
 const reply = (text: string, blocks?: unknown[]) => ({ response_type: "ephemeral", text, ...(blocks ? { blocks } : {}) });
 const pct = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : `${Math.round(Number(v) * 100)}%`);
@@ -50,11 +53,13 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
   const footer = linked.length > 1 ? ` · workspace *${chosen.name}*` : "";
   try {
     if (text === "alerts") {
+      authorize(auth, "envelope.read"); // GET /alerts
       const alerts = (await listAlerts(prisma, auth, { limit: "10" })) as Array<{ id: string; severity: string; status: string; envelopeName: string | null; ruleName: string | null }>;
       if (alerts.length === 0) return reply(`No open alerts. :white_check_mark:${footer}`);
       const lines = alerts.map((a) => `• *${a.severity}* <${url(`/alerts?select=${a.id}`)}|${a.envelopeName ?? "Budget"}> — ${a.ruleName ?? "rule"} (${a.status.toLowerCase()})`);
       return reply(`${alerts.length} open alerts${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*Open alerts*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);
     }
+    authorize(auth, "workspace.member"); // GET /workspaces/:ws/search
     const isSearch = text.startsWith("search ");
     const q = isSearch ? text.slice("search ".length) : text;
     const res = await search(prisma, auth, { q, limit: isSearch ? "5" : "3", ...(isSearch ? {} : { types: "envelope" }) });
