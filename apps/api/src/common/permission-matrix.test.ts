@@ -183,6 +183,11 @@ const ROUTES: RouteCase[] = [
   { method: "DELETE", path: "/api/v1/workspaces/{ws}", permission: "org.admin", url: () => `/api/v1/workspaces/${wsA}`, body: {} },
   { method: "POST", path: "/api/v1/workspaces/{ws}/undelete", permission: "org.admin", url: () => `/api/v1/workspaces/${wsA}/undelete`, body: {} },
   { method: "GET", path: "/api/v1/org/people", permission: "org.admin", url: () => "/api/v1/org/people" },
+  // Phase E: snapshots. Saving and changing check their scope in the service (closure.close for the workspace).
+  { method: "GET", path: "/api/v1/workspaces/{ws}/baselines", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/baselines` },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/baselines", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/baselines`, body: {} },
+  { method: "PATCH", path: "/api/v1/baselines/{id}", permission: "workspace.member", url: () => `/api/v1/baselines/${rid}`, headers: X(), body: {} },
+  { method: "GET", path: "/api/v1/baselines/{id}/report", permission: "envelope.read", url: () => `/api/v1/baselines/${rid}/report`, headers: X() },
   { method: "PATCH", path: "/api/v1/org/people/{id}", permission: "org.admin", url: () => `/api/v1/org/people/${rid}`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/demo-data", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/demo-data` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/demo-data/purge", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/demo-data/purge`, body: {} },

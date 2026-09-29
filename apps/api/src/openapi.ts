@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  BaselineReport,
+  BaselinesResponse,
+  CreateBaselineInput,
+  UpdateBaselineInput,
   AddMemberInput,
   MarkNotificationsReadInput,
   NotificationsResponse,
@@ -394,6 +398,16 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/me/notifications/read": {
         post: { operationId: "readNotifications", parameters: [workspaceHeader], requestBody: json(MarkNotificationsReadInput), responses: { "200": { description: "How many notifications were marked read" } } },
+      },
+      "/api/v1/workspaces/{ws}/baselines": {
+        get: { operationId: "listBaselines", parameters: [workspaceParam, { name: "includeArchived", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] } }, { name: "envelopeId", in: "query", required: false, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Snapshots, newest first (Phase E)", ...json(BaselinesResponse) } } },
+        post: { operationId: "saveBaseline", parameters: [workspaceParam], requestBody: json(CreateBaselineInput), responses: { "201": { description: "A snapshot of the workspace, a filter or one budget's subtree, taken now" } } },
+      },
+      "/api/v1/baselines/{id}": {
+        patch: { operationId: "updateBaseline", parameters: [idParam, workspaceHeader], requestBody: json(UpdateBaselineInput), responses: { "200": { description: "Renamed, re-noted or archived; its rows never change" } } },
+      },
+      "/api/v1/baselines/{id}/report": {
+        get: { operationId: "baselineReport", parameters: [idParam, workspaceHeader, { name: "against", in: "query", required: false, schema: { type: "string", format: "uuid" } }, { name: "limit", in: "query", required: false, schema: { type: "integer" } }], responses: { "200": { description: "The snapshot against now or another snapshot", ...json(BaselineReport) } } },
       },
       "/api/v1/org/people": {
         get: { operationId: "listOrgPeople", responses: { "200": { description: "Superadmins: everyone in the org and where they hold roles", ...json(OrgPeopleResponse) } } },

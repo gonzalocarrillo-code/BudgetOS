@@ -6,6 +6,7 @@ import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../
 import { computeDiff } from "../../approvals/diff.js";
 import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { parseAsOf } from "./timeline.js";
+import { snapshotsByVersion } from "../../baselines/baselines.js";
 import type { AuthContext } from "../../../common/tenant.js";
 
 type VersionRow = NonNullable<Awaited<ReturnType<typeof loadVersion>>>;
@@ -134,6 +135,8 @@ export async function listVersions(prisma: PrismaClient, auth: AuthContext, rawI
   return withTenant(prisma, auth.ctx, async (tx) => {
     assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
     const versions = await tx.envelopeVersion.findMany({ where: { envelopeId: id }, orderBy: { versionNo: "desc" }, include: { phasing: { orderBy: { month: "asc" } } } });
-    return versions.map(versionDto);
+    // Phase E: the snapshots each version was saved in (the History tab's markers).
+    const saved = await snapshotsByVersion(tx, id);
+    return versions.map((v) => ({ ...versionDto(v), snapshots: saved.get(v.id) ?? [] }));
   });
 }
