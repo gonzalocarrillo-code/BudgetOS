@@ -1,16 +1,17 @@
-import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, RunSourceInput, UpdateSourceInput, newId, type SourceConfig, type SourceMapping } from "@budget/domain";
+import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, RunSourceInput, SourceMapping, UpdateSourceInput, newId, type SourceConfig } from "@budget/domain";
 import { assignUnmatched, audit, bumpDataVersion, outbox, withTenant, type Tx } from "@budget/db";
 import { uploadBucket, type ObjectStore } from "@budget/workers";
 import type { DataSource, Prisma, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
+import { learnSynonyms, profileForSource } from "./mapping.js";
 
 /** Data sources, runs and the unmatched queue (spec §14, §17 `sources`). One audit_event + one outbox row per write. */
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 export function sourceView(s: DataSource) {
-  return { id: s.id, workspaceId: s.workspaceId, kind: s.kind, name: s.name, config: s.config, mapping: s.mapping, schedule: s.schedule, parsePattern: s.parsePattern, isActive: s.isActive };
+  return { id: s.id, workspaceId: s.workspaceId, kind: s.kind, name: s.name, config: s.config, mapping: s.mapping, schedule: s.schedule, parsePattern: s.parsePattern, isActive: s.isActive, mappingProfileId: s.mappingProfileId };
 }
 
 async function recordSourceChange(tx: Tx, auth: AuthContext, args: { workspaceId: string; action: string; sourceId: string; before?: unknown; after: Record<string, unknown> }) {
@@ -39,9 +40,14 @@ export async function createSource(prisma: PrismaClient, auth: AuthContext, raw:
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   checkConfig(input.config, workspaceId);
   return withTenant(prisma, auth.ctx, async (tx) => {
-    await checkMapping(tx, auth, workspaceId, input.mapping);
-    const row = await tx.dataSource.create({ data: { id: newId(), workspaceId, kind: input.config.kind, name: input.name, config: json(input.config), mapping: json(input.mapping), schedule: input.schedule ?? null, parsePattern: input.parsePattern ?? null } });
-    await recordSourceChange(tx, auth, { workspaceId, action: "source.created", sourceId: row.id, after: { kind: row.kind, name: row.name } });
+    // D-004: a source that follows a profile takes the profile's mapping and parse pattern.
+    const profile = input.mappingProfileId ? await profileForSource(tx, workspaceId, input.mappingProfileId) : null;
+    const mapping = profile ? SourceMapping.parse(profile.mapping) : input.mapping;
+    const parsePattern = profile ? profile.parsePattern : (input.parsePattern ?? null);
+    await checkMapping(tx, auth, workspaceId, mapping);
+    const row = await tx.dataSource.create({ data: { id: newId(), workspaceId, kind: input.config.kind, name: input.name, config: json(input.config), mapping: json(mapping), schedule: input.schedule ?? null, parsePattern, mappingProfileId: profile?.id ?? null } });
+    const learned = await learnSynonyms(tx, auth, workspaceId, mapping);
+    await recordSourceChange(tx, auth, { workspaceId, action: "source.created", sourceId: row.id, after: { kind: row.kind, name: row.name, mappingProfileId: row.mappingProfileId, synonymsLearned: learned } });
     return sourceView(row);
   });
 }
@@ -59,18 +65,25 @@ export async function updateSource(prisma: PrismaClient, auth: AuthContext, rawI
     const current = await loadSource(tx, rawId);
     if (input.config && input.config.kind !== current.kind) throw new DomainError("VALIDATION", "A source keeps its kind; create a new source instead", { kind: current.kind });
     if (input.config) checkConfig(input.config, current.workspaceId);
-    if (input.mapping) await checkMapping(tx, auth, current.workspaceId, input.mapping);
+    // D-004: following a profile replaces the mapping with the profile's; a source that follows one
+    // takes its mapping from it, so a mapping of its own ends the link.
+    const profile = input.mappingProfileId ? await profileForSource(tx, current.workspaceId, input.mappingProfileId) : null;
+    const mapping = profile ? SourceMapping.parse(profile.mapping) : input.mapping;
+    if (mapping) await checkMapping(tx, auth, current.workspaceId, mapping);
+    const link = profile ? { mappingProfileId: profile.id, parsePattern: profile.parsePattern } : input.mappingProfileId === null || input.mapping !== undefined ? { mappingProfileId: null } : {};
     const row = await tx.dataSource.update({
       where: { id: current.id },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.config !== undefined ? { config: json(input.config) } : {}),
-        ...(input.mapping !== undefined ? { mapping: json(input.mapping) } : {}),
+        ...(mapping !== undefined ? { mapping: json(mapping) } : {}),
         ...(input.schedule !== undefined ? { schedule: input.schedule } : {}),
-        ...(input.parsePattern !== undefined ? { parsePattern: input.parsePattern } : {}),
+        ...(input.parsePattern !== undefined && !profile ? { parsePattern: input.parsePattern } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...link,
       },
     });
+    if (mapping) await learnSynonyms(tx, auth, current.workspaceId, mapping);
     await recordSourceChange(tx, auth, { workspaceId: row.workspaceId, action: "source.updated", sourceId: row.id, before: sourceView(current), after: { changed: Object.keys(input) } });
     return sourceView(row);
   });

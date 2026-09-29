@@ -1,6 +1,17 @@
 import { z } from "zod";
 import {
   BaselineReport,
+  CreateMappingProfileInput,
+  CreateMappingSynonymInput,
+  MappingPreviewInput,
+  MappingPreviewReport,
+  MappingProfileView,
+  MappingProfilesResponse,
+  MappingSynonymsResponse,
+  MatchMappingProfileInput,
+  MatchMappingProfileResponse,
+  UpdateMappingProfileInput,
+  UpdateMappingSynonymInput,
   BaselineRowsResponse,
   BaselineView,
   EndEnvelopeInput,
@@ -325,6 +336,26 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/sources/{id}": {
         patch: { operationId: "updateSource", parameters: [idParam, workspaceHeader], requestBody: json(UpdateSourceInput), responses: { "200": { description: "Updated source (the kind never changes)" } } },
+      },
+      "/api/v1/workspaces/{ws}/mapping-profiles": {
+        get: { operationId: "listMappingProfiles", parameters: [workspaceParam, { name: "includeArchived", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] } }], responses: { "200": { description: "Saved mappings (D-004)", ...json(MappingProfilesResponse) } } },
+        post: { operationId: "createMappingProfile", parameters: [workspaceParam], requestBody: json(CreateMappingProfileInput), responses: { "201": { description: "Saved; its columns teach the workspace's synonyms", ...json(MappingProfileView) } } },
+      },
+      "/api/v1/workspaces/{ws}/mapping-profiles/match": {
+        post: { operationId: "matchMappingProfile", parameters: [workspaceParam], requestBody: json(MatchMappingProfileInput), responses: { "201": { description: "The profile a file's header fits (exact, or one whose columns it covers), or none", ...json(MatchMappingProfileResponse) } } },
+      },
+      "/api/v1/mapping-profiles/{id}": {
+        patch: { operationId: "updateMappingProfile", parameters: [idParam, workspaceHeader], requestBody: json(UpdateMappingProfileInput), responses: { "200": { description: "Renamed, remapped (reaching every source that follows it) or archived", ...json(MappingProfileView) } } },
+      },
+      "/api/v1/workspaces/{ws}/mapping-synonyms": {
+        get: { operationId: "listMappingSynonyms", parameters: [workspaceParam], responses: { "200": { description: "Built-in, learned and manual words for columns and metrics (D-005)", ...json(MappingSynonymsResponse) } } },
+        post: { operationId: "createMappingSynonym", parameters: [workspaceParam], requestBody: json(CreateMappingSynonymInput), responses: { "201": { description: "A word the workspace uses; a manual row wins over learned ones" } } },
+      },
+      "/api/v1/mapping-synonyms/{id}": {
+        patch: { operationId: "updateMappingSynonym", parameters: [idParam, workspaceHeader], requestBody: json(UpdateMappingSynonymInput), responses: { "200": { description: "Switched off or back on" } } },
+      },
+      "/api/v1/workspaces/{ws}/mapping-preview": {
+        post: { operationId: "previewMapping", parameters: [workspaceParam], requestBody: json(MappingPreviewInput), responses: { "201": { description: "What each column becomes, unknown values with the nearest known one, ratios, rejected rows (D-006); nothing is written", ...json(MappingPreviewReport) } } },
       },
       "/api/v1/workspaces/{ws}/mapping-suggestions": {
         post: { operationId: "suggestMappingFromSample", parameters: [workspaceParam], requestBody: json(SuggestMappingSampleInput), responses: { "201": { description: "A suggested mapping for a file's header and first rows (nothing saved); 503 without OPENAI_API_KEY" } } },

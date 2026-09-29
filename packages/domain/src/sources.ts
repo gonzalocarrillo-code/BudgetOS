@@ -93,6 +93,8 @@ export const CreateSourceInput = z.object({
   name: z.string().min(1).max(200),
   config: SourceConfig,
   mapping: SourceMapping,
+  /** D-004: take the mapping from this saved profile (and follow it when it changes). */
+  mappingProfileId: z.string().uuid().optional(),
   schedule: Cron.optional(),
   /** T-036: named groups (dimension keys) read from the match_key column. */
   parsePattern: ParsePattern.optional(),
@@ -108,6 +110,8 @@ export const UpdateSourceInput = z
     schedule: Cron.nullable().optional(),
     parsePattern: ParsePattern.nullable().optional(),
     isActive: z.boolean().optional(),
+    /** D-004: follow a saved profile, or null to keep the mapping as the source's own. */
+    mappingProfileId: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type UpdateSourceInput = z.infer<typeof UpdateSourceInput>;
@@ -138,3 +142,147 @@ export type CreateUploadInput = z.infer<typeof CreateUploadInput>;
 /** Outbox payload of `ingest.requested`: the ingest worker runs this queued run. */
 export const IngestRequested = z.object({ runId: z.string().uuid(), sourceId: z.string().uuid() });
 export type IngestRequested = z.infer<typeof IngestRequested>;
+
+// ---------------------------------------------------------------------------------------------
+// Mapping profiles, synonyms and the mapping preview (docs/DATA_PLAN.md §2.3, D-004 to D-006)
+// ---------------------------------------------------------------------------------------------
+
+/** The guesser's normal form of a header or a word: lower case, no accents, letters and digits only. */
+export const normTerm = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "");
+
+/** What a column synonym maps a header to: a dimension, or a role without file-specific details. */
+export const ColumnSynonymTarget = z.union([
+  z.object({ dimension: z.string().min(1) }).strict(),
+  z.object({ role: z.enum(["period_date", "amount", "currency", "match_key", "formula_version", "horizon_end", "ignore"]) }).strict(),
+  z.object({ role: z.literal("kpi"), metric: FactMetric }).strict(),
+  z.object({ role: z.literal("projection"), metric: FactMetric }).strict(),
+]);
+export type ColumnSynonymTarget = z.infer<typeof ColumnSynonymTarget>;
+export const MetricSynonymTarget = z.object({ metric: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/) }).strict();
+
+const col = (terms: string[], target: ColumnSynonymTarget) => terms.map((term) => ({ term: normTerm(term), target }));
+/**
+ * Built-in column synonyms (D-005): what common exports call their columns. A workspace's own rows
+ * (learned or manual) come first; an inactive workspace row switches a built-in one off.
+ */
+export const DEFAULT_COLUMN_SYNONYMS: ReadonlyArray<{ term: string; target: ColumnSynonymTarget }> = [
+  ...col(["spend", "cost", "media cost", "amount spent", "amount", "investment", "gasto", "inversion", "costo", "spend usd"], { role: "amount" }),
+  ...col(["date", "day", "fecha", "dia", "reporting date", "period", "month", "mes"], { role: "period_date" }),
+  ...col(["currency", "ccy", "currency code", "moneda", "divisa"], { role: "currency" }),
+  ...col(["impressions", "impr", "imps", "impresiones"], { role: "kpi", metric: "impressions" }),
+  ...col(["clicks", "link clicks", "clics"], { role: "kpi", metric: "clicks" }),
+  ...col(["conversions", "conv", "purchases", "results", "conversiones"], { role: "kpi", metric: "conversions" }),
+  ...col(["revenue", "conversion value", "purchase value", "sales", "ingresos"], { role: "kpi", metric: "revenue" }),
+  ...col(["leads", "lead", "prospectos"], { role: "kpi", metric: "leads" }),
+  ...col(["reach", "alcance"], { role: "kpi", metric: "reach" }),
+  ...col(["campaign", "campaign name", "campana", "campaña"], { role: "match_key" }),
+];
+
+const met = (terms: string[], metric: string) => terms.map((term) => ({ term: normTerm(term), target: { metric } }));
+/**
+ * Built-in metric synonyms (D-005, §7 glossary): the words clients use for the org's metrics.
+ * tCPA is a target CPA, so it means the metric `cpa`.
+ */
+export const DEFAULT_METRIC_SYNONYMS: ReadonlyArray<{ term: string; target: { metric: string } }> = [
+  ...met(["tcpa", "target cpa", "cpa target", "cost per acquisition", "cost per action", "cost per conversion", "cpa"], "cpa"),
+  ...met(["troas", "target roas", "roas target", "return on ad spend", "roas"], "roas"),
+  ...met(["cost per click", "avg cpc", "cpc"], "cpc"),
+  ...met(["cost per mille", "cost per thousand", "cpm"], "cpm"),
+  ...met(["click through rate", "ctr"], "ctr"),
+  ...met(["cost per lead", "cpl"], "cpl"),
+];
+
+export const MappingSynonymView = z.object({
+  /** null for a built-in synonym. */
+  id: z.string().uuid().nullable(),
+  kind: z.enum(["column", "metric"]),
+  term: z.string(),
+  target: z.union([ColumnSynonymTarget, MetricSynonymTarget]),
+  origin: z.enum(["builtin", "learned", "manual"]),
+  uses: z.number().int(),
+  isActive: z.boolean(),
+});
+export type MappingSynonymView = z.infer<typeof MappingSynonymView>;
+export const MappingSynonymsResponse = z.object({
+  columns: z.array(MappingSynonymView),
+  metrics: z.array(MappingSynonymView),
+  /** Normal-form words that name a ratio metric here (cpa, tcpa, roas…): the guesser leaves those columns out. */
+  ratioWords: z.array(z.string()).default([]),
+});
+export type MappingSynonymsResponse = z.infer<typeof MappingSynonymsResponse>;
+
+/** POST /workspaces/:ws/mapping-synonyms: a word the workspace uses. */
+export const CreateMappingSynonymInput = z
+  .object({ kind: z.enum(["column", "metric"]), term: z.string().trim().min(1).max(120), target: z.union([MetricSynonymTarget, ColumnSynonymTarget]) })
+  .superRefine((v, ctx) => {
+    const isMetric = "metric" in v.target && !("role" in v.target);
+    if ((v.kind === "metric") !== isMetric) ctx.addIssue({ code: z.ZodIssueCode.custom, message: v.kind === "metric" ? "A metric synonym's target is { metric }" : "A column synonym's target is a dimension or a role", path: ["target"] });
+  });
+export type CreateMappingSynonymInput = z.infer<typeof CreateMappingSynonymInput>;
+/** PATCH /mapping-synonyms/:id: switch one off (or back on); rows are never deleted. */
+export const UpdateMappingSynonymInput = z.object({ isActive: z.boolean() });
+
+export const MappingProfileView = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  kind: SourceKind,
+  mapping: z.object({ kind: SourceKind, columns: z.record(z.string(), ColumnMapping) }),
+  parsePattern: z.string().nullable(),
+  header: z.array(z.string()),
+  sources: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  archivedAt: z.string().nullable(),
+});
+export type MappingProfileView = z.infer<typeof MappingProfileView>;
+export const MappingProfilesResponse = z.object({ profiles: z.array(MappingProfileView) });
+
+/** POST /workspaces/:ws/mapping-profiles. `header` is the file's columns, for matching the next file. */
+export const CreateMappingProfileInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  mapping: SourceMapping,
+  parsePattern: ParsePattern.optional(),
+  header: z.array(z.string().min(1).max(200)).min(1).max(200),
+});
+export type CreateMappingProfileInput = z.infer<typeof CreateMappingProfileInput>;
+/** PATCH /mapping-profiles/:id. A mapping change reaches every source that follows the profile. */
+export const UpdateMappingProfileInput = z
+  .object({ name: z.string().trim().min(1).max(120).optional(), mapping: SourceMapping.optional(), parsePattern: ParsePattern.nullable().optional(), archived: z.boolean().optional() })
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update");
+export type UpdateMappingProfileInput = z.infer<typeof UpdateMappingProfileInput>;
+
+/** POST /workspaces/:ws/mapping-profiles/match: the saved profile a file's header fits, if any. */
+export const MatchMappingProfileInput = z.object({ header: z.array(z.string().min(1).max(200)).min(1).max(200) });
+export const MatchMappingProfileResponse = z.object({ profile: MappingProfileView.nullable(), fit: z.enum(["exact", "covers"]).nullable() });
+export type MatchMappingProfileResponse = z.infer<typeof MatchMappingProfileResponse>;
+
+/** POST /workspaces/:ws/mapping-preview: a mapping (complete or not) run over a file's sample. */
+export const MappingPreviewInput = z.object({
+  mapping: z.object({ kind: SourceKind, columns: z.record(z.string().min(1), ColumnMapping) }),
+  header: z.array(z.string().min(1).max(200)).min(1).max(200),
+  rows: z.array(z.array(z.union([z.string().max(2000), z.number(), z.null()]))).max(200),
+  parsePattern: ParsePattern.optional(),
+});
+export type MappingPreviewInput = z.infer<typeof MappingPreviewInput>;
+
+export const MappingPreviewColumn = z.object({
+  column: z.string(),
+  /** What it maps to, in words the wizard shows ("Country", "Spend", "KPI conversions", "left out"). */
+  mapsTo: z.string(),
+  /** Dimension columns: each distinct sample value, its registry code, or the nearest one when unknown. */
+  values: z.array(z.object({ raw: z.string(), code: z.string().nullable(), suggestion: z.string().nullable(), count: z.number().int() })).optional(),
+  /** Problems that reject rows. */
+  issues: z.array(z.string()),
+  /** Things worth knowing that reject nothing (a ratio left out, a KPI no metric reads yet). */
+  notes: z.array(z.string()),
+});
+export const MappingPreviewReport = z.object({
+  rowsChecked: z.number().int(),
+  rowsRejected: z.number().int(),
+  /** Why the mapping cannot be saved as it is (the SourceMapping rules). */
+  problems: z.array(z.string()),
+  columns: z.array(MappingPreviewColumn),
+  /** The first rejected rows, with the ingest pipeline's own reason. */
+  rejects: z.array(z.object({ row: z.number().int(), reason: z.string() })),
+});
+export type MappingPreviewReport = z.infer<typeof MappingPreviewReport>;

@@ -31,4 +31,28 @@ describe("mapping wizard helpers (T-032)", () => {
     expect(mappingProblems(m)).toEqual([]);
     expect(mappingProblems({ ...m, columns: { ...m.columns, currency: { role: "ignore" } } })).toEqual(["The amount needs a currency, inline or from a currency column"]);
   });
+
+  it("uses the workspace's words (D-005): a learned header maps as it did last time, and a ratio like tCPA is left out", () => {
+    const sample = parseCsvSample("Fecha,Pais,Inversion,Moneda,Compras,tCPA\n31/01/2026,BR,10,USD,3,3.33\n");
+    const words = {
+      columns: [
+        { term: "pais", target: { dimension: "country" }, isActive: true },
+        { term: "inversion", target: { role: "amount" as const }, isActive: true },
+        { term: "compras", target: { role: "kpi" as const, metric: "conversions" }, isActive: true },
+        { term: "fecha", target: { role: "period_date" as const }, isActive: true },
+        { term: "moneda", target: { role: "currency" as const }, isActive: false },
+      ],
+      ratioWords: ["cpa", "tcpa"],
+    };
+    const m = guessMapping(sample, dims, words);
+    expect(m.columns).toEqual({
+      Fecha: { role: "period_date", format: "dd/MM/yyyy" },
+      Pais: { dimension: "country" },
+      Inversion: { role: "amount" },
+      Moneda: { role: "currency" }, // the switched-off word does not apply; the name pattern still does
+      Compras: { role: "kpi", metric: "conversions" },
+      tCPA: { role: "ignore" },
+    });
+    expect(m.kind).toBe("spend+kpi");
+  });
 });

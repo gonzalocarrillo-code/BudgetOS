@@ -72,6 +72,11 @@ export type NormalizeResult = { facts: NormalizedFact[] } | { rejected: string }
 
 const cell = (v: string | number | null | undefined): string | null => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).trim());
 
+/** A dimension cell after the column's transform and value map, as ingestion resolves it. */
+export function transformDimension(value: string, c: DimensionColumn): string {
+  return transform(value, c);
+}
+
 function transform(value: string, c: DimensionColumn): string {
   const t = c.transform === "lower" ? value.toLowerCase() : c.transform === "upper" ? value.toUpperCase() : value;
   return c.valueMap?.[t] ?? c.valueMap?.[value] ?? t;

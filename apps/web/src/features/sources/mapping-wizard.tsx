@@ -1,9 +1,9 @@
-import type { ColumnMapping } from "@budget/domain";
+import { MappingPreviewReport, MappingSynonymsResponse, MatchMappingProfileResponse, normTerm, type ColumnMapping } from "@budget/domain";
 import { Button, cn, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, Sparkles } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { BookmarkCheck, Check, Sparkles, TriangleAlert } from "lucide-react";
+import { useEffect, useState, type ReactElement } from "react";
 import { z } from "zod";
 import { ApiError, api, unwrap } from "../../lib/api.js";
 import { registryQuery } from "../../lib/queries.js";
@@ -39,16 +39,39 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
   const [runNow, setRunNow] = useState(true);
   const [parsePattern, setParsePattern] = useState("");
   const [aiNote, setAiNote] = useState<string | null>(null);
+  // D-004: the saved profile this file fits, while its mapping is the profile's.
+  const [profile, setProfile] = useState<{ id: string; name: string; fit: "exact" | "covers" } | null>(null);
+  const [saveProfile, setSaveProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const { data: words } = useQuery({
+    queryKey: ["mapping-synonyms", ws],
+    queryFn: async () => MappingSynonymsResponse.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/mapping-synonyms", { params: { path: { ws } } }))),
+  });
+  const guess = (s: Sample) => guessMapping(s, dims, { columns: words?.columns.map((c) => ({ term: c.term, target: c.target as never, isActive: c.isActive })) ?? [], ratioWords: words?.ratioWords ?? [] });
+  /** A file whose header fits a saved profile maps as it did last time; columns the profile lacks are guessed. */
+  const applyProfile = async (s: Sample) => {
+    const hit = MatchMappingProfileResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/mapping-profiles/match", { params: { path: { ws } }, body: { header: s.header } as never })));
+    if (!hit.profile || !hit.fit) return;
+    const byNorm = new Map(Object.entries(hit.profile.mapping.columns).map(([h, c]) => [normTerm(h), c]));
+    const guessed = guess(s);
+    const columns = Object.fromEntries(s.header.map((h) => [h, byNorm.get(normTerm(h)) ?? guessed.columns[h] ?? { role: "ignore" as const }]));
+    setMapping({ kind: hit.profile.kind, columns });
+    setParsePattern(hit.profile.parsePattern ?? "");
+    setProfile({ id: hit.profile.id, name: hit.profile.name, fit: hit.fit });
+  };
 
   const read = async (f: File) => {
     const s = parseCsvSample(await f.text());
     setFile(f);
     setSample(s);
-    setMapping(guessMapping(s, dims));
+    setMapping(guess(s));
+    setProfile(null);
     setName(f.name.replace(/\.csv$/i, ""));
+    setProfileName(f.name.replace(/\.csv$/i, ""));
     setWarehouse(null);
     setAiNote(null);
     setStep(2);
+    await applyProfile(s).catch(() => undefined);
   };
   // A warehouse table or a sheet: its columns as typed (no rows until the connector reads them).
   const connect = (config: WarehouseConfig, columns: string[], label: string) => {
@@ -56,11 +79,14 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
     setWarehouse(config);
     setFile(null);
     setSample(s);
-    setMapping(guessMapping(s, dims));
+    setMapping(guess(s));
+    setProfile(null);
     setName(label || t(`sources.connector.${config.kind}` as MessageKey));
+    setProfileName(label || t(`sources.connector.${config.kind}` as MessageKey));
     setRunNow(false);
     setAiNote(null);
     setStep(2);
+    void applyProfile(s).catch(() => undefined);
   };
   const suggest = useMutation({
     mutationFn: async () => {
@@ -69,6 +95,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
       return z.object({ mapping: z.object({ kind: z.string(), columns: z.record(z.string(), z.record(z.string(), z.unknown())) }), model: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/mapping-suggestions", { params: { path: { ws } }, body: { header: sample.header, rows } as never })));
     },
     onSuccess: (r) => {
+      setProfile(null);
       setMapping({ kind: r.mapping.kind as Kind, columns: r.mapping.columns as Record<string, ColumnMapping> });
       setAiNote(t("sources.ai.applied", { model: r.model }));
     },
@@ -79,12 +106,18 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
     mutationFn: async () => {
       if (!mapping) throw new Error("no mapping");
       const header = { "X-Workspace-Id": ws };
+      // D-004: save the mapping as a profile first, so this source (and the next file) follow it.
+      let followId = profile?.id ?? null;
+      if (!source && !followId && saveProfile && sample) {
+        followId = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/mapping-profiles", { params: { path: { ws } }, body: { name: profileName.trim(), mapping, header: sample.header, ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never }))).id;
+      }
+      const follow = followId ? { mappingProfileId: followId } : {};
       if (source) {
         await unwrap(api.PATCH("/api/v1/sources/{id}", { params: { path: { id: source.id }, header }, body: { mapping } as never }));
         return source.id;
       }
       if (warehouse) {
-        const made = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: warehouse, mapping, ...(schedule.trim() ? { schedule: schedule.trim() } : {}), ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never })));
+        const made = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: warehouse, mapping, ...follow, ...(schedule.trim() ? { schedule: schedule.trim() } : {}), ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never })));
         if (runNow) await unwrap(api.POST("/api/v1/sources/{id}/run", { params: { path: { id: made.id }, header }, body: {} as never }));
         return made.id;
       }
@@ -92,15 +125,31 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
       const upload = z.object({ uri: z.string(), uploadUrl: z.string(), method: z.enum(["PUT", "POST"]).default("PUT"), contentType: z.string() }).parse(await unwrap(api.POST("/api/v1/uploads", { params: { header }, body: { filename: file.name.replace(/[^\w.\- ]/g, "_") } as never })));
       const res = await fetch(upload.uploadUrl, { method: upload.method, headers: { "content-type": upload.contentType }, body: file });
       if (!res.ok) throw new Error(t("sources.uploadFailed", { status: res.status }));
-      const created = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: { kind: "csv", uri: upload.uri }, mapping, ...(schedule.trim() ? { schedule: schedule.trim() } : {}), ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never })));
+      const created = z.object({ id: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/sources", { params: { path: { ws } }, body: { name: name.trim(), config: { kind: "csv", uri: upload.uri }, mapping, ...follow, ...(schedule.trim() ? { schedule: schedule.trim() } : {}), ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never })));
       if (runNow) await unwrap(api.POST("/api/v1/sources/{id}/run", { params: { path: { id: created.id }, header }, body: {} as never }));
       return created.id;
     },
     onSuccess: onDone,
   });
 
+  // D-006: the mapping over the file's own rows, as ingestion would read them (debounced).
+  const [settled, setSettled] = useState<{ mapping: Mapping; sample: Sample } | null>(null);
+  useEffect(() => {
+    if (step !== 2 || !mapping || !sample || sample.rows.length === 0) return;
+    const id = setTimeout(() => setSettled({ mapping, sample }), 350);
+    return () => clearTimeout(id);
+  }, [step, mapping, sample]);
+  const preview = useQuery({
+    queryKey: ["mapping-preview", ws, settled ? JSON.stringify(settled.mapping) : null, settled?.sample.header.join("|")],
+    queryFn: async () =>
+      MappingPreviewReport.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/mapping-preview", { params: { path: { ws } }, body: { mapping: settled?.mapping, header: settled?.sample.header, rows: settled?.sample.rows, ...(parsePattern.trim() ? { parsePattern: parsePattern.trim() } : {}) } as never }))),
+    enabled: settled !== null,
+    staleTime: 0,
+  });
+
   const problems = mapping ? mappingProblems(mapping) : [t("sources.pickFile")];
-  const setColumn = (col: string, c: ColumnMapping) => mapping && setMapping({ ...mapping, columns: { ...mapping.columns, [col]: c } });
+  // A change of your own means this file no longer follows the profile as it is.
+  const setColumn = (col: string, c: ColumnMapping) => mapping && (setProfile(null), setMapping({ ...mapping, columns: { ...mapping.columns, [col]: c } }));
   const onChoice = (col: string, v: string) => {
     const [kind, key] = v.split(":") as [string, string];
     if (kind === "dim") return setColumn(col, { dimension: key });
@@ -112,7 +161,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
   const field = "";
   const nextWhy = problems[0] ?? null;
   const saveWhy = nextWhy ?? (create.isPending ? t("shell.loading") : null);
-  const createWhy = !name.trim() ? t("sources.needName") : schedule.trim() && !/^(\S+\s){4}\S+$/.test(schedule.trim()) ? t("sources.badCron") : create.isPending ? t("shell.loading") : null;
+  const createWhy = !name.trim() ? t("sources.needName") : saveProfile && !profile && !profileName.trim() ? t("sources.profile.needName") : schedule.trim() && !/^(\S+\s){4}\S+$/.test(schedule.trim()) ? t("sources.badCron") : create.isPending ? t("shell.loading") : null;
 
   return (
     <div className="flex flex-col gap-4" data-testid="mapping-wizard" data-step={step}>
@@ -148,6 +197,15 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
             ) : null}
           </div>
           {aiNote ? <p className="text-xs text-muted-foreground" role="status" data-testid="wizard-ai-note">{aiNote}</p> : null}
+          {profile ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-secondary px-3 py-2 text-sm" role="status" data-testid="wizard-profile" data-fit={profile.fit}>
+              <BookmarkCheck className="size-4 text-primary" aria-hidden />
+              <span className="flex-1">{t(profile.fit === "exact" ? "sources.profile.matched" : "sources.profile.covers", { name: profile.name })}</span>
+              <Button size="sm" variant="ghost" onClick={() => (setProfile(null), sample && setMapping(guess(sample)))} data-testid="wizard-profile-drop">
+                {t("sources.profile.mapMyself")}
+              </Button>
+            </div>
+          ) : null}
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm" data-testid="wizard-columns">
               <thead className="bg-surface text-left text-muted-foreground">
@@ -192,6 +250,7 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
               </tbody>
             </table>
           </div>
+          {preview.data ? <PreviewPanel report={preview.data} stale={preview.isFetching} /> : null}
           {problems.length ? (
             <ul className="flex flex-col gap-0.5 text-sm text-destructive" role="alert" data-testid="wizard-problems">
               {problems.map((p) => (
@@ -237,6 +296,23 @@ export function MappingWizard({ ws, source, onDone, onCancel }: { ws: string; so
               <Input className="font-mono" value={parsePattern} onChange={(e) => setParsePattern(e.target.value)} placeholder="^(?<country>[A-Z]{2})_(?<platform>[a-z_]+)" data-testid="wizard-parse-pattern" />
               <span className="text-xs font-normal text-muted-foreground">{t("sources.parsePatternHelp")}</span>
             </label>
+          ) : null}
+          {profile ? (
+            <p className="text-sm text-muted-foreground" data-testid="wizard-follows">{t("sources.profile.follows", { name: profile.name })}</p>
+          ) : !source ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} data-testid="wizard-save-profile" />
+                {t("sources.profile.save")}
+              </label>
+              {saveProfile ? (
+                <label className="flex flex-col gap-1 text-sm font-medium">
+                  {t("sources.profile.name")}
+                  <Input value={profileName} onChange={(e) => setProfileName(e.target.value)} data-testid="wizard-profile-name" />
+                  <span className="text-xs font-normal text-muted-foreground">{t("sources.profile.help")}</span>
+                </label>
+              ) : null}
+            </div>
           ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={runNow} onChange={(e) => setRunNow(e.target.checked)} />
@@ -284,4 +360,41 @@ function Details({ c, onChange, field }: { c: ColumnMapping | undefined; onChang
     return <Input className={cn(field, "w-24 uppercase")} value={c.currency ?? ""} maxLength={3} placeholder={t("sources.currencyInline")} onChange={(e) => onChange({ role: "amount", ...(e.target.value ? { currency: e.target.value.toUpperCase() } : {}) })} aria-label={t("sources.currencyInline")} data-testid="wizard-currency" />;
   if (c.role === "kpi" || c.role === "projection") return <Input className={cn(field, "w-36 font-mono")} value={c.metric} onChange={(e) => onChange({ ...c, metric: e.target.value })} aria-label={t("sources.metric")} />;
   return null;
+}
+
+/** D-006: what the sample would become, column by column, before any run. */
+function PreviewPanel({ report, stale }: { report: MappingPreviewReport; stale: boolean }): ReactElement {
+  const flagged = report.columns.filter((c) => c.issues.length || c.notes.length);
+  return (
+    <div className={cn("flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm", stale ? "opacity-60" : "")} data-testid="wizard-preview" data-rejected={report.rowsRejected} aria-live="polite">
+      <p className="font-medium">
+        {report.rowsRejected === 0 ? t("sources.preview.allRows", { count: report.rowsChecked }) : t("sources.preview.someRejected", { rejected: report.rowsRejected, count: report.rowsChecked })}
+      </p>
+      {flagged.length ? (
+        <ul className="flex flex-col gap-1">
+          {flagged.map((c) => (
+            <li key={c.column} data-testid="wizard-preview-column" data-column={c.column}>
+              <span className="font-medium">{c.column}</span> <span className="text-muted-foreground">→ {c.mapsTo}</span>
+              {c.issues.map((i) => (
+                <span key={i} className="mt-0.5 flex items-start gap-1.5 text-destructive">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  {i}
+                </span>
+              ))}
+              {c.notes.map((n) => (
+                <span key={n} className="mt-0.5 block text-muted-foreground">{n}</span>
+              ))}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {report.rejects.length ? (
+        <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground" data-testid="wizard-preview-rejects">
+          {report.rejects.map((r) => (
+            <li key={r.row}>{t("sources.preview.reject", { row: r.row, reason: r.reason })}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
