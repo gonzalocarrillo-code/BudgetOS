@@ -90,7 +90,7 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     const { tools } = await c.listTools();
     await c.close();
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ["compare_budgets", "describe_dimensions", "export_csv", "get_baseline", "get_budget", "get_closure", "get_decision_timeline", "get_pacing", "list_alerts", "list_approvals", "list_baselines", "list_tags", "list_threads", "list_workspaces", "query_budgets", "query_targets", "search"].sort(),
+      ["compare_budgets", "describe_dimensions", "describe_workspace", "export_csv", "get_baseline", "get_budget", "get_closure", "get_decision_timeline", "get_pacing", "list_alerts", "list_approvals", "list_baselines", "list_tags", "list_threads", "list_workspaces", "query_budgets", "query_targets", "search"].sort(),
     );
     expect(tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false)).toBe(true);
   });
@@ -171,6 +171,63 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     expect(emea?.["budget_change_abs"]).toBe(new Decimal(emea?.["budget"] ?? 0).minus(emea?.["budget_baseline"] ?? 0).toFixed(2));
     const asOf = (await counted("query_budgets", { filter: live({ field: { kind: "dimension", key: "region" }, op: "eq", value: "EMEA" }), measures: ["budget_baseline"], period, compareTo: { asOf: GOLDEN_HISTORY.plan.asOf }, limit: 1000 })) as { totals: Record<string, string> };
     expect(asOf.totals["budget_baseline"]).toBe(A.history.plan.leafByRegion["EMEA"]);
+  });
+
+  it("D-010: the instructions say where to start, and describe_workspace gives the whole picture in one call", async () => {
+    const c = await h.client(tokens["finance1"] as string);
+    expect(c.getInstructions()).toContain("describe_workspace");
+    expect(c.getInstructions()).toContain("tCPA means the CPA metric");
+    await c.close();
+    const d = (await counted("describe_workspace")) as {
+      workspace: { reportingCurrency: string; fiscalYear: { start: string; end: string } };
+      headline: { basis: string; budget: string; actual: string | null };
+      counts: Record<string, number>;
+      dimensions: Array<{ key: string; label: string; inUse: { budgets: number; values: number }; top: Array<{ code: string | null; budget: string | null }> | null }>;
+      hierarchies: Array<{ name: string }>;
+      metrics: Array<{ key: string; formula: string; isRatio: boolean; words: string[] }>;
+      snapshots: Array<{ name: string; kind: string }>;
+      queryHints: { dimensionKeys: string[]; measures: string[] };
+    };
+    expect(d.workspace).toMatchObject({ reportingCurrency: "USD", fiscalYear: GOLDEN_FY });
+    // The headline is Overview's: the top-level budgets.
+    expect(d.headline).toMatchObject({ basis: "top_level", budget: Object.values(A.parentBudget.byRegion).reduce((s, v) => s.plus(v), new Decimal(0)).toFixed(2) });
+    const region = d.dimensions.find((x) => x.key === "region");
+    expect(Object.fromEntries((region?.top ?? []).map((t) => [t.code, t.budget]))).toEqual(A.leafBudget.current.byRegion);
+    expect(d.dimensions.find((x) => x.key === "country")?.inUse.values).toBe(Object.keys(A.leafBudgetCurrent.byCountry).length);
+    expect(d.counts["countryValues"]).toBe(Object.keys(A.leafBudgetCurrent.byCountry).length);
+    expect(d.counts["budgets"]).toBe(A.envelopes.total - 1); // the archived split source is not a live budget
+    expect(d.metrics.find((m) => m.key === "cpa")).toMatchObject({ formula: "spend / kpi:conversions", isRatio: true, words: expect.arrayContaining(["tcpa", "targetcpa"]) });
+    expect(d.snapshots.map((x) => x.name)).toContain(GOLDEN_HISTORY.plan.name);
+    expect(d.hierarchies.map((x) => x.name)).toEqual(expect.arrayContaining(["Region first", "Channel first"]));
+    expect(d.queryHints.dimensionKeys).toEqual(expect.arrayContaining(["region", "country", "platform", "objective", "audience"]));
+    // The second call answers "how are our platforms pacing": the keys came from the first.
+    const byPlatform = (await counted("query_budgets", { filter: live(), groupBy: ["platform"], measures: ["budget", "actual", "pace_index"], period, limit: 50 })) as { rows: Array<{ dimensions: Record<string, string>; measures: Record<string, string> }> };
+    expect(Object.fromEntries(byPlatform.rows.map((r) => [r.dimensions["platform"], r.measures["budget"]]))).toEqual(A.leafBudgetCurrent.byPlatform);
+  });
+
+  it("D-011 / D-012: the glossary resource, and each prompt end to end with live numbers", async () => {
+    const c = await h.client(tokens["admin"] as string);
+    calls += 1;
+    const g = JSON.parse(String(((await c.readResource({ uri: `budget://workspace/${golden.workspaceId}/glossary` })).contents[0] as { text: string }).text)) as { data: { metrics: Array<{ key: string; words: string[] }>; statuses: Record<string, string>; ratioWords: string[] } };
+    expect(g.data.metrics.find((m) => m.key === "cpa")?.words).toContain("tcpa");
+    expect(g.data.ratioWords).toContain("tcpa");
+    expect(g.data.statuses["ENDED"]).toMatch(/final amount/);
+    const { prompts } = await c.listPrompts();
+    expect(prompts.map((p) => p.name).sort()).toEqual(["pacing_review", "since_snapshot", "unmatched_spend"]);
+    const text = async (name: string, args: Record<string, string>) => {
+      calls += 1;
+      const r = await c.getPrompt({ name, arguments: { workspaceId: golden.workspaceId, ...args } });
+      const first = r.messages[0]?.content;
+      return first && first.type === "text" ? first.text : "";
+    };
+    const pacing = await text("pacing_review", { period: "current_year" });
+    expect(pacing).toMatch(/^Review pacing for current_year/);
+    const data = JSON.parse(pacing.slice(pacing.indexOf("{"))) as { mostOverPace: unknown[]; mostUnderPace: unknown[]; openAlerts: number };
+    expect(data.mostOverPace.length).toBe(10);
+    expect(data.openAlerts).toBeGreaterThan(0);
+    expect(await text("since_snapshot", {})).toContain(GOLDEN_HISTORY.plan.name);
+    expect(await text("unmatched_spend", {})).toContain('"unmatched"');
+    await c.close();
   });
 
   it("the registry resource", async () => {

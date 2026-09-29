@@ -52,3 +52,9 @@ export async function deleteFactMonth(tx: Tx, workspaceId: string, month: string
   counts["spend_month"] = await tx.$executeRawUnsafe(`DELETE FROM spend_month WHERE workspace_id = $1::uuid AND month = $2::date`, workspaceId, month);
   return counts;
 }
+
+/** The newest spend fact's date (yyyy-MM-dd), or null: how fresh the actuals are. */
+export async function lastFactDate(tx: Tx, workspaceId: string): Promise<string | null> {
+  const [row] = await tx.$queryRaw<Array<{ d: string | null }>>`SELECT max(period_date)::text AS d FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+  return row?.d ?? null;
+}
