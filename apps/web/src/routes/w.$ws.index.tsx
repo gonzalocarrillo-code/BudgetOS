@@ -1,7 +1,7 @@
 import { OverviewResponse, type OverviewLeaf } from "@budget/domain";
 import { formatChange, formatMoney, formatPctChange } from "@budget/grid";
 import { savedOn, snapshotReportQuery, snapshotsQuery } from "../features/snapshots/queries.js";
-import { cn, Button, Select } from "@budget/ui";
+import { AsOfChip, cn, Button, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
@@ -147,7 +147,7 @@ function OverviewPage(): ReactElement {
     layout.shows("tile.budget") ? <Tile key="b" label={t("overview.budget")} value={o ? money(head.budget) : ""} hint={o && o.headline && o.headline.assigned !== null && o.headline.assigned !== o.headline.budget ? t("overview.assigned", { amount: money(o.headline.assigned) }) : undefined} testId="tile-budget" /> : null,
     layout.shows("tile.actual") ? <Tile key="a" label={t("overview.actual")} value={o ? money(head.actual) : ""} hint={o ? t("overview.spendToDate", { pct: pct(head.spentPct) }) : undefined} /> : null,
     // % of the budget spent (product feedback 8), against how much of the period has gone.
-    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(head.spentPct) : ""} hint={o?.period.elapsed ? t("overview.elapsed", { pct: pct(o.period.elapsed) }) : undefined} testId="tile-spent" /> : null,
+    layout.shows("tile.spent") ? <Tile key="s" label={t("overview.spent")} value={o ? pct(head.spentPct) : ""} hint={o?.period.elapsed ? (o.asOf.through ? t("overview.elapsedBy", { pct: pct(o.period.elapsed), date: shortDate(o.asOf.through) }) : t("overview.elapsed", { pct: pct(o.period.elapsed) })) : undefined} testId="tile-spent" /> : null,
     // A projection needs projection facts; without them it would read 0%.
     layout.shows("tile.projected") ? <Tile key="p" label={t("overview.projectedClose")} value={o ? (Number(o.totals["projected"] ?? 0) === 0 ? "—" : pct(o.totals["projected_close_pct"])) : ""} hint={o && Number(o.totals["projected"] ?? 0) === 0 ? t("overview.noProjections") : undefined} /> : null,
     layout.shows("tile.alerts") ? <Tile key="al" label={t("overview.openAlerts")} value={o ? String(o.alerts.open) : ""} to="alerts" ws={ws} testId="tile-alerts" /> : null,
@@ -183,11 +183,13 @@ function OverviewPage(): ReactElement {
               ) : null}
             </Select>
           </label>
+          {o ? <AsOfChip through={o.asOf.through} stale={o.asOf.stale} staleDays={o.asOf.staleDays} grain={o.asOf.grain} testId="overview-as-of" /> : null}
           <Customise layout={layout} />
         </div>
       }
     >
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
+      {o?.asOf.stale && o.asOf.through ? <StaleBanner ws={ws} through={o.asOf.through} days={o.asOf.staleDays ?? 0} /> : null}
       {isPending || !o ? (
         <p className="text-sm text-muted-foreground" data-testid="overview-loading">{t("shell.loading")}</p>
       ) : (
@@ -329,6 +331,21 @@ function OverviewPage(): ReactElement {
       )}
       {cell && o ? <CellEditor ws={ws} cell={cell} period={periodSpec} currency={o.currency} onClose={() => setCell(null)} /> : null}
     </Page>
+  );
+}
+
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** HO-003: the actuals are late; every pace on the page is read as of their last day. */
+function StaleBanner({ ws, through, days }: { ws: string; through: string; days: number }): ReactElement {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning-soft px-4 py-2.5 text-sm text-warning-text" data-testid="overview-stale">
+      <AlertTriangle className="size-4 shrink-0" aria-hidden />
+      <span className="flex-1">{t("overview.stale", { date: shortDate(through), days })}</span>
+      <Link to="/w/$ws/sources" params={{ ws }} className="font-medium underline">
+        {t("overview.staleOpen")}
+      </Link>
+    </div>
   );
 }
 

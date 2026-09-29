@@ -26,7 +26,15 @@ export function scopedQuery(auth: AuthContext, raw: unknown): QueryRequest {
   return { ...q, ...(filter ? { filter } : {}) };
 }
 
-export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unknown, now: Date = new Date(), engine: QueryEngine = engineFromEnv()): Promise<QueryResponse> {
+/**
+ * Server-side options no HTTP caller sets. `elapsedThrough` (ADR-062): Home and the Overview count
+ * time gone through the last day the actuals cover, which they resolve once for all their queries.
+ */
+export interface RunQueryOptions {
+  elapsedThrough?: string | undefined;
+}
+
+export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unknown, now: Date = new Date(), engine: QueryEngine = engineFromEnv(), internal: RunQueryOptions = {}): Promise<QueryResponse> {
   const started = performance.now();
   const q = scopedQuery(auth, raw);
   return withTenant(prisma, auth.ctx, async (tx) => {
@@ -38,9 +46,9 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
     }
     const today = now.toISOString().slice(0, 10);
     const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
-    const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period);
+    const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period)), ...(internal.elapsedThrough === undefined ? {} : { elapsedThrough: internal.elapsedThrough }) };
     const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
-    const key = engine.cache ? cacheKey(q, dataVersion, today) : null;
+    const key = engine.cache ? cacheKey(q, dataVersion, today, internal.elapsedThrough) : null;
     if (key && engine.cache) {
       const hit = await engine.cache.get(key);
       if (hit) return { ...(JSON.parse(hit) as QueryResponse), engine: "cache" as const, elapsedMs: Math.round(performance.now() - started) };

@@ -7,6 +7,19 @@ import { z } from "zod";
  */
 const Num = z.string().nullable().optional();
 
+/**
+ * HO-003 (ADR-062): how current the actuals are. `through` is the last day they cover (the end of the
+ * month for a monthly source), capped at today; time gone and pace are counted through it.
+ */
+export const DataAsOfView = z.object({
+  lastFactDate: z.string().nullable(),
+  through: z.string().nullable(),
+  grain: z.enum(["day", "month"]).nullable(),
+  staleDays: z.number().int().nullable(),
+  stale: z.boolean(),
+});
+export type DataAsOfView = z.infer<typeof DataAsOfView>;
+
 /** A live leaf budget in a ranked list, with the planner's measures. */
 export const OverviewLeaf = z
   .object({ envelopeId: z.string().uuid().nullable(), name: z.string(), path: z.array(z.string()), budget: Num, actual: Num, pace_index: Num, spend_to_date_pct: Num })
@@ -31,7 +44,9 @@ export type OverviewHeatmap = z.infer<typeof OverviewHeatmap>;
 
 export const OverviewResponse = z.object({
   currency: z.string(),
-  period: z.object({ preset: z.string(), start: z.string().optional(), end: z.string().optional(), elapsed: z.string().optional() }).passthrough(),
+  /** `elapsed`: the share of the period gone by the day the actuals cover (what pace uses); `elapsedToday`: by today. */
+  period: z.object({ preset: z.string(), start: z.string().optional(), end: z.string().optional(), elapsed: z.string().optional(), elapsedToday: z.string().optional() }).passthrough(),
+  asOf: DataAsOfView,
   dataAsOf: z.string(),
   totals: z.record(z.string(), z.string().nullable()),
   /** UX-008 (ADR-051): the tiles' budget, as Budgets counts it; `assigned` is what the leaves (the heatmap) hold. */

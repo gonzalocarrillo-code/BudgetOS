@@ -1,7 +1,7 @@
 import { QueryRequest, canInScope, elapsedFraction, resolvePeriod, type FilterGroupT, type HomeResponse } from "@budget/domain";
 import { headline } from "../../common/headline.js";
-import { plannerOptions, unmatchedSpend, withTenant, fiscalCalendar, workspaceSetup } from "@budget/db";
-import { compileQuery, compileTotals } from "@budget/query-planner";
+import { dataAsOf, plannerOptions, unmatchedSpend, withTenant, fiscalCalendar, workspaceSetup } from "@budget/db";
+import { compileQuery, compileTotals, elapsedDay } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../common/parse-input.js";
@@ -50,7 +50,9 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
     const picked = [...mine.filter((r) => r.ownerId === me), ...mine.filter((r) => r.ownerId !== me)].slice(0, MAX_SCOPES);
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true, name: true, reportingCurrency: true } });
     const period = resolvePeriod({ kind: "relative", preset: "current_year" }, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, workspaceId));
-    const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period);
+    // HO-003 (ADR-062): pace counts time gone through the last day the actuals cover, as on the Overview.
+    const asOf = await dataAsOf(tx, workspaceId, today);
+    const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period)), elapsedThrough: asOf.through ?? undefined };
     // Each strip is that budget's own row in the budget structure (UX-008, ADR-051): its approved
     // amount against everything spent under it, found by parent links, not by dimension values.
     const scopes: HomeResponse["scopes"] = [];
@@ -122,6 +124,7 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       recents: touched.filter((x) => titles.has(x.entity_id)).map((x) => ({ entityType: x.entity_type, entityId: x.entity_id, title: titles.get(x.entity_id) as string, at: new Date(x.at).toISOString() })),
       pinnedViews: views.map((v) => ({ id: v.id, name: v.name, screen: v.screen, definition: v.definition as Record<string, unknown> })),
       workspace: { name: ws.name, currency: ws.reportingCurrency, period: { start: period.start, end: period.end, elapsed: ratio(elapsedFraction(period, today).toString()) } },
+      asOf: { ...asOf, elapsed: ratio(elapsedFraction(period, elapsedDay(today, opts)).toString()) },
       totals,
       setup,
     };

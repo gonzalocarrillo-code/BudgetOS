@@ -226,7 +226,7 @@ export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";
 export { ON_PLAN, PACE_BANDS, paceBand } from "./pace.js";
-export { OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewResponse } from "./overview.js";
+export { DataAsOfView, OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewResponse } from "./overview.js";
 export type { PaceBandKey } from "./pace.js";
 export type { GroupSums } from "./rollup-measures.js";
 export { BaselineKind, BaselineReport, BaselineReportQuery, BaselineRowsQuery, BaselineRowsResponse, BaselineTreeRow, BaselineScope, BaselineView, BaselinesResponse, CreateBaselineInput, EndEnvelopeInput, ReintroduceInput, UpdateBaselineInput } from "./baselines.js";

@@ -406,13 +406,15 @@ const samples: Record<string, readonly unknown[]> = {
     { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [] },
     { waitingOnMe: { approvals: [], mentions: [], alerts: [], unmatched: 0 }, scopes: [], recents: [], pinnedViews: [], workspace: { name: "OpenAI", currency: "USD", period: { start: "2026-01-01", end: "2026-12-31", elapsed: "0.74" } }, totals: null, setup: { budgets: 0, sources: 0, people: 1, spend: false, tags: 0 } },
   ],
+  DataAsOfView: [{ lastFactDate: "2026-08-01", through: "2026-08-31", grain: "month", staleDays: 29, stale: false }, { lastFactDate: null, through: null, grain: null, staleDays: null, stale: false }],
   OverviewLeaf: [{ envelopeId: workspaceId, name: "MX meta awareness retargeting", path: ["LATAM", "MX", "meta"], budget: "6917.48", actual: "5442.74", pace_index: "1.0558", spend_to_date_pct: "0.7868" }],
   OverviewHeatmapCell: [{ row: "BR", col: "meta", budget: "30447.14", actual: "18573.00", pace_index: "0.9101", spend_to_date_pct: "0.6100" }, { row: null, col: "meta", budget: null, actual: null, pace_index: null, spend_to_date_pct: null }],
   OverviewHeatmap: [{ rowDimension: { key: "country", label: "Country" }, colDimension: { key: "platform", label: "Platform" }, rows: ["BR"], cols: ["meta"], labels: { rows: { BR: "Brazil" }, cols: { meta: "Meta" } }, cells: [{ row: "BR", col: "meta", budget: "30447.14", actual: "18573.00", pace_index: "0.9101", spend_to_date_pct: "0.6100" }], dimensions: [{ key: "country", label: "Country" }] }],
   OverviewResponse: [
     {
       currency: "USD",
-      period: { preset: "current_year", start: "2026-01-01", end: "2026-12-31", elapsed: "0.6658" },
+      period: { preset: "current_year", start: "2026-01-01", end: "2026-12-31", elapsed: "0.6658", elapsedToday: "0.7452" },
+      asOf: { lastFactDate: "2026-08-01", through: "2026-08-31", grain: "month", staleDays: 29, stale: false },
       dataAsOf: "2026-09-29T10:00:00.000Z",
       totals: { budget: "1114679.17", actual: "653984.46" },
       headline: { basis: "top_level", budget: "1386014.00", actual: "653984.46", spentPct: "0.4718", paceIndex: "0.7087", assigned: "1114679.17" },

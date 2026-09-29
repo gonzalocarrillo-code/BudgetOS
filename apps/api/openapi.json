@@ -11753,6 +11753,46 @@
                       ],
                       "nullable": true
                     },
+                    "asOf": {
+                      "type": "object",
+                      "properties": {
+                        "lastFactDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "through": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "grain": {
+                          "type": "string",
+                          "enum": [
+                            "day",
+                            "month"
+                          ],
+                          "nullable": true
+                        },
+                        "staleDays": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        },
+                        "elapsed": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "lastFactDate",
+                        "through",
+                        "grain",
+                        "staleDays",
+                        "stale",
+                        "elapsed"
+                      ]
+                    },
                     "setup": {
                       "type": "object",
                       "properties": {
@@ -16895,10 +16935,48 @@
                         },
                         "elapsed": {
                           "type": "string"
+                        },
+                        "elapsedToday": {
+                          "type": "string"
                         }
                       },
                       "required": [
                         "preset"
+                      ]
+                    },
+                    "asOf": {
+                      "type": "object",
+                      "properties": {
+                        "lastFactDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "through": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "grain": {
+                          "type": "string",
+                          "enum": [
+                            "day",
+                            "month"
+                          ],
+                          "nullable": true
+                        },
+                        "staleDays": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "lastFactDate",
+                        "through",
+                        "grain",
+                        "staleDays",
+                        "stale"
                       ]
                     },
                     "dataAsOf": {
@@ -17408,6 +17486,7 @@
                   "required": [
                     "currency",
                     "period",
+                    "asOf",
                     "dataAsOf",
                     "totals",
                     "heatmap",

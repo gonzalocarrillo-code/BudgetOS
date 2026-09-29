@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FilterGroup } from "./filter-ast.js";
+import { DataAsOfView } from "./overview.js";
 import type { Role } from "./permissions.js";
 
 /**
@@ -94,6 +95,8 @@ export const HomeResponse = z.object({
   workspace: z.object({ name: z.string(), currency: z.string(), period: z.object({ start: z.string(), end: z.string(), elapsed: z.string().nullable() }) }).optional(),
   /** This fiscal year over the budgets the caller may read; null when there are none. */
   totals: z.object({ budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), openAlerts: z.number().int() }).nullable().optional(),
+  /** HO-003: how current the actuals are; `elapsed` is the fiscal year gone by then (pace counts to it). */
+  asOf: DataAsOfView.extend({ elapsed: z.string().nullable() }).optional(),
   /** What the workspace has set up (Home's getting-started steps). */
   setup: z.object({ budgets: z.number().int(), sources: z.number().int(), people: z.number().int(), spend: z.boolean(), tags: z.number().int() }).optional(),
 });

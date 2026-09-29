@@ -38,7 +38,16 @@ export interface CompileOptions {
    * node's envelopes first and passes them here, so Postgres plans from a known set (ADR-038).
    */
   envelopeIds?: readonly string[] | undefined;
+  /**
+   * HO-003 (ADR-062): count time gone through this day instead of today, the last day the actuals
+   * cover, so late data does not read as under-spending. Never later than today. Only pace (and the
+   * measures derived from time gone) read it; filters and relative dates keep today.
+   */
+  elapsedThrough?: string | undefined;
 }
+
+/** The day time gone is counted to: `elapsedThrough` when it is before today, else today. */
+export const elapsedDay = (today: string, opts: Pick<CompileOptions, "elapsedThrough">): string => (opts.elapsedThrough !== undefined && opts.elapsedThrough < today ? opts.elapsedThrough : today);
 
 export interface OrderKey {
   col: string;
@@ -98,7 +107,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const ws = b.p(q.workspaceId);
   const pStart = `${b.p(period.start)}::date`,
     pEnd = `${b.p(period.end)}::date`;
-  const elapsedFrac = `LEAST(1, GREATEST(0, (${b.p(today)}::date - ${pStart}::date + 1)::numeric / NULLIF((${pEnd}::date - ${pStart}::date + 1),0)))`;
+  const elapsedFrac = `LEAST(1, GREATEST(0, (${b.p(elapsedDay(today, opts))}::date - ${pStart}::date + 1)::numeric / NULLIF((${pEnd}::date - ${pStart}::date + 1),0)))`;
 
   // KPI columns requested via targets[] or read by the filter. Each carries its numerator and
   // denominator per envelope (num_<m>, den_<m>) so every roll-up level divides sums: CPA of a group

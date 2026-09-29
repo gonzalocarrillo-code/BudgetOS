@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { DomainError, elapsedFraction, isPredicate, type FilterGroupT, type Predicate, type QueryRequest } from "@budget/domain";
 import { sanitize } from "./compile-filter.js";
-import { RATIO, resolveOrder, type CompileOptions, type OrderKey } from "./compile-query.js";
+import { RATIO, elapsedDay, resolveOrder, type CompileOptions, type OrderKey } from "./compile-query.js";
 
 const SUPPORTED_MEASURES = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs", "variance_pct", "pace_index", "projected_close_pct", "spend_to_date_pct"]);
 
@@ -124,7 +124,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
   const ws = b.p(q.workspaceId);
   const pStart = `CAST(${b.p(period.start)} AS DATE)`;
   const pEnd = `CAST(${b.p(period.end)} AS DATE)`;
-  b.params["elapsed"] = elapsedFraction(period, today).toString();
+  b.params["elapsed"] = elapsedFraction(period, elapsedDay(today, opts)).toString();
   b.types["elapsed"] = "BIGNUMERIC";
   const where = compileFilterBq(q.filter ?? { logic: "and", children: [] }, b, t);
   const withProjections = opts.hasProjections !== false;

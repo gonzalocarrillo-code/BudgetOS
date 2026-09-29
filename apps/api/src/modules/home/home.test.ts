@@ -134,7 +134,7 @@ describe("home (T-040)", () => {
     const res = await as("budgetOwner", "GET", "/me/home");
     expect(res.status, JSON.stringify(res.body).slice(0, 400)).toBe(200);
     const home = res.body as { waitingOnMe: { approvals: unknown[]; mentions: Array<{ body: string; author: string | null }>; alerts: unknown[]; unmatched: number }; scopes: Array<{ label: string; filter: unknown; budget: string }>; recents: unknown[]; pinnedViews: Array<{ name: string }> };
-    expect(Object.keys(res.body)).toEqual(["waitingOnMe", "scopes", "recents", "pinnedViews", "workspace", "totals", "setup"]);
+    expect(Object.keys(res.body)).toEqual(["waitingOnMe", "scopes", "recents", "pinnedViews", "workspace", "asOf", "totals", "setup"]);
     // The header: the workspace, its fiscal year so far, and the year's totals over what the caller reads.
     expect(res.body["workspace"]).toMatchObject({ name: "Golden", currency: "USD" });
     expect((res.body["setup"] as { budgets: number }).budgets).toBeGreaterThan(0);

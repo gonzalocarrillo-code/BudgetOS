@@ -6630,6 +6630,15 @@ export interface operations {
                             spentPct: string | null;
                             openAlerts: number;
                         } | null;
+                        asOf?: {
+                            lastFactDate: string | null;
+                            through: string | null;
+                            /** @enum {string|null} */
+                            grain: "day" | "month" | null;
+                            staleDays: number | null;
+                            stale: boolean;
+                            elapsed: string | null;
+                        };
                         setup?: {
                             budgets: number;
                             sources: number;
@@ -8762,6 +8771,15 @@ export interface operations {
                             start?: string;
                             end?: string;
                             elapsed?: string;
+                            elapsedToday?: string;
+                        };
+                        asOf: {
+                            lastFactDate: string | null;
+                            through: string | null;
+                            /** @enum {string|null} */
+                            grain: "day" | "month" | null;
+                            staleDays: number | null;
+                            stale: boolean;
                         };
                         dataAsOf: string;
                         totals: {

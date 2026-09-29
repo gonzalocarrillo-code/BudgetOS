@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { LIVE_LEAVES, TOP_LEVEL } from "@budget/domain";
+import { LIVE_LEAVES, TOP_LEVEL, elapsedFraction } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -116,6 +116,24 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
       expect(o.alerts.open, persona).toBe(inDb); // the golden personas read the whole workspace
       expect(Object.values(o.alerts.counts).reduce((s, n) => s + n, 0), persona).toBe(o.alerts.open);
     }
+  });
+
+  it("counts time gone through the last day the actuals cover: the golden's monthly August rows run to 31 August (HO-003, ADR-062)", async () => {
+    const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=current_year`);
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+    const o = res.body as { asOf: Record<string, unknown>; period: { start: string; end: string; elapsed: string; elapsedToday: string }; totals: Record<string, string> };
+    const today = new Date().toISOString().slice(0, 10);
+    const through = "2026-08-31" < today ? "2026-08-31" : today;
+    expect(o.asOf).toMatchObject({ lastFactDate: "2026-08-01", through, grain: "month" });
+    const gone = elapsedFraction(o.period, through);
+    expect(o.period.elapsed).toBe(gone.toDecimalPlaces(4).toString());
+    expect(o.period.elapsedToday).toBe(elapsedFraction(o.period, today).toDecimalPlaces(4).toString());
+    // The heatmap's total pace divides by that share, not by the share gone today.
+    const pace = new Decimal(o.totals["actual"] ?? 0).div(o.totals["budget_in_period"] ?? 1).div(gone);
+    expect(new Decimal(o.totals["pace_index"] ?? 0).toDecimalPlaces(4).toString()).toBe(pace.toDecimalPlaces(4).toString());
+    // Home reads the same day, and its strips' pace with it.
+    const home = (await as("planner", "GET", "/api/v1/me/home")).body as { asOf: Record<string, unknown> & { elapsed: string } };
+    expect(home.asOf).toMatchObject({ lastFactDate: "2026-08-01", through, grain: "month", elapsed: gone.toDecimalPlaces(4).toString() });
   });
 
   it("rejects an unknown period, and needs envelope.read", async () => {

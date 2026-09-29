@@ -1,5 +1,5 @@
 import { DomainError, LIVE_LEAVES, PeriodSpec, elapsedFraction, resolvePeriod, type QueryResponse } from "@budget/domain";
-import { fiscalCalendar, withTenant } from "@budget/db";
+import { dataAsOf, fiscalCalendar, withTenant } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { headline } from "../../common/headline.js";
@@ -7,6 +7,7 @@ import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
 import { listApprovals } from "../approvals/queries/approvals.js";
 import { alertCounts, listAlerts, openAlerts } from "../pacing/queries.js";
+import { elapsedDay } from "@budget/query-planner";
 import { runQuery } from "../query/queries/run-query.js";
 
 /**
@@ -21,7 +22,7 @@ import { runQuery } from "../query/queries/run-query.js";
 const PRESETS = ["current_month", "current_quarter", "current_year", "last_30_days", "last_90_days", "ytd", "next_90_days"] as const;
 const leaves = { logic: "and" as const, children: LIVE_LEAVES };
 
-export async function overview(prisma: PrismaClient, auth: AuthContext, rawPeriod: string | undefined, axes: { rows?: string | undefined; cols?: string | undefined } = {}) {
+export async function overview(prisma: PrismaClient, auth: AuthContext, rawPeriod: string | undefined, axes: { rows?: string | undefined; cols?: string | undefined } = {}, now: Date = new Date()) {
   const started = performance.now();
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const preset = rawPeriod ?? "current_year";
@@ -31,7 +32,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   if (fiscal === null && !(PRESETS as readonly string[]).includes(preset)) throw new DomainError("VALIDATION", `period must be one of ${PRESETS.join(", ")} or fiscal:<key>`);
   const period = parseInput(PeriodSpec, fiscal === null ? { kind: "relative", preset } : { kind: "fiscal", key: fiscal });
 
-  const { dims, labels, currency, cpa, hasProjections, dimensions, range } = await withTenant(prisma, auth.ctx, async (tx) => {
+  const { dims, labels, currency, cpa, hasProjections, dimensions, range, asOf } = await withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true, reportingCurrency: true } });
     const dimensions = await tx.dimension.findMany({ where: { orgId: ws.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, label: true } });
     const byKey = new Map(dimensions.map((d) => [d.key, d]));
@@ -48,7 +49,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
     const values = await tx.dimensionValue.findMany({ where: { dimensionId: { in: [rows?.id, cols?.id].filter((x): x is string => x !== undefined) } }, select: { dimensionId: true, code: true, label: true } });
     const label = (d: typeof rows) => Object.fromEntries(values.filter((v) => v.dimensionId === d?.id).map((v) => [v.code, v.label]));
     const wsCal = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = now.toISOString().slice(0, 10);
     const calendar = await fiscalCalendar(tx, workspaceId);
     let range: { start: string; end: string };
     try {
@@ -59,10 +60,23 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
     const metric = await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: ws.orgId, key: "cpa" } }, select: { id: true } });
     // The projection measures are the planner's costly ones; ask for them only when there are projections.
     const [projection] = await tx.$queryRaw<Array<{ one: number }>>`SELECT 1 AS one FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid LIMIT 1`;
-    return { dims: { rows, cols }, labels: { rows: label(rows), cols: label(cols) }, currency: ws.reportingCurrency, cpa: metric !== null, hasProjections: projection !== undefined, range: { ...range, elapsed: elapsedFraction(range, today).toDecimalPlaces(4).toString() }, dimensions: dimensions.map((d) => ({ key: d.key, label: d.label })).sort((a, b) => a.label.localeCompare(b.label)) };
+    // HO-003 (ADR-062): the last day the actuals cover; time gone (and so pace) is counted through it.
+    const asOf = await dataAsOf(tx, workspaceId, today);
+    const through = elapsedDay(today, { elapsedThrough: asOf.through ?? undefined });
+    const shareGone = (day: string) => elapsedFraction(range, day).toDecimalPlaces(4).toString();
+    return {
+      dims: { rows, cols },
+      labels: { rows: label(rows), cols: label(cols) },
+      currency: ws.reportingCurrency,
+      cpa: metric !== null,
+      hasProjections: projection !== undefined,
+      range: { ...range, elapsed: shareGone(through), elapsedToday: shareGone(today) },
+      asOf,
+      dimensions: dimensions.map((d) => ({ key: d.key, label: d.label })).sort((a, b) => a.label.localeCompare(b.label)),
+    };
   });
 
-  const q = (body: Record<string, unknown>) => runQuery(prisma, auth, { workspaceId, period, filter: leaves, ...body });
+  const q = (body: Record<string, unknown>) => runQuery(prisma, auth, { workspaceId, period, filter: leaves, ...body }, now, undefined, { elapsedThrough: asOf.through ?? undefined });
   // Pace, not projection: pace index is spend so far against the phased plan, known from day one;
   // a projection exists only once projection facts are loaded.
   const PACE = ["budget", "actual", "pace_index", "spend_to_date_pct"];
@@ -73,14 +87,14 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   // The headline (UX-008, ADR-051): the same "budget" as Budgets and Home.
   const head = headline(auth);
   const [heat, over, under, kpi, kpiTargets, alerts, mine, sources, projected, headTotals, latestAlerts] = await Promise.all([
-    dims.rows && dims.cols ? q({ groupBy: [rowKey, colKey], measures: ["budget", "actual", "pace_index", "spend_to_date_pct"], sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
+    dims.rows && dims.cols ? q({ groupBy: [rowKey, colKey], measures: ["budget", "budget_in_period", "actual", "pace_index", "spend_to_date_pct"], sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
     q({ measures: PACE, sort: [{ key: "pace_index", dir: "desc" }], limit: 5 }),
     q({ measures: PACE, sort: [{ key: "pace_index", dir: "asc" }], limit: 5 }),
     dims.rows && cpa ? q({ groupBy: [rowKey], measures: ["budget", "actual"], targets: ["cpa"], sort: [{ key: "budget", dir: "desc" }], limit: 12 }) : null,
     dims.rows && dims.cols && cpa ? q({ filter: marketLevel, measures: ["budget"], targets: ["cpa"], limit: 200 }) : null,
     openAlerts(prisma, auth),
     listApprovals(prisma, auth, { assignee: "me", status: "PENDING,ESCALATED", limit: "100" }),
-    freshness(prisma, auth, workspaceId),
+    freshness(prisma, auth, workspaceId, asOf.lastFactDate),
     hasProjections ? q({ measures: ["projected", "projected_close_pct"], limit: 1 }) : null,
     head ? q({ filter: head.filter, subtree: head.subtree, measures: PACE, limit: 1 }) : null,
     // HO-001: the newest open alerts by name; the counts below come from `alerts`, the same population as Home's.
@@ -96,9 +110,9 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   const targetOf = new Map((kpiTargets?.rows ?? []).map((r) => [r.dimensions[rowKey] ?? "", r.targets["cpa"]?.target ?? null]));
   // CPA: lower is better, so a positive gap is worse than target.
   const gap = (actual: string | null, target: string | null) => (actual === null || target === null || new Decimal(target).isZero() ? null : new Decimal(actual).div(target).minus(1).toDecimalPlaces(4).toString());
-  const now = Date.now();
   return {
     period: { preset, ...range },
+    asOf,
     currency,
     dataAsOf: over.dataAsOf,
     // The tiles (UX-008): Budgets' definition of the budget; `assigned` is what the leaves hold, the
@@ -123,7 +137,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
     alerts: { ...alertCounts(alerts), latest: latestAlerts.slice(0, 5) },
     approvals: {
       mine: mine.rows.length,
-      overdue: mine.rows.filter((r) => r["dueAt"] !== null && Date.parse(String(r["dueAt"])) < now).length,
+      overdue: mine.rows.filter((r) => r["dueAt"] !== null && Date.parse(String(r["dueAt"])) < now.getTime()).length,
       due: [...mine.rows].sort((a, b) => String(a["dueAt"] ?? "9").localeCompare(String(b["dueAt"] ?? "9"))).slice(0, 5),
     },
     freshness: sources,
@@ -132,13 +146,12 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
 }
 
 /** The latest fact date, and each source's last run: how fresh the actuals are (plan §11.1). */
-async function freshness(prisma: PrismaClient, auth: AuthContext, workspaceId: string) {
+async function freshness(prisma: PrismaClient, auth: AuthContext, workspaceId: string, lastFactDate: string | null) {
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const [last] = await tx.$queryRaw<Array<{ d: string | null }>>`SELECT max(period_date)::text AS d FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
     const sources = await tx.dataSource.findMany({ where: { workspaceId }, select: { id: true, name: true, kind: true, isActive: true }, orderBy: { name: "asc" } });
     const runs = await Promise.all(sources.map((s) => tx.ingestRun.findFirst({ where: { sourceId: s.id }, orderBy: { startedAt: "desc" }, select: { status: true, startedAt: true, finishedAt: true, rowsRejected: true, summary: true } })));
     return {
-      lastFactDate: last?.d ?? null,
+      lastFactDate,
       sources: sources.map((s, i) => {
         const r = runs[i];
         const coverage = (r?.summary as { matchCoverage?: string } | null)?.matchCoverage ?? null;
