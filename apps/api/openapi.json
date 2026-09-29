@@ -11228,6 +11228,28 @@
                               "dueAt": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "requestedByName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "before": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "after": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "changePct": {
+                                "type": "string",
+                                "nullable": true
                               }
                             },
                             "required": [
@@ -11315,6 +11337,171 @@
                         },
                         "unmatched": {
                           "type": "integer"
+                        },
+                        "canMap": {
+                          "type": "boolean"
+                        },
+                        "drafts": {
+                          "type": "object",
+                          "properties": {
+                            "count": {
+                              "type": "integer"
+                            },
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "envelopeId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "versionId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "envelopeId",
+                                  "versionId",
+                                  "name",
+                                  "createdAt"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "count",
+                            "items"
+                          ]
+                        },
+                        "alertsOnMyBudgets": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "assigned": {
+                                "type": "integer"
+                              },
+                              "rules": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "ruleId": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "ruleName": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "severity": {
+                                      "type": "string"
+                                    },
+                                    "count": {
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "ruleId",
+                                    "ruleName",
+                                    "severity",
+                                    "count"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "envelopeId",
+                              "name",
+                              "severity",
+                              "count",
+                              "assigned",
+                              "rules"
+                            ]
+                          }
+                        },
+                        "closures": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "periodKey": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "type": "string"
+                              },
+                              "daysLeft": {
+                                "type": "integer"
+                              },
+                              "drafts": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "periodKey",
+                              "start",
+                              "end",
+                              "daysLeft",
+                              "drafts",
+                              "pending"
+                            ]
+                          }
+                        },
+                        "failedRuns": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "sourceId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "sourceName": {
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "error": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            },
+                            "required": [
+                              "sourceId",
+                              "sourceName",
+                              "at",
+                              "error"
+                            ]
+                          }
                         }
                       },
                       "required": [
@@ -11323,6 +11510,66 @@
                         "alerts",
                         "unmatched"
                       ]
+                    },
+                    "sent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "summary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "entityType": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "waitingOn": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "before": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "after": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "changePct": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "summary",
+                          "entityType",
+                          "requestedAt",
+                          "dueAt",
+                          "waitingOn",
+                          "title",
+                          "count",
+                          "before",
+                          "after"
+                        ]
+                      }
                     },
                     "scopes": {
                       "type": "array",
@@ -11622,6 +11869,19 @@
                           "spentPct": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "remaining": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "owner": {
+                            "type": "boolean"
+                          },
+                          "alerts": {
+                            "type": "integer"
+                          },
+                          "pending": {
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -11652,6 +11912,13 @@
                           },
                           "at": {
                             "type": "string"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "parent": {
+                            "type": "string",
+                            "nullable": true
                           }
                         },
                         "required": [
@@ -11741,7 +12008,17 @@
                           "type": "string",
                           "nullable": true
                         },
+                        "paceIndex": {
+                          "type": "string",
+                          "nullable": true
+                        },
                         "openAlerts": {
+                          "type": "integer"
+                        },
+                        "waiting": {
+                          "type": "integer"
+                        },
+                        "overdue": {
                           "type": "integer"
                         }
                       },
@@ -18073,6 +18350,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "under",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Alerts on this budget or any budget under it"
           },
           {
             "name": "filter",

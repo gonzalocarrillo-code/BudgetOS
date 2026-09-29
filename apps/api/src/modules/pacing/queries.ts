@@ -1,5 +1,5 @@
 import { DomainError, FilterGroup, ListAlertsQuery, OPEN_ALERT_STATUSES, PeriodSpec, QueryRequest, canInScope, readScopeFilter, resolvePeriod, type FilterGroupT } from "@budget/domain";
-import { plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
+import { descendantIds, plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -57,7 +57,9 @@ export async function listAlerts(prisma: PrismaClient, auth: AuthContext, raw: u
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const statuses = (q.status ?? "OPEN,ACKNOWLEDGED,SNOOZED").split(",") as Array<"OPEN" | "ACKNOWLEDGED" | "SNOOZED" | "RESOLVED">;
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const inFilter = filter ? await envelopeIdsFor(tx, workspaceId, filter) : null;
+    const byFilter = filter ? await envelopeIdsFor(tx, workspaceId, filter) : null;
+    const under = q.under ? await descendantIds(tx, [q.under]) : null;
+    const inFilter = byFilter && under ? new Set([...byFilter].filter((id) => under.has(id))) : (byFilter ?? under);
     const rows = await tx.alert.findMany({
       where: {
         workspaceId,

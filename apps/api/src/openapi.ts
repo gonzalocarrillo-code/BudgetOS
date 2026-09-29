@@ -633,6 +633,7 @@ export function openApiDocument(): Record<string, unknown> {
             { name: "severity", in: "query", required: false, schema: { type: "string", enum: ["info", "warning", "critical", "data"] } },
             { name: "ruleId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
             { name: "envelopeId", in: "query", required: false, schema: { type: "string", format: "uuid" } },
+            { name: "under", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "Alerts on this budget or any budget under it" },
             { name: "filter", in: "query", required: false, schema: { type: "string" }, description: "FilterGroup as JSON" },
             { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 500 } },
           ],

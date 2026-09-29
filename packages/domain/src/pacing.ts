@@ -105,6 +105,8 @@ export const ListAlertsQuery = z.object({
   severity: RuleSeverity.optional(),
   ruleId: z.string().uuid().optional(),
   envelopeId: z.string().uuid().optional(),
+  /** HO-006: alerts on this budget or any budget under it (Home's "alerts on your budgets"). */
+  under: z.string().uuid().optional(),
   filter: z.string().max(20_000).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });

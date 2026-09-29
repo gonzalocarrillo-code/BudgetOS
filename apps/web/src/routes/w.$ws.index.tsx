@@ -334,7 +334,7 @@ function OverviewPage(): ReactElement {
   );
 }
 
-const shortDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en", { day: "numeric", month: "short", timeZone: "UTC" });
 
 /** HO-003: the actuals are late; every pace on the page is read as of their last day. */
 function StaleBanner({ ws, through, days }: { ws: string; through: string; days: number }): ReactElement {
