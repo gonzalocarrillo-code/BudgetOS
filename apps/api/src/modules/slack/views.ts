@@ -34,6 +34,24 @@ export function changesForm(value: SlackActionValue): Record<string, unknown> {
   };
 }
 
+/** Request a change to a budget (S-011): its new amount and why, sent through the approval policy. */
+export function requestForm(state: { ws: string; id: string; base: string | null }, info: { title: string; now: string; currency: string }): Record<string, unknown> {
+  return {
+    type: "modal",
+    callback_id: "budget.request",
+    private_metadata: JSON.stringify(state),
+    title: { type: "plain_text", text: "Request a change" },
+    submit: { type: "plain_text", text: "Send" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text: `*${info.title.slice(0, 200)}*\nNow: ${info.now}` } },
+      { type: "input", block_id: "amount", label: { type: "plain_text", text: `New amount (${info.currency})` }, element: { type: "plain_text_input", action_id: "amount", placeholder: { type: "plain_text", text: "e.g. 120,000 or 120000.50" } } },
+      { type: "input", block_id: "why", label: { type: "plain_text", text: "Why? (the approvers see this)" }, element: { type: "plain_text_input", action_id: "why", multiline: true, min_length: 3 } },
+      { type: "context", elements: [{ type: "mrkdwn", text: "It goes through the approval policy, as in BudgetOS. An admin's own change applies at once." }] },
+    ],
+  };
+}
+
 export function rejectForm(value: SlackActionValue): Record<string, unknown> {
   return {
     type: "modal",

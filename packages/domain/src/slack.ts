@@ -56,12 +56,24 @@ export const SlackTestInput = z.object({ channel: Channel.optional() });
 export const SlackActionValue = z.object({ ws: z.string().uuid(), id: z.string().uuid(), o: z.enum(["list", "card"]).optional(), r: z.string().url().max(500).optional() });
 export type SlackActionValue = z.infer<typeof SlackActionValue>;
 
-export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject", "approval.changes", "budget.show", "workspace.use"] as const;
+export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject", "approval.changes", "budget.show", "budget.request", "workspace.use"] as const;
 export type SlackActionId = (typeof SLACK_ACTIONS)[number];
 
 /** app_user.settings.slack (S-010): the workspace /budget answers for when several are linked to the person's Slack team. */
 export const SlackUserSettings = z.object({ defaultWorkspaceId: z.string().uuid().optional() });
 export type SlackUserSettings = z.infer<typeof SlackUserSettings>;
+
+/**
+ * An amount as typed in a Slack form (S-011): digits, with commas or spaces between thousands if
+ * wanted, and up to two decimals ("120,000", "120 000.50"). Anything else ("12k", "$120", "1.2e5")
+ * is refused rather than guessed. Returns the decimal string, or null.
+ */
+export function parseSlackAmount(raw: string): string | null {
+  const t = raw.trim();
+  if (!/^\d{1,3}([, ]\d{3})*(\.\d{1,2})?$|^\d{1,16}(\.\d{1,2})?$/.test(t)) return null;
+  const plain = t.replace(/[, ]/g, "");
+  return plain.replace(/\.\d*$/, "").length <= 16 ? plain : null;
+}
 
 /** How a request is shown in Slack, and typed in /budget: `#` and the last eight characters of its id (S-005). */
 export const shortRequestId = (id: string): string => `#${id.slice(-8).toLowerCase()}`;

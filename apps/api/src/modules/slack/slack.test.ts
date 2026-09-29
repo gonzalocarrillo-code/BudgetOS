@@ -523,3 +523,92 @@ describe("which workspace /budget answers for (S-010)", () => {
   });
 });
 
+describe("sending a budget for approval from Slack (S-011)", () => {
+  const cmd = async (persona: string, text: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}`, trigger_id: `trig-${randomUUID()}` })).body;
+  const submit = (persona: string, view: Record<string, unknown> | undefined, amount: string, why: string) =>
+    slack("interactions", { payload: JSON.stringify({ type: "view_submission", team: { id: TEAM }, user: { id: `U-${persona}` }, view: { callback_id: "budget.request", private_metadata: view?.["private_metadata"], state: { values: { amount: { amount: { value: amount } }, why: { why: { value: why } } } } } }) });
+  /** Budgets with a name of their own, no children, approved, nothing pending: one per test. */
+  let spare: Array<{ id: string; name: string; amount: string; current: string }> = [];
+  const take = () => spare.shift() ?? (() => { throw new Error("no spare budget"); })();
+
+  beforeAll(async () => {
+    spare = await owner.$queryRawUnsafe<Array<{ id: string; name: string; amount: string; current: string }>>(
+      `SELECT e.id::text, e.name, v.amount::text AS amount, v.id::text AS current FROM envelope e JOIN envelope_version v ON v.id = e.current_version_id
+        WHERE e.workspace_id = $1::uuid AND e.status = 'APPROVED' AND e.draft_version_id IS NULL AND e.display_name IS NULL AND v.amount >= 5000
+          AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED')
+          AND (SELECT count(*) FROM envelope o WHERE o.workspace_id = e.workspace_id AND lower(o.name) = lower(e.name)) = 1
+        ORDER BY e.name LIMIT 10`,
+      golden.workspaceId,
+    );
+    spare = spare.filter((s) => !usedForRequests.has(s.id));
+  });
+
+  it("/budget request <name> opens the form with what the budget holds now; the form refuses a guessed amount and a missing reason", async () => {
+    const b = take();
+    views.length = 0;
+    expect(await cmd("planner", `request ${b.name}`)).toEqual({});
+    const form = views[0]?.view;
+    expect(form).toMatchObject({ callback_id: "budget.request" });
+    expect(JSON.parse(String(form?.["private_metadata"]))).toEqual({ ws: golden.workspaceId, id: b.id, base: b.current });
+    expect(JSON.stringify(form)).toContain("approved");
+    expect((await submit("planner", form, "12k", "")).body).toEqual({ response_action: "errors", errors: { amount: expect.stringContaining("like 120000"), why: "Say why, in a few words" } });
+  });
+
+  it("sending it drafts and submits in one step, with both audit and outbox pairs; the worker posts it and tells the approver", async () => {
+    const b = take();
+    views.length = 0;
+    await cmd("planner", `request ${b.name}`);
+    const amount = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.round(Number(b.amount) * 90) / 100);
+    const since = new Date();
+    const sent = await submit("planner", views[0]?.view, amount, "Q1 moves to Q2");
+    expect(sent.body).toMatchObject({ response_action: "update" });
+    expect(JSON.stringify(sent.body)).toMatch(/Sent for approval\* as #[0-9a-f]{8}/);
+    const [r] = await owner.$queryRawUnsafe<Array<{ id: string; status: string; requested_by: string }>>(`SELECT r.id::text, r.status::text, r.requested_by::text FROM approval_request r JOIN envelope_version v ON v.id = r.entity_id WHERE v.envelope_id = $1::uuid ORDER BY r.requested_at DESC LIMIT 1`, b.id);
+    expect(r).toMatchObject({ status: "PENDING", requested_by: golden.users.planner });
+    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE occurred_at >= $3 AND ((entity_id = $1::uuid AND action = 'envelope.version.created') OR (entity_id = $2::uuid AND action = 'approval.requested')) ORDER BY occurred_at`, b.id, r!.id, since);
+    // One transaction, one timestamp: compared as a set.
+    expect(audits.map((a) => a.action).sort()).toEqual(["approval.requested", "envelope.version.created"]);
+    const [changed] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, r!.id);
+    expect(changed).toBeDefined();
+    const posts: Array<{ channel: string }> = [];
+    const client: SlackClient = { postMessage: async (m) => (posts.push(m), { channel: m.channel.startsWith("#") ? "C0BUDGET1" : m.channel, ts: `${Date.now()}.1` }), updateMessage: async () => undefined, lookupUserByEmail: async (e) => `U-${e.split("@")[0]}`, openDm: async (u) => `D-${u}` };
+    const push = { message: { data: Buffer.from(JSON.stringify(changed!.payload)).toString("base64"), attributes: { outboxId: changed!.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: "approval.changed" }, messageId: `s011-${changed!.id}` }, subscription: "notify-worker" };
+    await handleSlackEvent(app, client, push);
+    expect(posts.map((p) => p.channel)).toContain("#budget");
+    expect(posts.map((p) => p.channel)).toContain("D-U-budgetowner");
+  });
+
+  it("an admin's own change applies at once; the parent's cap still holds", async () => {
+    const b = take();
+    views.length = 0;
+    await cmd("admin", `request ${b.name}`);
+    // A raise past what the parent holds is refused in the form, as in the app.
+    expect(JSON.stringify((await submit("admin", views[0]?.view, (Number(b.amount) * 10).toFixed(2), "Doubling down")).body)).toContain("Children exceed parent budget");
+    const target = (Math.round(Number(b.amount) * 95) / 100).toFixed(2);
+    const applied = await submit("admin", views[0]?.view, target, "Savings agreed in the QBR");
+    expect(JSON.stringify(applied.body)).toContain("*Applied.*");
+    const [e] = await owner.$queryRawUnsafe<Array<{ amount: string }>>(`SELECT v.amount::text AS amount FROM envelope e JOIN envelope_version v ON v.id = e.current_version_id WHERE e.id = $1::uuid`, b.id);
+    expect(e?.amount).toBe(target);
+  });
+
+  it("a budget that changed after the form opened is refused, as in the app", async () => {
+    const b = take();
+    views.length = 0;
+    await cmd("planner", `request ${b.name}`);
+    const form = views[0]?.view;
+    expect((await as("planner", "PATCH", `/envelopes/${b.id}/draft`, { amount: (Number(b.amount) * 0.97).toFixed(2), basedOnVersionId: b.current })).status).toBe(200);
+    expect((await submit("planner", form, (Number(b.amount) * 0.9).toFixed(2), "Changed my mind")).body).toEqual({ response_action: "errors", errors: { amount: "Envelope changed since you loaded it" } });
+  });
+
+  it("a budget already waiting is refused before the form opens; the card offers Request a change only to someone who may send one", async () => {
+    const b = take();
+    views.length = 0;
+    await cmd("planner", `request ${b.name}`);
+    await submit("planner", views[0]?.view, (Number(b.amount) * 0.8).toFixed(2), "Moved to another market");
+    expect(JSON.stringify(await cmd("planner", `request ${b.name}`))).toMatch(/already waiting \(#[0-9a-f]{8}\)/);
+    const other = take();
+    expect(JSON.stringify((await cmd("planner", other.name))["blocks"])).toContain('"action_id":"budget.request"');
+    expect(JSON.stringify((await cmd("approver", other.name))["blocks"])).not.toContain('"action_id":"budget.request"');
+  });
+});
+

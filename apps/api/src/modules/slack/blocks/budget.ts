@@ -57,13 +57,13 @@ export function budgetCard(a: BudgetCardInput): { text: string; blocks: Block[] 
   return { text: `${a.name}: ${wholeMoney(n?.budget, cur)} budget, ${percent(n?.spentPct)} spent`, blocks };
 }
 
-/** Several budgets match (S-009): one button each; choosing one replaces this message with its card. */
-export function whichBudget(a: { workspaceId: string; q: string; hits: Array<{ id: string; title: string; path: string | null }> }): { text: string; blocks: Block[] } {
+/** Several budgets match (S-009): one button each; choosing one replaces this message with its card (or, S-011, opens its request form). */
+export function whichBudget(a: { workspaceId: string; q: string; hits: Array<{ id: string; title: string; path: string | null }>; actionId?: "budget.show" | "budget.request" }): { text: string; blocks: Block[] } {
   return {
     text: `Which “${a.q}”?`,
     blocks: [
       section(`*Which “${esc(a.q)}”?*\n${a.hits.map((h, i) => `${i + 1}. ${esc(h.title)}${h.path ? ` — _${esc(h.path)}_` : ""}`).join("\n")}`),
-      { type: "actions", elements: a.hits.map((h, i) => actionButton(`${i + 1}. ${h.title}`.slice(0, 75), "budget.show", a.workspaceId, h.id, undefined, "card")) },
+      { type: "actions", elements: a.hits.map((h, i) => actionButton(`${i + 1}. ${h.title}`.slice(0, 75), a.actionId ?? "budget.show", a.workspaceId, h.id, undefined, a.actionId === "budget.request" ? undefined : "card")) },
     ],
   };
 }

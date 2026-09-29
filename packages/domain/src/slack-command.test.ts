@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRequestRef, parseSlackCommand } from "./slack-command.js";
-import { shortRequestId } from "./slack.js";
+import { parseSlackAmount, shortRequestId } from "./slack.js";
 
 const ID = "01a0e815-72fb-70ba-8af9-be3a07080b21";
 
@@ -45,3 +45,16 @@ describe("/budget text (S-007)", () => {
     expect(parseRequestRef(shortRequestId(ID))).toEqual({ kind: "suffix", suffix: ID.slice(-8) });
   });
 });
+
+describe("amounts typed in a Slack form (S-011)", () => {
+  it("takes digits, thousands separators and two decimals", () => {
+    expect(parseSlackAmount("120000")).toBe("120000");
+    expect(parseSlackAmount(" 120,000 ")).toBe("120000");
+    expect(parseSlackAmount("120 000.50")).toBe("120000.50");
+    expect(parseSlackAmount("1,234,567.8")).toBe("1234567.8");
+  });
+  it("refuses what it would have to guess", () => {
+    for (const bad of ["12k", "$120", "1.2e5", "-100", "12,00", "120.123", "", "abc", "1,2345"]) expect(parseSlackAmount(bad), bad).toBeNull();
+  });
+});
+

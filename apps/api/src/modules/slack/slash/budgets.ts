@@ -1,10 +1,10 @@
-import { DomainError, QueryRequest, canInScope, type FilterGroupT } from "@budget/domain";
+import { DomainError, QueryRequest, can, canInScope, type FilterGroupT } from "@budget/domain";
 import { envelopePaths, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { Decimal } from "decimal.js";
 import { authorize } from "../../../common/auth/authenticate.js";
 import { headline } from "../../../common/headline.js";
-import { envelopeScopeTargets } from "../../../common/scope.guard.js";
+import { envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { getEnvelope } from "../../envelopes/queries/get-envelope.js";
 import { listAlerts } from "../../pacing/queries.js";
@@ -41,17 +41,23 @@ async function namedExactly(prisma: PrismaClient, auth: AuthContext, workspaceId
   });
 }
 
-/** /budget <name>: the budget's card; a choice when several match; "nothing matches" otherwise. A budget named exactly that wins over search. */
-export async function budgetReply(prisma: PrismaClient, auth: AuthContext, workspaceId: string, q: string, footer: string): Promise<Record<string, unknown>> {
+/** The budget a name means: one, several to choose from, or none. A budget named exactly that wins over search. */
+export async function findBudget(prisma: PrismaClient, auth: AuthContext, workspaceId: string, q: string): Promise<{ kind: "one"; id: string } | { kind: "several"; hits: Hit[] } | { kind: "none" }> {
   authorize(auth, "envelope.read"); // GET /envelopes/:id
   const exact = await namedExactly(prisma, auth, workspaceId, q);
-  if (exact.length === 1 && exact[0]) return budgetCardReply(prisma, auth, workspaceId, exact[0].id);
-  if (exact.length > 1) return { response_type: "ephemeral", ...whichBudget({ workspaceId, q, hits: exact }) };
+  if (exact.length === 1 && exact[0]) return { kind: "one", id: exact[0].id };
+  if (exact.length > 1) return { kind: "several", hits: exact };
   const hits = await findBudgets(prisma, auth, q, 5);
-  if (hits.length === 0) return reply(`Nothing matches “${q}”.${footer} Try \`/budget search ${q}\` or \`/budget list\`.`);
-  const one = hits.length === 1 ? hits[0] : undefined;
-  if (one) return budgetCardReply(prisma, auth, workspaceId, one.id);
-  return { response_type: "ephemeral", ...whichBudget({ workspaceId, q, hits }) };
+  if (hits.length === 1 && hits[0]) return { kind: "one", id: hits[0].id };
+  return hits.length ? { kind: "several", hits } : { kind: "none" };
+}
+
+/** /budget <name>: the budget's card; a choice when several match; "nothing matches" otherwise. */
+export async function budgetReply(prisma: PrismaClient, auth: AuthContext, workspaceId: string, q: string, footer: string): Promise<Record<string, unknown>> {
+  const found = await findBudget(prisma, auth, workspaceId, q);
+  if (found.kind === "none") return reply(`Nothing matches “${q}”.${footer} Try \`/budget search ${q}\` or \`/budget list\`.`);
+  if (found.kind === "one") return budgetCardReply(prisma, auth, workspaceId, found.id);
+  return { response_type: "ephemeral", ...whichBudget({ workspaceId, q, hits: found.hits }) };
 }
 
 /** One budget as a card (S-009), as GET /envelopes/:id and /query read it for the caller. */
@@ -71,6 +77,8 @@ export async function budgetCardReply(prisma: PrismaClient, auth: AuthContext, w
     })),
   ]);
   const row = res?.rows.find((r) => r.envelopeId === envelopeId);
+  // S-011: the Request a change button, for someone who may draft and send a change to it now.
+  const requestable = env.status === "APPROVED" && env.ended === null && env.openRequest === null && (await canRequest(prisma, auth, envelopeId));
   const m = row?.measures ?? null;
   const card = budgetCard({
     baseUrl: appUrl(),
@@ -90,8 +98,17 @@ export async function budgetCardReply(prisma: PrismaClient, auth: AuthContext, w
     alerts,
     children: env.structure.children.length,
     notice: notice ?? null,
+    canRequest: requestable,
   });
   return { response_type: "ephemeral", ...card };
+}
+
+/** Whether the caller may draft and send a change to this budget now (the card's button). */
+export async function canRequest(prisma: PrismaClient, auth: AuthContext, envelopeId: string): Promise<boolean> {
+  if (!can(auth.roles, "envelope.edit_draft") || !can(auth.roles, "envelope.submit")) return false;
+  if (auth.isOrgAdmin) return true;
+  const target = await withTenant(prisma, auth.ctx, (tx) => envelopeScopeTarget(tx, envelopeId));
+  return canInScope(auth.assignments, "envelope.edit_draft", target) && canInScope(auth.assignments, "envelope.submit", target);
 }
 
 /** /budget list [text]: the caller's headline budgets this fiscal year (top-level, or their scope), or the budgets matching the text. */
