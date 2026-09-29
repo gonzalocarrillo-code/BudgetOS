@@ -3,7 +3,7 @@ import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { AddChildDto, BulkRequestDto, EndEnvelopeDto, ReintroduceDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { AddChildDto, BudgetImportCommitDto, BudgetImportDto, BudgetImportTemplateDto, BulkRequestDto, EndEnvelopeDto, ReintroduceDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -129,6 +129,30 @@ export class EnvelopesController {
   @Permission("envelope.move")
   split(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: SplitEnvelopeDto) {
     return this.envelopes.split(auth, id, body);
+  }
+
+  /** D-007: the budget import template, from this workspace's registry (a CSV download). */
+  @Get("workspaces/:ws/budget-import/template")
+  @Permission("envelope.create")
+  async importTemplate(@Tenant() auth: AuthContext, @Query() query: BudgetImportTemplateDto, @Res({ passthrough: true }) reply: { header(name: string, value: string): unknown }) {
+    const { filename, csv } = await this.envelopes.importTemplate(auth, query);
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="${filename}"`);
+    return csv;
+  }
+
+  /** D-008: a file read into new budgets, parents and changes; nothing is written. */
+  @Post("workspaces/:ws/budget-import/preview")
+  @Permission("envelope.create")
+  importPreview(@Tenant() auth: AuthContext, @Body() body: BudgetImportDto) {
+    return this.envelopes.importPreview(auth, body);
+  }
+
+  /** D-008: the previewed file, re-checked, as drafts under one approval. */
+  @Post("workspaces/:ws/budget-import/commit")
+  @Permission("envelope.create")
+  importCommit(@Tenant() auth: AuthContext, @Body() body: BudgetImportCommitDto) {
+    return this.envelopes.importCommit(auth, body);
   }
 
   /** H-011: end a budget with its final amount (and optionally its successor), through the approval policy. */

@@ -121,7 +121,7 @@ async function rerouteOpenRequest(tx: Tx, auth: AuthContext, envelopeId: string,
 // ---------------------------------------------------------------------------------------------
 
 export interface Structural {
-  kind: "split" | "merge" | "end" | "reintroduce";
+  kind: "split" | "merge" | "end" | "reintroduce" | "import";
   workspaceId: string;
   versionIds: string[];
   archiveIds: string[];
@@ -136,7 +136,7 @@ export interface Structural {
   payload?: BulkEndPayload;
 }
 
-const STRUCTURAL_LABEL: Record<Structural["kind"], string> = { split: "Split", merge: "Merge", end: "End", reintroduce: "Reintroduce" };
+const STRUCTURAL_LABEL: Record<Structural["kind"], string> = { split: "Split", merge: "Merge", end: "End", reintroduce: "Reintroduce", import: "Import" };
 
 export async function routeStructural(tx: Tx, auth: AuthContext, s: Structural): Promise<{ bulkChangeId: string; requestId: string | null; autoApproved: boolean; policy: { name: string; version: number } }> {
   const bulkChangeId = newId();

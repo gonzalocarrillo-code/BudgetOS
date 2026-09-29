@@ -1175,6 +1175,403 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/budget-import/template": {
+      "get": {
+        "operationId": "budgetImportTemplate",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "templateId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The CSV this workspace's import takes: one column per granularity, the template's columns, the fiscal year's months, and two live budgets as examples (text/csv)"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/budget-import/preview": {
+      "post": {
+        "operationId": "previewBudgetImport",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csv": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000000
+                  },
+                  "templateId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "csv"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Each line's status and problems, the parents it creates, budgets that would go over cap (D-008); nothing is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "previewId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "line": {
+                            "type": "integer"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "new",
+                              "change",
+                              "same",
+                              "error"
+                            ]
+                          },
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "dimensionValues": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "currency": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "amount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+                            "nullable": true
+                          },
+                          "currentAmount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+                            "nullable": true
+                          },
+                          "startDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "endDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "parent": {
+                            "type": "object",
+                            "properties": {
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "envelopeId",
+                              "name"
+                            ],
+                            "nullable": true
+                          },
+                          "problems": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "column": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "suggestion": {
+                                  "type": "string",
+                                  "nullable": true
+                                }
+                              },
+                              "required": [
+                                "column",
+                                "message"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "line",
+                          "status",
+                          "envelopeId",
+                          "name",
+                          "dimensionValues",
+                          "currency",
+                          "amount",
+                          "currentAmount",
+                          "startDate",
+                          "endDate",
+                          "parent",
+                          "problems"
+                        ]
+                      }
+                    },
+                    "parents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "dimensionValues": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "startDate": {
+                            "type": "string"
+                          },
+                          "endDate": {
+                            "type": "string"
+                          },
+                          "parent": {
+                            "type": "object",
+                            "properties": {
+                              "envelopeId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "envelopeId",
+                              "name"
+                            ],
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "dimensionValues",
+                          "currency",
+                          "amount",
+                          "startDate",
+                          "endDate",
+                          "parent"
+                        ]
+                      }
+                    },
+                    "overCap": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "approved": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "childrenAfter": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "name",
+                          "approved",
+                          "childrenAfter"
+                        ]
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "new": {
+                          "type": "integer"
+                        },
+                        "change": {
+                          "type": "integer"
+                        },
+                        "same": {
+                          "type": "integer"
+                        },
+                        "error": {
+                          "type": "integer"
+                        },
+                        "parents": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "new",
+                        "change",
+                        "same",
+                        "error",
+                        "parents"
+                      ]
+                    },
+                    "totals": {
+                      "type": "object",
+                      "properties": {
+                        "new": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "change": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        }
+                      },
+                      "required": [
+                        "new",
+                        "change"
+                      ]
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "unknownColumns": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "blocked": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "previewId",
+                    "lines",
+                    "parents",
+                    "overCap",
+                    "counts",
+                    "totals",
+                    "currency",
+                    "unknownColumns",
+                    "blocked"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/budget-import/commit": {
+      "post": {
+        "operationId": "commitBudgetImport",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "previewId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "previewId",
+                  "rationale"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Drafts under one approval (or applied at once by policy): new budgets, created parents and changes"
+          }
+        }
+      }
+    },
     "/api/v1/envelopes/{id}/spend": {
       "get": {
         "operationId": "getEnvelopeSpend",

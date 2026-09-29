@@ -10,6 +10,7 @@ import { createEnvelope } from "./commands/create-envelope.js";
 import { restoreVersion } from "./commands/restore-version.js";
 import { mergeEnvelopes, moveEnvelope, splitEnvelope } from "./commands/structure.js";
 import { endEnvelope, reintroduceEnvelope } from "./commands/end-reintroduce.js";
+import { budgetImportTemplate, commitBudgetImport, previewBudgetImport } from "./import/budget-import.js";
 import { addChild, previewStructure } from "./commands/structure-ui.js";
 import { submitVersion } from "./commands/submit-version.js";
 import { withdrawEnvelope } from "../approvals/commands/withdraw.js";
@@ -31,6 +32,18 @@ export class EnvelopesService {
   }
   split(auth: AuthContext, id: string, body: unknown) {
     return splitEnvelope(this.prisma, auth, id, body);
+  }
+
+  importTemplate(auth: AuthContext, query: unknown) {
+    return budgetImportTemplate(this.prisma, auth, query);
+  }
+
+  importPreview(auth: AuthContext, body: unknown) {
+    return previewBudgetImport(this.prisma, auth, body, this.previews);
+  }
+
+  importCommit(auth: AuthContext, body: unknown) {
+    return commitBudgetImport(this.prisma, auth, body, this.previews);
   }
 
   end(auth: AuthContext, id: string, body: unknown) {

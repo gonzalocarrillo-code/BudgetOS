@@ -207,7 +207,7 @@ export async function insertBulkVersions(tx: Tx, rows: BulkVersionRow[], created
     SELECT vid, month, CASE WHEN rn = 1 THEN amt - (sum(scaled) OVER (PARTITION BY vid) - scaled) ELSE scaled END FROM r`;
 }
 
-export type BulkKind = "edit" | "split" | "merge" | "end" | "reintroduce";
+export type BulkKind = "edit" | "split" | "merge" | "end" | "reintroduce" | "import";
 
 /** What an `end` applies on approval (H-011): the budget stops on `endDate`. */
 export interface BulkEndPayload {

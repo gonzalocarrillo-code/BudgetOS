@@ -192,6 +192,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/budget-import/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["budgetImportTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/budget-import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewBudgetImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/budget-import/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["commitBudgetImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/envelopes/{id}/spend": {
         parameters: {
             query?: never;
@@ -2758,6 +2806,151 @@ export interface operations {
             };
             /** @description CAP_EXCEEDED under the new parent, or a cycle */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    budgetImportTemplate: {
+        parameters: {
+            query?: {
+                templateId?: string;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV this workspace's import takes: one column per granularity, the template's columns, the fiscal year's months, and two live budgets as examples (text/csv) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewBudgetImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    csv: string;
+                    /** Format: uuid */
+                    templateId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Each line's status and problems, the parents it creates, budgets that would go over cap (D-008); nothing is written */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        previewId: string;
+                        lines: {
+                            line: number;
+                            /** @enum {string} */
+                            status: "new" | "change" | "same" | "error";
+                            /** Format: uuid */
+                            envelopeId: string | null;
+                            name: string;
+                            dimensionValues: {
+                                [key: string]: string;
+                            };
+                            currency: string | null;
+                            amount: string | null;
+                            currentAmount: string | null;
+                            startDate: string | null;
+                            endDate: string | null;
+                            parent: {
+                                /** Format: uuid */
+                                envelopeId: string | null;
+                                name: string;
+                            } | null;
+                            problems: {
+                                column: string | null;
+                                message: string;
+                                suggestion?: string | null;
+                            }[];
+                        }[];
+                        parents: {
+                            name: string;
+                            dimensionValues: {
+                                [key: string]: string;
+                            };
+                            currency: string;
+                            amount: string;
+                            startDate: string;
+                            endDate: string;
+                            parent: {
+                                /** Format: uuid */
+                                envelopeId: string | null;
+                                name: string;
+                            } | null;
+                        }[];
+                        overCap: {
+                            /** Format: uuid */
+                            envelopeId: string;
+                            name: string;
+                            approved: string;
+                            childrenAfter: string;
+                        }[];
+                        counts: {
+                            new: number;
+                            change: number;
+                            same: number;
+                            error: number;
+                            parents: number;
+                        };
+                        totals: {
+                            new: string;
+                            change: string;
+                        };
+                        currency: string;
+                        unknownColumns: string[];
+                        blocked: string | null;
+                    };
+                };
+            };
+        };
+    };
+    commitBudgetImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    previewId: string;
+                    rationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Drafts under one approval (or applied at once by policy): new budgets, created parents and changes */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
