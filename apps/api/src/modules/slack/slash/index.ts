@@ -11,7 +11,7 @@ import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
 
 /**
- * /budget (POST /slack/commands, ADR-046, ADR-063): replies only the person who typed it
+ * /budget (POST /slack/commands, ADR-046, ADR-065): replies only the person who typed it
  * (ephemeral). The text is read by parseSlackCommand (@budget/domain); each answer first passes the
  * permission of the app route that gives the same answer.
  */
