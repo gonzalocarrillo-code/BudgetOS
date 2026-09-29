@@ -28,7 +28,6 @@ import {
   Building2,
   Settings,
   Archive,
-  ChevronsUpDown,
   Menu,
   Monitor,
   Moon,
@@ -221,7 +220,6 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
             ) : null}
             {me.isOrgAdmin ? <option value={ORG_CONSOLE}>{t("shell.manageWorkspaces")}</option> : null}
           </Select>
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </label>
         {asSuperadmin ? (
           <span className="hidden shrink-0 items-center gap-1 rounded-full bg-info-soft px-2.5 py-1 text-xs font-medium text-info-text xl:inline-flex" title={t("shell.superadminHint")} data-testid="superadmin-badge">
@@ -243,6 +241,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
         </button>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <TourLauncher ws={ws} onShortcuts={() => setShortcuts(true)} />
+          <ThemeToggle />
           <NotificationBell ws={ws} />
           <UserMenu ws={ws} me={me} roles={current?.roles ?? []} />
         </div>
@@ -384,6 +383,18 @@ function useDocumentTitle(pathname: string, ws: string, workspace: string | unde
 }
 
 /** UX-012: Light, Dark or the system's choice, for this browser. */
+/** Day / night in one click from the header; the user menu keeps the three-way picker (with "same as your system"). */
+function ThemeToggle(): ReactElement {
+  const { resolved } = useTheme();
+  const next = resolved === "dark" ? "light" : "dark";
+  const label = t(next === "dark" ? "theme.toDark" : "theme.toLight");
+  return (
+    <Button variant="ghost" size="icon" onClick={() => setThemeChoice(next)} aria-label={label} title={label} data-testid="theme-toggle" data-resolved={resolved}>
+      {resolved === "dark" ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+    </Button>
+  );
+}
+
 function ThemePicker(): ReactElement {
   const { choice } = useTheme();
   const options: Array<{ id: ThemeChoice; label: MessageKey; icon: LucideIcon }> = [
