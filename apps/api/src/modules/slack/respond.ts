@@ -2,7 +2,7 @@ import { DomainError } from "@budget/domain";
 
 /**
  * Answers Slack about the interaction the API is handling, through that interaction's
- * response_url (ADR-063): it replaces the private message a button sat on, or delivers a slash
+ * response_url (ADR-065): it replaces the private message a button sat on, or delivers a slash
  * command's late answer. It never posts to a channel; the notify worker does that. A response_url
  * is valid for thirty minutes and five uses, and is only ever a hooks.slack.com address.
  */
