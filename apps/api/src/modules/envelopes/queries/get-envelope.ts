@@ -1,7 +1,7 @@
 import { DomainError, canInScope } from "@budget/domain";
 import { openBulkRequestFor, spendThrough, withTenant, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
-import { resolveFx } from "../commands/version-writer.js";
+import { resolveFx } from "../fx.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
