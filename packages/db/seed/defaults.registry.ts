@@ -4,6 +4,8 @@ export interface RegistryValueSeed {
   readonly code: string;
   readonly label: string;
   readonly parentCode?: string;
+  /** HO-004: e.g. a country's ISO 3166 name as `iso_name`; external ids are searchable. */
+  readonly externalIds?: Readonly<Record<string, string>>;
 }
 
 export interface RegistryDimensionSeed {
@@ -80,6 +82,7 @@ const specs: ReadonlyArray<Omit<RegistryDimensionSeed, "sortOrder">> = [
       code: country.code,
       label: country.label,
       parentCode: country.regionCode,
+      ...(country.official === undefined ? {} : { externalIds: { iso_name: country.official } }),
     })),
   },
   {

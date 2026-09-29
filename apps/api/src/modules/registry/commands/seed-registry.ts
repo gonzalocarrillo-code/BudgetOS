@@ -54,6 +54,7 @@ export async function seedDefaultRegistry(
           code: value.code,
           label: value.label,
           ...(value.parentCode === undefined ? {} : { parentCode: value.parentCode }),
+          ...(value.externalIds === undefined ? {} : { externalIds: { ...value.externalIds } }),
         })),
       },
     );
