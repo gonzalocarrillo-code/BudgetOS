@@ -8,6 +8,7 @@ import { requireWorkspace } from "../../common/parse-input.js";
 import { envelopeScopeTargets } from "../../common/scope.guard.js";
 import type { AuthContext } from "../../common/tenant.js";
 import { listApprovals } from "../approvals/queries/approvals.js";
+import { openAlerts } from "../pacing/queries.js";
 
 /**
  * GET /me/home (spec §27, plan §11.7 "Home is a to-do list"): what is waiting on the caller first —
@@ -23,7 +24,8 @@ const ratio = (v: unknown) => (v === null || v === undefined ? null : new Decima
 
 export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date = new Date()): Promise<HomeResponse> {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const approvals = (await listApprovals(prisma, auth, { assignee: "me", limit: "10" } as never)).rows as Array<{ id: string; summary: string | null; entityType: string; requestedAt: string; dueAt: string | null }>;
+  const [approvalPage, alertsOpen] = await Promise.all([listApprovals(prisma, auth, { assignee: "me", limit: "10" } as never), openAlerts(prisma, auth)]);
+  const approvals = approvalPage.rows as Array<{ id: string; summary: string | null; entityType: string; requestedAt: string; dueAt: string | null }>;
   return withTenant(prisma, auth.ctx, async (tx) => {
     const me = auth.user.id;
     const today = now.toISOString().slice(0, 10);
@@ -93,8 +95,8 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
       const q = QueryRequest.parse({ workspaceId, filter: head.filter, subtree: head.subtree, period: { kind: "range", ...period }, measures: ["budget", "actual", "spend_to_date_pct"], limit: 1 });
       const tt = compileTotals(q, period, today, opts);
       const [row] = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(tt.sql, ...tt.values);
-      const openAlerts = await tx.alert.count({ where: { workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });
-      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts };
+      // HO-001: the Overview's count: open alerts the caller may read.
+      totals = { budget: money(row?.["budget"]), actual: money(row?.["actual"]), spentPct: ratio(row?.["spend_to_date_pct"]), openAlerts: alertsOpen.length };
     }
 
     // UX-011: two recent budgets with the same name (two "LATAM"s) read with their parent's name.

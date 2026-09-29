@@ -6,7 +6,7 @@ import { headline } from "../../common/headline.js";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
 import { listApprovals } from "../approvals/queries/approvals.js";
-import { listAlerts } from "../pacing/queries.js";
+import { alertCounts, listAlerts, openAlerts } from "../pacing/queries.js";
 import { runQuery } from "../query/queries/run-query.js";
 
 /**
@@ -72,17 +72,19 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   const marketLevel = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: rowKey }, op: "not_empty" as const }, { field: { kind: "dimension" as const, key: colKey }, op: "is_empty" as const }, { field: { kind: "attr" as const, key: "status" as const }, op: "neq" as const, value: "ARCHIVED" }] };
   // The headline (UX-008, ADR-051): the same "budget" as Budgets and Home.
   const head = headline(auth);
-  const [heat, over, under, kpi, kpiTargets, alerts, mine, sources, projected, headTotals] = await Promise.all([
+  const [heat, over, under, kpi, kpiTargets, alerts, mine, sources, projected, headTotals, latestAlerts] = await Promise.all([
     dims.rows && dims.cols ? q({ groupBy: [rowKey, colKey], measures: ["budget", "actual", "pace_index", "spend_to_date_pct"], sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
     q({ measures: PACE, sort: [{ key: "pace_index", dir: "desc" }], limit: 5 }),
     q({ measures: PACE, sort: [{ key: "pace_index", dir: "asc" }], limit: 5 }),
     dims.rows && cpa ? q({ groupBy: [rowKey], measures: ["budget", "actual"], targets: ["cpa"], sort: [{ key: "budget", dir: "desc" }], limit: 12 }) : null,
     dims.rows && dims.cols && cpa ? q({ filter: marketLevel, measures: ["budget"], targets: ["cpa"], limit: 200 }) : null,
-    listAlerts(prisma, auth, { limit: 500 }),
+    openAlerts(prisma, auth),
     listApprovals(prisma, auth, { assignee: "me", status: "PENDING,ESCALATED", limit: "100" }),
     freshness(prisma, auth, workspaceId),
     hasProjections ? q({ measures: ["projected", "projected_close_pct"], limit: 1 }) : null,
     head ? q({ filter: head.filter, subtree: head.subtree, measures: PACE, limit: 1 }) : null,
+    // HO-001: the newest open alerts by name; the counts below come from `alerts`, the same population as Home's.
+    listAlerts(prisma, auth, { status: "OPEN,ACKNOWLEDGED", limit: 20 }),
   ]);
 
   const cells = (heat?.rows ?? []).map((r) => ({ row: r.dimensions[dims.rows?.key ?? ""] ?? null, col: r.dimensions[dims.cols?.key ?? ""] ?? null, ...r.measures }));
@@ -95,7 +97,6 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
   // CPA: lower is better, so a positive gap is worse than target.
   const gap = (actual: string | null, target: string | null) => (actual === null || target === null || new Decimal(target).isZero() ? null : new Decimal(actual).div(target).minus(1).toDecimalPlaces(4).toString());
   const now = Date.now();
-  const severities = ["critical", "warning", "info", "data"] as const;
   return {
     period: { preset, ...range },
     currency,
@@ -119,11 +120,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, rawPerio
           }),
         }
       : null,
-    alerts: {
-      open: alerts.filter((a) => a.status === "OPEN").length,
-      counts: Object.fromEntries(severities.map((s) => [s, alerts.filter((a) => a.status === "OPEN" && a.severity === s).length])),
-      latest: alerts.filter((a) => a.status === "OPEN").slice(0, 5),
-    },
+    alerts: { ...alertCounts(alerts), latest: latestAlerts.slice(0, 5) },
     approvals: {
       mine: mine.rows.length,
       overdue: mine.rows.filter((r) => r["dueAt"] !== null && Date.parse(String(r["dueAt"])) < now).length,

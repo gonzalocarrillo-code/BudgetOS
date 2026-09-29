@@ -19,7 +19,7 @@ let golden: GoldenResult;
 const slug = `overview-${randomUUID().slice(0, 8)}`;
 
 type Body = Record<string, unknown>;
-async function as(persona: string, method: "GET" | "POST", url: string, body?: unknown) {
+async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string, body?: unknown) {
   const token = await h.mint({ sub: `ip-${persona}`, email: `${persona.toLowerCase()}@${slug}.golden.test` }, { googleSub: `golden-${slug}-${persona}` });
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId }, ...(body === undefined ? {} : { body }) });
 }
@@ -99,6 +99,23 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(o.elapsedMs).toBeLessThan(1500);
     expect((o as unknown as { totals: Record<string, string | null> }).totals["projected"]).toBeNull(); // the golden has no projections: not computed, not 0
     expect(elapsed).toBeLessThan(1500);
+  });
+
+  it("counts open alerts the way Home does: open or acknowledged, as the caller may read them (HO-001)", async () => {
+    const ws = golden.workspaceId;
+    const [first] = await owner.alert.findMany({ where: { workspaceId: ws, status: "OPEN" }, orderBy: { openedAt: "asc" }, take: 1, select: { id: true } });
+    expect(first, "the golden has open alerts").toBeDefined();
+    // An acknowledged alert is still open: someone saw it, nobody resolved it.
+    const ack = await as("budgetOwner", "PATCH", `/api/v1/alerts/${first?.id ?? ""}`, { status: "ACKNOWLEDGED" });
+    expect(ack.status, JSON.stringify(ack.body)).toBe(200);
+    const inDb = await owner.alert.count({ where: { workspaceId: ws, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });
+    for (const persona of ["orgAdmin", "planner", "finance1", "approver"]) {
+      const o = (await as(persona, "GET", `/api/v1/workspaces/${ws}/overview`)).body as { alerts: { open: number; counts: Record<string, number> } };
+      const home = (await as(persona, "GET", "/api/v1/me/home")).body as { totals: { openAlerts: number } };
+      expect(home.totals.openAlerts, persona).toBe(o.alerts.open);
+      expect(o.alerts.open, persona).toBe(inDb); // the golden personas read the whole workspace
+      expect(Object.values(o.alerts.counts).reduce((s, n) => s + n, 0), persona).toBe(o.alerts.open);
+    }
   });
 
   it("rejects an unknown period, and needs envelope.read", async () => {
