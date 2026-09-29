@@ -175,6 +175,8 @@ export async function routeStructural(tx: Tx, auth: AuthContext, s: Structural):
   });
   await tx.envelopeVersion.updateMany({ where: { id: { in: s.versionIds } }, data: { status: "PENDING" } });
   await tx.envelope.updateMany({ where: { id: { in: [...s.archiveIds, ...s.createdIds, ...(s.holdIds ?? [])] } }, data: { status: "PENDING" } });
+  // S-003: announced like a single change's request, so the notify worker posts it and tells its approvers.
+  await recordRequestChange(tx, auth.ctx, { id: requestId, workspaceId: s.workspaceId }, "approval.requested", { bulkChangeId, structural: s.kind, policy: policy.name, policyVersion: policy.version, status: "PENDING", step: 0 });
   return { bulkChangeId, requestId, autoApproved: false, policy: { name: policy.name, version: policy.version } };
 }
 

@@ -175,6 +175,12 @@ describe("split", () => {
       const [first, second] = leafKeys("EMEA/DE/meta/consideration") as [string, string];
       const approvedSplit = await split(first);
       expect(approvedSplit.body).toMatchObject({ autoApproved: false, policy: { name: "Minor adjustment" } });
+      // S-003: the request has its own audit row and approval.changed row, as a single change's does.
+      const splitRequest = String(approvedSplit.body["requestId"]);
+      const [announced] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1 AND payload->>'action' = 'approval.requested'`, splitRequest);
+      expect(Number(announced?.n)).toBe(1);
+      const [audited] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.requested'`, splitRequest);
+      expect(Number(audited?.n)).toBe(1);
       expect((await env(id(first))).status).toBe("PENDING");
       expect((await as("budgetOwner", "POST", `/api/v1/approvals/${String(approvedSplit.body["requestId"])}/decisions`, { decision: "approve" })).status).toBe(201);
       expect((await env(id(first))).status).toBe("ARCHIVED");

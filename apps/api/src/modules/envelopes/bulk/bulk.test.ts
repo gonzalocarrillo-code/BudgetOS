@@ -51,7 +51,7 @@ afterAll(async () => {
 });
 
 describe("preview → commit → one approval request for all rows", () => {
-  it("preview writes nothing; commit writes a draft per row, one bulk_change, one request, one audit per row + summary, one outbox row", async () => {
+  it("preview writes nothing; commit writes a draft per row, one bulk_change, one request, one audit per row + summary + request, one outbox row for the change and one for the request", async () => {
     const keys = leafKeys("LATAM/BR/meta/awareness").concat(leafKeys("LATAM/BR/meta/consideration"));
     const ids = keys.map(id);
     const versionsBefore = await owner.envelopeVersion.count({ where: { envelopeId: { in: ids } } });
@@ -83,14 +83,17 @@ describe("preview → commit → one approval request for all rows", () => {
       expect(d.phasing.reduce((s, x) => s.plus(x.amount.toString()), new Decimal(0)).toFixed(2)).toBe(d.amount.toFixed(2));
     }
     const audits = await owner.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(`SELECT action, count(*) AS n FROM audit_event WHERE request_id = $1 GROUP BY action`, requestHeader);
-    expect(Object.fromEntries(audits.map((a) => [a.action, Number(a.n)]))).toEqual({ "envelope.version.created": 4, "bulk.committed": 1 });
-    const outbox = await owner.$queryRawUnsafe<Array<{ topic: string; payload: { bulk: boolean; versionIds: string[] } }>>(`SELECT topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2`, golden.workspaceId, maxOutbox);
-    expect(outbox).toHaveLength(1);
-    expect(outbox[0]).toMatchObject({ topic: "budget.changed", payload: { bulk: true } });
-    expect(outbox[0]?.payload.versionIds).toHaveLength(4);
+    expect(Object.fromEntries(audits.map((a) => [a.action, Number(a.n)]))).toEqual({ "envelope.version.created": 4, "bulk.committed": 1, "approval.requested": 1 });
+    const requestId = String(c.body["requestId"]);
+    const outbox = await owner.$queryRawUnsafe<Array<{ topic: string; payload: { bulk?: boolean; versionIds?: string[]; requestId?: string; action?: string } }>>(`SELECT topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2 ORDER BY id`, golden.workspaceId, maxOutbox);
+    expect(outbox.map((o) => o.topic).sort()).toEqual(["approval.changed", "budget.changed"]);
+    const changed = outbox.find((o) => o.topic === "budget.changed");
+    expect(changed).toMatchObject({ payload: { bulk: true } });
+    expect(changed?.payload.versionIds).toHaveLength(4);
+    // S-003: the request is announced like a single change's, so Slack and the approvers hear of it.
+    expect(outbox.find((o) => o.topic === "approval.changed")).toMatchObject({ payload: { requestId, action: "approval.requested", status: "PENDING", step: 0 } });
 
     // The single request routes through its chain; the last approval approves every row.
-    const requestId = String(c.body["requestId"]);
     const inbox = (await as("budgetOwner", "GET", "/api/v1/approvals?assignee=me")).body["rows"] as Array<{ id: string; entityType: string; rows: number }>;
     expect(inbox.find((r) => r.id === requestId)).toMatchObject({ entityType: "bulk_change", rows: 4 });
     expect((await approve(requestId, "planner")).status).toBe(403); // the author cannot approve

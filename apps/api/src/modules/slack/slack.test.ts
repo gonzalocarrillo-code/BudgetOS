@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { handleInApp, handleSlackEvent, type SlackClient } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
@@ -199,5 +200,36 @@ describe("Slack acts with the app's permissions (S-001)", () => {
   it("finds the account when the Slack profile's email is in capitals", async () => {
     const res = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-CAPS-admin" });
     expect(JSON.stringify(res.body)).toMatch(/open alerts/i);
+  });
+});
+
+describe("every approval request reaches Slack (S-003)", () => {
+  it("a bulk edit's request posts with Approve / Reject, and its approvers are told in the app", async () => {
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", link: true })).status).toBe(200);
+    const ids: string[] = [];
+    for (const envelopeId of [...golden.envelopeIds.values()].slice(60, 120)) {
+      const env = (await as("planner", "GET", `/envelopes/${envelopeId}`)).body as { current?: unknown; draft?: unknown; status?: string };
+      if (env.current && !env.draft && env.status === "APPROVED") ids.push(envelopeId);
+      if (ids.length === 2) break;
+    }
+    const preview = await as("planner", "POST", "/envelopes/bulk", { workspaceId: golden.workspaceId, selection: { envelopeIds: ids }, operation: { op: "pct", pct: 20 }, rationale: "S-003 bulk request" });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(201);
+    const committed = await as("planner", "POST", `/envelopes/bulk/${String(preview.body["previewId"])}/commit`);
+    expect(committed.body, "a 20% raise waits for approval").toMatchObject({ autoApproved: false });
+    const requestId = String(committed.body["requestId"]);
+
+    // The outbox row the notify worker receives (as Pub/Sub, or the local runner, would deliver it).
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, requestId);
+    expect(row, "the request's approval.changed row").toBeDefined();
+    const push = { message: { data: Buffer.from(JSON.stringify(row!.payload)).toString("base64"), attributes: { outboxId: row!.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: "approval.changed" }, messageId: `s003-${row!.id}` }, subscription: "notify-worker" };
+    const posts: Array<{ channel: string; text: string; blocks: unknown[] }> = [];
+    const slackClient: SlackClient = { postMessage: async (m) => void posts.push(m), updateMessage: async () => undefined, lookupUserByEmail: async () => null };
+    await handleInApp(app, push);
+    await handleSlackEvent(app, slackClient, push);
+    expect(posts.map((p) => p.channel)).toEqual(["#budget"]);
+    expect(posts[0]?.text).toMatch(/Approval requested/);
+    expect(JSON.stringify(posts[0]?.blocks)).toContain('"action_id":"approval.approve"');
+    const [told] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM notification WHERE user_id = $1::uuid AND kind = 'approval_requested' AND payload->>'requestId' = $2`, golden.users.budgetOwner, requestId);
+    expect(Number(told?.n), "the first step's approver (the budget owner)").toBe(1);
   });
 });
