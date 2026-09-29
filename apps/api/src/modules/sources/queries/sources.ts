@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { sourceView } from "../commands/sources.js";
+import { mappingHints } from "./mapping.js";
 
 /** GET /workspaces/:ws/sources. */
 export function listSources(prisma: PrismaClient, auth: AuthContext) {
@@ -48,11 +49,11 @@ export function listUnmatched(prisma: PrismaClient, auth: AuthContext, rawLimit:
  */
 export async function suggestMapping(prisma: PrismaClient, store: ObjectStore, auth: AuthContext, rawId: string) {
   const sourceId = parseId(rawId);
-  const { source, dimensionKeys } = await withTenant(prisma, auth.ctx, async (tx) => {
+  const { source, dimensionKeys, hints } = await withTenant(prisma, auth.ctx, async (tx) => {
     const s = await tx.dataSource.findUnique({ where: { id: sourceId } });
     if (s === null) throw new DomainError("NOT_FOUND", "Source not found");
     const dims = await tx.dimension.findMany({ where: { orgId: auth.user.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId: s.workspaceId }] }, select: { key: true } });
-    return { source: s, dimensionKeys: [...new Set(dims.map((d) => d.key))].sort() };
+    return { source: s, dimensionKeys: [...new Set(dims.map((d) => d.key))].sort(), hints: await mappingHints(tx, s.workspaceId, auth.user.orgId) };
   });
   const client = openAiClient(); // 503 before any source data is read
   const config = SourceConfig.parse(source.config);
@@ -65,7 +66,7 @@ export async function suggestMapping(prisma: PrismaClient, store: ObjectStore, a
     if (rows.length >= MAX_SAMPLE_ROWS) break;
   }
   const cols = [...header];
-  const suggestion = await mapColumns({ header: cols, rows: rows.map((r) => cols.map((c) => r[c] ?? null)) }, dimensionKeys, client);
+  const suggestion = await mapColumns({ header: cols, rows: rows.map((r) => cols.map((c) => r[c] ?? null)) }, dimensionKeys, client, undefined, hints);
   return { sourceId, mapping: SourceMapping.parse(suggestion.mapping), model: suggestion.model, applied: false };
 }
 
@@ -78,8 +79,11 @@ export async function suggestMappingFromSample(prisma: PrismaClient, auth: AuthC
   const sample = parseInput(SuggestMappingSampleInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const client = openAiClient(); // 503 before anything is read
-  const dims = await withTenant(prisma, auth.ctx, (tx) => tx.dimension.findMany({ where: { orgId: auth.user.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { key: true } }));
+  const { dims, hints } = await withTenant(prisma, auth.ctx, async (tx) => ({
+    dims: await tx.dimension.findMany({ where: { orgId: auth.user.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { key: true } }),
+    hints: await mappingHints(tx, workspaceId, auth.user.orgId),
+  }));
   const dimensionKeys = [...new Set(dims.map((d) => d.key))].sort();
-  const suggestion = await mapColumns({ header: sample.header, rows: sample.rows.slice(0, MAX_SAMPLE_ROWS) }, dimensionKeys, client);
+  const suggestion = await mapColumns({ header: sample.header, rows: sample.rows.slice(0, MAX_SAMPLE_ROWS) }, dimensionKeys, client, undefined, hints);
   return { mapping: SourceMapping.parse(suggestion.mapping), model: suggestion.model, applied: false };
 }

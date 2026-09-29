@@ -800,6 +800,102 @@ export interface paths {
         patch: operations["updateSource"];
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/mapping-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMappingProfiles"];
+        put?: never;
+        post: operations["createMappingProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/mapping-profiles/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["matchMappingProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mapping-profiles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateMappingProfile"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/mapping-synonyms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMappingSynonyms"];
+        put?: never;
+        post: operations["createMappingSynonym"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mapping-synonyms/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateMappingSynonym"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/mapping-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewMapping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/mapping-suggestions": {
         parameters: {
             query?: never;
@@ -4486,6 +4582,8 @@ export interface operations {
                         /** @enum {string} */
                         kind: "spend" | "kpi" | "spend+kpi" | "projection";
                     };
+                    /** Format: uuid */
+                    mappingProfileId?: string;
                     schedule?: string;
                     parsePattern?: string;
                 };
@@ -4599,6 +4697,8 @@ export interface operations {
                     schedule?: string | null;
                     parsePattern?: string | null;
                     isActive?: boolean;
+                    /** Format: uuid */
+                    mappingProfileId?: string | null;
                 };
             };
         };
@@ -4609,6 +4709,732 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listMappingProfiles: {
+        parameters: {
+            query?: {
+                includeArchived?: "true" | "false";
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved mappings (D-004) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        profiles: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** @enum {string} */
+                            kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                            mapping: {
+                                /** @enum {string} */
+                                kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                                columns: {
+                                    [key: string]: {
+                                        dimension: string;
+                                        /** @enum {string} */
+                                        transform?: "lower" | "upper" | "trim";
+                                        valueMap?: {
+                                            [key: string]: string;
+                                        };
+                                    } | ({
+                                        /** @enum {string} */
+                                        role: "period_date";
+                                        /**
+                                         * @default yyyy-MM-dd
+                                         * @enum {string}
+                                         */
+                                        format: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "amount";
+                                        currency?: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "currency";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "kpi";
+                                        metric: string;
+                                        attributionModel?: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "projection";
+                                        /** @default spend */
+                                        metric: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "formula_version";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "horizon_end";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "match_key";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "ignore";
+                                    });
+                                };
+                            };
+                            parsePattern: string | null;
+                            header: string[];
+                            sources: number;
+                            createdAt: string;
+                            updatedAt: string;
+                            archivedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    createMappingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name: string;
+                    mapping: {
+                        columns: {
+                            [key: string]: {
+                                dimension: string;
+                                /** @enum {string} */
+                                transform?: "lower" | "upper" | "trim";
+                                valueMap?: {
+                                    [key: string]: string;
+                                };
+                            } | ({
+                                /** @enum {string} */
+                                role: "period_date";
+                                /**
+                                 * @default yyyy-MM-dd
+                                 * @enum {string}
+                                 */
+                                format?: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                            } | {
+                                /** @enum {string} */
+                                role: "amount";
+                                currency?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "currency";
+                            } | {
+                                /** @enum {string} */
+                                role: "kpi";
+                                metric: string;
+                                attributionModel?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "projection";
+                                /** @default spend */
+                                metric?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "formula_version";
+                            } | {
+                                /** @enum {string} */
+                                role: "horizon_end";
+                            } | {
+                                /** @enum {string} */
+                                role: "match_key";
+                            } | {
+                                /** @enum {string} */
+                                role: "ignore";
+                            });
+                        };
+                        /** @enum {string} */
+                        kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                    };
+                    parsePattern?: string;
+                    header: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Saved; its columns teach the workspace's synonyms */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        /** @enum {string} */
+                        kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                        mapping: {
+                            /** @enum {string} */
+                            kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                            columns: {
+                                [key: string]: {
+                                    dimension: string;
+                                    /** @enum {string} */
+                                    transform?: "lower" | "upper" | "trim";
+                                    valueMap?: {
+                                        [key: string]: string;
+                                    };
+                                } | ({
+                                    /** @enum {string} */
+                                    role: "period_date";
+                                    /**
+                                     * @default yyyy-MM-dd
+                                     * @enum {string}
+                                     */
+                                    format: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "amount";
+                                    currency?: string;
+                                } | {
+                                    /** @enum {string} */
+                                    role: "currency";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "kpi";
+                                    metric: string;
+                                    attributionModel?: string;
+                                } | {
+                                    /** @enum {string} */
+                                    role: "projection";
+                                    /** @default spend */
+                                    metric: string;
+                                } | {
+                                    /** @enum {string} */
+                                    role: "formula_version";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "horizon_end";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "match_key";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "ignore";
+                                });
+                            };
+                        };
+                        parsePattern: string | null;
+                        header: string[];
+                        sources: number;
+                        createdAt: string;
+                        updatedAt: string;
+                        archivedAt: string | null;
+                    };
+                };
+            };
+        };
+    };
+    matchMappingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    header: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description The profile a file's header fits (exact, or one whose columns it covers), or none */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        profile: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** @enum {string} */
+                            kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                            mapping: {
+                                /** @enum {string} */
+                                kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                                columns: {
+                                    [key: string]: {
+                                        dimension: string;
+                                        /** @enum {string} */
+                                        transform?: "lower" | "upper" | "trim";
+                                        valueMap?: {
+                                            [key: string]: string;
+                                        };
+                                    } | ({
+                                        /** @enum {string} */
+                                        role: "period_date";
+                                        /**
+                                         * @default yyyy-MM-dd
+                                         * @enum {string}
+                                         */
+                                        format: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "amount";
+                                        currency?: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "currency";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "kpi";
+                                        metric: string;
+                                        attributionModel?: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "projection";
+                                        /** @default spend */
+                                        metric: string;
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "formula_version";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "horizon_end";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "match_key";
+                                    } | {
+                                        /** @enum {string} */
+                                        role: "ignore";
+                                    });
+                                };
+                            };
+                            parsePattern: string | null;
+                            header: string[];
+                            sources: number;
+                            createdAt: string;
+                            updatedAt: string;
+                            archivedAt: string | null;
+                        } | null;
+                        /** @enum {string|null} */
+                        fit: "exact" | "covers" | null;
+                    };
+                };
+            };
+        };
+    };
+    updateMappingProfile: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    mapping?: {
+                        columns: {
+                            [key: string]: {
+                                dimension: string;
+                                /** @enum {string} */
+                                transform?: "lower" | "upper" | "trim";
+                                valueMap?: {
+                                    [key: string]: string;
+                                };
+                            } | ({
+                                /** @enum {string} */
+                                role: "period_date";
+                                /**
+                                 * @default yyyy-MM-dd
+                                 * @enum {string}
+                                 */
+                                format?: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                            } | {
+                                /** @enum {string} */
+                                role: "amount";
+                                currency?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "currency";
+                            } | {
+                                /** @enum {string} */
+                                role: "kpi";
+                                metric: string;
+                                attributionModel?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "projection";
+                                /** @default spend */
+                                metric?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "formula_version";
+                            } | {
+                                /** @enum {string} */
+                                role: "horizon_end";
+                            } | {
+                                /** @enum {string} */
+                                role: "match_key";
+                            } | {
+                                /** @enum {string} */
+                                role: "ignore";
+                            });
+                        };
+                        /** @enum {string} */
+                        kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                    };
+                    parsePattern?: string | null;
+                    archived?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Renamed, remapped (reaching every source that follows it) or archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        /** @enum {string} */
+                        kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                        mapping: {
+                            /** @enum {string} */
+                            kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                            columns: {
+                                [key: string]: {
+                                    dimension: string;
+                                    /** @enum {string} */
+                                    transform?: "lower" | "upper" | "trim";
+                                    valueMap?: {
+                                        [key: string]: string;
+                                    };
+                                } | ({
+                                    /** @enum {string} */
+                                    role: "period_date";
+                                    /**
+                                     * @default yyyy-MM-dd
+                                     * @enum {string}
+                                     */
+                                    format: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "amount";
+                                    currency?: string;
+                                } | {
+                                    /** @enum {string} */
+                                    role: "currency";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "kpi";
+                                    metric: string;
+                                    attributionModel?: string;
+                                } | {
+                                    /** @enum {string} */
+                                    role: "projection";
+                                    /** @default spend */
+                                    metric: string;
+                                } | {
+                                    /** @enum {string} */
+                                    role: "formula_version";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "horizon_end";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "match_key";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "ignore";
+                                });
+                            };
+                        };
+                        parsePattern: string | null;
+                        header: string[];
+                        sources: number;
+                        createdAt: string;
+                        updatedAt: string;
+                        archivedAt: string | null;
+                    };
+                };
+            };
+        };
+    };
+    listMappingSynonyms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Built-in, learned and manual words for columns and metrics (D-005) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        columns: {
+                            /** Format: uuid */
+                            id: string | null;
+                            /** @enum {string} */
+                            kind: "column" | "metric";
+                            term: string;
+                            target: ({
+                                dimension: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "period_date" | "amount" | "currency" | "match_key" | "formula_version" | "horizon_end" | "ignore";
+                            } | {
+                                /** @enum {string} */
+                                role: "kpi";
+                                metric: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "projection";
+                                metric: string;
+                            }) | {
+                                metric: string;
+                            };
+                            /** @enum {string} */
+                            origin: "builtin" | "learned" | "manual";
+                            uses: number;
+                            isActive: boolean;
+                        }[];
+                        metrics: {
+                            /** Format: uuid */
+                            id: string | null;
+                            /** @enum {string} */
+                            kind: "column" | "metric";
+                            term: string;
+                            target: ({
+                                dimension: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "period_date" | "amount" | "currency" | "match_key" | "formula_version" | "horizon_end" | "ignore";
+                            } | {
+                                /** @enum {string} */
+                                role: "kpi";
+                                metric: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "projection";
+                                metric: string;
+                            }) | {
+                                metric: string;
+                            };
+                            /** @enum {string} */
+                            origin: "builtin" | "learned" | "manual";
+                            uses: number;
+                            isActive: boolean;
+                        }[];
+                        /** @default [] */
+                        ratioWords: string[];
+                    };
+                };
+            };
+        };
+    };
+    createMappingSynonym: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "column" | "metric";
+                    term: string;
+                    target: {
+                        metric: string;
+                    } | ({
+                        dimension: string;
+                    } | {
+                        /** @enum {string} */
+                        role: "period_date" | "amount" | "currency" | "match_key" | "formula_version" | "horizon_end" | "ignore";
+                    } | {
+                        /** @enum {string} */
+                        role: "kpi";
+                        metric: string;
+                    } | {
+                        /** @enum {string} */
+                        role: "projection";
+                        metric: string;
+                    });
+                };
+            };
+        };
+        responses: {
+            /** @description A word the workspace uses; a manual row wins over learned ones */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateMappingSynonym: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    isActive: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Switched off or back on */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    mapping: {
+                        /** @enum {string} */
+                        kind: "spend" | "kpi" | "spend+kpi" | "projection";
+                        columns: {
+                            [key: string]: {
+                                dimension: string;
+                                /** @enum {string} */
+                                transform?: "lower" | "upper" | "trim";
+                                valueMap?: {
+                                    [key: string]: string;
+                                };
+                            } | ({
+                                /** @enum {string} */
+                                role: "period_date";
+                                /**
+                                 * @default yyyy-MM-dd
+                                 * @enum {string}
+                                 */
+                                format?: "yyyy-MM-dd" | "yyyy-MM" | "dd/MM/yyyy" | "MM/dd/yyyy";
+                            } | {
+                                /** @enum {string} */
+                                role: "amount";
+                                currency?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "currency";
+                            } | {
+                                /** @enum {string} */
+                                role: "kpi";
+                                metric: string;
+                                attributionModel?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "projection";
+                                /** @default spend */
+                                metric?: string;
+                            } | {
+                                /** @enum {string} */
+                                role: "formula_version";
+                            } | {
+                                /** @enum {string} */
+                                role: "horizon_end";
+                            } | {
+                                /** @enum {string} */
+                                role: "match_key";
+                            } | {
+                                /** @enum {string} */
+                                role: "ignore";
+                            });
+                        };
+                    };
+                    header: string[];
+                    rows: (string | number | unknown)[][];
+                    parsePattern?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description What each column becomes, unknown values with the nearest known one, ratios, rejected rows (D-006); nothing is written */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rowsChecked: number;
+                        rowsRejected: number;
+                        problems: string[];
+                        columns: {
+                            column: string;
+                            mapsTo: string;
+                            values?: {
+                                raw: string;
+                                code: string | null;
+                                suggestion: string | null;
+                                count: number;
+                            }[];
+                            issues: string[];
+                            notes: string[];
+                        }[];
+                        rejects: {
+                            row: number;
+                            reason: string;
+                        }[];
+                    };
+                };
             };
         };
     };

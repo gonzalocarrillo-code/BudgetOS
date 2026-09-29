@@ -1,4 +1,4 @@
-import { SourceMapping, type ColumnMapping } from "@budget/domain";
+import { SourceMapping, normTerm, type ColumnMapping, type ColumnSynonymTarget } from "@budget/domain";
 
 /**
  * The mapping wizard's helpers (T-032): read a CSV's header and first rows in the browser (the
@@ -43,7 +43,7 @@ export function parseCsvSample(text: string, maxRows = 20): Sample {
   return { header: header.map((h) => h.trim()), rows: rows.slice(0, maxRows) };
 }
 
-const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "");
+const norm = normTerm;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^[^a-z]+/, "") || "metric";
 
 /** The date format the sample's values follow (dd/MM vs MM/dd decided by a part above 12). */
@@ -54,8 +54,25 @@ export function guessDateFormat(values: string[]): "yyyy-MM-dd" | "yyyy-MM" | "d
   return "yyyy-MM-dd";
 }
 
-/** A first mapping by column name and values: dates, spend, currency, KPIs, and the registry's dimensions. */
-export function guessMapping(sample: Sample, dimensions: Array<{ key: string; label: string }>): { kind: "spend" | "kpi" | "spend+kpi"; columns: Record<string, ColumnMapping> } {
+/** The workspace's words (D-005): header → what it usually means, and the words that name ratio metrics. */
+export interface Words {
+  columns: Array<{ term: string; target: ColumnSynonymTarget; isActive: boolean }>;
+  ratioWords: string[];
+}
+
+/** A synonym's target as a column mapping, with the details the file itself decides (the date format). */
+function fromSynonym(t: ColumnSynonymTarget, values: string[]): ColumnMapping {
+  if ("dimension" in t) return { dimension: t.dimension };
+  if (t.role === "period_date") return { role: "period_date", format: guessDateFormat(values) };
+  return t as ColumnMapping;
+}
+
+/**
+ * A first mapping by column name and values: the registry's dimensions first, then the workspace's
+ * own words (learned from every mapping saved, and built-in ones), ratio metrics left out (BudgetOS
+ * works them out from counts), then patterns for dates, spend, currency and KPIs.
+ */
+export function guessMapping(sample: Sample, dimensions: Array<{ key: string; label: string }>, words: Words = { columns: [], ratioWords: [] }): { kind: "spend" | "kpi" | "spend+kpi"; columns: Record<string, ColumnMapping> } {
   const columns: Record<string, ColumnMapping> = {};
   const values = (i: number) => sample.rows.map((r) => r[i] ?? "");
   let hasDate = false;
@@ -65,8 +82,21 @@ export function guessMapping(sample: Sample, dimensions: Array<{ key: string; la
   sample.header.forEach((name, i) => {
     const n = norm(name);
     const dim = dimensions.find((d) => norm(d.key) === n || norm(d.label) === n);
+    const known = words.columns.find((w) => w.isActive && w.term === n);
+    const once = (c: ColumnMapping) => ("role" in c && ((c.role === "period_date" && hasDate) || (c.role === "amount" && amount) || (c.role === "currency" && currency)));
     if (dim) {
       columns[name] = { dimension: dim.key };
+    } else if (known && !once(fromSynonym(known.target, values(i)))) {
+      const c = fromSynonym(known.target, values(i));
+      columns[name] = c;
+      if ("role" in c) {
+        hasDate ||= c.role === "period_date";
+        amount ||= c.role === "amount";
+        currency ||= c.role === "currency";
+        kpi ||= c.role === "kpi";
+      }
+    } else if (words.ratioWords.includes(n)) {
+      columns[name] = { role: "ignore" };
     } else if (!hasDate && /(date|day|period|month|fecha)/.test(n)) {
       columns[name] = { role: "period_date", format: guessDateFormat(values(i)) };
       hasDate = true;

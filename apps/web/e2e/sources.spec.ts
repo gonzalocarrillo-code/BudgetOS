@@ -20,7 +20,7 @@ test("mapping wizard → source → a finished run with coverage; unmatched spen
   test.setTimeout(120_000);
   await as(page, "admin");
   await page.goto(`/w/${state().workspaceId}/admin/sources`);
-  await expect(page.getByTestId("admin-source-row").first()).toContainText("Golden actuals (CSV)");
+  await expect(page.getByTestId("admin-source-row").filter({ hasText: "Golden actuals (CSV)" })).toBeVisible();
   await page.getByTestId("source-new").click();
   await page.getByTestId("connector-csv").click();
   await page.getByTestId("wizard-file").setInputFiles({ name: "march-spend.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });

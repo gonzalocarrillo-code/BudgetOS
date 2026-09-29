@@ -664,8 +664,49 @@ model DataSource {
   isActive     Boolean @default(true) @map("is_active")
   /// T-036: regex with named groups applied to the column mapped as match_key.
   parsePattern String? @map("parse_pattern")
+  /// D-004: the saved mapping this source takes its mapping from, if any.
+  mappingProfileId String?         @map("mapping_profile_id") @db.Uuid
+  mappingProfile   MappingProfile? @relation(fields: [mappingProfileId], references: [id], onDelete: Restrict)
 
   @@map("data_source")
+}
+
+/// D-004 (docs/DATA_PLAN.md §2.3): a named column mapping a workspace reuses.
+model MappingProfile {
+  id           String       @id @db.Uuid
+  workspaceId  String       @map("workspace_id") @db.Uuid
+  name         String
+  kind         String
+  mapping      Json
+  parsePattern String?      @map("parse_pattern")
+  /// The columns it maps, as the file's header had them (for matching a new file).
+  header       String[]
+  createdBy    String       @map("created_by") @db.Uuid
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime     @default(now()) @map("updated_at") @db.Timestamptz
+  archivedAt   DateTime?    @map("archived_at") @db.Timestamptz
+  sources      DataSource[]
+
+  @@unique([workspaceId, name])
+  @@map("mapping_profile")
+}
+
+/// D-005: the workspace's own words for columns (header → mapping) and metrics (tcpa → cpa).
+model MappingSynonym {
+  id          String   @id @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  kind        String
+  term        String
+  target      Json
+  origin      String
+  uses        Int      @default(1)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([workspaceId, kind, term])
+  @@map("mapping_synonym")
 }
 
 /// T-036 (§24.1): how envelopes are named (`display`) and keyed for matching (`match_key`).

@@ -465,9 +465,9 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 | D-001 | F1 | Datastream replication into BigQuery | built; applying it is blocked on a GCP project (module, setup.sql and structural test in place) |
 | D-002 | F1 | Fact retention (13 months hot) and raw files in Cloud Storage | done (off by default; facts need the replica) |
 | D-003 | F1 | Snapshot rows and audit in the replica, `v_snapshots` | done locally; querying it in BigQuery is blocked with D-001 |
-| D-004 | F2 | Mapping profiles | pending |
-| D-005 | F2 | Column and value synonyms for the guesser | pending |
-| D-006 | F2 | Mapping preview and validation | pending |
+| D-004 | F2 | Mapping profiles | done (ADR-055) |
+| D-005 | F2 | Column and value synonyms for the guesser | done (ADR-055; value synonyms are the registry's aliases) |
+| D-006 | F2 | Mapping preview and validation | done (ADR-055) |
 | D-007 | F3 | Budget import template from the registry | pending |
 | D-008 | F3 | Budget import: validate, preview, commit as drafts | pending |
 | D-009 | F3 | Import UI in Budgets, Playwright | pending |

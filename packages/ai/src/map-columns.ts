@@ -32,11 +32,19 @@ const SYSTEM = [
   '"currency"; "kpi" with "metric" (lower_snake_case, e.g. conversions, revenue, impressions, clicks, leads);',
   '"projection" with "metric"; "formula_version"; "horizon_end"; "ignore".',
   "Use only dimension keys from the list given. Map every header. Do not invent columns.",
+  'When "hints" are given: "columns" says what a header (in lower case, letters and digits only) usually means in this workspace; prefer it.',
+  '"ratioWords" are ratio metrics (CPA, ROAS, CTR, …): the system computes them from counts, so map those columns to "ignore".',
 ].join(" ");
 
+/** The workspace's own words (D-005): what headers usually mean here, and which words are ratios. */
+export interface MappingHints {
+  columns: Record<string, unknown>;
+  ratioWords: string[];
+}
+
 /** The prompt body: dimension keys, header and the first MAX_SAMPLE_ROWS rows. */
-export function buildPrompt(sample: SampleTable, dimensionKeys: string[]): string {
-  return JSON.stringify({ dimensionKeys, header: sample.header, rows: sample.rows.slice(0, MAX_SAMPLE_ROWS) });
+export function buildPrompt(sample: SampleTable, dimensionKeys: string[], hints?: MappingHints): string {
+  return JSON.stringify({ dimensionKeys, header: sample.header, rows: sample.rows.slice(0, MAX_SAMPLE_ROWS), ...(hints ? { hints } : {}) });
 }
 
 /** Parses and validates the model's answer; unknown headers or dimension keys are refused. */
@@ -62,13 +70,13 @@ export function openAiClient(env: NodeJS.ProcessEnv = process.env): ChatClient {
   return new OpenAI({ apiKey }) as unknown as ChatClient;
 }
 
-export async function mapColumns(sample: SampleTable, dimensionKeys: string[], client: ChatClient = openAiClient(), model = process.env["OPENAI_MODEL"] ?? "gpt-4.1-mini"): Promise<MappingSuggestion> {
+export async function mapColumns(sample: SampleTable, dimensionKeys: string[], client: ChatClient = openAiClient(), model = process.env["OPENAI_MODEL"] ?? "gpt-4.1-mini", hints?: MappingHints): Promise<MappingSuggestion> {
   const res = await client.chat.completions.create({
     model,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM },
-      { role: "user", content: buildPrompt(sample, dimensionKeys) },
+      { role: "user", content: buildPrompt(sample, dimensionKeys, hints) },
     ],
   });
   return { mapping: parseSuggestion(res.choices[0]?.message.content ?? null, sample, dimensionKeys), model };

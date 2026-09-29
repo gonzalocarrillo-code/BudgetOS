@@ -84,6 +84,8 @@ export async function cleanupWorkspace(owner: PrismaClient, ws: string): Promise
     `DELETE FROM role_assignment WHERE workspace_id = $1::uuid`,
     `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)`,
     `DELETE FROM data_source WHERE workspace_id = $1::uuid`,
+    `DELETE FROM mapping_synonym WHERE workspace_id = $1::uuid`,
+    `DELETE FROM mapping_profile WHERE workspace_id = $1::uuid`,
   ]) {
     await owner.$executeRawUnsafe(sql, ws);
   }

@@ -55,6 +55,8 @@ const OWN = [
   "alert",
   "pacing_rule",
   "data_source",
+  "mapping_synonym",
+  "mapping_profile",
   "saved_view",
   "export_job",
   "notification",

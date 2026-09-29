@@ -5765,6 +5765,10 @@
                       "kind"
                     ]
                   },
+                  "mappingProfileId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
                   "schedule": {
                     "type": "string",
                     "pattern": "^(\\S+\\s){4}\\S+$"
@@ -6185,6 +6189,11 @@
                   },
                   "isActive": {
                     "type": "boolean"
+                  },
+                  "mappingProfileId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
                   }
                 }
               }
@@ -6194,6 +6203,2607 @@
         "responses": {
           "200": {
             "description": "Updated source (the kind never changes)"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/mapping-profiles": {
+      "get": {
+        "operationId": "listMappingProfiles",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved mappings (D-004)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "spend",
+                              "kpi",
+                              "spend+kpi",
+                              "projection"
+                            ]
+                          },
+                          "mapping": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "spend",
+                                  "kpi",
+                                  "spend+kpi",
+                                  "projection"
+                                ]
+                              },
+                              "columns": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "dimension": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "transform": {
+                                          "type": "string",
+                                          "enum": [
+                                            "lower",
+                                            "upper",
+                                            "trim"
+                                          ]
+                                        },
+                                        "valueMap": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "dimension"
+                                      ]
+                                    },
+                                    {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "period_date"
+                                              ]
+                                            },
+                                            "format": {
+                                              "type": "string",
+                                              "enum": [
+                                                "yyyy-MM-dd",
+                                                "yyyy-MM",
+                                                "dd/MM/yyyy",
+                                                "MM/dd/yyyy"
+                                              ],
+                                              "default": "yyyy-MM-dd"
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "amount"
+                                              ]
+                                            },
+                                            "currency": {
+                                              "type": "string",
+                                              "pattern": "^[A-Z]{3}$"
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "currency"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "kpi"
+                                              ]
+                                            },
+                                            "metric": {
+                                              "type": "string",
+                                              "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                            },
+                                            "attributionModel": {
+                                              "type": "string",
+                                              "maxLength": 40
+                                            }
+                                          },
+                                          "required": [
+                                            "role",
+                                            "metric"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "projection"
+                                              ]
+                                            },
+                                            "metric": {
+                                              "type": "string",
+                                              "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                              "default": "spend"
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "formula_version"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "horizon_end"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "match_key"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
+                                                "ignore"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "columns"
+                            ]
+                          },
+                          "parsePattern": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "header": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "sources": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          },
+                          "archivedAt": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "kind",
+                          "mapping",
+                          "parsePattern",
+                          "header",
+                          "sources",
+                          "createdAt",
+                          "updatedAt",
+                          "archivedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "profiles"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMappingProfile",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "columns": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dimension": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "transform": {
+                                  "type": "string",
+                                  "enum": [
+                                    "lower",
+                                    "upper",
+                                    "trim"
+                                  ]
+                                },
+                                "valueMap": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "required": [
+                                "dimension"
+                              ]
+                            },
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "period_date"
+                                      ]
+                                    },
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "yyyy-MM-dd",
+                                        "yyyy-MM",
+                                        "dd/MM/yyyy",
+                                        "MM/dd/yyyy"
+                                      ],
+                                      "default": "yyyy-MM-dd"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amount"
+                                      ]
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "currency"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "kpi"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                    },
+                                    "attributionModel": {
+                                      "type": "string",
+                                      "maxLength": 40
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "metric"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "projection"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                      "default": "spend"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "formula_version"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "horizon_end"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "match_key"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ignore"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "spend",
+                          "kpi",
+                          "spend+kpi",
+                          "projection"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "columns",
+                      "kind"
+                    ]
+                  },
+                  "parsePattern": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  },
+                  "header": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "mapping",
+                  "header"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved; its columns teach the workspace's synonyms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "spend",
+                        "kpi",
+                        "spend+kpi",
+                        "projection"
+                      ]
+                    },
+                    "mapping": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "spend",
+                            "kpi",
+                            "spend+kpi",
+                            "projection"
+                          ]
+                        },
+                        "columns": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "dimension": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "transform": {
+                                    "type": "string",
+                                    "enum": [
+                                      "lower",
+                                      "upper",
+                                      "trim"
+                                    ]
+                                  },
+                                  "valueMap": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "dimension"
+                                ]
+                              },
+                              {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "period_date"
+                                        ]
+                                      },
+                                      "format": {
+                                        "type": "string",
+                                        "enum": [
+                                          "yyyy-MM-dd",
+                                          "yyyy-MM",
+                                          "dd/MM/yyyy",
+                                          "MM/dd/yyyy"
+                                        ],
+                                        "default": "yyyy-MM-dd"
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "amount"
+                                        ]
+                                      },
+                                      "currency": {
+                                        "type": "string",
+                                        "pattern": "^[A-Z]{3}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "currency"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "kpi"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                      },
+                                      "attributionModel": {
+                                        "type": "string",
+                                        "maxLength": 40
+                                      }
+                                    },
+                                    "required": [
+                                      "role",
+                                      "metric"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "projection"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                        "default": "spend"
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "formula_version"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "horizon_end"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "match_key"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "ignore"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "columns"
+                      ]
+                    },
+                    "parsePattern": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "header": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sources": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "mapping",
+                    "parsePattern",
+                    "header",
+                    "sources",
+                    "createdAt",
+                    "updatedAt",
+                    "archivedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/mapping-profiles/match": {
+      "post": {
+        "operationId": "matchMappingProfile",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "header": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "required": [
+                  "header"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The profile a file's header fits (exact, or one whose columns it covers), or none",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profile": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "spend",
+                            "kpi",
+                            "spend+kpi",
+                            "projection"
+                          ]
+                        },
+                        "mapping": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "spend",
+                                "kpi",
+                                "spend+kpi",
+                                "projection"
+                              ]
+                            },
+                            "columns": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "dimension": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "transform": {
+                                        "type": "string",
+                                        "enum": [
+                                          "lower",
+                                          "upper",
+                                          "trim"
+                                        ]
+                                      },
+                                      "valueMap": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "dimension"
+                                    ]
+                                  },
+                                  {
+                                    "oneOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "period_date"
+                                            ]
+                                          },
+                                          "format": {
+                                            "type": "string",
+                                            "enum": [
+                                              "yyyy-MM-dd",
+                                              "yyyy-MM",
+                                              "dd/MM/yyyy",
+                                              "MM/dd/yyyy"
+                                            ],
+                                            "default": "yyyy-MM-dd"
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "amount"
+                                            ]
+                                          },
+                                          "currency": {
+                                            "type": "string",
+                                            "pattern": "^[A-Z]{3}$"
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "currency"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "kpi"
+                                            ]
+                                          },
+                                          "metric": {
+                                            "type": "string",
+                                            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                          },
+                                          "attributionModel": {
+                                            "type": "string",
+                                            "maxLength": 40
+                                          }
+                                        },
+                                        "required": [
+                                          "role",
+                                          "metric"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "projection"
+                                            ]
+                                          },
+                                          "metric": {
+                                            "type": "string",
+                                            "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                            "default": "spend"
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "formula_version"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "horizon_end"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "match_key"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "ignore"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "columns"
+                          ]
+                        },
+                        "parsePattern": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "header": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "sources": {
+                          "type": "integer"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "archivedAt": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "kind",
+                        "mapping",
+                        "parsePattern",
+                        "header",
+                        "sources",
+                        "createdAt",
+                        "updatedAt",
+                        "archivedAt"
+                      ],
+                      "nullable": true
+                    },
+                    "fit": {
+                      "type": "string",
+                      "enum": [
+                        "exact",
+                        "covers"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "profile",
+                    "fit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mapping-profiles/{id}": {
+      "patch": {
+        "operationId": "updateMappingProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "columns": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dimension": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "transform": {
+                                  "type": "string",
+                                  "enum": [
+                                    "lower",
+                                    "upper",
+                                    "trim"
+                                  ]
+                                },
+                                "valueMap": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "required": [
+                                "dimension"
+                              ]
+                            },
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "period_date"
+                                      ]
+                                    },
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "yyyy-MM-dd",
+                                        "yyyy-MM",
+                                        "dd/MM/yyyy",
+                                        "MM/dd/yyyy"
+                                      ],
+                                      "default": "yyyy-MM-dd"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amount"
+                                      ]
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "currency"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "kpi"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                    },
+                                    "attributionModel": {
+                                      "type": "string",
+                                      "maxLength": 40
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "metric"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "projection"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                      "default": "spend"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "formula_version"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "horizon_end"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "match_key"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ignore"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "spend",
+                          "kpi",
+                          "spend+kpi",
+                          "projection"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "columns",
+                      "kind"
+                    ]
+                  },
+                  "parsePattern": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "nullable": true
+                  },
+                  "archived": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Renamed, remapped (reaching every source that follows it) or archived",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "spend",
+                        "kpi",
+                        "spend+kpi",
+                        "projection"
+                      ]
+                    },
+                    "mapping": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "spend",
+                            "kpi",
+                            "spend+kpi",
+                            "projection"
+                          ]
+                        },
+                        "columns": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "dimension": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "transform": {
+                                    "type": "string",
+                                    "enum": [
+                                      "lower",
+                                      "upper",
+                                      "trim"
+                                    ]
+                                  },
+                                  "valueMap": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "dimension"
+                                ]
+                              },
+                              {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "period_date"
+                                        ]
+                                      },
+                                      "format": {
+                                        "type": "string",
+                                        "enum": [
+                                          "yyyy-MM-dd",
+                                          "yyyy-MM",
+                                          "dd/MM/yyyy",
+                                          "MM/dd/yyyy"
+                                        ],
+                                        "default": "yyyy-MM-dd"
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "amount"
+                                        ]
+                                      },
+                                      "currency": {
+                                        "type": "string",
+                                        "pattern": "^[A-Z]{3}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "currency"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "kpi"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                      },
+                                      "attributionModel": {
+                                        "type": "string",
+                                        "maxLength": 40
+                                      }
+                                    },
+                                    "required": [
+                                      "role",
+                                      "metric"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "projection"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                        "default": "spend"
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "formula_version"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "horizon_end"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "match_key"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "ignore"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "columns"
+                      ]
+                    },
+                    "parsePattern": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "header": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sources": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "mapping",
+                    "parsePattern",
+                    "header",
+                    "sources",
+                    "createdAt",
+                    "updatedAt",
+                    "archivedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/mapping-synonyms": {
+      "get": {
+        "operationId": "listMappingSynonyms",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Built-in, learned and manual words for columns and metrics (D-005)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "column",
+                              "metric"
+                            ]
+                          },
+                          "term": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "oneOf": [
+                              {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "dimension": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "dimension"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "period_date",
+                                          "amount",
+                                          "currency",
+                                          "match_key",
+                                          "formula_version",
+                                          "horizon_end",
+                                          "ignore"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "kpi"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "role",
+                                      "metric"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "projection"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "role",
+                                      "metric"
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ]
+                              }
+                            ]
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "builtin",
+                              "learned",
+                              "manual"
+                            ]
+                          },
+                          "uses": {
+                            "type": "integer"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "term",
+                          "target",
+                          "origin",
+                          "uses",
+                          "isActive"
+                        ]
+                      }
+                    },
+                    "metrics": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "column",
+                              "metric"
+                            ]
+                          },
+                          "term": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "oneOf": [
+                              {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "dimension": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "dimension"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "period_date",
+                                          "amount",
+                                          "currency",
+                                          "match_key",
+                                          "formula_version",
+                                          "horizon_end",
+                                          "ignore"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "kpi"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "role",
+                                      "metric"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "projection"
+                                        ]
+                                      },
+                                      "metric": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "role",
+                                      "metric"
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "metric": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                  }
+                                },
+                                "required": [
+                                  "metric"
+                                ]
+                              }
+                            ]
+                          },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "builtin",
+                              "learned",
+                              "manual"
+                            ]
+                          },
+                          "uses": {
+                            "type": "integer"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "term",
+                          "target",
+                          "origin",
+                          "uses",
+                          "isActive"
+                        ]
+                      }
+                    },
+                    "ratioWords": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    }
+                  },
+                  "required": [
+                    "columns",
+                    "metrics"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMappingSynonym",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "column",
+                      "metric"
+                    ]
+                  },
+                  "term": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "metric": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                          }
+                        },
+                        "required": [
+                          "metric"
+                        ]
+                      },
+                      {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "period_date",
+                                  "amount",
+                                  "currency",
+                                  "match_key",
+                                  "formula_version",
+                                  "horizon_end",
+                                  "ignore"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "role"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "kpi"
+                                ]
+                              },
+                              "metric": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                              }
+                            },
+                            "required": [
+                              "role",
+                              "metric"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "projection"
+                                ]
+                              },
+                              "metric": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                              }
+                            },
+                            "required": [
+                              "role",
+                              "metric"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "term",
+                  "target"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A word the workspace uses; a manual row wins over learned ones"
+          }
+        }
+      }
+    },
+    "/api/v1/mapping-synonyms/{id}": {
+      "patch": {
+        "operationId": "updateMappingSynonym",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "isActive"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Switched off or back on"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/mapping-preview": {
+      "post": {
+        "operationId": "previewMapping",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mapping": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "spend",
+                          "kpi",
+                          "spend+kpi",
+                          "projection"
+                        ]
+                      },
+                      "columns": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dimension": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "transform": {
+                                  "type": "string",
+                                  "enum": [
+                                    "lower",
+                                    "upper",
+                                    "trim"
+                                  ]
+                                },
+                                "valueMap": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "required": [
+                                "dimension"
+                              ]
+                            },
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "period_date"
+                                      ]
+                                    },
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "yyyy-MM-dd",
+                                        "yyyy-MM",
+                                        "dd/MM/yyyy",
+                                        "MM/dd/yyyy"
+                                      ],
+                                      "default": "yyyy-MM-dd"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amount"
+                                      ]
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "currency"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "kpi"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                                    },
+                                    "attributionModel": {
+                                      "type": "string",
+                                      "maxLength": 40
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "metric"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "projection"
+                                      ]
+                                    },
+                                    "metric": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+                                      "default": "spend"
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "formula_version"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "horizon_end"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "match_key"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "ignore"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "columns"
+                    ]
+                  },
+                  "header": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "rows": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 2000
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {}
+                        ]
+                      }
+                    }
+                  },
+                  "parsePattern": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "mapping",
+                  "header",
+                  "rows"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "What each column becomes, unknown values with the nearest known one, ratios, rejected rows (D-006); nothing is written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rowsChecked": {
+                      "type": "integer"
+                    },
+                    "rowsRejected": {
+                      "type": "integer"
+                    },
+                    "problems": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "columns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "column": {
+                            "type": "string"
+                          },
+                          "mapsTo": {
+                            "type": "string"
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "raw": {
+                                  "type": "string"
+                                },
+                                "code": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "suggestion": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "count": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "raw",
+                                "code",
+                                "suggestion",
+                                "count"
+                              ]
+                            }
+                          },
+                          "issues": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "notes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "column",
+                          "mapsTo",
+                          "issues",
+                          "notes"
+                        ]
+                      }
+                    },
+                    "rejects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "row": {
+                            "type": "integer"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "row",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "rowsChecked",
+                    "rowsRejected",
+                    "problems",
+                    "columns",
+                    "rejects"
+                  ]
+                }
+              }
+            }
           }
         }
       }
