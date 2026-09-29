@@ -411,3 +411,24 @@ describe("/budget decisions by a request's id (S-007)", () => {
   });
 });
 
+describe("/budget, the summary (S-008)", () => {
+  it("the year so far, what waits on the person, and their budgets", async () => {
+    const res = await slack("commands", { text: "", team_id: TEAM, user_id: "U-orgAdmin" });
+    expect(res.body).toMatchObject({ response_type: "ephemeral" });
+    const text = JSON.stringify(res.body["blocks"]);
+    expect(text).toContain("*Golden* · Golden orgAdmin");
+    expect(text).toContain("This fiscal year, 1 Jan – 31 Dec 2026");
+    expect(text).toContain("*Your budgets*");
+    expect(text).toContain(`/w/${golden.workspaceId}/budgets?select=`);
+  });
+
+  it("someone whose scope holds no budget is told so, not given an error", async () => {
+    const viewer = randomUUID();
+    await owner.user.create({ data: { id: viewer, orgId: golden.orgId, email: email("scopedviewer"), name: "Scoped Viewer", googleSub: `golden-${slug}-scopedviewer` } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: golden.workspaceId, principalType: "user", principalId: viewer, role: "VIEWER", scope: { logic: "and", children: [{ field: { kind: "dimension", key: "country" }, op: "eq", value: "ZZ" }] }, createdBy: golden.users.orgAdmin } });
+    const res = await slack("commands", { text: "", team_id: TEAM, user_id: "U-scopedviewer" });
+    expect(JSON.stringify(res.body)).not.toContain(":no_entry:");
+    expect(JSON.stringify(res.body["blocks"])).toContain("Nothing to show yet");
+  });
+});
+

@@ -9,6 +9,7 @@ import { appUrl } from "../slack-config.js";
 import { slackApi } from "../slack-api.js";
 import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
+import { summaryReply } from "./summary.js";
 
 /**
  * /budget (POST /slack/commands, ADR-046, ADR-063): replies only the person who typed it
@@ -21,6 +22,7 @@ const money = (v: unknown) => (v === null || v === undefined ? "—" : Number(v)
 
 export const HELP = [
   "*BudgetOS* — `/budget` answers only you:",
+  "• `/budget` — your summary: the year so far, what waits on you, your budgets",
   "• `/budget approvals` — requests waiting on you, with Approve / Request changes / Reject",
   "• `/budget show #a1b2c3d4` — one request (its id is on every request message)",
   "• `/budget approve #a1b2c3d4 [comment]` · `reject #… <why>` · `changes #… <what>`",
@@ -37,7 +39,7 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
   const cmd = parseSlackCommand(body["text"] ?? "");
   const api = slackApi();
   if (api === null) return reply("BudgetOS is not connected to Slack yet.");
-  if (cmd.verb === "help" || cmd.verb === "summary") return reply(HELP);
+  if (cmd.verb === "help") return reply(HELP);
   const email = await api.userEmail(userId);
   if (!email) return reply("Your Slack profile has no email BudgetOS can match.");
   const linked = await linkedWorkspaces(prisma, deps, teamId, email);
@@ -60,6 +62,8 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
   const footer = linked.length > 1 ? ` · workspace *${chosen.name}*` : "";
   try {
     switch (cmd.verb) {
+      case "summary":
+        return await summaryReply(prisma, auth, ws, footer);
       case "approvals":
         return await approvalsReply(prisma, auth, ws, { footer });
       case "show": {

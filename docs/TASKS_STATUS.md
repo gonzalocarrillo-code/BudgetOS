@@ -501,7 +501,7 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is me
 | S-005 | S2 | Request changes button and form; the richer approval card with `#id` | done (the card shows the budget's path, dates, the requester's reason, the change with its percentage, the step of how many and `#id`; bulk requests read as Split, Merge, End…; refused form input shows its first problem. Snooze stays a week, decision S8) |
 | S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | done (ADR-063: the API answers only the interaction it handles, through its hooks.slack.com response_url; a refused one leaves the action standing and says so) |
 | S-007 | S2 | `/budget approve`, `reject`, `changes`, `withdraw`, `show #id`; id resolution | done (`parseSlackCommand` in @budget/domain; `#id`, the full id or a pasted link; `remind` wired here; a card's buttons update the card) |
-| S-008 | S3 | `/budget` summary from `getHome` | pending |
+| S-008 | S3 | `/budget` summary from `getHome` | done (read through one adapter, `fromHome`, so Home's rework reaches Slack in one place; a scope that holds no budget reads "Nothing to show yet") |
 | S-009 | S3 | `/budget <name>` card, `/budget list [text]`, disambiguation | pending |
 | S-010 | S3 | Workspace choice by channel, `/budget workspace`, the remembered link in `app_user.settings` | pending |
 | S-011 | S4 | `/budget request <name>`: draft + submit in one transaction, from a Slack form | pending |

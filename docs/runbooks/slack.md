@@ -93,6 +93,7 @@ The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_P
 
 | Command | Answers |
 |---|---|
+| `/budget` | your summary: the fiscal year so far, what waits on you, your budgets with pace |
 | `/budget help` | this list |
 | `/budget approvals` | the requests waiting on you, with Approve / Request changes / Reject; acting replaces the list with what is left |
 | `/budget show #a1b2c3d4` | one request as a card: buttons if you may decide it, the reason if not |
