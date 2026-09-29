@@ -2684,7 +2684,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -3242,7 +3243,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -9996,7 +9998,8 @@
                                             "spend_to_date_pct",
                                             "budget_baseline",
                                             "budget_change_abs",
-                                            "budget_change_pct"
+                                            "budget_change_pct",
+                                            "ahead_of_plan_abs"
                                           ]
                                         }
                                       },
@@ -10223,7 +10226,8 @@
                         "spend_to_date_pct",
                         "budget_baseline",
                         "budget_change_abs",
-                        "budget_change_pct"
+                        "budget_change_pct",
+                        "ahead_of_plan_abs"
                       ]
                     },
                     "default": [
@@ -11645,7 +11649,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -13003,7 +13008,8 @@
                                                     "spend_to_date_pct",
                                                     "budget_baseline",
                                                     "budget_change_abs",
-                                                    "budget_change_pct"
+                                                    "budget_change_pct",
+                                                    "ahead_of_plan_abs"
                                                   ]
                                                 }
                                               },
@@ -16000,7 +16006,8 @@
                                                 "spend_to_date_pct",
                                                 "budget_baseline",
                                                 "budget_change_abs",
-                                                "budget_change_pct"
+                                                "budget_change_pct",
+                                                "ahead_of_plan_abs"
                                               ]
                                             }
                                           },
@@ -16227,7 +16234,8 @@
                             "spend_to_date_pct",
                             "budget_baseline",
                             "budget_change_abs",
-                            "budget_change_pct"
+                            "budget_change_pct",
+                            "ahead_of_plan_abs"
                           ]
                         },
                         "default": [

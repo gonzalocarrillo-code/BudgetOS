@@ -3435,7 +3435,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -3582,7 +3582,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -6085,7 +6085,7 @@ export interface operations {
                                 /** @enum {string} */
                                 kind: "measure";
                                 /** @enum {string} */
-                                key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                             } | {
                                 /** @enum {string} */
                                 kind: "target";
@@ -6122,7 +6122,7 @@ export interface operations {
                      *       "pace_index"
                      *     ]
                      */
-                    measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct")[];
+                    measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs")[];
                     /** @default [] */
                     targets?: string[];
                     period: {
@@ -6626,7 +6626,7 @@ export interface operations {
                                         /** @enum {string} */
                                         kind: "measure";
                                         /** @enum {string} */
-                                        key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                        key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                     } | {
                                         /** @enum {string} */
                                         kind: "target";
@@ -7145,7 +7145,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -8447,7 +8447,7 @@ export interface operations {
                                     /** @enum {string} */
                                     kind: "measure";
                                     /** @enum {string} */
-                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct";
+                                    key: "budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs";
                                 } | {
                                     /** @enum {string} */
                                     kind: "target";
@@ -8484,7 +8484,7 @@ export interface operations {
                          *       "pace_index"
                          *     ]
                          */
-                        measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct")[];
+                        measures?: ("budget" | "budget_in_period" | "actual" | "projected" | "remaining" | "variance_abs" | "variance_pct" | "pace_index" | "projected_close_pct" | "spend_to_date_pct" | "budget_baseline" | "budget_change_abs" | "budget_change_pct" | "ahead_of_plan_abs")[];
                         /** @default [] */
                         targets?: string[];
                         period: {

@@ -35,6 +35,11 @@ export const MeasureKey = z.enum([
   "budget_baseline",
   "budget_change_abs",
   "budget_change_pct",
+  /**
+   * HO-009 (ADR-064): money ahead of plan, `actual − budget_in_period × elapsed` (negative: behind).
+   * Pace in currency, so the largest gaps rank first whatever the budget's size. Derived, never stored.
+   */
+  "ahead_of_plan_abs",
 ]);
 /** The measures that need `QueryRequest.compareTo`. */
 export const COMPARE_MEASURES: ReadonlySet<string> = new Set(["budget_baseline", "budget_change_abs", "budget_change_pct"]);
