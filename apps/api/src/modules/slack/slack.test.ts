@@ -164,7 +164,8 @@ describe("Slack requests", () => {
     expect(JSON.stringify(alerts.body)).toMatch(/open alerts/i);
     const budget = await slack("commands", { text: "brazil", team_id: TEAM, user_id: "U-planner" });
     expect(budget.body).toMatchObject({ response_type: "ephemeral" });
-    expect(JSON.stringify(budget.body)).toMatch(/budget [\d,]+/);
+    // S-009: a budget's card, or a choice when several match.
+    expect(JSON.stringify(budget.body)).toMatch(/Which “brazil”\?|\*Budget\*/);
     const nobody = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-stranger" });
     expect(String(nobody.body["text"])).toContain("No BudgetOS workspace");
   });
@@ -429,6 +430,50 @@ describe("/budget, the summary (S-008)", () => {
     const res = await slack("commands", { text: "", team_id: TEAM, user_id: "U-scopedviewer" });
     expect(JSON.stringify(res.body)).not.toContain(":no_entry:");
     expect(JSON.stringify(res.body["blocks"])).toContain("Nothing to show yet");
+  });
+});
+
+describe("/budget <name> and /budget list (S-009)", () => {
+  const cmd = async (persona: string, text: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}` })).body;
+
+  it("a budget's name gives its card: where it sits, its numbers, and a link", async () => {
+    const roots = (await owner.$queryRawUnsafe<Array<{ id: string; name: string }>>(`SELECT id::text, coalesce(display_name, name) AS name FROM envelope WHERE workspace_id = $1::uuid AND parent_id IS NULL AND status <> 'ARCHIVED' ORDER BY name`, golden.workspaceId));
+    const counts = new Map<string, number>();
+    for (const r of roots) counts.set(r.name.toLowerCase(), (counts.get(r.name.toLowerCase()) ?? 0) + 1);
+    const root = roots.find((r) => counts.get(r.name.toLowerCase()) === 1);
+    expect(root, "a top-level budget with a name of its own").toBeDefined();
+    const card = await cmd("planner", root!.name);
+    const text = JSON.stringify(card["blocks"]);
+    expect(text).toContain(`"text":"${root!.name}"`);
+    expect(text).toContain("*Budget*");
+    expect(text).toContain("*Pace*");
+    expect(text).toContain(`/budgets?select=${root!.id}`);
+    expect(String(card["text"])).toMatch(/: USD [\d,]+ budget, \d+% spent$/);
+  });
+
+  it("several matches give a choice; choosing one puts its card in place of the choice", async () => {
+    const choice = await cmd("planner", "meta");
+    expect(String(choice["text"])).toBe("Which “meta”?");
+    const values = (JSON.stringify(choice["blocks"]).match(/"action_id":"budget.show"/g) ?? []).length;
+    expect(values).toBeGreaterThan(1);
+    const first = (JSON.stringify(choice["blocks"]).match(/\\"id\\":\\"([0-9a-f-]{36})\\"/) ?? [])[1];
+    expect(first).toBeDefined();
+    responses.length = 0;
+    await slack("interactions", { payload: JSON.stringify({ type: "block_actions", team: { id: TEAM }, user: { id: "U-planner" }, trigger_id: `trig-${randomUUID()}`, response_url: "https://hooks.slack.com/actions/T0GOLDEN1/3/which", actions: [{ action_id: "budget.show", value: JSON.stringify({ ws: golden.workspaceId, id: first, o: "card" }) }] }) });
+    expect(responses[0]?.body).toMatchObject({ replace_original: true, response_type: "ephemeral" });
+    expect(JSON.stringify(responses[0]?.body)).toContain(`/budgets?select=${first}`);
+  });
+
+  it("says when nothing matches", async () => {
+    expect(String((await cmd("planner", "zzqx nothing like it"))["text"])).toContain("Nothing matches “zzqx nothing like it”");
+  });
+
+  it("list: the top-level budgets this fiscal year; list <text>: the budgets matching it", async () => {
+    const all = await cmd("orgAdmin", "list");
+    expect(JSON.stringify(all["blocks"])).toContain("Top-level budgets, this fiscal year");
+    expect(JSON.stringify(all["blocks"])).toMatch(/USD [\d,]+ · spent \d+% · pace [\d.—]+/);
+    const some = await cmd("planner", "list meta");
+    expect(JSON.stringify(some["blocks"])).toContain("Budgets matching “meta”");
   });
 });
 

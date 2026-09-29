@@ -9,6 +9,7 @@ import { appUrl } from "../slack-config.js";
 import { slackApi } from "../slack-api.js";
 import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
+import { budgetReply, listReply } from "./budgets.js";
 import { summaryReply } from "./summary.js";
 
 /**
@@ -29,7 +30,8 @@ export const HELP = [
   "• `/budget withdraw #…` · `remind #…` — your own requests",
   "• `/budget alerts` — open alerts you can see",
   "• `/budget search <text>` — budgets, approvals, alerts, targets",
-  "• `/budget <budget name>` — a budget's amount, spend and pace",
+  "• `/budget <budget name>` — a budget's card: amount, spend, projected, pace, what waits on it",
+  "• `/budget list [text]` — the top-level budgets this fiscal year, or those matching the text",
 ].join("\n");
 
 export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {
@@ -83,18 +85,17 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
         const lines = alerts.map((a) => `• *${a.severity}* <${url(`/alerts?select=${a.id}`)}|${a.envelopeName ?? "Budget"}> — ${a.ruleName ?? "rule"} (${a.status.toLowerCase()})`);
         return reply(`${alerts.length} open alerts${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*Open alerts*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);
       }
-      case "search":
       case "budget":
+        if (cmd.text === "") return reply(HELP);
+        return await budgetReply(prisma, auth, ws, cmd.text, footer);
       case "list":
-      case "request":
-      case "workspace": {
+        return await listReply(prisma, auth, ws, cmd.text, footer);
+      case "search": {
         authorize(auth, "workspace.member"); // GET /workspaces/:ws/search
-        const isSearch = cmd.verb === "search";
-        const q = cmd.text;
-        if (q === "") return reply(HELP);
-        const res = await search(prisma, auth, { q, limit: isSearch ? "5" : "3", ...(isSearch ? {} : { types: "envelope" }) });
+        if (cmd.text === "") return reply(HELP);
+        const res = await search(prisma, auth, { q: cmd.text, limit: "5" });
         const groups = res.groups as Array<{ type: string; count: number; hits: Array<{ title: string; path: string | null; deepLink: string; facets?: Record<string, unknown> | null }> }>;
-        if (groups.length === 0) return reply(`Nothing matches “${q}”.${footer}`);
+        if (groups.length === 0) return reply(`Nothing matches “${cmd.text}”.${footer}`);
         const lines = groups.flatMap((g) =>
           g.hits.map((h) => {
             const f = h.facets ?? {};
@@ -102,8 +103,11 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
             return `• <${appUrl()}${h.deepLink}|${h.title}>${h.path ? ` _${h.path}_` : ""}${numbers}`;
           }),
         );
-        return reply(`Results for “${q}”${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*${isSearch ? "Search" : "Budgets"}: ${q}*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);
+        return reply(`Results for “${cmd.text}”${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*Search: ${cmd.text}*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);
       }
+      case "request":
+      case "workspace":
+        return reply(HELP);
     }
   } catch (e) {
     return reply(`:no_entry: ${messageOf(e)}`);

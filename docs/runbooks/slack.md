@@ -102,7 +102,8 @@ The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_P
 | `/budget withdraw #a1b2c3d4` · `remind #a1b2c3d4` | your own request: withdraw it, or remind its approvers (once an hour) |
 | `/budget alerts` | open alerts you can see |
 | `/budget search <text>` | budgets, approvals, alerts, targets |
-| `/budget <budget name>` | a budget's amount, spend and pace |
+| `/budget <budget name>` | the budget's card: where it sits, budget, spent, projected and pace over its dates, its open request and alerts. Several matches give a choice |
+| `/budget list [text]` | the top-level budgets this fiscal year (or yours, for a scoped role), or the budgets matching the text |
 
 A request's id is on every request message (`Request #a1b2c3d4`): the last eight characters of its full id. A pasted link to the request works too.
 

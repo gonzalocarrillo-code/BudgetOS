@@ -9,6 +9,7 @@ import { slackAuth, type SlackDeps } from "./identity.js";
 import { slackResponder } from "./respond.js";
 import { slackApi } from "./slack-api.js";
 import { approvalsReply, requestCard } from "./slash/approvals.js";
+import { budgetCardReply } from "./slash/budgets.js";
 import { changesForm, messageModal, messageOf, rejectForm } from "./views.js";
 
 /**
@@ -52,10 +53,19 @@ const ACTIONS: Record<SlackActionId, { permission: RoutePermission; done?: false
   "approval.approve": { permission: "approval.decide", run: async (c) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "approve", channel: "slack" })) },
   "approval.reject": { permission: "approval.decide", done: false, run: async (c) => openView(c.payload, rejectForm(withReply(c))) },
   "approval.changes": { permission: "approval.decide", done: false, run: async (c) => openView(c.payload, changesForm(withReply(c))) },
+  // S-009: one budget of a "which one?" choice; its card replaces the choice.
+  "budget.show": { permission: "envelope.read", done: false, run: async (c) => showBudget(c) },
   "alert.acknowledge": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "ACKNOWLEDGED" })) },
   "alert.snooze": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "SNOOZED", snoozedUntil: snoozeUntil() })) },
   "alert.resolve": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "RESOLVED" })) },
 };
+
+/** A budget's card in place of the message the button sat on (or, without a response_url, in a form). */
+async function showBudget(c: Clicked): Promise<void> {
+  const card = await budgetCardReply(c.prisma, c.auth, c.value.ws, c.value.id);
+  if (c.payload.response_url) await slackResponder().respond(c.payload.response_url, { replace_original: true, ...card });
+  else await openView(c.payload, messageModal("BudgetOS", String(card["text"] ?? "")));
+}
 
 /** Every form (view_submission, by callback_id): the field its errors show under, its permission, and the action it finishes. */
 const FORMS: Record<string, { permission: RoutePermission; field: string; action: SlackActionId; submit: (c: Clicked, fields: (block: string) => string) => Promise<void> }> = {
