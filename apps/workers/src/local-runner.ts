@@ -7,6 +7,7 @@ import { handleSlackEvent, slackFromEnv } from "./notify/slack.js";
 import { objectStoreFromEnv, uploadBucket } from "./ingest/object-store.js";
 import { log } from "./log.js";
 import { purgeDueWorkspaces } from "./purge/purge.js";
+import { retentionFromEnv, runRetention } from "./retention/retention.js";
 
 /**
  * Local stand-in for Pub/Sub + the ingest, roll-up and notify workers (T-032, ADR-038), for the
@@ -96,7 +97,23 @@ async function purgePass(): Promise<void> {
   if (orgs.length) await purgeDueWorkspaces(app, orgs.map((o) => o.org_id));
 }
 
+// D-002: fact and raw-file retention, once a day, only with FACT_RETENTION_ENABLED=true (and facts
+// only with a BigQuery replica, BIGQUERY_DATASET). Off by default: nothing is deleted locally.
+let lastRetention = 0;
+async function retentionPass(): Promise<void> {
+  const deps = retentionFromEnv(store);
+  if (!deps.enabled || Date.now() - lastRetention < 86_400_000) return;
+  lastRetention = Date.now();
+  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
+    `SELECT DISTINCT org_id::text FROM workspace WHERE deleted_at IS NULL AND ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
+    `${prefix}%`,
+    orgFrom,
+  );
+  if (orgs.length) await runRetention(app, orgs.map((o) => o.org_id), deps);
+}
+
 for (;;) {
+  await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
   await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
   const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));
   if (n === 0) await new Promise((r) => setTimeout(r, 1000));

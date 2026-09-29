@@ -462,9 +462,9 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 
 | ID | Phase | Task | Status |
 |---|---|---|---|
-| D-001 | F1 | Datastream replication into BigQuery | pending |
-| D-002 | F1 | Fact retention (13 months hot) and raw files in Cloud Storage | pending |
-| D-003 | F1 | Snapshot rows and audit in the replica, `v_snapshots` | pending |
+| D-001 | F1 | Datastream replication into BigQuery | built; applying it is blocked on a GCP project (module, setup.sql and structural test in place) |
+| D-002 | F1 | Fact retention (13 months hot) and raw files in Cloud Storage | done (off by default; facts need the replica) |
+| D-003 | F1 | Snapshot rows and audit in the replica, `v_snapshots` | done locally; querying it in BigQuery is blocked with D-001 |
 | D-004 | F2 | Mapping profiles | pending |
 | D-005 | F2 | Column and value synonyms for the guesser | pending |
 | D-006 | F2 | Mapping preview and validation | pending |

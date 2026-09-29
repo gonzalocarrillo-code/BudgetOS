@@ -1,4 +1,4 @@
-import { DomainError, QueryRequest, readScopeFilter, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
+import { DomainError, QueryRequest, factsPrunedBefore, readScopeFilter, readsPrunedFacts, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
 import { envelopePaths, envelopesByTuple, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
 import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { HEAVY_MONTHS, HEAVY_ROWS, QUERY_CACHE_TTL_SECONDS, cacheKey, engineFromEnv, maxPlanRows, monthsSpanned, type QueryEngine } from "./engine.js";
@@ -53,7 +53,14 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
       const [plan] = await tx.$queryRawUnsafe<Array<{ "QUERY PLAN": unknown }>>(`EXPLAIN (FORMAT JSON) ${c.sql}`, ...c.values);
       return maxPlanRows(plan?.["QUERY PLAN"]) > HEAVY_ROWS;
     };
-    const warehouse = engine.warehouse && grouped && bigQuerySupported(q, opts) && (await heavy()) ? engine.warehouse : null;
+    // D-002: facts before factsPrunedBefore live in the BigQuery replica only. Such a read runs
+    // there when it can, and is refused when it cannot, rather than returning a silent gap.
+    const prunedBefore = factsPrunedBefore(ws.settings);
+    const readsOld = readsPrunedFacts(period, prunedBefore);
+    const warehouse = engine.warehouse && grouped && bigQuerySupported(q, opts) && (readsOld || (await heavy())) ? engine.warehouse : null;
+    if (readsOld && warehouse === null) {
+      throw new DomainError("VALIDATION", `Spend before ${prunedBefore} is kept in BigQuery only. Pick a period from ${prunedBefore}, or group the query so it can run there.`, { factsPrunedBefore: prunedBefore, periodStart: period.start });
+    }
     let page: { rows: Row[]; nextCursor: string | null };
     let totals: Row | undefined;
     if (warehouse) {

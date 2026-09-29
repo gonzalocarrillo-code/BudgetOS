@@ -21,6 +21,7 @@ locals {
     v_budget_current = "Current approved budget per envelope, own and reporting currency, with is_leaf."
     v_approvals      = "Approval requests with their latest decision and decision count."
     v_closures       = "Period closures with their fiscal period and closure table."
+    v_snapshots      = "Snapshots saved by hand, one row per budget per snapshot (ADR-053)."
   }
 
   derived_views = {
