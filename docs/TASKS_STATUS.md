@@ -486,3 +486,14 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 | R9-002 | A budget's dates are editable: drawer and Budgets Dates column; through approval once approved; children trimmed on request; phasing re-spread | done (ADR-060) |
 | R9-003 | Dates editable on targets (new endpoint), experiments, fiscal periods, manual entry batches and alert snoozes | done (ADR-060) |
 | R9-004 | Timeline bars drag and resize to change a budget's dates, through Change dates (plan epic 2.5) | done (ADR-061) |
+
+## Product feedback: Home and Overview (2026-09-29)
+
+Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The owner asked for the whole plan to be built; decisions G1–G10 follow the plan's proposals. One PR per phase, stacked in order.
+
+| ID | Phase | Task | Status |
+|---|---|---|---|
+| HO-001 | G1 | One open-alert count on Home and the Overview; `PACE_BANDS`, `OPEN_ALERT_STATUSES`, `OverviewResponse` in `@budget/domain` | done |
+| HO-002 | G1 | `PaceBar`, `StatTile`, `HeadlineStrip`, `AsOfChip`, `PaceLegend` in `@budget/ui`; pace band tokens (AA in both themes); `formatMoneyCompact` | done |
+| HO-003 | G1 | Pace as of the data: coverage per source grain, `elapsedThrough` in both planner dialects, as-of chip, stale banner | done (ADR-062) |
+| HO-004 | G1 | Short country names; the ISO name kept as the external id `iso_name`; migration `20261008000000_short_country_labels` | done |
