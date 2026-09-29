@@ -4,9 +4,10 @@ import { HeadlineStrip, PaceBar, type PulseItem } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { meQuery } from "../../lib/queries.js";
 import { YourBudgets } from "./budgets.js";
+import { DecideSheet } from "./decide-sheet.js";
 import { Recents, Sent } from "./recents.js";
 import { Waiting } from "./waiting.js";
 
@@ -22,15 +23,18 @@ export function Desk({ ws, home }: { ws: string; home: HomeResponse }): ReactEle
   const { data: me } = useQuery(meQuery);
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
   const canCreate = me?.isOrgAdmin === true || perms.includes("envelope.create");
+  // HO-007 (decision G4): an approval is decided in a side sheet, without leaving Home.
+  const [deciding, setDeciding] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-5" data-testid="home-desk">
       <Pulse ws={ws} home={home} />
-      <Waiting ws={ws} home={home} />
+      <Waiting ws={ws} home={home} onDecide={setDeciding} />
       <YourBudgets ws={ws} home={home} canCreate={canCreate} />
       <div className="grid gap-5 lg:grid-cols-2">
         <Recents ws={ws} home={home} />
         <Sent ws={ws} home={home} />
       </div>
+      {deciding ? <DecideSheet ws={ws} id={deciding} onClose={() => setDeciding(null)} /> : null}
     </div>
   );
 }
