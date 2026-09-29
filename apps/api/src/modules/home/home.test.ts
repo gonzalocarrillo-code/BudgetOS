@@ -134,12 +134,13 @@ describe("home (T-040)", () => {
     const res = await as("budgetOwner", "GET", "/me/home");
     expect(res.status, JSON.stringify(res.body).slice(0, 400)).toBe(200);
     const home = res.body as { waitingOnMe: { approvals: unknown[]; mentions: Array<{ body: string; author: string | null }>; alerts: unknown[]; unmatched: number }; scopes: Array<{ label: string; filter: unknown; budget: string }>; recents: unknown[]; pinnedViews: Array<{ name: string }> };
-    expect(Object.keys(res.body)).toEqual(["waitingOnMe", "scopes", "recents", "pinnedViews", "workspace", "asOf", "totals", "setup"]);
+    expect(Object.keys(res.body)).toEqual(["waitingOnMe", "sent", "scopes", "recents", "pinnedViews", "workspace", "asOf", "totals", "setup"]);
     // The header: the workspace, its fiscal year so far, and the year's totals over what the caller reads.
     expect(res.body["workspace"]).toMatchObject({ name: "Golden", currency: "USD" });
     expect((res.body["setup"] as { budgets: number }).budgets).toBeGreaterThan(0);
     expect((res.body["totals"] as { budget: string | null }).budget).not.toBeNull();
-    expect(home.waitingOnMe.unmatched).toBeGreaterThan(0); // the golden CSV's unmatched US rows
+    // HO-005 (decision G5): unmatched spend waits only on people who can map it; a budget owner cannot.
+    expect(home.waitingOnMe.unmatched).toBe(0);
     expect(home.scopes.length).toBeGreaterThan(0);
     // UX-008 (ADR-051): a strip is its top-level budget's own row in Budgets' budget structure, and
     // the header total is Budgets' total, not the sum of the leaves.

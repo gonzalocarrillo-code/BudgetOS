@@ -6525,6 +6525,11 @@ export interface operations {
                                 entityType: string;
                                 requestedAt: string;
                                 dueAt: string | null;
+                                requestedByName?: string | null;
+                                title?: string;
+                                count?: number;
+                                before?: string | null;
+                                after?: string | null;
                             }[];
                             mentions: {
                                 /** Format: uuid */
@@ -6548,7 +6553,58 @@ export interface operations {
                                 openedAt: string;
                             }[];
                             unmatched: number;
+                            canMap?: boolean;
+                            drafts?: {
+                                count: number;
+                                items: {
+                                    /** Format: uuid */
+                                    envelopeId: string;
+                                    /** Format: uuid */
+                                    versionId: string;
+                                    name: string;
+                                    createdAt: string;
+                                }[];
+                            };
+                            alertsOnMyBudgets?: {
+                                /** Format: uuid */
+                                envelopeId: string;
+                                name: string;
+                                /** Format: uuid */
+                                ruleId: string;
+                                ruleName: string | null;
+                                severity: string;
+                                count: number;
+                                assigned: number;
+                            }[];
+                            closures?: {
+                                periodKey: string;
+                                start: string;
+                                end: string;
+                                daysLeft: number;
+                                drafts: number;
+                                pending: number;
+                            }[];
+                            failedRuns?: {
+                                /** Format: uuid */
+                                sourceId: string;
+                                sourceName: string;
+                                at: string;
+                                error: string | null;
+                            }[];
                         };
+                        sent?: {
+                            /** Format: uuid */
+                            id: string;
+                            summary: string | null;
+                            entityType: string;
+                            requestedAt: string;
+                            dueAt: string | null;
+                            waitingOn: string | null;
+                            title: string;
+                            count: number;
+                            before: string | null;
+                            after: string | null;
+                        }[];
                         scopes: {
                             label: string;
                             filter: {
@@ -6598,6 +6654,10 @@ export interface operations {
                             projected: string | null;
                             paceIndex: string | null;
                             spentPct: string | null;
+                            remaining?: string | null;
+                            owner?: boolean;
+                            alerts?: number;
+                            pending?: number;
                         }[];
                         recents: {
                             entityType: string;
@@ -6605,6 +6665,8 @@ export interface operations {
                             entityId: string;
                             title: string;
                             at: string;
+                            action?: string;
+                            parent?: string | null;
                         }[];
                         pinnedViews: {
                             /** Format: uuid */
@@ -6629,6 +6691,8 @@ export interface operations {
                             actual: string | null;
                             spentPct: string | null;
                             openAlerts: number;
+                            waiting?: number;
+                            overdue?: number;
                         } | null;
                         asOf?: {
                             lastFactDate: string | null;

@@ -78,23 +78,69 @@ export const HomeScope = z.object({
   projected: z.string().nullable(),
   paceIndex: z.string().nullable(),
   spentPct: z.string().nullable(),
+  /** HO-005: what is left, whether the caller owns it, and what is open under it. */
+  remaining: z.string().nullable().optional(),
+  owner: z.boolean().optional(),
+  alerts: z.number().int().optional(),
+  pending: z.number().int().optional(),
 });
 export type HomeScope = z.infer<typeof HomeScope>;
 
+/**
+ * An approval request on Home (HO-005): a readable title (the budget, or the bulk change's
+ * rationale), how many budgets it changes, and the approved total before and after, in the
+ * reporting currency (null when it is not money: a target, a batch of results).
+ */
+export const HomeRequestCard = z.object({
+  title: z.string(),
+  count: z.number().int(),
+  before: z.string().nullable(),
+  after: z.string().nullable(),
+});
+
+/** Open alerts on budgets that are the caller's, by top-level budget and rule (HO-005). */
+export const HomeAlertGroup = z.object({
+  envelopeId: z.string().uuid(),
+  name: z.string(),
+  ruleId: z.string().uuid(),
+  ruleName: z.string().nullable(),
+  severity: z.string(),
+  count: z.number().int(),
+  /** Of these, assigned to the caller. */
+  assigned: z.number().int(),
+});
+export type HomeAlertGroup = z.infer<typeof HomeAlertGroup>;
+
 export const HomeResponse = z.object({
   waitingOnMe: z.object({
-    approvals: z.array(z.object({ id: z.string().uuid(), summary: z.string().nullable(), entityType: z.string(), requestedAt: z.string(), dueAt: z.string().nullable() }).passthrough()),
+    approvals: z.array(z.object({ id: z.string().uuid(), summary: z.string().nullable(), entityType: z.string(), requestedAt: z.string(), dueAt: z.string().nullable(), requestedByName: z.string().nullable().optional() }).merge(HomeRequestCard.partial()).passthrough()),
     mentions: z.array(z.object({ commentId: z.string().uuid(), threadId: z.string().uuid(), anchorType: z.string(), anchorId: z.string().uuid(), body: z.string(), author: z.string().nullable(), createdAt: z.string() })),
     alerts: z.array(z.object({ id: z.string().uuid(), envelopeId: z.string().uuid(), envelopeName: z.string(), severity: z.string(), openedAt: z.string() })),
+    /** Unmatched spend rows, for callers who can map them (source.manage); 0 otherwise. */
     unmatched: z.number().int(),
+    canMap: z.boolean().optional(),
+    /** Drafts the caller saved and never sent for approval. */
+    drafts: z.object({ count: z.number().int(), items: z.array(z.object({ envelopeId: z.string().uuid(), versionId: z.string().uuid(), name: z.string(), createdAt: z.string() })) }).optional(),
+    alertsOnMyBudgets: z.array(HomeAlertGroup).optional(),
+    /** For callers who close periods: periods ending soon, or ended lately, not closed yet. */
+    closures: z.array(z.object({ periodKey: z.string(), start: z.string(), end: z.string(), daysLeft: z.number().int(), drafts: z.number().int(), pending: z.number().int() })).optional(),
+    /** For callers who manage sources: active sources whose last run failed this week. */
+    failedRuns: z.array(z.object({ sourceId: z.string().uuid(), sourceName: z.string(), at: z.string(), error: z.string().nullable() })).optional(),
   }),
+  /** The caller's own requests still waiting on someone. */
+  sent: z.array(z.object({ id: z.string().uuid(), summary: z.string().nullable(), entityType: z.string(), requestedAt: z.string(), dueAt: z.string().nullable(), waitingOn: z.string().nullable() }).merge(HomeRequestCard)).optional(),
   scopes: z.array(HomeScope),
-  recents: z.array(z.object({ entityType: z.string(), entityId: z.string().uuid(), title: z.string(), at: z.string() })),
+  /** What the caller did last, one row per thing: what it is, where it sits, and what they did. */
+  recents: z.array(z.object({ entityType: z.string(), entityId: z.string().uuid(), title: z.string(), at: z.string(), action: z.string().optional(), parent: z.string().nullable().optional() })),
   pinnedViews: z.array(z.object({ id: z.string().uuid(), name: z.string(), screen: z.string(), definition: z.record(z.string(), z.unknown()) })),
   /** The workspace and its fiscal year so far (Home's header). */
   workspace: z.object({ name: z.string(), currency: z.string(), period: z.object({ start: z.string(), end: z.string(), elapsed: z.string().nullable() }) }).optional(),
-  /** This fiscal year over the budgets the caller may read; null when there are none. */
-  totals: z.object({ budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), openAlerts: z.number().int() }).nullable().optional(),
+  /**
+   * This fiscal year over the budgets the caller may read, as the Overview's headline counts it
+   * (Home's pulse); null when there are none. `waiting` and `overdue`: approval requests open in the
+   * workspace the caller may read.
+   */
+  totals: z.object({ budget: z.string().nullable(), actual: z.string().nullable(), spentPct: z.string().nullable(), openAlerts: z.number().int(), waiting: z.number().int().optional(), overdue: z.number().int().optional() }).nullable().optional(),
   /** HO-003: how current the actuals are; `elapsed` is the fiscal year gone by then (pace counts to it). */
   asOf: DataAsOfView.extend({ elapsed: z.string().nullable() }).optional(),
   /** What the workspace has set up (Home's getting-started steps). */
