@@ -32,7 +32,8 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: q.workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
     // H-004: a snapshot to compare with must exist in this workspace (RLS hides other workspaces').
-    if (q.compareTo && "baselineId" in q.compareTo && (await tx.budgetBaseline.count({ where: { id: q.compareTo.baselineId } })) === 0) {
+    // D-013: this workspace's snapshot only (an org admin's session could otherwise see another workspace's id).
+    if (q.compareTo && "baselineId" in q.compareTo && (await tx.budgetBaseline.count({ where: { id: q.compareTo.baselineId, workspaceId: q.workspaceId } })) === 0) {
       throw new DomainError("NOT_FOUND", "Snapshot not found", { baselineId: q.compareTo.baselineId });
     }
     const today = now.toISOString().slice(0, 10);

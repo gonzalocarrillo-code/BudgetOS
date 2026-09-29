@@ -474,6 +474,6 @@ Plan: `docs/DATA_PLAN.md`. Decisions F1–F5 are open for the product owner.
 | D-010 | F4 | MCP `describe_workspace` and server instructions | done (ADR-057) |
 | D-011 | F4 | MCP glossary resource and per-workspace tool descriptions | done (ADR-057; field descriptions are generic, the workspace's keys come from describe_workspace) |
 | D-012 | F4 | MCP prompts | done (ADR-057) |
-| D-013 | F5 | Composite FKs on snapshot rows; two-workspace isolation test | pending |
-| D-014 | F5 | BigQuery authorized views per workspace | pending |
-| D-015 | F5 | Weekly snapshot integrity check | pending |
+| D-013 | F5 | Composite FKs on snapshot rows; two-workspace isolation test | done (ADR-058) |
+| D-014 | F5 | BigQuery authorized views per workspace | built; applying it is blocked with D-001 (ADR-058) |
+| D-015 | F5 | Weekly snapshot integrity check | done (ADR-058) |

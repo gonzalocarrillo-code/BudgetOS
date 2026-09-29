@@ -73,3 +73,65 @@ resource "google_bigquery_dataset_iam_member" "readers" {
   role       = "roles/bigquery.dataViewer"
   member     = "group:${each.value}"
 }
+
+# ---------------------------------------------------------------------------------------------
+# Per-workspace access (docs/DATA_PLAN.md §8.2, D-014). BigQuery has no row-level security like
+# Postgres RLS, and the replica holds every tenant. Nobody outside the app reads the base dataset:
+# `reader_groups` is for the platform's own data team only. A client's analysts and Looker read a
+# dataset of their own, whose views select one workspace's rows from the curated views and are
+# authorized on the base dataset, so they never need (or get) access to it.
+# ---------------------------------------------------------------------------------------------
+
+locals {
+  curated_views = concat(keys(local.views), keys(local.derived_views))
+  workspace_views = {
+    for pair in setproduct(keys(var.workspace_readers), local.curated_views) : "${pair[0]}.${pair[1]}" => { workspace = pair[0], view = pair[1] }
+  }
+  workspace_members = merge([
+    for key, w in var.workspace_readers : { for g in w.groups : "${key}.${g}" => { workspace = key, group = g } }
+  ]...)
+}
+
+resource "google_bigquery_dataset" "workspace" {
+  for_each    = var.workspace_readers
+  project     = var.project_id
+  dataset_id  = "${local.dataset_id}_ws_${each.key}"
+  location    = var.location
+  description = "Budget OS ${var.env}: workspace ${each.value.workspace_id} only (authorized views)."
+  labels      = { app = "budget-os", env = var.env, scope = "workspace" }
+}
+
+resource "google_bigquery_table" "workspace_view" {
+  for_each            = local.workspace_views
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.workspace[each.value.workspace].dataset_id
+  table_id            = each.value.view
+  description         = "One workspace's rows of ${each.value.view}."
+  deletion_protection = false
+  depends_on          = [google_bigquery_table.view, google_bigquery_table.derived_view]
+
+  view {
+    query          = "SELECT * FROM `${var.project_id}.${local.dataset_id}.${each.value.view}` WHERE workspace_id = '${var.workspace_readers[each.value.workspace].workspace_id}'"
+    use_legacy_sql = false
+  }
+}
+
+# Each per-workspace view may read the base dataset on its readers' behalf.
+resource "google_bigquery_dataset_access" "authorized_view" {
+  for_each   = google_bigquery_table.workspace_view
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.budget_os.dataset_id
+  view {
+    project_id = var.project_id
+    dataset_id = each.value.dataset_id
+    table_id   = each.value.table_id
+  }
+}
+
+resource "google_bigquery_dataset_iam_member" "workspace_readers" {
+  for_each   = local.workspace_members
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.workspace[each.value.workspace].dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "group:${each.value.group}"
+}

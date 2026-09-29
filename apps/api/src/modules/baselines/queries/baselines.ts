@@ -196,8 +196,8 @@ export async function getBaseline(prisma: PrismaClient, auth: AuthContext, rawId
 }
 
 /** The frozen rows a caller may read: their read scope, judged on the granularities the row was saved with. */
-async function readableTree(tx: Tx, auth: AuthContext, baselineId: string, limit: number): Promise<{ rows: BaselineTreeRow[]; truncated: boolean }> {
-  const rows = await baselineTree(tx, baselineId, limit + 1);
+async function readableTree(tx: Tx, auth: AuthContext, baselineId: string, workspaceId: string, limit: number): Promise<{ rows: BaselineTreeRow[]; truncated: boolean }> {
+  const rows = await baselineTree(tx, baselineId, workspaceId, limit + 1);
   const visible = auth.isOrgAdmin ? rows : rows.filter((r) => canInScope(auth.assignments, "envelope.read", { dims: r.dimensionValues }));
   return { rows: visible.slice(0, limit), truncated: rows.length > limit };
 }
@@ -211,7 +211,7 @@ export async function baselineRows(prisma: PrismaClient, auth: AuthContext, rawI
     const b = await tx.budgetBaseline.findFirst({ where: { id, workspaceId } });
     if (b === null) throw new DomainError("NOT_FOUND", "Snapshot not found");
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { reportingCurrency: true } });
-    const { rows, truncated } = await readableTree(tx, auth, id, q.limit);
+    const { rows, truncated } = await readableTree(tx, auth, id, workspaceId, q.limit);
     return { baseline: await view(tx, b), rows, currency: ws.reportingCurrency, truncated };
   });
 }
@@ -223,7 +223,7 @@ export async function baselineCsv(prisma: PrismaClient, auth: AuthContext, rawId
   return withTenant(prisma, auth.ctx, async (tx) => {
     const b = await tx.budgetBaseline.findFirst({ where: { id, workspaceId } });
     if (b === null) throw new DomainError("NOT_FOUND", "Snapshot not found");
-    const { rows } = await readableTree(tx, auth, id, MAX_FILTER_ROWS);
+    const { rows } = await readableTree(tx, auth, id, workspaceId, MAX_FILTER_ROWS);
     const dims = [...new Set(rows.flatMap((r) => Object.keys(r.dimensionValues)))].sort();
     const header = ["envelope_id", "parent_id", "depth", "name", "is_leaf", ...dims, "currency", "amount", "amount_reporting", "start_date", "end_date", "version_id", "snapshot", "as_of"];
     const lines = rows.map((r) => [r.envelopeId, r.parentId ?? "", String(r.depth), r.name, r.isLeaf ? "true" : "false", ...dims.map((d) => r.dimensionValues[d] ?? ""), r.currency, r.amount, r.amountReporting, r.startDate, r.endDate, r.versionId ?? "", b.name, b.asOf.toISOString()]);

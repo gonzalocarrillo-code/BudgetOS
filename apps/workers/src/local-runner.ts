@@ -8,6 +8,7 @@ import { objectStoreFromEnv, uploadBucket } from "./ingest/object-store.js";
 import { log } from "./log.js";
 import { purgeDueWorkspaces } from "./purge/purge.js";
 import { retentionFromEnv, runRetention } from "./retention/retention.js";
+import { checkSnapshotIntegrity } from "./integrity/snapshots.js";
 
 /**
  * Local stand-in for Pub/Sub + the ingest, roll-up and notify workers (T-032, ADR-038), for the
@@ -112,7 +113,21 @@ async function retentionPass(): Promise<void> {
   if (orgs.length) await runRetention(app, orgs.map((o) => o.org_id), deps);
 }
 
+// D-015: the snapshot integrity check, once a week (SNAPSHOT_INTEGRITY=off disables it). Read-only.
+let lastIntegrity = 0;
+async function integrityPass(): Promise<void> {
+  if (process.env["SNAPSHOT_INTEGRITY"] === "off" || Date.now() - lastIntegrity < 7 * 86_400_000) return;
+  lastIntegrity = Date.now();
+  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
+    `SELECT DISTINCT org_id::text FROM workspace WHERE ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
+    `${prefix}%`,
+    orgFrom,
+  );
+  if (orgs.length) await checkSnapshotIntegrity(app, orgs.map((o) => o.org_id));
+}
+
 for (;;) {
+  await integrityPass().catch((err: unknown) => log.error({ err }, "local integrity pass failed"));
   await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
   await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
   const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));

@@ -113,7 +113,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     compare === undefined
       ? "NULL::numeric"
       : "baselineId" in compare
-        ? `(SELECT br.amount_reporting FROM budget_baseline_row br WHERE br.baseline_id = ${b.p(compare.baselineId)}::uuid AND br.envelope_id = e.id)`
+        ? `(SELECT br.amount_reporting FROM budget_baseline_row br WHERE br.baseline_id = ${b.p(compare.baselineId)}::uuid AND br.workspace_id = ${ws}::uuid AND br.envelope_id = e.id)`
         : `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = e.id AND v.amount_type = 'BUDGET'
            AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${b.p(compare.asOf)}::timestamptz
            ORDER BY v.approved_at DESC LIMIT 1)`;
