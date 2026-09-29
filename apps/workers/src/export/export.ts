@@ -1,4 +1,4 @@
-import { DomainError, EXPORT_MAX_ROWS, ExportRequested, QueryRequest, resolvePeriod } from "@budget/domain";
+import { DomainError, EXPORT_MAX_ROWS, ExportRequested, QueryRequest, factsPrunedBefore, readsPrunedFacts, resolvePeriod } from "@budget/domain";
 import { audit, envelopePaths, outbox, plannerOptions, withTenant, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
@@ -30,6 +30,9 @@ export async function exportTable(tx: Tx, tenant: { workspaceId: string; orgId: 
   delete q.cursor;
   const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { name: true, reportingCurrency: true, fiscalYearStartMonth: true, settings: true } });
   const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, tenant.workspaceId));
+  // D-002: an export over months kept in BigQuery only would miss their spend; refuse it.
+  const prunedBefore = factsPrunedBefore(ws.settings);
+  if (readsPrunedFacts(period, prunedBefore)) throw new DomainError("VALIDATION", `Spend before ${prunedBefore} is kept in BigQuery only; export from ${prunedBefore}, or read the replica.`, { factsPrunedBefore: prunedBefore });
   const opts = await plannerOptions(tx, tenant, q.targets, period);
   const rows: Row[] = [];
   let cursor: string | null = null;

@@ -1,4 +1,4 @@
-import { CloseInput, DomainError, fiscalPeriodKind, newId, resolvePeriod } from "@budget/domain";
+import { CloseInput, DomainError, factsPrunedBefore, fiscalPeriodKind, newId, readsPrunedFacts, resolvePeriod } from "@budget/domain";
 import { audit, bumpDataVersion, lockPeriodEnvelopes, outbox, withTenant, type Tx } from "@budget/db";
 import { templateNodes } from "@budget/workers";
 import { Decimal } from "decimal.js";
@@ -71,7 +71,10 @@ export async function closePeriod(prisma: PrismaClient, sink: ClosureSink | null
       if (range.end >= today) throw new DomainError("CONFLICT", `Period ${period.key} has not ended (ends ${range.end})`, { periodEnd: range.end });
       const earlier = await tx.periodClosure.findMany({ where: { workspaceId, periodId: period.id }, select: { status: true } });
       if (earlier.some((c) => c.status === "closed")) throw new DomainError("CONFLICT", `Period ${period.key} is already closed; restate it first`);
-      const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { reportingCurrency: true } });
+      const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { reportingCurrency: true, settings: true } });
+      // D-002: a close freezes actuals; over months kept in BigQuery only it would freeze none.
+      const prunedBefore = factsPrunedBefore(ws.settings);
+      if (readsPrunedFacts(range, prunedBefore)) throw new DomainError("CONFLICT", `Period ${period.key} starts before ${prunedBefore}; its spend is kept in BigQuery only`, { factsPrunedBefore: prunedBefore });
 
       const table = closureTable(workspaceId, period.key, earlier.length);
       const closure = await tx.periodClosure.create({

@@ -90,6 +90,26 @@ describe("query routing", () => {
   });
 });
 
+describe("fact retention routing (D-002)", () => {
+  it("a period before factsPrunedBefore runs on the warehouse when it can, and is refused when it cannot", async () => {
+    await owner.$executeRawUnsafe(`UPDATE workspace SET settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{factsPrunedBefore}', '"2025-06-01"') WHERE id = $1::uuid`, ws);
+    try {
+      const old = { kind: "range", start: "2025-03-01", end: "2025-03-31" };
+      const warehouse = new FakeWarehouse();
+      // A short grouped query would stay on Postgres; before the horizon it goes to the replica.
+      expect((await runQuery(app, auth(), body(old), now, { cache: null, warehouse })).engine).toBe("warehouse");
+      // No warehouse, or a flat query BigQuery does not answer: refused, never a silent gap.
+      await expect(runQuery(app, auth(), body(old), now, { cache: null, warehouse: null })).rejects.toMatchObject({ code: "VALIDATION", details: { factsPrunedBefore: "2025-06-01" } });
+      await expect(runQuery(app, auth(), body(old, { groupBy: [] }), now, { cache: null, warehouse })).rejects.toMatchObject({ code: "VALIDATION" });
+      // From the horizon on, nothing changes.
+      const hot = { kind: "range", start: "2025-06-01", end: "2025-06-30" };
+      expect((await runQuery(app, auth(), body(hot), now, { cache: null, warehouse: null })).engine).toBe("postgres");
+    } finally {
+      await owner.$executeRawUnsafe(`UPDATE workspace SET settings = settings - 'factsPrunedBefore' WHERE id = $1::uuid`, ws);
+    }
+  });
+});
+
 describe("routing helpers", () => {
   it("months spanned, the largest plan estimate, and what may be cached", () => {
     expect(monthsSpanned({ start: "2025-01-01", end: "2026-01-31" })).toBe(13);

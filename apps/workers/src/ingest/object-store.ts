@@ -16,6 +16,15 @@ export interface ObjectStore {
   readonly uploadMethod?: "PUT" | "POST";
   /** URL the browser GETs the object from, saved as `filename`; expires after `ttlSeconds`. */
   downloadUrl(uri: string, filename: string, ttlSeconds: number): Promise<string>;
+  /** Objects under a gs:// prefix, with when each was last written (raw file retention, D-002). */
+  list(prefix: string): Promise<ListedObject[]>;
+  /** Deletes an object; a missing one is not an error. */
+  remove(uri: string): Promise<void>;
+}
+
+export interface ListedObject {
+  uri: string;
+  updated: Date;
 }
 
 export function parseGsUri(uri: string): { bucket: string; path: string } {
@@ -25,14 +34,14 @@ export function parseGsUri(uri: string): { bucket: string; path: string } {
 }
 
 export class MemoryObjectStore implements ObjectStore {
-  readonly objects = new Map<string, { body: string | Buffer; contentType: string }>();
+  readonly objects = new Map<string, { body: string | Buffer; contentType: string; updated?: Date }>();
   read(uri: string): Readable {
     const hit = this.objects.get(uri);
     if (!hit) throw new Error(`no object ${uri}`);
     return Readable.from([hit.body]);
   }
   async write(uri: string, body: string | Buffer, contentType: string): Promise<void> {
-    this.objects.set(uri, { body, contentType });
+    this.objects.set(uri, { body, contentType, updated: new Date() });
   }
   async exists(uri: string): Promise<boolean> {
     return this.objects.has(uri);
@@ -42,6 +51,12 @@ export class MemoryObjectStore implements ObjectStore {
   }
   async downloadUrl(uri: string): Promise<string> {
     return `memory://${parseGsUri(uri).bucket}/${parseGsUri(uri).path}`;
+  }
+  async list(prefix: string): Promise<ListedObject[]> {
+    return [...this.objects.entries()].filter(([uri]) => uri.startsWith(prefix)).map(([uri, o]) => ({ uri, updated: o.updated ?? new Date(0) }));
+  }
+  async remove(uri: string): Promise<void> {
+    this.objects.delete(uri);
   }
 }
 
@@ -90,6 +105,14 @@ export class GcsObjectStore implements ObjectStore {
       responseDisposition: `attachment; filename="${filename.replace(/"/g, "")}"`,
     });
     return url;
+  }
+  async list(prefix: string): Promise<ListedObject[]> {
+    const { bucket, path } = parseGsUri(prefix);
+    const [files] = await this.storage.bucket(bucket).getFiles({ prefix: path });
+    return files.map((f) => ({ uri: `gs://${bucket}/${f.name}`, updated: new Date(String(f.metadata.updated ?? f.metadata.timeCreated ?? 0)) }));
+  }
+  async remove(uri: string): Promise<void> {
+    await this.file(uri).delete({ ignoreNotFound: true });
   }
 }
 

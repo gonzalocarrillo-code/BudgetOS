@@ -21,7 +21,7 @@ for (const line of existsSync(join(repoRoot, "packages/db/.env")) ? readFileSync
 const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
 afterAll(() => owner.$disconnect());
 
-const PLAN_VIEWS = ["v_approvals", "v_budget_current", "v_budget_vs_actual_daily", "v_closures"];
+const PLAN_VIEWS = ["v_approvals", "v_budget_current", "v_budget_vs_actual_daily", "v_closures", "v_snapshots"];
 const mainTf = readFileSync(join(moduleDir, "main.tf"), "utf8");
 const block = (name: string) => [...(new RegExp(`\\n  ${name} = \\{\\n([\\s\\S]*?)\\n  \\}`).exec(mainTf)?.[1] ?? "").matchAll(/^\s+(\w+)\s+=/gm)].map((m) => m[1] as string);
 const base = block("views");

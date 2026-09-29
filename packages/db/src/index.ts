@@ -90,4 +90,6 @@ export { purgeDemoData, seedDemoData } from "./demo.js";
 export { setMyName, workspaceSetup } from "./people.js";
 export type { DemoSummary } from "./demo.js";
 export { baselineTree, captureBaselineRows, comparedRows, subtreeIds } from "./baselines.js";
+export { FACT_TABLES, deleteFactMonth, factMonthTotals, factMonthsBefore } from "./retention.js";
+export type { FactTable, MonthTotals } from "./retention.js";
 export type { BaselineTreeRow, ComparedRow } from "./baselines.js";

@@ -143,3 +143,17 @@ export function fiscalYearPeriods(fiscalYear: number, startMonth: number, patter
   }
   return out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.kind === "year" ? -1 : b.kind === "year" ? 1 : a.kind === "quarter" ? -1 : 1));
 }
+
+/**
+ * Fact retention (docs/DATA_PLAN.md D-002): a workspace whose facts before `prunedBefore`
+ * (yyyy-MM-01) were moved to BigQuery only. A read over an earlier period would silently miss spend,
+ * so it is refused unless it runs on the warehouse.
+ */
+export function readsPrunedFacts(period: { start: string }, prunedBefore: string | null | undefined): boolean {
+  return typeof prunedBefore === "string" && period.start < prunedBefore;
+}
+
+export const factsPrunedBefore = (settings: unknown): string | null => {
+  const v = (settings as { factsPrunedBefore?: unknown } | null)?.factsPrunedBefore;
+  return typeof v === "string" && /^\d{4}-\d{2}-01$/.test(v) ? v : null;
+};
