@@ -66,6 +66,8 @@ const en = {
   "theme.light": "Light",
   "theme.dark": "Dark",
   "theme.system": "Same as your system",
+  "theme.toDark": "Switch to night view",
+  "theme.toLight": "Switch to day view",
   "approvals.stepOf": "Step {n}",
   "approvals.overdue": "Overdue",
   "alerts.bulkLabel": "Selected alerts",

@@ -69,4 +69,10 @@ test("dark mode: the user menu switches the theme and it sticks", async ({ page 
   await page.getByTestId("profile-button").click();
   await page.getByTestId("theme-light").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  // The header's one-click toggle flips day and night too.
+  await page.keyboard.press("Escape");
+  await page.getByTestId("theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByTestId("theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
