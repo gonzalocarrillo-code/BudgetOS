@@ -14,6 +14,7 @@ export const OUTBOX_TOPICS = {
   "alert.triggered": ["notify"],
   "allocation.changed": [],
   "approval.changed": ["rollup", "notify"],
+  "approval.reminded": ["notify"],
   "baseline.changed": [],
   "baseline.saved": [],
   "budget.changed": ["rollup"],

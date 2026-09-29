@@ -170,6 +170,117 @@ EUR 0",
 }
 `;
 
+exports[`approval blocks > a request waiting on a step: its path, dates, reason, change, step and #id, with Approve / Request changes / Reject (S-005) 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "📝 Approval requested: BR Meta Conversion",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Requested by*
+Planner Pat",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Policy*
+Standard",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Change*
+USD 100,000.00 → USD 115,000.00 (+15.0%)",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Waiting on*
+Budget owner (step 1 of 2), due 2026-09-26",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Period*
+1 Jan – 31 Dec 2026",
+          "type": "mrkdwn",
+        },
+      ],
+      "text": {
+        "text": "*LATAM › BR › Meta*
+“Black Friday”",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "action_id": "approval.approve",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Approve",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"ws":"01927a00-0000-7000-8000-00000000a0a0","id":"01927a00-0000-7000-8000-0000000000f1"}",
+        },
+        {
+          "action_id": "approval.changes",
+          "text": {
+            "emoji": true,
+            "text": "Request changes",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"ws":"01927a00-0000-7000-8000-00000000a0a0","id":"01927a00-0000-7000-8000-0000000000f1"}",
+        },
+        {
+          "action_id": "approval.reject",
+          "style": "danger",
+          "text": {
+            "emoji": true,
+            "text": "Reject",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"ws":"01927a00-0000-7000-8000-00000000a0a0","id":"01927a00-0000-7000-8000-0000000000f1"}",
+        },
+        {
+          "action_id": "open_approval",
+          "text": {
+            "emoji": true,
+            "text": "Review",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/approvals/01927a00-0000-7000-8000-0000000000f1",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Request #000000f1",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Decide here, or review the change in BudgetOS",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "📝 Approval requested: BR Meta Conversion",
+}
+`;
+
 exports[`approval blocks > approved bulk change (no amounts) 1`] = `
 {
   "blocks": [
@@ -224,6 +335,10 @@ Finance Fay",
     {
       "elements": [
         {
+          "text": "Request #000000f1",
+          "type": "mrkdwn",
+        },
+        {
           "text": "BudgetOS approvals",
           "type": "mrkdwn",
         },
@@ -260,7 +375,7 @@ Standard",
         },
         {
           "text": "*Change*
-USD 100,000.00 → USD 115,000.00",
+USD 100,000.00 → USD 115,000.00 (+15.0%)",
           "type": "mrkdwn",
         },
         {
@@ -302,6 +417,10 @@ Owner Olga",
     {
       "elements": [
         {
+          "text": "Request #000000f1",
+          "type": "mrkdwn",
+        },
+        {
           "text": "BudgetOS approvals",
           "type": "mrkdwn",
         },
@@ -338,12 +457,12 @@ Standard",
         },
         {
           "text": "*Change*
-USD 100,000.00 → USD 115,000.00",
+USD 100,000.00 → USD 115,000.00 (+15.0%)",
           "type": "mrkdwn",
         },
         {
           "text": "*Waiting on*
-BUDGET_OWNER, due 2026-09-26",
+Budget owner, due 2026-09-26",
           "type": "mrkdwn",
         },
       ],
@@ -371,6 +490,10 @@ BUDGET_OWNER, due 2026-09-26",
     },
     {
       "elements": [
+        {
+          "text": "Request #000000f1",
+          "type": "mrkdwn",
+        },
         {
           "text": "BudgetOS approvals",
           "type": "mrkdwn",

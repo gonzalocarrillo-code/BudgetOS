@@ -49,3 +49,32 @@ export async function lockParentCap(
     WHERE c.parent_id = ${parentId}::uuid AND c.id <> ${excludeChildId}::uuid`;
   return { allowOverAllocation: parent.allow, parentAmount: parent.amount, siblingsSum: sib?.s ?? "0" };
 }
+
+/** When a request last had an audit event of this action (a reminder, S-004), or null. */
+export async function lastRequestAuditAt(tx: Tx, requestId: string, action: string): Promise<Date | null> {
+  const [row] = await tx.$queryRaw<Array<{ at: Date | null }>>`
+    SELECT max(occurred_at) AS at FROM audit_event
+    WHERE entity_type = 'approval_request' AND entity_id = ${requestId}::uuid AND action = ${action}`;
+  return row?.at ?? null;
+}
+
+/** Who made the latest audited change to an entity (the decider, the one who withdrew), or null. */
+export async function lastActorId(tx: Tx, entityType: string, entityId: string): Promise<string | null> {
+  const [row] = await tx.$queryRaw<Array<{ actor: string | null }>>`
+    SELECT actor_id::text AS actor FROM audit_event
+    WHERE entity_type = ${entityType} AND entity_id = ${entityId}::uuid
+    ORDER BY occurred_at DESC LIMIT 1`;
+  return row?.actor ?? null;
+}
+
+/**
+ * Requests of the current workspace (row-level security) whose id ends with these eight hex
+ * characters, newest first: the short id Slack shows (S-007). Almost always one.
+ */
+export async function approvalRequestsBySuffix(tx: Tx, suffix: string, limit = 5): Promise<Array<{ id: string; summary: string; status: string }>> {
+  if (!/^[0-9a-f]{8}$/.test(suffix)) return [];
+  return tx.$queryRaw<Array<{ id: string; summary: string; status: string }>>`
+    SELECT id::text AS id, summary, status::text AS status FROM approval_request
+    WHERE right(id::text, 8) = ${suffix}
+    ORDER BY requested_at DESC LIMIT ${limit}`;
+}

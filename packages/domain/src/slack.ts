@@ -26,6 +26,8 @@ export const SlackSettings = z.object({
   alertSeverities: z.array(SlackSeverity).max(4).default(["critical"]),
   /** Approval requests post with Approve / Reject buttons. */
   approvals: z.boolean().default(true),
+  /** Direct messages: a request's approvers when it waits on them, its requester on the outcome (S-004). */
+  dms: z.boolean().default(true),
 });
 export type SlackSettings = z.infer<typeof SlackSettings>;
 
@@ -36,6 +38,7 @@ export const UpdateSlackSettingsInput = z
     alertChannel: Channel.nullable().optional(),
     alertSeverities: z.array(SlackSeverity).max(4).optional(),
     approvals: z.boolean().optional(),
+    dms: z.boolean().optional(),
     /** Link this workspace to the bot's Slack team (read with auth.test). */
     link: z.boolean().optional(),
   })
@@ -45,9 +48,16 @@ export type UpdateSlackSettingsInput = z.infer<typeof UpdateSlackSettingsInput>;
 /** POST /workspaces/:ws/integrations/slack/test */
 export const SlackTestInput = z.object({ channel: Channel.optional() });
 
-/** A button's `value`: the workspace and entity it acts on. */
-export const SlackActionValue = z.object({ ws: z.string().uuid(), id: z.string().uuid() });
+/**
+ * A button's `value`: the workspace and entity it acts on, and (S-006) the private message it sits
+ * on (`o`: the /budget approvals list, or a card), which is replaced after the action. A form
+ * opened from such a button carries the message's response_url (`r`) to replace it on submit.
+ */
+export const SlackActionValue = z.object({ ws: z.string().uuid(), id: z.string().uuid(), o: z.enum(["list", "card"]).optional(), r: z.string().url().max(500).optional() });
 export type SlackActionValue = z.infer<typeof SlackActionValue>;
 
-export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject"] as const;
+export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject", "approval.changes"] as const;
 export type SlackActionId = (typeof SLACK_ACTIONS)[number];
+
+/** How a request is shown in Slack, and typed in /budget: `#` and the last eight characters of its id (S-005). */
+export const shortRequestId = (id: string): string => `#${id.slice(-8).toLowerCase()}`;

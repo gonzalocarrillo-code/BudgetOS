@@ -1,6 +1,6 @@
 # Runbook: the Slack bot
 
-The bot posts alerts and approval requests, and people act from Slack as their own Budget OS account: Approve and Reject on requests; Acknowledge, Snooze and Resolve on alerts; `/budget` for answers. Design: ADR-046 and `docs/SLACK_TOOLSET_PLAN.md`. Delivery and in-app notifications: `docs/runbooks/notify.md`.
+The bot posts alerts and approval requests, sends each request to its approvers and its outcome to the requester by direct message, and people act from Slack as their own BudgetOS account: Approve, Request changes and Reject on requests; Acknowledge, Snooze and Resolve on alerts; `/budget` for answers. Design: ADR-046 and `docs/SLACK_TOOLSET_PLAN.md`. Delivery and in-app notifications: `docs/runbooks/notify.md`.
 
 ## 1. Create the Slack app (once per environment)
 
@@ -14,7 +14,7 @@ One Slack app per Budget OS environment: **BudgetOS (dev)** for a laptop through
 |---|---|---|
 | `commands` | the `/budget` command | the slash-command payload |
 | `chat:write` | posting and editing channel posts and direct messages | `chat.postMessage`, `chat.update` |
-| `im:write` | direct messages to mentioned people | `chat.postMessage` to a user id |
+| `im:write` | direct messages to approvers, requesters and mentioned people | `conversations.open`, then `chat.postMessage` there |
 | `users:read`, `users:read.email` | who clicked or typed, by their profile email; finding a person for a direct message | `users.info`, `users.lookupByEmail` |
 
    No scope is needed for `auth.test` (linking) or `views.open` (the forms). The bot does not have `chat:write.public`: it posts only in channels it was invited to.
@@ -54,7 +54,7 @@ One Slack team (the agency's) serves every Budget OS workspace: the golden demo,
 - **Access is Budget OS's, not Slack's.** The bot finds the person's account by their Slack email and applies that account's roles in the workspace being acted on, exactly as the app and MCP do. Someone with a role only in OpenAI sees and does nothing in the golden workspace from Slack ("No role in this workspace"). A superadmin sees every workspace, and their audit rows say `superadmin`.
 - **A channel is readable by all its members**, whatever their roles. So each client workspace gets its own **private** channel (`#budget-openai`) with only that client's team, and a shared channel only for workspaces everyone in it may see.
 - **Invite the bot** to every channel it posts in: `/invite @BudgetOS`. For a private channel, paste its channel id (`C…`, from the channel's details) in Admin › Slack rather than its name.
-- Direct messages go only to the people a comment mentions.
+- Direct messages go only to the approvers of the step a request waits on (and again when someone sends a reminder), the requester when it is decided, and the people a comment mentions, all in their own workspace. Admin › Slack can turn the approval ones off.
 
 ## 5. Link, test, and the live checklist
 
@@ -64,6 +64,7 @@ Admin › Slack → *Link to Slack* (records the team from `auth.test`) → set 
 - [ ] A planner submits a change in the app; the channel gets "Approval requested" with Approve / Reject.
 - [ ] Approve in Slack: the message becomes "Approved … by <you>"; the request is approved in the app; `approval_decision.channel = 'slack'`.
 - [ ] Reject asks for a reason; the requester sees it in the app.
+- [ ] Request changes asks what should change; the budget gets a blocking thread the requester resolves before sending it again.
 - [ ] A VIEWER clicking Approve gets a private refusal; nothing changes.
 - [ ] `/budget help`, `/budget alerts`, `/budget <budget name>` answer, privately.
 - [ ] An unsigned or stale request to `/api/v1/slack/commands` is refused (403 in the API log).
@@ -86,7 +87,27 @@ The bot runs where everything else runs (spec §20): the API as `budget-api` and
 
 The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_PLAN.md` §3.12 has the detail.
 
-## 7. When something goes wrong
+## 7. Commands
+
+`/budget` answers only the person who typed it (an ephemeral reply), for the workspace linked to their Slack team where they have a role.
+
+| Command | Answers |
+|---|---|
+| `/budget help` | this list |
+| `/budget approvals` | the requests waiting on you, with Approve / Request changes / Reject; acting replaces the list with what is left |
+| `/budget show #a1b2c3d4` | one request as a card: buttons if you may decide it, the reason if not |
+| `/budget approve #a1b2c3d4 [comment]` | approves your step |
+| `/budget reject #a1b2c3d4 <why>` · `changes #a1b2c3d4 <what>` | rejects, or returns it for changes (the reason is required) |
+| `/budget withdraw #a1b2c3d4` · `remind #a1b2c3d4` | your own request: withdraw it, or remind its approvers (once an hour) |
+| `/budget alerts` | open alerts you can see |
+| `/budget search <text>` | budgets, approvals, alerts, targets |
+| `/budget <budget name>` | a budget's amount, spend and pace |
+
+A request's id is on every request message (`Request #a1b2c3d4`): the last eight characters of its full id. A pasted link to the request works too.
+
+A reply that says it could not be updated means Slack's link to that message expired (30 minutes, or five uses): the action stands; run the command again.
+
+## 8. When something goes wrong
 
 | Symptom | Cause and fix |
 |---|---|

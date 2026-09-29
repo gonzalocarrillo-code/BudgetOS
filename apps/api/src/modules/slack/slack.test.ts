@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { shortRequestId } from "@budget/domain";
 import { handleInApp, handleSlackEvent, type SlackClient } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
 import { appDb, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
 import { signSlackBody } from "./signature.js";
+import { setSlackResponder } from "./respond.js";
 import { setSlackApi, type SlackApi } from "./slack-api.js";
 
 /**
@@ -42,15 +44,29 @@ async function slack(path: "interactions" | "commands", fields: Record<string, s
 const click = (persona: string, actionId: string, id: string, team = TEAM) =>
   slack("interactions", { payload: JSON.stringify({ type: "block_actions", team: { id: team }, user: { id: `U-${persona}` }, trigger_id: `trig-${randomUUID()}`, actions: [{ action_id: actionId, value: JSON.stringify({ ws: golden.workspaceId, id }) }] }) });
 
+/** What the API answered through response_urls (S-006); `failNext` makes Slack refuse one. */
+const responses: Array<{ url: string; body: Record<string, unknown> }> = [];
+let failNextResponse = false;
+
 beforeAll(async () => {
   process.env["SLACK_SIGNING_SECRET"] = SECRET;
   setSlackApi(fake);
+  setSlackResponder({
+    respond: async (url, body) => {
+      if (failNextResponse) {
+        failNextResponse = false;
+        throw new Error("expired_url");
+      }
+      responses.push({ url, body });
+    },
+  });
   golden = await seedGolden(app, owner, { slug });
   h = await startHarness();
 }, 180_000);
 
 afterAll(async () => {
   setSlackApi(undefined);
+  setSlackResponder(undefined);
   delete process.env["SLACK_SIGNING_SECRET"];
   await h?.close();
   if (golden?.created) await cleanupGolden(owner, golden);
@@ -65,7 +81,11 @@ describe("Slack settings", () => {
     expect((await as("planner", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget" })).status).toBe(403);
     const set = await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], link: true });
     expect(set.status, JSON.stringify(set.body)).toBe(200);
-    expect(set.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack", defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"] });
+    expect(set.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack", defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], dms: true });
+    // S-004: direct messages to approvers and requesters can be turned off, and back on.
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { dms: false })).body).toMatchObject({ dms: false, defaultChannel: "#budget" });
+    expect(((await as("planner", "GET", `/workspaces/${golden.workspaceId}/integrations/slack`)).body["settings"] as { dms: boolean }).dms).toBe(false);
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { dms: true })).body).toMatchObject({ dms: true });
     const test = await as("admin", "POST", `/workspaces/${golden.workspaceId}/integrations/slack/test`, {});
     expect(test.body).toMatchObject({ queued: true, channel: "#budget" });
     const [q] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'slack.test'`, golden.workspaceId);
@@ -233,3 +253,161 @@ describe("every approval request reaches Slack (S-003)", () => {
     expect(Number(told?.n), "the first step's approver (the budget owner)").toBe(1);
   });
 });
+
+/**
+ * An open request of the planner's that the policies do not auto-approve: a 10% cut to a budget
+ * with no children, so approving it can never break a parent's cap. Each budget is used once.
+ */
+const usedForRequests = new Set<string>();
+async function openRequest(): Promise<string> {
+  for (const envelopeId of [...golden.envelopeIds.values()].reverse()) {
+    if (usedForRequests.has(envelopeId)) continue;
+    const env = (await as("planner", "GET", `/envelopes/${envelopeId}`)).body as { current?: { id: string; amount: string } | null; draft?: unknown; status?: string; structure?: { children?: unknown[] } };
+    if (!env.current || env.draft || env.status !== "APPROVED" || (env.structure?.children?.length ?? 0) > 0 || Number(env.current.amount) < 1000) continue;
+    usedForRequests.add(envelopeId);
+    const draft = await as("planner", "PATCH", `/envelopes/${envelopeId}/draft`, { amount: (Number(env.current.amount) * 0.9).toFixed(2), basedOnVersionId: env.current.id, rationale: "Black Friday moved to Q1" });
+    if (draft.status !== 200) continue;
+    const sent = await as("planner", "POST", `/envelopes/${envelopeId}/submit`, { versionId: draft.body["id"] });
+    if (sent.body["autoApproved"] === false) return String(sent.body["requestId"]);
+  }
+  throw new Error("no budget could be sent for approval");
+}
+
+describe("Request changes from Slack (S-005)", () => {
+  it("opens a form; the comment returns the request for changes and opens a blocking thread", async () => {
+    const requestId = await openRequest();
+    views.length = 0;
+    await click("orgAdmin", "approval.changes", requestId);
+    expect(views[0]?.view).toMatchObject({ callback_id: "approval.changes" });
+    const submit = (comment: string) =>
+      slack("interactions", { payload: JSON.stringify({ type: "view_submission", team: { id: TEAM }, user: { id: "U-orgAdmin" }, view: { callback_id: "approval.changes", private_metadata: views[0]?.view["private_metadata"], state: { values: { comment: { comment: { value: comment } } } } } }) });
+    expect((await submit(" ")).body).toMatchObject({ response_action: "errors", errors: { comment: expect.stringContaining("Comment required") } });
+    expect((await submit("Split it by month first")).body).toEqual({});
+    const [r] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId);
+    expect(r?.status).toBe("CHANGES_REQUESTED");
+    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    expect(d).toEqual({ decision: "request_changes", channel: "slack", comment: "Split it by month first" });
+    const [thread] = await owner.$queryRawUnsafe<Array<{ is_blocking: boolean }>>(`SELECT is_blocking FROM thread WHERE anchor_meta->>'approvalRequestId' = $1`, requestId);
+    expect(thread?.is_blocking).toBe(true);
+  });
+});
+
+describe("/budget approvals (S-006)", () => {
+  const RESPONSE_URL = "https://hooks.slack.com/actions/T0GOLDEN1/1/list";
+  /** A click on the private list: the value names the list, and Slack sends the list's response_url. */
+  const clickOnList = (persona: string, actionId: string, id: string) =>
+    slack("interactions", { payload: JSON.stringify({ type: "block_actions", team: { id: TEAM }, user: { id: `U-${persona}` }, trigger_id: `trig-${randomUUID()}`, response_url: RESPONSE_URL, container: { type: "message", is_ephemeral: true }, actions: [{ action_id: actionId, value: JSON.stringify({ ws: golden.workspaceId, id, o: "list" }) }] }) });
+  const listed = (body: Record<string, unknown>) => (JSON.stringify(body["blocks"]).match(/#[0-9a-f]{8}/g) ?? []);
+
+  it("lists what waits on the person, each with Approve / Request changes / Reject on the list", async () => {
+    const requestId = await openRequest();
+    const res = await slack("commands", { text: "approvals", team_id: TEAM, user_id: "U-orgAdmin" });
+    expect(res.body).toMatchObject({ response_type: "ephemeral" });
+    expect(listed(res.body)).toContain(shortRequestId(requestId));
+    const values = (JSON.stringify(res.body["blocks"]).match(/"value":"(\{[^}]*\})"/g) ?? []).map((v) => JSON.parse(JSON.parse(v.slice(8)) as string) as { o?: string });
+    expect(values.length).toBeGreaterThan(0);
+    expect(values.every((v) => v.o === "list")).toBe(true);
+    // A planner decides nothing: nothing waits on them.
+    expect(JSON.stringify((await slack("commands", { text: "approvals", team_id: TEAM, user_id: "U-planner" })).body)).toContain("Nothing is waiting on you");
+  });
+
+  it("Approve on the list decides, then replaces the list with what is left, led by what happened", async () => {
+    const requestId = await openRequest();
+    responses.length = 0;
+    await clickOnList("orgAdmin", "approval.approve", requestId);
+    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string }>>(`SELECT decision::text, channel::text FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    expect(d).toEqual({ decision: "approve", channel: "slack" });
+    expect(responses).toHaveLength(1);
+    expect(responses[0]?.url).toBe(RESPONSE_URL);
+    expect(responses[0]?.body).toMatchObject({ replace_original: true, response_type: "ephemeral" });
+    expect(JSON.stringify(responses[0]?.body)).toContain(`:white_check_mark: Approved · ${shortRequestId(requestId)}`);
+    expect(listed(responses[0]!.body).filter((x) => x === shortRequestId(requestId))).toEqual([shortRequestId(requestId)]); // only in the notice
+  });
+
+  it("Reject on the list asks for the reason, then replaces the list", async () => {
+    const requestId = await openRequest();
+    views.length = 0;
+    responses.length = 0;
+    await clickOnList("orgAdmin", "approval.reject", requestId);
+    const metadata = JSON.parse(String(views[0]?.view["private_metadata"])) as { r?: string; o?: string };
+    expect(metadata).toMatchObject({ o: "list", r: RESPONSE_URL });
+    const submitted = await slack("interactions", { payload: JSON.stringify({ type: "view_submission", team: { id: TEAM }, user: { id: "U-orgAdmin" }, view: { callback_id: "approval.reject", private_metadata: views[0]?.view["private_metadata"], state: { values: { reason: { reason: { value: "Not this quarter" } } } } } }) });
+    expect(submitted.body).toEqual({});
+    expect(JSON.stringify(responses[0]?.body)).toContain(`:no_entry: Rejected · ${shortRequestId(requestId)}`);
+  });
+
+  it("when Slack refuses the response_url, the decision stands and the person is told to ask again", async () => {
+    const requestId = await openRequest();
+    views.length = 0;
+    failNextResponse = true;
+    await clickOnList("orgAdmin", "approval.approve", requestId);
+    const [r] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId);
+    expect(r?.status).toBe("APPROVED");
+    expect(JSON.stringify(views[0]?.view)).toContain("could not be updated");
+  });
+});
+
+describe("/budget decisions by a request's id (S-007)", () => {
+  const cmd = async (persona: string, text: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}` })).body;
+  const said = (body: Record<string, unknown>) => JSON.stringify(body);
+  const status = async (id: string) => (await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, id))[0]?.status;
+
+  it("approve #id decides as the person, with the comment, and says so", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("orgAdmin", `approve ${shortRequestId(id)} fits the plan`))).toContain(":white_check_mark: Approved");
+    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, id);
+    expect(d).toEqual({ decision: "approve", channel: "slack", comment: "fits the plan" });
+    expect(await status(id)).toBe("APPROVED");
+  });
+
+  it("reject and changes ask for the reason first, then decide", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("orgAdmin", `reject ${shortRequestId(id)}`))).toContain("Say why");
+    expect(await status(id)).toBe("PENDING");
+    expect(said(await cmd("orgAdmin", `reject ${shortRequestId(id)} over the Q1 cap`))).toContain(":no_entry: Rejected");
+    expect(await status(id)).toBe("REJECTED");
+    const other = await openRequest();
+    expect(said(await cmd("orgAdmin", `changes ${shortRequestId(other)}`))).toContain("Say what should change");
+    expect(said(await cmd("orgAdmin", `changes ${shortRequestId(other)} split it by month`))).toContain("Changes requested");
+    expect(await status(other)).toBe("CHANGES_REQUESTED");
+  });
+
+  it("remind and withdraw are the requester's; someone else is refused, as in the app", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("planner", `remind ${shortRequestId(id)}`))).toContain(":alarm_clock: Reminded the approvers of step 1");
+    expect(said(await cmd("planner", `remind ${shortRequestId(id)}`))).toContain("less than an hour ago");
+    expect(said(await cmd("budgetOwner", `withdraw ${shortRequestId(id)}`))).toContain("Only the requester or a workspace admin can withdraw");
+    expect(said(await cmd("approver", `withdraw ${shortRequestId(id)}`))).toContain("Missing permission envelope.submit");
+    expect(said(await cmd("planner", `withdraw ${shortRequestId(id)} not needed now`))).toContain(":wastebasket: Withdrew");
+    expect(await status(id)).toBe("WITHDRAWN");
+  });
+
+  it("show #id: buttons for someone who may decide it, the reason for someone who may not", async () => {
+    const id = await openRequest();
+    const card = await cmd("orgAdmin", `show ${shortRequestId(id)}`);
+    expect(said(card)).toContain('"action_id":"approval.approve"');
+    expect(said(card)).toContain('\\"o\\":\\"card\\"');
+    const own = await cmd("planner", `show ${shortRequestId(id)}`);
+    expect(said(own)).not.toContain('"action_id":"approval.approve"');
+    expect(said(own)).toContain("You cannot decide it: You made this change; someone else must approve it.");
+  });
+
+  it("takes a full id or a pasted link, and explains an unknown or missing one", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("orgAdmin", `show <https://budgetos.example/w/${golden.workspaceId}/approvals/${id}|Review>`))).toContain(shortRequestId(id));
+    expect(said(await cmd("orgAdmin", `show ${id}`))).toContain(shortRequestId(id));
+    expect(said(await cmd("orgAdmin", "approve #00000000"))).toContain("No request #00000000 in this workspace");
+    expect(said(await cmd("orgAdmin", "approve brazil"))).toContain("Which request?");
+  });
+
+  it("a card's buttons update that card", async () => {
+    const id = await openRequest();
+    responses.length = 0;
+    await slack("interactions", { payload: JSON.stringify({ type: "block_actions", team: { id: TEAM }, user: { id: "U-orgAdmin" }, trigger_id: `trig-${randomUUID()}`, response_url: "https://hooks.slack.com/actions/T0GOLDEN1/2/card", actions: [{ action_id: "approval.approve", value: JSON.stringify({ ws: golden.workspaceId, id, o: "card" }) }] }) });
+    expect(await status(id)).toBe("APPROVED");
+    expect(responses[0]?.body).toMatchObject({ replace_original: true });
+    expect(JSON.stringify(responses[0]?.body)).toContain(`:white_check_mark: Approved · ${shortRequestId(id)}`);
+    expect(JSON.stringify(responses[0]?.body)).not.toContain('"action_id":"approval.approve"');
+  });
+});
+

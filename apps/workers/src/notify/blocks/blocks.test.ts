@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { alertMessage } from "./alert.js";
-import { approvalMessage } from "./approval.js";
+import { approvalMessage, approvalReminder } from "./approval.js";
 import { money } from "./common.js";
 import { mentionMessage, renderBody } from "./mention.js";
 
@@ -79,6 +79,28 @@ describe("approval blocks", () => {
     expect(approvalMessage({ ...request, kind: "changes_requested", deciderName: "Owner Olga", comment: "Split this by retailer\nbefore Q4" })).toMatchSnapshot());
   it("approved bulk change (no amounts)", () =>
     expect(approvalMessage({ ...request, kind: "approved", subject: "Bulk change (24 rows)", before: null, after: null, deciderName: "Finance Fay" })).toMatchSnapshot());
+  it("a request waiting on a step: its path, dates, reason, change, step and #id, with Approve / Request changes / Reject (S-005)", () => {
+    const m = approvalMessage({ ...request, kind: "requested", actions: true, path: "LATAM › BR › Meta", period: { start: "2026-01-01", end: "2026-12-31" }, rationale: "Black Friday", step: { index: 0, count: 2 } });
+    expect(m).toMatchSnapshot();
+    const text = JSON.stringify(m.blocks);
+    expect(text).toContain("*LATAM › BR › Meta*\\n“Black Friday”");
+    expect(text).toContain("USD 100,000.00 → USD 115,000.00 (+15.0%)");
+    expect(text).toContain("Budget owner (step 1 of 2), due 2026-09-26");
+    expect(text).toContain("1 Jan – 31 Dec 2026");
+    expect(text).toContain("Request #000000f1");
+    expect(text.match(/"action_id":"[a-z_.]+"/g)).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.changes"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
+  });
+  it("dates across two years, and a fall", () => {
+    const m = approvalMessage({ ...request, kind: "requested", before: "200.00", after: "150.00", period: { start: "2026-10-01", end: "2027-03-31" } });
+    expect(JSON.stringify(m.blocks)).toContain("1 Oct 2026 – 31 Mar 2027");
+    expect(JSON.stringify(m.blocks)).toContain("(−25.0%)");
+  });
+  it("a reminder leads with who sent it (S-004)", () => {
+    const m = approvalReminder(approvalMessage({ ...request, kind: "requested", actions: true }), "Planner <Pat>");
+    expect(m.text).toBe("⏰ Reminder: 📝 Approval requested: BR Meta Conversion");
+    expect(m.blocks[0]).toEqual({ type: "context", elements: [{ type: "mrkdwn", text: "⏰ Planner &lt;Pat&gt; sent a reminder: this request is waiting on you." }] });
+    expect(m.blocks.slice(1)).toEqual(approvalMessage({ ...request, kind: "requested", actions: true }).blocks);
+  });
 });
 
 describe("mention blocks", () => {

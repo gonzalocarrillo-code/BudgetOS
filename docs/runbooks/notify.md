@@ -22,6 +22,7 @@
   - `API_PUBLIC_URL`: what Slack calls.
   - `APP_BASE_URL`: links in messages.
 - **Setup:** Admin › Slack has the steps and the app manifest. Create the app from the manifest, install it, invite the bot to its channels, set the env, then Link and send a test.
-- **Topics:** the notify worker now also takes `alert.changed` (it edits posted alert messages) and `slack.test`.
+- **Topics:** the notify worker takes the topics `OUTBOX_TOPICS` gives it (`packages/domain/src/outbox-topics.ts`): alerts, `approval.changed`, `approval.reminded`, `thread.changed` and `slack.test`.
+- **Approval direct messages (S-004):** each approver of the step a request waits on gets a direct message (on request, escalation and each completed step), recorded in `slack_message` and edited like the channel post; the requester gets the outcome unless they acted themselves; `approval.reminded` sends the approvers a new one. `settings.slack.dms = false` turns these off (mentions are still sent). A person gets them only if their BudgetOS email matches their Slack email.
 - **`slack_message`** records the posted messages it edits. Losing it only means later changes post nothing instead of editing.
 - **"Your Slack profile has no email…" / "No active Budget OS account…":** the Slack user's email doesn't match a Budget OS user. Add them in Admin › Roles with the same email.

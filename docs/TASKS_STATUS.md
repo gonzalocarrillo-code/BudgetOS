@@ -497,10 +497,10 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is me
 | S-002 | S1 | Slack apps and the runbook: the Slack-side steps and scopes, the access model, the dev app through the tunnel, the checklist against the owner's Slack | blocked (built: `docs/runbooks/slack.md`, the manifest with exactly five scopes and no `chat:write.public`, `pnpm -s slack:manifest --url …`, BudgetOS on the Slack surface, setup copy. The live checklist, runbook §5, waits on the Slack app, which only the owner can create) |
 | S-003 | S1 | Every request type posts on creation (bulk commit and the structural requests: split, merge, end, reintroduce, import, dates) | done (`approval.requested` audit + `approval.changed` outbox in the creating transaction; the roll-up skips it, since the `budget.changed` written with it already refreshed those envelopes) |
 | S-015 | S1 | GCP hosting: Secret Manager, the non-IAP path for `/api/v1/slack/*`, Pub/Sub topics and push subscriptions, `min_instances`, the staging app | blocked on T-008 |
-| S-004 | S2 | DMs to approvers and requesters, recorded and edited; the `dms` toggle; `/budget remind` | pending |
-| S-005 | S2 | Request changes button and form; the richer approval card with `#id` | pending |
-| S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | pending |
-| S-007 | S2 | `/budget approve`, `reject`, `changes`, `withdraw`, `show #id`; id resolution | pending |
+| S-004 | S2 | DMs to approvers and requesters, recorded and edited; the `dms` toggle; `/budget remind` | done (the step's approvers get a DM on request, escalation and each completed step, and the requester the outcome; in-app follows completed steps too. `remindApprovers` writes `approval.reminded`, once an hour; `/budget remind #id` is wired with the other commands in S-007) |
+| S-005 | S2 | Request changes button and form; the richer approval card with `#id` | done (the card shows the budget's path, dates, the requester's reason, the change with its percentage, the step of how many and `#id`; bulk requests read as Split, Merge, End…; refused form input shows its first problem. Snooze stays a week, decision S8) |
+| S-006 | S2 | `/budget approvals` with buttons; `response_url` replacement of ephemeral messages | done (ADR-065: the API answers only the interaction it handles, through its hooks.slack.com response_url; a refused one leaves the action standing and says so) |
+| S-007 | S2 | `/budget approve`, `reject`, `changes`, `withdraw`, `show #id`; id resolution | done (`parseSlackCommand` in @budget/domain; `#id`, the full id or a pasted link; `remind` wired here; a card's buttons update the card) |
 | S-008 | S3 | `/budget` summary from `getHome` | pending |
 | S-009 | S3 | `/budget <name>` card, `/budget list [text]`, disambiguation | pending |
 | S-010 | S3 | Workspace choice by channel, `/budget workspace`, the remembered link in `app_user.settings` | pending |
@@ -519,8 +519,8 @@ Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The 
 | HO-002 | G1 | `PaceBar`, `StatTile`, `HeadlineStrip`, `AsOfChip`, `PaceLegend` in `@budget/ui`; pace band tokens (AA in both themes); `formatMoneyCompact` | done |
 | HO-003 | G1 | Pace as of the data: coverage per source grain, `elapsedThrough` in both planner dialects, as-of chip, stale banner | done (ADR-062) |
 | HO-004 | G1 | Short country names; the ISO name kept as the external id `iso_name`; migration `20261008000000_short_country_labels` | done |
-| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-063) |
-| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-063) |
+| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-065) |
+| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-065) |
 | HO-007 | G2 | Decide from Home in a side sheet; the approval detail parts shared with the request page | done |
 | HO-008 | G2 | Home steps in the planner, approver and finance tours; strings; status rows | done |
 | HO-009 | G3 | `ahead_of_plan_abs` (actual − budget in period × time gone) in both planner dialects, derived at query time | done (ADR-064) |

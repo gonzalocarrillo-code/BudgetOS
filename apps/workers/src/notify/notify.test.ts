@@ -206,7 +206,7 @@ describe("Slack bot: buttons, routing and keeping messages current (feedback 202
     const slack = new RecordingSlack();
     const id = await request();
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
-    expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
+    expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.changes"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
     await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "approve" } });
     const res = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
     expect(res.posted).toEqual([]);
@@ -236,3 +236,106 @@ describe("in-app delivery for alerts and approvals", () => {
     expect((await notifications(u.approver)).map((n) => n.kind)).toEqual(["approval_requested"]); // the decider is not told about their own decision
   });
 });
+
+/** Every user of the fixture is in Slack as U-<name>; a direct message goes to D-<slack user>. */
+class DmSlack implements SlackClient {
+  sent: Array<{ channel: string; ts: string; text: string; blocks: unknown[] }> = [];
+  edits: Array<{ channel: string; ts: string; text: string }> = [];
+  async postMessage(m: { channel: string; text: string; blocks?: unknown[] }) {
+    const ref = { channel: m.channel.replace(/^#/, "C-"), ts: `${Date.now()}.${this.sent.length}` };
+    this.sent.push({ ...ref, text: m.text, blocks: m.blocks ?? [] });
+    return ref;
+  }
+  async updateMessage(m: { channel: string; ts: string; text: string }) {
+    this.edits.push({ channel: m.channel, ts: m.ts, text: m.text });
+  }
+  async lookupUserByEmail(email: string) {
+    return `U-${email.split("-")[0]}`;
+  }
+  async openDm(slackUserId: string) {
+    return `D-${slackUserId}`;
+  }
+}
+
+describe("direct messages to approvers and requesters (S-004)", () => {
+  const more = { approver2: randomUUID(), finance: randomUUID() };
+  const recorded = (requestId: string) => owner.$queryRawUnsafe<Array<{ channel: string }>>(`SELECT channel FROM slack_message WHERE entity_id = $1::uuid ORDER BY channel`, requestId);
+  beforeAll(async () => {
+    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST" } } } });
+    await owner.user.createMany({ data: Object.entries(more).map(([k, id]) => ({ id, orgId, email: `${k}-${id}@t021.test`, name: `Name ${k}`, googleSub: `g-${id}` })) });
+    await owner.roleAssignment.createMany({
+      data: [
+        { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: more.approver2, role: "APPROVER", createdBy: u.planner },
+        { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: more.finance, role: "FINANCE", createdBy: u.planner },
+      ],
+    });
+  });
+  afterAll(async () => {
+    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops" } } } });
+  });
+
+  it("a new request goes to the channel and to each approver of its step, and its outcome edits them all and tells the requester", async () => {
+    const slack = new DmSlack();
+    const id = await request();
+    await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
+    expect(slack.sent.map((m) => m.channel).sort()).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
+    expect(JSON.stringify(slack.sent.find((m) => m.channel === "D-U-approver")?.blocks)).toContain('"action_id":"approval.approve"');
+    expect((await recorded(id)).map((r) => r.channel)).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
+
+    await owner.approvalRequest.update({ where: { id }, data: { status: "APPROVED" } });
+    await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 0, decidedBy: u.approver, decision: "approve" } });
+    await owner.$executeRawUnsafe(`INSERT INTO audit_event (id, workspace_id, actor_id, actor_type, action, entity_type, entity_id, after, request_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', 'approval.approve', 'approval_request', $4::uuid, '{}'::jsonb, 's004')`, randomUUID(), ws, u.approver, id);
+    const outcome = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
+    expect(slack.edits.map((e) => e.channel).sort()).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
+    expect(slack.edits.every((e) => e.text === "✅ Approved: BR Meta")).toBe(true);
+    // The requester hears the outcome; the approver who decided does not.
+    expect(outcome.posted.map((o) => o.channel)).toEqual(["D-U-planner"]);
+  });
+
+  it("an approval that completes its step edits the posts and tells the next step's approvers", async () => {
+    const slack = new DmSlack();
+    const id = await request();
+    await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
+    await owner.approvalRequest.update({ where: { id }, data: { currentStep: 1 } });
+    const advanced = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "PENDING", step: 0 }));
+    expect(advanced.posted.map((o) => o.channel)).toEqual(["D-U-finance"]);
+    expect(slack.edits.map((e) => e.channel).sort()).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
+    // A second approval on a step that needs more is nothing new.
+    const waiting = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "PENDING", step: 1 }));
+    expect(waiting.posted).toEqual([]);
+  });
+
+  it("a reminder sends the current step's approvers a new direct message", async () => {
+    const slack = new DmSlack();
+    const id = await request();
+    await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
+    const reminded = await handleSlackEvent(app, slack, await event("approval.reminded", { requestId: id, step: 0, by: u.planner }));
+    expect(reminded.posted.map((o) => o.channel).sort()).toEqual(["D-U-approver", "D-U-approver2"]);
+    expect(reminded.posted[0]?.message.text).toMatch(/^⏰ Reminder/);
+    expect(slack.edits).toEqual([]);
+  });
+
+  it("with direct messages turned off, only the channel hears of it", async () => {
+    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST", dms: false } } } });
+    try {
+      const slack = new DmSlack();
+      const id = await request();
+      await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
+      expect(slack.sent.map((m) => m.channel)).toEqual(["C-budget-ops"]);
+    } finally {
+      await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST" } } } });
+    }
+  });
+
+  it("in the app too: the next step's approvers when a step completes, and the approvers again on a reminder", async () => {
+    const id = await request();
+    await owner.approvalRequest.update({ where: { id }, data: { currentStep: 1 } });
+    await handleInApp(app, await event("approval.changed", { requestId: id, action: "approval.approve", status: "PENDING", step: 0 }));
+    expect((await notifications(more.finance)).map((n) => n.kind)).toEqual(["approval_requested"]);
+    const second = await request();
+    const before = (await notifications(more.approver2)).length;
+    await handleInApp(app, await event("approval.reminded", { requestId: second, step: 0, by: u.planner }));
+    expect((await notifications(more.approver2)).length).toBe(before + 1);
+  });
+});
+

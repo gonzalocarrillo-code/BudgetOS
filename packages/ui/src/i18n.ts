@@ -183,6 +183,8 @@ const en = {
   "slack.severities": "Severities for the alerts channel",
   "slack.severitiesHelp": "Without an alerts channel, only critical alerts post (to the default channel).",
   "slack.approvals": "Approve and Reject buttons on approval requests",
+  "slack.dms": "Direct messages to approvers and requesters",
+  "slack.dmsHelp": "Each approver of the step a request waits on gets it in Slack, with the buttons; the requester hears the outcome. Mentions are always sent.",
   "slack.save": "Save",
   "slack.saved": "Slack settings saved.",
   "slack.test": "Test message",
