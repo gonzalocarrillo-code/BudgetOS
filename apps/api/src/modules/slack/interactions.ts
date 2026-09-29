@@ -12,6 +12,7 @@ import { slackResponder } from "./respond.js";
 import { slackApi } from "./slack-api.js";
 import { approvalsReply, requestCard } from "./slash/approvals.js";
 import { budgetCardReply } from "./slash/budgets.js";
+import { requestFormFor, submitRequest } from "./slash/request.js";
 import { changesForm, messageModal, messageOf, rejectForm, reply } from "./views.js";
 
 /**
@@ -57,6 +58,8 @@ const ACTIONS: Record<SlackActionId, { permission: RoutePermission; done?: false
   "approval.changes": { permission: "approval.decide", done: false, run: async (c) => openView(c.payload, changesForm(withReply(c))) },
   // S-010: answer /budget for this workspace from now on (the person must hold a role in it).
   "workspace.use": { permission: "workspace.member", done: false, run: async (c) => useWorkspace(c) },
+  // S-011: the request form for this budget (from its card, or a "which one?" choice).
+  "budget.request": { permission: "envelope.edit_draft", done: false, run: async (c) => openView(c.payload, await requestFormFor(c.prisma, c.auth, c.value.ws, c.value.id)) },
   // S-009: one budget of a "which one?" choice; its card replaces the choice.
   "budget.show": { permission: "envelope.read", done: false, run: async (c) => showBudget(c) },
   "alert.acknowledge": { permission: "envelope.edit_draft", run: async (c) => void (await updateAlert(c.prisma, c.auth, c.value.id, { status: "ACKNOWLEDGED" })) },
@@ -80,8 +83,9 @@ async function showBudget(c: Clicked): Promise<void> {
 }
 
 /** Every form (view_submission, by callback_id): the field its errors show under, its permission, and the action it finishes. */
-const FORMS: Record<string, { permission: RoutePermission; field: string; action: SlackActionId; submit: (c: Clicked, fields: (block: string) => string) => Promise<void> }> = {
+const FORMS: Record<string, { permission: RoutePermission; field: string; action: SlackActionId; submit: (c: Clicked, fields: (block: string) => string) => Promise<Record<string, unknown> | void> }> = {
   "approval.reject": { permission: "approval.decide", field: "reason", action: "approval.reject", submit: async (c, fields) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "reject", comment: fields("reason"), channel: "slack" })) },
+  "budget.request": { permission: "envelope.edit_draft", field: "amount", action: "budget.request", submit: async (c, fields) => submitRequest(c.prisma, c.auth, c.payload.view?.private_metadata, fields) },
   "approval.changes": { permission: "approval.decide", field: "comment", action: "approval.changes", submit: async (c, fields) => void (await decide(c.prisma, c.auth, c.value.id, { decision: "request_changes", comment: fields("comment"), channel: "slack" })) },
 };
 
@@ -128,13 +132,15 @@ export async function handleInteraction(prisma: PrismaClient, deps: SlackDeps, r
     const value = SlackActionValue.parse(JSON.parse(p.view?.private_metadata ?? "{}"));
     const fields = (block: string) => p.view?.state?.values?.[block]?.[block]?.value?.trim() ?? "";
     let auth: AuthContext;
+    let answer: Record<string, unknown> | void;
     try {
       auth = await slackAuth(prisma, deps, value.ws, p.team.id, p.user.id);
       authorize(auth, form.permission);
-      await form.submit({ prisma, auth, value, payload: p }, fields);
+      answer = await form.submit({ prisma, auth, value, payload: p }, fields);
     } catch (e) {
       return { response_action: "errors", errors: { [form.field]: messageOf(e) } };
     }
+    if (answer) return answer;
     return (await replaceOrigin(prisma, auth, value, value.r, form.action)) ? {} : { response_action: "update", view: messageModal("BudgetOS", NOT_REFRESHED) };
   }
   if (p.type !== "block_actions") return {};

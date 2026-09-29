@@ -504,7 +504,7 @@ Plan: `docs/SLACK_TOOLSET_PLAN.md`. The bot from round 3 (ADR-046, PR #71) is me
 | S-008 | S3 | `/budget` summary from `getHome` | done (read through one adapter, `fromHome`, so Home's rework reaches Slack in one place; a scope that holds no budget reads "Nothing to show yet") |
 | S-009 | S3 | `/budget <name>` card, `/budget list [text]`, disambiguation | done (a budget named exactly as typed wins over search, whose ranking does not favour exact names; the numbers are the planner's over the budget's own dates) |
 | S-010 | S3 | Workspace choice by channel, `/budget workspace`, the remembered link in `app_user.settings` | done (the channel, else the saved choice, else the only or first workspace; `app_user.settings` written only by `app_set_my_slack_settings`. The Slack-id lookup was left out, ADR-065) |
-| S-011 | S4 | `/budget request <name>`: draft + submit in one transaction, from a Slack form | pending |
+| S-011 | S4 | `/budget request <name>`: draft + submit in one transaction, from a Slack form | done (`submitDraft`; the amount and the reason only, decision S5; a stale form, a waiting budget and a parent's cap are refused in the form) |
 | S-012 | S5 | Deferred replies within Slack's three seconds; Slack call timeouts | pending (optional) |
 | S-013 | S5 | App Home tab through the Events API | pending (decision S6) |
 | S-014 | S5 | ADR-060, runbooks, `LOCAL_BUILD_PHASES.md`, OpenAPI regenerated | pending |

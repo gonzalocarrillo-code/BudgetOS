@@ -9,6 +9,7 @@ import { slackApi } from "../slack-api.js";
 import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
 import { budgetReply, listReply } from "./budgets.js";
+import { requestReply } from "./request.js";
 import { summaryReply } from "./summary.js";
 import { workspaceReply } from "./workspace.js";
 
@@ -32,6 +33,7 @@ export const HELP = [
   "• `/budget search <text>` — budgets, approvals, alerts, targets",
   "• `/budget <budget name>` — a budget's card: amount, spend, projected, pace, what waits on it",
   "• `/budget list [text]` — the top-level budgets this fiscal year, or those matching the text",
+  "• `/budget request <budget name>` — a form to send a new amount for approval",
   "• `/budget workspace [name]` — which workspace /budget answers for, and choosing another",
 ].join("\n");
 
@@ -98,7 +100,7 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
       case "workspace":
         return await workspaceReply(prisma, chosen, cmd.text);
       case "request":
-        return reply(HELP);
+        return await requestReply(prisma, auth, ws, cmd.text, body["trigger_id"], footer);
     }
   } catch (e) {
     return reply(`:no_entry: ${messageOf(e)}`);

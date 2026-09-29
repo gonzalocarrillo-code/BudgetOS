@@ -39,6 +39,18 @@ export const CreateDraftVersionInput = z.object({
 });
 export type CreateDraftVersionInput = z.infer<typeof CreateDraftVersionInput>;
 
+/**
+ * A new amount and why, drafted and sent for approval in one step (S-011, from Slack): the same
+ * draft as PATCH /envelopes/:id/draft and the same submission as POST /envelopes/:id/submit.
+ */
+export const SubmitDraftInput = z.object({
+  amount: MoneyString.refine((a) => !a.startsWith("-"), "A budget is not negative"),
+  rationale: z.string().trim().min(3, "Say why, in a few words").max(4000),
+  /** Optimistic concurrency: the version the person saw (draft ?? current), null for none. */
+  basedOnVersionId: z.string().uuid().nullable(),
+});
+export type SubmitDraftInput = z.infer<typeof SubmitDraftInput>;
+
 /** PATCH /envelopes/:id/phasing: re-phase the head version's amount into a new draft. */
 export const UpdatePhasingInput = z.object({
   phasing: z.array(PhasingEntry).min(1),

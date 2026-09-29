@@ -66,7 +66,9 @@ Admin › Slack → *Link to Slack* (records the team from `auth.test`) → set 
 - [ ] Reject asks for a reason; the requester sees it in the app.
 - [ ] Request changes asks what should change; the budget gets a blocking thread the requester resolves before sending it again.
 - [ ] A VIEWER clicking Approve gets a private refusal; nothing changes.
-- [ ] `/budget help`, `/budget alerts`, `/budget <budget name>` answer, privately.
+- [ ] `/budget help`, `/budget`, `/budget approvals`, `/budget alerts`, `/budget <budget name>` answer, privately.
+- [ ] `/budget request <budget name>` as a planner: the form opens; sending it creates a request, posted to the channel and sent to its approvers by direct message.
+- [ ] `/budget approve #id` from an approver decides it; the channel post and the direct messages change to Approved.
 - [ ] An unsigned or stale request to `/api/v1/slack/commands` is refused (403 in the API log).
 
 ```sql
@@ -103,6 +105,7 @@ The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_P
 | `/budget alerts` | open alerts you can see |
 | `/budget search <text>` | budgets, approvals, alerts, targets |
 | `/budget <budget name>` | the budget's card: where it sits, budget, spent, projected and pace over its dates, its open request and alerts. Several matches give a choice |
+| `/budget request <budget name>` | a form for the budget's new amount and why; it goes through the approval policy (an admin's own change applies at once). A budget's card has the same "Request a change" button for people who may send one |
 | `/budget workspace [name]` | which workspace answers you, with a button for each of yours; with a name, answer for that one from now on (a workspace's own channel still answers for it) |
 | `/budget list [text]` | the top-level budgets this fiscal year (or yours, for a scoped role), or the budgets matching the text |
 
