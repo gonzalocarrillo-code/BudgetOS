@@ -16,12 +16,15 @@ test("an admin sets where alerts and approvals post; a planner sees why not", as
   await page.getByTestId("slack-default-channel").fill("#budget-ops");
   await page.getByTestId("slack-alert-channel").fill("#budget-alerts");
   await page.getByTestId("slack-sev-warning").check();
+  await expect(page.getByTestId("slack-dms")).toBeChecked(); // S-004: on unless turned off
+  await page.getByTestId("slack-dms").uncheck();
   await page.getByTestId("slack-save").click();
   await expect(page.getByTestId("slack-notice")).toHaveText("Slack settings saved.");
   await page.reload();
   await expect(page.getByTestId("slack-default-channel")).toHaveValue("#budget-ops");
   await expect(page.getByTestId("slack-alert-channel")).toHaveValue("#budget-alerts");
   await expect(page.getByTestId("slack-sev-warning")).toBeChecked();
+  await expect(page.getByTestId("slack-dms")).not.toBeChecked();
 
   await as(page, "planner");
   await page.goto(`/w/${state().workspaceId}/admin/slack`);

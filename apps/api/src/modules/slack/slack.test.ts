@@ -65,7 +65,11 @@ describe("Slack settings", () => {
     expect((await as("planner", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget" })).status).toBe(403);
     const set = await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], link: true });
     expect(set.status, JSON.stringify(set.body)).toBe(200);
-    expect(set.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack", defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"] });
+    expect(set.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack", defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], dms: true });
+    // S-004: direct messages to approvers and requesters can be turned off, and back on.
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { dms: false })).body).toMatchObject({ dms: false, defaultChannel: "#budget" });
+    expect(((await as("planner", "GET", `/workspaces/${golden.workspaceId}/integrations/slack`)).body["settings"] as { dms: boolean }).dms).toBe(false);
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { dms: true })).body).toMatchObject({ dms: true });
     const test = await as("admin", "POST", `/workspaces/${golden.workspaceId}/integrations/slack/test`, {});
     expect(test.body).toMatchObject({ queued: true, channel: "#budget" });
     const [q] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'slack.test'`, golden.workspaceId);

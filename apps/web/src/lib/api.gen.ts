@@ -9339,6 +9339,7 @@ export interface operations {
                     alertChannel?: string | null;
                     alertSeverities?: ("info" | "warning" | "critical" | "data")[];
                     approvals?: boolean;
+                    dms?: boolean;
                     link?: boolean;
                 };
             };

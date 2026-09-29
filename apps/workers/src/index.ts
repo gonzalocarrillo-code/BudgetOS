@@ -7,10 +7,12 @@ export { breaches, evaluateWorkspace, metricValue, streak } from "./pacing/evalu
 export type { EvaluateResult } from "./pacing/evaluate.js";
 export { runPacing } from "./pacing/main.js";
 export { IN_APP_CONSUMER, handleInApp, handleThreadChanged } from "./notify/in-app.js";
-export { SLACK_CONSUMER, WebApiSlack, approvalKind, handleSlackEvent, slackFromEnv } from "./notify/slack.js";
+export { SLACK_CONSUMER, WebApiSlack, handleSlackEvent, slackConfigWarnings, slackFromEnv } from "./notify/slack.js";
+export { approvalKind, stepApprovers } from "./notify/approvals.js";
+export type { ApprovalKind } from "./notify/approvals.js";
 export type { Outgoing, SlackClient } from "./notify/slack.js";
 export { alertMessage } from "./notify/blocks/alert.js";
-export { approvalMessage } from "./notify/blocks/approval.js";
+export { approvalMessage, approvalReminder } from "./notify/blocks/approval.js";
 export { mentionMessage, renderBody } from "./notify/blocks/mention.js";
 export { BUILDERS, periodKey } from "./search-indexer/documents.js";
 export type { IndexContext, IndexedType } from "./search-indexer/documents.js";

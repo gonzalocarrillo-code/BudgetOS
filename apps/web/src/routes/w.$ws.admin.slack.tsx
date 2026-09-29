@@ -20,7 +20,7 @@ export const Route = createFileRoute("/w/$ws/admin/slack")({ component: SlackPag
 const SEVERITIES = ["critical", "warning", "info", "data"] as const;
 const Settings = z.object({
   connected: z.object({ botToken: z.boolean(), signingSecret: z.boolean() }),
-  settings: z.object({ teamId: z.string().optional(), teamName: z.string().optional(), defaultChannel: z.string().optional(), alertChannel: z.string().optional(), alertSeverities: z.array(z.string()).default(["critical"]), approvals: z.boolean().default(true) }),
+  settings: z.object({ teamId: z.string().optional(), teamName: z.string().optional(), defaultChannel: z.string().optional(), alertChannel: z.string().optional(), alertSeverities: z.array(z.string()).default(["critical"]), approvals: z.boolean().default(true), dms: z.boolean().default(true) }),
   urls: z.object({ interactions: z.string(), commands: z.string() }),
   manifest: z.record(z.string(), z.unknown()),
 });
@@ -56,6 +56,7 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
   const [alertChannel, setAlertChannel] = useState(s.alertChannel ?? "");
   const [severities, setSeverities] = useState<string[]>(s.alertSeverities);
   const [approvals, setApprovals] = useState(s.approvals);
+  const [dms, setDms] = useState(s.dms);
   const [testChannel, setTestChannel] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const connected = data.connected.botToken && data.connected.signingSecret;
@@ -112,7 +113,7 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
             className="flex flex-col gap-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!saveWhy) save.mutate({ defaultChannel: defaultChannel.trim() || null, alertChannel: alertChannel.trim() || null, alertSeverities: severities, approvals });
+              if (!saveWhy) save.mutate({ defaultChannel: defaultChannel.trim() || null, alertChannel: alertChannel.trim() || null, alertSeverities: severities, approvals, dms });
             }}
             data-testid="slack-routing"
           >
@@ -137,6 +138,13 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={approvals} onChange={(e) => setApprovals(e.target.checked)} data-testid="slack-approvals" />
               {t("slack.approvals")}
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={dms} onChange={(e) => setDms(e.target.checked)} data-testid="slack-dms" />
+              <span>
+                {t("slack.dms")}
+                <span className="block text-xs text-muted-foreground">{t("slack.dmsHelp")}</span>
+              </span>
             </label>
             {save.error ? <p role="alert" className="text-sm text-destructive">{save.error.message}</p> : null}
             {notice ? <p role="status" className="text-sm text-success" data-testid="slack-notice">{notice}</p> : null}

@@ -52,6 +52,7 @@ export async function updateSlackSettings(prisma: PrismaClient, auth: AuthContex
     }
     if (input.alertSeverities !== undefined) next["alertSeverities"] = input.alertSeverities;
     if (input.approvals !== undefined) next["approvals"] = input.approvals;
+    if (input.dms !== undefined) next["dms"] = input.dms;
     if (team) {
       next["teamId"] = team.id;
       next["teamName"] = team.name;

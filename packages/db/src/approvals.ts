@@ -49,3 +49,20 @@ export async function lockParentCap(
     WHERE c.parent_id = ${parentId}::uuid AND c.id <> ${excludeChildId}::uuid`;
   return { allowOverAllocation: parent.allow, parentAmount: parent.amount, siblingsSum: sib?.s ?? "0" };
 }
+
+/** When a request last had an audit event of this action (a reminder, S-004), or null. */
+export async function lastRequestAuditAt(tx: Tx, requestId: string, action: string): Promise<Date | null> {
+  const [row] = await tx.$queryRaw<Array<{ at: Date | null }>>`
+    SELECT max(occurred_at) AS at FROM audit_event
+    WHERE entity_type = 'approval_request' AND entity_id = ${requestId}::uuid AND action = ${action}`;
+  return row?.at ?? null;
+}
+
+/** Who made the latest audited change to an entity (the decider, the one who withdrew), or null. */
+export async function lastActorId(tx: Tx, entityType: string, entityId: string): Promise<string | null> {
+  const [row] = await tx.$queryRaw<Array<{ actor: string | null }>>`
+    SELECT actor_id::text AS actor FROM audit_event
+    WHERE entity_type = ${entityType} AND entity_id = ${entityId}::uuid
+    ORDER BY occurred_at DESC LIMIT 1`;
+  return row?.actor ?? null;
+}

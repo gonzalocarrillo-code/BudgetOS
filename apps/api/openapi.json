@@ -18085,6 +18085,9 @@
                   "approvals": {
                     "type": "boolean"
                   },
+                  "dms": {
+                    "type": "boolean"
+                  },
                   "link": {
                     "type": "boolean"
                   }

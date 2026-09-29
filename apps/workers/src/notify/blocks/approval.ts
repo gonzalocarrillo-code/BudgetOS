@@ -56,3 +56,11 @@ export function approvalMessage(a: ApprovalMessageInput): SlackMessage {
     ],
   };
 }
+
+/** A reminder (S-004): the request's message, led by who sent it; posted to each approver as a new direct message. */
+export function approvalReminder(m: SlackMessage, byName: string | null): SlackMessage {
+  return {
+    text: `⏰ Reminder: ${m.text}`,
+    blocks: [context(`⏰ ${byName ? `${esc(byName)} sent a reminder` : "A reminder"}: this request is waiting on you.`), ...m.blocks],
+  };
+}

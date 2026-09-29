@@ -1,6 +1,6 @@
 # Runbook: the Slack bot
 
-The bot posts alerts and approval requests, and people act from Slack as their own Budget OS account: Approve and Reject on requests; Acknowledge, Snooze and Resolve on alerts; `/budget` for answers. Design: ADR-046 and `docs/SLACK_TOOLSET_PLAN.md`. Delivery and in-app notifications: `docs/runbooks/notify.md`.
+The bot posts alerts and approval requests, sends each request to its approvers and its outcome to the requester by direct message, and people act from Slack as their own BudgetOS account: Approve and Reject on requests; Acknowledge, Snooze and Resolve on alerts; `/budget` for answers. Design: ADR-046 and `docs/SLACK_TOOLSET_PLAN.md`. Delivery and in-app notifications: `docs/runbooks/notify.md`.
 
 ## 1. Create the Slack app (once per environment)
 
@@ -14,7 +14,7 @@ One Slack app per Budget OS environment: **BudgetOS (dev)** for a laptop through
 |---|---|---|
 | `commands` | the `/budget` command | the slash-command payload |
 | `chat:write` | posting and editing channel posts and direct messages | `chat.postMessage`, `chat.update` |
-| `im:write` | direct messages to mentioned people | `chat.postMessage` to a user id |
+| `im:write` | direct messages to approvers, requesters and mentioned people | `conversations.open`, then `chat.postMessage` there |
 | `users:read`, `users:read.email` | who clicked or typed, by their profile email; finding a person for a direct message | `users.info`, `users.lookupByEmail` |
 
    No scope is needed for `auth.test` (linking) or `views.open` (the forms). The bot does not have `chat:write.public`: it posts only in channels it was invited to.
@@ -54,7 +54,7 @@ One Slack team (the agency's) serves every Budget OS workspace: the golden demo,
 - **Access is Budget OS's, not Slack's.** The bot finds the person's account by their Slack email and applies that account's roles in the workspace being acted on, exactly as the app and MCP do. Someone with a role only in OpenAI sees and does nothing in the golden workspace from Slack ("No role in this workspace"). A superadmin sees every workspace, and their audit rows say `superadmin`.
 - **A channel is readable by all its members**, whatever their roles. So each client workspace gets its own **private** channel (`#budget-openai`) with only that client's team, and a shared channel only for workspaces everyone in it may see.
 - **Invite the bot** to every channel it posts in: `/invite @BudgetOS`. For a private channel, paste its channel id (`C…`, from the channel's details) in Admin › Slack rather than its name.
-- Direct messages go only to the people a comment mentions.
+- Direct messages go only to the approvers of the step a request waits on (and again when someone sends a reminder), the requester when it is decided, and the people a comment mentions, all in their own workspace. Admin › Slack can turn the approval ones off.
 
 ## 5. Link, test, and the live checklist
 

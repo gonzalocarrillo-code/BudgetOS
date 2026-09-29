@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { alertMessage } from "./alert.js";
-import { approvalMessage } from "./approval.js";
+import { approvalMessage, approvalReminder } from "./approval.js";
 import { money } from "./common.js";
 import { mentionMessage, renderBody } from "./mention.js";
 
@@ -79,6 +79,12 @@ describe("approval blocks", () => {
     expect(approvalMessage({ ...request, kind: "changes_requested", deciderName: "Owner Olga", comment: "Split this by retailer\nbefore Q4" })).toMatchSnapshot());
   it("approved bulk change (no amounts)", () =>
     expect(approvalMessage({ ...request, kind: "approved", subject: "Bulk change (24 rows)", before: null, after: null, deciderName: "Finance Fay" })).toMatchSnapshot());
+  it("a reminder leads with who sent it (S-004)", () => {
+    const m = approvalReminder(approvalMessage({ ...request, kind: "requested", actions: true }), "Planner <Pat>");
+    expect(m.text).toBe("⏰ Reminder: 📝 Approval requested: BR Meta Conversion");
+    expect(m.blocks[0]).toEqual({ type: "context", elements: [{ type: "mrkdwn", text: "⏰ Planner &lt;Pat&gt; sent a reminder: this request is waiting on you." }] });
+    expect(m.blocks.slice(1)).toEqual(approvalMessage({ ...request, kind: "requested", actions: true }).blocks);
+  });
 });
 
 describe("mention blocks", () => {

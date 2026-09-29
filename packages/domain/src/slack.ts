@@ -26,6 +26,8 @@ export const SlackSettings = z.object({
   alertSeverities: z.array(SlackSeverity).max(4).default(["critical"]),
   /** Approval requests post with Approve / Reject buttons. */
   approvals: z.boolean().default(true),
+  /** Direct messages: a request's approvers when it waits on them, its requester on the outcome (S-004). */
+  dms: z.boolean().default(true),
 });
 export type SlackSettings = z.infer<typeof SlackSettings>;
 
@@ -36,6 +38,7 @@ export const UpdateSlackSettingsInput = z
     alertChannel: Channel.nullable().optional(),
     alertSeverities: z.array(SlackSeverity).max(4).optional(),
     approvals: z.boolean().optional(),
+    dms: z.boolean().optional(),
     /** Link this workspace to the bot's Slack team (read with auth.test). */
     link: z.boolean().optional(),
   })
