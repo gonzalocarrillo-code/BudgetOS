@@ -66,3 +66,15 @@ export async function lastActorId(tx: Tx, entityType: string, entityId: string):
     ORDER BY occurred_at DESC LIMIT 1`;
   return row?.actor ?? null;
 }
+
+/**
+ * Requests of the current workspace (row-level security) whose id ends with these eight hex
+ * characters, newest first: the short id Slack shows (S-007). Almost always one.
+ */
+export async function approvalRequestsBySuffix(tx: Tx, suffix: string, limit = 5): Promise<Array<{ id: string; summary: string; status: string }>> {
+  if (!/^[0-9a-f]{8}$/.test(suffix)) return [];
+  return tx.$queryRaw<Array<{ id: string; summary: string; status: string }>>`
+    SELECT id::text AS id, summary, status::text AS status FROM approval_request
+    WHERE right(id::text, 8) = ${suffix}
+    ORDER BY requested_at DESC LIMIT ${limit}`;
+}

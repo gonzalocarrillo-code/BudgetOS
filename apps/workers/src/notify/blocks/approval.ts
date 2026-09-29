@@ -25,6 +25,8 @@ export interface ApprovalMessageInput {
   period?: { start: string; end: string } | null;
   rationale?: string | null;
   step?: { index: number; count: number } | null;
+  /** The private message its buttons sit on (S-007: a /budget show card), so the API replaces it after acting. */
+  origin?: "list" | "card";
 }
 
 const TITLE: Record<ApprovalMessageInput["kind"], string> = {
@@ -63,7 +65,11 @@ export function approvalMessage(a: ApprovalMessageInput): SlackMessage {
         type: "actions",
         elements: [
           ...(a.actions && open
-            ? [actionButton("Approve", "approval.approve", a.workspaceId, a.requestId, "primary"), actionButton("Request changes", "approval.changes", a.workspaceId, a.requestId), actionButton("Reject", "approval.reject", a.workspaceId, a.requestId, "danger")]
+            ? [
+                actionButton("Approve", "approval.approve", a.workspaceId, a.requestId, "primary", a.origin),
+                actionButton("Request changes", "approval.changes", a.workspaceId, a.requestId, undefined, a.origin),
+                actionButton("Reject", "approval.reject", a.workspaceId, a.requestId, "danger", a.origin),
+              ]
             : []),
           button(open ? "Review" : "Open", url, "open_approval", a.actions ? undefined : "primary"),
         ],

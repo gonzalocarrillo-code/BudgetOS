@@ -95,9 +95,15 @@ The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_P
 |---|---|
 | `/budget help` | this list |
 | `/budget approvals` | the requests waiting on you, with Approve / Request changes / Reject; acting replaces the list with what is left |
+| `/budget show #a1b2c3d4` | one request as a card: buttons if you may decide it, the reason if not |
+| `/budget approve #a1b2c3d4 [comment]` | approves your step |
+| `/budget reject #a1b2c3d4 <why>` · `changes #a1b2c3d4 <what>` | rejects, or returns it for changes (the reason is required) |
+| `/budget withdraw #a1b2c3d4` · `remind #a1b2c3d4` | your own request: withdraw it, or remind its approvers (once an hour) |
 | `/budget alerts` | open alerts you can see |
 | `/budget search <text>` | budgets, approvals, alerts, targets |
 | `/budget <budget name>` | a budget's amount, spend and pace |
+
+A request's id is on every request message (`Request #a1b2c3d4`): the last eight characters of its full id. A pasted link to the request works too.
 
 A reply that says it could not be updated means Slack's link to that message expired (30 minutes, or five uses): the action stands; run the command again.
 

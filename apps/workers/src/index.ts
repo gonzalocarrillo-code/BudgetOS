@@ -7,7 +7,7 @@ export { breaches, evaluateWorkspace, metricValue, streak } from "./pacing/evalu
 export type { EvaluateResult } from "./pacing/evaluate.js";
 export { runPacing } from "./pacing/main.js";
 export { IN_APP_CONSUMER, handleInApp, handleThreadChanged } from "./notify/in-app.js";
-export { SLACK_CONSUMER, WebApiSlack, handleSlackEvent, slackConfigWarnings, slackFromEnv } from "./notify/slack.js";
+export { SLACK_CONSUMER, WebApiSlack, approvalCard, handleSlackEvent, slackConfigWarnings, slackFromEnv } from "./notify/slack.js";
 export { approvalKind, stepApprovers } from "./notify/approvals.js";
 export type { ApprovalKind } from "./notify/approvals.js";
 export type { Outgoing, SlackClient } from "./notify/slack.js";

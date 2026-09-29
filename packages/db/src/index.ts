@@ -30,7 +30,7 @@ export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts
 export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, ProjectionFactInput, RunCoverage, SpendFactInput, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
-export { eligibleApproverSql, lastActorId, lastRequestAuditAt, lockApprovalRequest, lockParentCap } from "./approvals.js";
+export { approvalRequestsBySuffix, eligibleApproverSql, lastActorId, lastRequestAuditAt, lockApprovalRequest, lockParentCap } from "./approvals.js";
 export type { LockedRequestRow } from "./approvals.js";
 export { DEFAULT_POLICIES } from "../seed/defaults.policies.js";
 export { DEFAULT_METRICS } from "../seed/defaults.metrics.js";

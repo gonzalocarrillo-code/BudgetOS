@@ -90,12 +90,12 @@ export interface Outgoing {
 }
 /** workspace.settings.slack (SlackSettings in @budget/domain). */
 interface SlackSettings {
-  defaultChannel?: string;
-  alertChannel?: string;
-  alertSeverities?: string[];
-  approvals?: boolean;
-  dms?: boolean;
-  teamId?: string;
+  defaultChannel?: string | undefined;
+  alertChannel?: string | undefined;
+  alertSeverities?: string[] | undefined;
+  approvals?: boolean | undefined;
+  dms?: boolean | undefined;
+  teamId?: string | undefined;
 }
 interface Settings {
   slack?: SlackSettings;
@@ -159,8 +159,8 @@ async function alertPosts(tx: Tx, event: OutboxEvent, p: Record<string, unknown>
   return [{ channel, message: built.message, about: { type: "alert", id: built.alert.id } }];
 }
 
-/** An approval event's message, for the request as it is now. */
-async function approvalMessageFor(tx: Tx, workspaceId: string, requestId: string, kind: ApprovalKind, comment: string | null, baseUrl: string, s: SlackSettings): Promise<SlackMessage | null> {
+/** An approval event's message, for the request as it is now. `extra` makes a private card (S-007): its buttons' origin, and whether to show them. */
+async function approvalMessageFor(tx: Tx, workspaceId: string, requestId: string, kind: ApprovalKind, comment: string | null, baseUrl: string, s: SlackSettings, extra: { origin?: "card"; actions?: boolean } = {}): Promise<SlackMessage | null> {
   const r = await tx.approvalRequest.findUnique({ where: { id: requestId }, include: { decisions: { orderBy: { decidedAt: "desc" }, take: 1 } } });
   if (r === null) return null;
   const snapshot = (r.policySnapshot ?? {}) as { policyName?: string; chain?: Array<{ role?: string }> };
@@ -208,7 +208,8 @@ async function approvalMessageFor(tx: Tx, workspaceId: string, requestId: string
     policyName: snapshot.policyName ?? "Policy",
     dueAt: r.dueAt?.toISOString() ?? null,
     comment,
-    actions: Boolean(s.teamId) && s.approvals !== false,
+    actions: extra.actions ?? (Boolean(s.teamId) && s.approvals !== false),
+    ...(extra.origin ? { origin: extra.origin } : {}),
     path,
     period,
     rationale,
@@ -218,6 +219,20 @@ async function approvalMessageFor(tx: Tx, workspaceId: string, requestId: string
 
 /** What a bulk change's request is called in Slack, by the kind of change (bulk_change.kind). */
 const BULK_LABEL: Record<string, string> = { edit: "Bulk change", split: "Split", merge: "Merge", end: "End a budget", reintroduce: "Reintroduce a budget", import: "Budget import", dates: "Change dates" };
+
+const KIND_OF_STATUS: Record<string, ApprovalKind> = { PENDING: "requested", ESCALATED: "escalated", APPROVED: "approved", REJECTED: "rejected", CHANGES_REQUESTED: "changes_requested", WITHDRAWN: "withdrawn" };
+
+/**
+ * A request as a private card (S-007, `/budget show #id`), read in the caller's transaction so row
+ * security applies: where it is now, with the last decision's comment, and the Approve / Request
+ * changes / Reject buttons when `actions` (the caller may decide it).
+ */
+export async function approvalCard(tx: Tx, workspaceId: string, requestId: string, baseUrl: string, settings: SlackSettings, opts: { actions: boolean }): Promise<SlackMessage | null> {
+  const r = await tx.approvalRequest.findUnique({ where: { id: requestId }, select: { status: true, decisions: { orderBy: { decidedAt: "desc" }, take: 1, select: { comment: true } } } });
+  if (r === null) return null;
+  const open = OPEN.includes(r.status);
+  return approvalMessageFor(tx, workspaceId, requestId, KIND_OF_STATUS[r.status] ?? "requested", open ? null : (r.decisions[0]?.comment ?? null), baseUrl, settings, { origin: "card", actions: opts.actions && open && settings.approvals !== false });
+}
 
 const OPEN = ["PENDING", "ESCALATED"];
 /** At most this many direct messages per event; a larger step is a group's job. */

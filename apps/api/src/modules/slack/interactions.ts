@@ -8,8 +8,8 @@ import { updateAlert } from "../pacing/rules.js";
 import { slackAuth, type SlackDeps } from "./identity.js";
 import { slackResponder } from "./respond.js";
 import { slackApi } from "./slack-api.js";
-import { approvalsReply } from "./slash/approvals.js";
-import { changesForm, messageModal, rejectForm } from "./views.js";
+import { approvalsReply, requestCard } from "./slash/approvals.js";
+import { changesForm, messageModal, messageOf, rejectForm } from "./views.js";
 
 /**
  * Buttons and forms (POST /slack/interactions, ADR-046). Each runs the app's command as the Slack
@@ -85,7 +85,7 @@ async function openView(p: InteractionPayload, view: Record<string, unknown>): P
 async function replaceOrigin(prisma: PrismaClient, auth: AuthContext, value: SlackActionValue, responseUrl: string | undefined, action: SlackActionId): Promise<boolean> {
   if (!value.o || !responseUrl) return true;
   const notice = `${DONE[action] ?? "Done"} · ${shortRequestId(value.id)}`;
-  const body = value.o === "list" ? await approvalsReply(prisma, auth, value.ws, { notice }) : null;
+  const body = value.o === "list" ? await approvalsReply(prisma, auth, value.ws, { notice }) : await requestCard(prisma, auth, value.ws, value.id, notice);
   if (body === null) return true;
   try {
     await slackResponder().respond(responseUrl, { replace_original: true, ...body });
@@ -95,17 +95,7 @@ async function replaceOrigin(prisma: PrismaClient, auth: AuthContext, value: Sla
   }
 }
 
-const NOT_REFRESHED = "Done. This list could not be updated: type `/budget approvals` for the list as it is now.";
-
-/** What to tell the person: the command's message, or, when the input was refused, its first problem ("Comment required…"). */
-export function messageOf(e: unknown): string {
-  if (e instanceof DomainError && e.code === "VALIDATION") {
-    const issues = e.details?.["issues"] as { formErrors?: string[]; fieldErrors?: Record<string, string[] | undefined> } | undefined;
-    const first = issues?.formErrors?.[0] ?? Object.values(issues?.fieldErrors ?? {}).flat()[0];
-    if (first) return first;
-  }
-  return e instanceof Error ? e.message : String(e);
-}
+const NOT_REFRESHED = "Done. This message could not be updated: run the command again to see where things are now.";
 
 /** One button click or form submission. Returns the HTTP body Slack expects. */
 export async function handleInteraction(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {

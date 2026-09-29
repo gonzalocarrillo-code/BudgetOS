@@ -347,3 +347,67 @@ describe("/budget approvals (S-006)", () => {
   });
 });
 
+describe("/budget decisions by a request's id (S-007)", () => {
+  const cmd = async (persona: string, text: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}` })).body;
+  const said = (body: Record<string, unknown>) => JSON.stringify(body);
+  const status = async (id: string) => (await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, id))[0]?.status;
+
+  it("approve #id decides as the person, with the comment, and says so", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("orgAdmin", `approve ${shortRequestId(id)} fits the plan`))).toContain(":white_check_mark: Approved");
+    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, id);
+    expect(d).toEqual({ decision: "approve", channel: "slack", comment: "fits the plan" });
+    expect(await status(id)).toBe("APPROVED");
+  });
+
+  it("reject and changes ask for the reason first, then decide", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("orgAdmin", `reject ${shortRequestId(id)}`))).toContain("Say why");
+    expect(await status(id)).toBe("PENDING");
+    expect(said(await cmd("orgAdmin", `reject ${shortRequestId(id)} over the Q1 cap`))).toContain(":no_entry: Rejected");
+    expect(await status(id)).toBe("REJECTED");
+    const other = await openRequest();
+    expect(said(await cmd("orgAdmin", `changes ${shortRequestId(other)}`))).toContain("Say what should change");
+    expect(said(await cmd("orgAdmin", `changes ${shortRequestId(other)} split it by month`))).toContain("Changes requested");
+    expect(await status(other)).toBe("CHANGES_REQUESTED");
+  });
+
+  it("remind and withdraw are the requester's; someone else is refused, as in the app", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("planner", `remind ${shortRequestId(id)}`))).toContain(":alarm_clock: Reminded the approvers of step 1");
+    expect(said(await cmd("planner", `remind ${shortRequestId(id)}`))).toContain("less than an hour ago");
+    expect(said(await cmd("budgetOwner", `withdraw ${shortRequestId(id)}`))).toContain("Only the requester or a workspace admin can withdraw");
+    expect(said(await cmd("approver", `withdraw ${shortRequestId(id)}`))).toContain("Missing permission envelope.submit");
+    expect(said(await cmd("planner", `withdraw ${shortRequestId(id)} not needed now`))).toContain(":wastebasket: Withdrew");
+    expect(await status(id)).toBe("WITHDRAWN");
+  });
+
+  it("show #id: buttons for someone who may decide it, the reason for someone who may not", async () => {
+    const id = await openRequest();
+    const card = await cmd("orgAdmin", `show ${shortRequestId(id)}`);
+    expect(said(card)).toContain('"action_id":"approval.approve"');
+    expect(said(card)).toContain('\\"o\\":\\"card\\"');
+    const own = await cmd("planner", `show ${shortRequestId(id)}`);
+    expect(said(own)).not.toContain('"action_id":"approval.approve"');
+    expect(said(own)).toContain("You cannot decide it: You made this change; someone else must approve it.");
+  });
+
+  it("takes a full id or a pasted link, and explains an unknown or missing one", async () => {
+    const id = await openRequest();
+    expect(said(await cmd("orgAdmin", `show <https://budgetos.example/w/${golden.workspaceId}/approvals/${id}|Review>`))).toContain(shortRequestId(id));
+    expect(said(await cmd("orgAdmin", `show ${id}`))).toContain(shortRequestId(id));
+    expect(said(await cmd("orgAdmin", "approve #00000000"))).toContain("No request #00000000 in this workspace");
+    expect(said(await cmd("orgAdmin", "approve brazil"))).toContain("Which request?");
+  });
+
+  it("a card's buttons update that card", async () => {
+    const id = await openRequest();
+    responses.length = 0;
+    await slack("interactions", { payload: JSON.stringify({ type: "block_actions", team: { id: TEAM }, user: { id: "U-orgAdmin" }, trigger_id: `trig-${randomUUID()}`, response_url: "https://hooks.slack.com/actions/T0GOLDEN1/2/card", actions: [{ action_id: "approval.approve", value: JSON.stringify({ ws: golden.workspaceId, id, o: "card" }) }] }) });
+    expect(await status(id)).toBe("APPROVED");
+    expect(responses[0]?.body).toMatchObject({ replace_original: true });
+    expect(JSON.stringify(responses[0]?.body)).toContain(`:white_check_mark: Approved · ${shortRequestId(id)}`);
+    expect(JSON.stringify(responses[0]?.body)).not.toContain('"action_id":"approval.approve"');
+  });
+});
+
