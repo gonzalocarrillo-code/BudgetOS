@@ -89,5 +89,5 @@ export { DEFAULT_TEMPLATE_KEY, defaultAgencyTemplate, ensureDefaultTemplate, ens
 export { purgeDemoData, seedDemoData } from "./demo.js";
 export { setMyName, workspaceSetup } from "./people.js";
 export type { DemoSummary } from "./demo.js";
-export { captureBaselineRows, comparedRows, subtreeIds } from "./baselines.js";
-export type { ComparedRow } from "./baselines.js";
+export { baselineTree, captureBaselineRows, comparedRows, subtreeIds } from "./baselines.js";
+export type { BaselineTreeRow, ComparedRow } from "./baselines.js";

@@ -1,5 +1,6 @@
-import { BaselineReportQuery, DomainError, QueryRequest, type BaselineReport, type BaselineScope, type BaselineView, type BaselinesResponse } from "@budget/domain";
-import { comparedRows, subtreeIds, withTenant, type Tx } from "@budget/db";
+import { BaselineReportQuery, BaselineRowsQuery, DomainError, QueryRequest, canInScope, type BaselineReport, type BaselineRowsResponse, type BaselineScope, type BaselineView, type BaselinesResponse } from "@budget/domain";
+import { baselineTree, comparedRows, subtreeIds, withTenant, type BaselineTreeRow, type Tx } from "@budget/db";
+import { toCsv } from "../../envelopes/bulk/csv.js";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { BudgetBaseline, PrismaClient } from "@prisma/client";
@@ -181,4 +182,52 @@ export async function snapshotsByVersion(tx: Tx, envelopeId: string): Promise<Ma
     out.set(r.versionId, [...(out.get(r.versionId) ?? []), { id: r.baseline.id, name: r.baseline.name, kind: r.baseline.kind }]);
   }
   return out;
+}
+
+/** GET /baselines/:id — one snapshot's header. */
+export async function getBaseline(prisma: PrismaClient, auth: AuthContext, rawId: string): Promise<BaselineView> {
+  const id = parseId(rawId);
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const b = await tx.budgetBaseline.findFirst({ where: { id, workspaceId } });
+    if (b === null) throw new DomainError("NOT_FOUND", "Snapshot not found");
+    return view(tx, b);
+  });
+}
+
+/** The frozen rows a caller may read: their read scope, judged on the granularities the row was saved with. */
+async function readableTree(tx: Tx, auth: AuthContext, baselineId: string, limit: number): Promise<{ rows: BaselineTreeRow[]; truncated: boolean }> {
+  const rows = await baselineTree(tx, baselineId, limit + 1);
+  const visible = auth.isOrgAdmin ? rows : rows.filter((r) => canInScope(auth.assignments, "envelope.read", { dims: r.dimensionValues }));
+  return { rows: visible.slice(0, limit), truncated: rows.length > limit };
+}
+
+/** GET /baselines/:id/rows — the snapshot as the tree it was saved in (the Snapshots page). */
+export async function baselineRows(prisma: PrismaClient, auth: AuthContext, rawId: string, raw: unknown): Promise<BaselineRowsResponse> {
+  const id = parseId(rawId);
+  const q = parseInput(BaselineRowsQuery, raw);
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const b = await tx.budgetBaseline.findFirst({ where: { id, workspaceId } });
+    if (b === null) throw new DomainError("NOT_FOUND", "Snapshot not found");
+    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { reportingCurrency: true } });
+    const { rows, truncated } = await readableTree(tx, auth, id, q.limit);
+    return { baseline: await view(tx, b), rows, currency: ws.reportingCurrency, truncated };
+  });
+}
+
+/** GET /baselines/:id/export.csv — every frozen row, one line each, granularities as columns. */
+export async function baselineCsv(prisma: PrismaClient, auth: AuthContext, rawId: string): Promise<{ filename: string; csv: string }> {
+  const id = parseId(rawId);
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const b = await tx.budgetBaseline.findFirst({ where: { id, workspaceId } });
+    if (b === null) throw new DomainError("NOT_FOUND", "Snapshot not found");
+    const { rows } = await readableTree(tx, auth, id, MAX_FILTER_ROWS);
+    const dims = [...new Set(rows.flatMap((r) => Object.keys(r.dimensionValues)))].sort();
+    const header = ["envelope_id", "parent_id", "depth", "name", "is_leaf", ...dims, "currency", "amount", "amount_reporting", "start_date", "end_date", "version_id", "snapshot", "as_of"];
+    const lines = rows.map((r) => [r.envelopeId, r.parentId ?? "", String(r.depth), r.name, r.isLeaf ? "true" : "false", ...dims.map((d) => r.dimensionValues[d] ?? ""), r.currency, r.amount, r.amountReporting, r.startDate, r.endDate, r.versionId ?? "", b.name, b.asOf.toISOString()]);
+    const slug = b.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "snapshot";
+    return { filename: `snapshot-${slug}-${b.asOf.toISOString().slice(0, 10)}.csv`, csv: toCsv(header, lines) };
+  });
 }

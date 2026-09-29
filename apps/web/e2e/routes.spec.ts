@@ -22,6 +22,7 @@ const ROUTES: Array<[path: string, title: string | RegExp]> = [
   ["/alerts", "Alerts"],
   ["/search?q=meta", "Search"],
   ["/closures", "Closures"],
+  ["/snapshots", "Snapshots"],
   ["/sources", "Spend data"],
   ["/admin/registry", "Registry"],
   ["/admin/policies", "Approval policies"],

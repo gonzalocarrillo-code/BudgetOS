@@ -1,4 +1,4 @@
-import { BaselineReport, BaselinesResponse, BaselineView, type BaselineScope, type BaselineKind } from "@budget/domain";
+import { BaselineReport, BaselineRowsResponse, BaselinesResponse, BaselineView, type BaselineScope, type BaselineKind } from "@budget/domain";
 import { t } from "@budget/ui/i18n";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "../../lib/api.js";
@@ -43,3 +43,26 @@ export function useCanSnapshotWorkspace(ws: string): boolean {
 
 export const savedOn = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 export const snapshotLabel = (s: Snapshot) => t("snapshots.option", { name: s.name, date: savedOn(s.asOf) });
+
+export const snapshotQuery = (ws: string, id: string) =>
+  queryOptions({
+    queryKey: ["snapshot", ws, id],
+    queryFn: async () => BaselineView.parse(await unwrap(api.GET("/api/v1/baselines/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } }))),
+  });
+
+export const snapshotRowsQuery = (ws: string, id: string, limit = 5000) =>
+  queryOptions({
+    queryKey: ["snapshot-rows", ws, id, limit],
+    queryFn: async () => BaselineRowsResponse.parse(await unwrap(api.GET("/api/v1/baselines/{id}/rows", { params: { path: { id }, query: { limit } as never, header: { "X-Workspace-Id": ws } } }))),
+  });
+
+/** The snapshot as a file: fetched with the session's token, then handed to the browser as a download. */
+export async function downloadSnapshotCsv(ws: string, id: string, name: string): Promise<void> {
+  const csv = (await unwrap(api.GET("/api/v1/baselines/{id}/export.csv", { params: { path: { id }, header: { "X-Workspace-Id": ws } }, parseAs: "text" }))) as unknown as string;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `snapshot-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "snapshot"}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

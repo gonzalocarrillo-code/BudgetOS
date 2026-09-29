@@ -167,6 +167,16 @@ export function buildServer(deps: McpDeps): McpServer {
   );
 
   server.registerTool(
+    "get_baseline",
+    {
+      description: "One snapshot in full: its header and its frozen rows as the tree they were saved in (name, parent, granularities, amount then, amount now). Use it to read what the budget was at that moment; compare_budgets says how it moved.",
+      inputSchema: { workspaceId: ws, baselineId: z.string().uuid(), limit: z.number().int().min(1).max(20_000).optional() },
+      annotations: readOnly,
+    },
+    async (args, extra) => run("get_baseline", "envelope.read", args.workspaceId, extra, args, (auth) => q.baselineRows(deps.prisma, auth, args.baselineId, defined({ limit: args.limit === undefined ? undefined : String(args.limit) }))),
+  );
+
+  server.registerTool(
     "compare_budgets",
     {
       description: "How budgets moved since a snapshot: against now, or against a later snapshot (against = its id). Totals and the change (amount and %), how many budgets went up, down, are new, were removed or ended, the change per granularity, and the biggest movers.",

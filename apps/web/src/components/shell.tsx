@@ -32,6 +32,7 @@ import {
   Monitor,
   Moon,
   Sun,
+  Camera,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
@@ -77,6 +78,7 @@ const NAV: NavItem[] = [
   { to: "/w/$ws/experiments", label: "nav.experiments", icon: FlaskConical, tour: "nav-experiments" },
   { to: "/w/$ws/alerts", label: "nav.alerts", icon: Bell, tour: "nav-alerts" },
   { to: "/w/$ws/closures", label: "nav.closures", icon: Lock, tour: "nav-closures" },
+  { to: "/w/$ws/snapshots", label: "nav.snapshots", icon: Camera, tour: "nav-snapshots" },
   { to: "/w/$ws/sources", label: "nav.sources", icon: Database, tour: "nav-sources" },
 ];
 // The admin pages people use day to day stay in the sidebar; the rest live under Settings

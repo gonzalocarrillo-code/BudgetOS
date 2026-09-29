@@ -90,7 +90,7 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     const { tools } = await c.listTools();
     await c.close();
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ["compare_budgets", "describe_dimensions", "export_csv", "get_budget", "get_closure", "get_decision_timeline", "get_pacing", "list_alerts", "list_approvals", "list_baselines", "list_tags", "list_threads", "list_workspaces", "query_budgets", "query_targets", "search"].sort(),
+      ["compare_budgets", "describe_dimensions", "export_csv", "get_baseline", "get_budget", "get_closure", "get_decision_timeline", "get_pacing", "list_alerts", "list_approvals", "list_baselines", "list_tags", "list_threads", "list_workspaces", "query_budgets", "query_targets", "search"].sort(),
     );
     expect(tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false)).toBe(true);
   });
@@ -157,6 +157,10 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     const snapshots = (await counted("list_baselines")) as { baselines: Array<{ id: string; name: string; kind: string; rowCount: number }> };
     const plan = snapshots.baselines.find((b) => b.name === GOLDEN_HISTORY.plan.name);
     expect(plan).toMatchObject({ kind: "plan", rowCount: A.history.plan.rows });
+    const full = (await counted("get_baseline", { baselineId: plan?.id, limit: 20000 })) as { rows: Array<{ depth: number; parentId: string | null }>; truncated: boolean };
+    expect(full.rows).toHaveLength(A.history.plan.rows);
+    expect(full.rows[0]).toMatchObject({ depth: 0, parentId: null });
+    expect(full.truncated).toBe(false);
     const report = (await counted("compare_budgets", { baselineId: plan?.id })) as { byDimension: Record<string, Array<{ code: string; baseline: string }>>; counts: Record<string, number>; change: { abs: string } };
     expect(Object.fromEntries((report.byDimension["region"] ?? []).map((r) => [r.code, r.baseline]))).toEqual(A.history.plan.leafByRegion);
     expect(report.counts["ended"]).toBe(1);

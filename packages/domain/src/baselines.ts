@@ -52,6 +52,30 @@ export type BaselineView = z.infer<typeof BaselineView>;
 export const BaselinesResponse = z.object({ baselines: z.array(BaselineView) });
 export type BaselinesResponse = z.infer<typeof BaselinesResponse>;
 
+/** GET /baselines/:id/rows — the frozen rows as the tree they were saved in, cut to the caller's read scope. */
+export const BaselineTreeRow = z.object({
+  envelopeId: z.string().uuid(),
+  parentId: z.string().uuid().nullable(),
+  depth: z.number().int(),
+  name: z.string(),
+  isLeaf: z.boolean(),
+  amount: money,
+  amountReporting: money,
+  currency: z.string(),
+  versionId: z.string().uuid().nullable(),
+  dimensionValues: z.record(z.string(), z.string()),
+  startDate: isoDate,
+  endDate: isoDate,
+  /** Approved now (reporting currency); null once the budget is archived or gone. */
+  now: money.nullable(),
+  change: money,
+  ended: z.boolean(),
+});
+export type BaselineTreeRow = z.infer<typeof BaselineTreeRow>;
+export const BaselineRowsQuery = z.object({ limit: z.coerce.number().int().min(1).max(20_000).default(5000) });
+export const BaselineRowsResponse = z.object({ baseline: BaselineView, rows: z.array(BaselineTreeRow), currency: z.string(), truncated: z.boolean() });
+export type BaselineRowsResponse = z.infer<typeof BaselineRowsResponse>;
+
 /** GET /baselines/:id/report?against=<baselineId> — against now when absent. */
 export const BaselineReportQuery = z.object({ against: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(200).default(20) });
 export type BaselineReportQuery = z.infer<typeof BaselineReportQuery>;

@@ -12,7 +12,7 @@ const signIn = async (page: Page, persona: string) => {
   await page.addInitScript((t) => sessionStorage.setItem("budget-os.idToken", t), token);
 };
 
-const SCREENS = ["/home", "", "/budgets", "/approvals", "/targets", "/experiments", "/alerts", "/closures", "/sources", "/admin/registry", "/admin/rules", "/admin/roles", "/admin/tags", "/admin/settings", "/admin/policies", "/admin/periods"];
+const SCREENS = ["/home", "", "/budgets", "/approvals", "/targets", "/experiments", "/alerts", "/closures", "/snapshots", "/sources", "/admin/registry", "/admin/rules", "/admin/roles", "/admin/tags", "/admin/settings", "/admin/policies", "/admin/periods"];
 
 for (const path of SCREENS) {
   test(`a11y smoke: ${path || "/ (Overview)"}`, async ({ page }) => {

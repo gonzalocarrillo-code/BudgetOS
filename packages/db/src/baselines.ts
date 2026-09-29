@@ -80,3 +80,48 @@ export async function comparedRows(tx: Tx, args: { baselineId: string; workspace
     FROM (SELECT * FROM budget_baseline_row WHERE baseline_id = ${args.baselineId}::uuid) a
     FULL JOIN now_rows n ON n.envelope_id = a.envelope_id`;
 }
+
+export interface BaselineTreeRow {
+  envelopeId: string;
+  parentId: string | null;
+  depth: number;
+  name: string;
+  isLeaf: boolean;
+  amount: string;
+  amountReporting: string;
+  currency: string;
+  versionId: string | null;
+  dimensionValues: Record<string, string>;
+  startDate: string;
+  endDate: string;
+  /** The budget's approved amount now (reporting currency); null when it no longer exists. */
+  now: string | null;
+  /** now − then, reporting currency (a gone budget counts as 0 now). */
+  change: string;
+  ended: boolean;
+}
+
+/**
+ * A snapshot's rows as the tree they were saved in: parents before children, siblings by name,
+ * each with its depth (roots are the rows whose parent is outside the snapshot). Walks the frozen
+ * parent links, so a budget moved since still sits where it was.
+ */
+export async function baselineTree(tx: Tx, baselineId: string, limit: number): Promise<BaselineTreeRow[]> {
+  return tx.$queryRaw<BaselineTreeRow[]>`
+    WITH RECURSIVE r AS (SELECT * FROM budget_baseline_row WHERE baseline_id = ${baselineId}::uuid),
+    t AS (
+      SELECT r.*, 0 AS depth, ARRAY[lower(r.name), r.envelope_id::text] AS sort_path FROM r
+      WHERE r.parent_id IS NULL OR NOT EXISTS (SELECT 1 FROM r p WHERE p.envelope_id = r.parent_id)
+      UNION ALL
+      SELECT c.*, t.depth + 1, t.sort_path || ARRAY[lower(c.name), c.envelope_id::text] FROM r c JOIN t ON c.parent_id = t.envelope_id
+    )
+    SELECT t.envelope_id::text AS "envelopeId", t.parent_id::text AS "parentId", t.depth, t.name, t.is_leaf AS "isLeaf",
+           t.amount::text AS amount, t.amount_reporting::text AS "amountReporting", t.currency, t.version_id::text AS "versionId",
+           t.dimension_values AS "dimensionValues", t.start_date::text AS "startDate", t.end_date::text AS "endDate",
+           v.amount_reporting::text AS now, (coalesce(v.amount_reporting, 0) - t.amount_reporting)::text AS change, coalesce(e.ended_at IS NOT NULL, false) AS ended
+    FROM t
+    LEFT JOIN envelope e ON e.id = t.envelope_id AND e.status <> 'ARCHIVED'
+    LEFT JOIN envelope_version v ON v.id = e.current_version_id
+    ORDER BY t.sort_path
+    LIMIT ${limit}`;
+}

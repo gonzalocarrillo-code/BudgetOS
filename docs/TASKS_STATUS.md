@@ -454,3 +454,4 @@ Plan: `docs/BUDGET_HISTORY_PLAN.md` (Phase E, revision 2: snapshots by hand for 
 | H-007 | E4 | Drawer, Overview, Closures, Settings › Snapshots | done (ADR-053) |
 | H-008 | E5 | MCP tools | done (ADR-053) |
 | H-009 | E5 | Golden seed and assertions | done (ADR-053) |
+| H-010 | E6 | Snapshots page: list, open (header, change since, frozen rows as a tree), rename, archive, download CSV; `get_baseline` MCP tool | done (ADR-053) |

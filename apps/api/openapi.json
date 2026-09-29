@@ -9631,6 +9631,156 @@
       }
     },
     "/api/v1/baselines/{id}": {
+      "get": {
+        "operationId": "getBaseline",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "plan",
+                        "close",
+                        "other"
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "scopeLabel": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "periodKey": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "asOf": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "takenBy": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "rowCount": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "string",
+                      "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                    },
+                    "row": {
+                      "type": "object",
+                      "properties": {
+                        "versionId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "amount": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "versionId",
+                        "amount",
+                        "currency",
+                        "name",
+                        "parentId"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "scope",
+                    "scopeLabel",
+                    "periodKey",
+                    "asOf",
+                    "note",
+                    "takenBy",
+                    "createdAt",
+                    "archivedAt",
+                    "rowCount",
+                    "total"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "operationId": "updateBaseline",
         "parameters": [
@@ -9688,6 +9838,298 @@
         "responses": {
           "200": {
             "description": "Renamed, re-noted or archived; its rows never change"
+          }
+        }
+      }
+    },
+    "/api/v1/baselines/{id}/rows": {
+      "get": {
+        "operationId": "getBaselineRows",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The snapshot's frozen rows as the tree they were saved in, cut to the caller's scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "baseline": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "plan",
+                            "close",
+                            "other"
+                          ]
+                        },
+                        "scope": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        },
+                        "scopeLabel": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "periodKey": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "asOf": {
+                          "type": "string"
+                        },
+                        "note": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "takenBy": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name"
+                          ],
+                          "nullable": true
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "archivedAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "rowCount": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "row": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "nullable": true
+                            },
+                            "amount": {
+                              "type": "string",
+                              "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                            },
+                            "currency": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "parentId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "amount",
+                            "currency",
+                            "name",
+                            "parentId"
+                          ],
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "kind",
+                        "scope",
+                        "scopeLabel",
+                        "periodKey",
+                        "asOf",
+                        "note",
+                        "takenBy",
+                        "createdAt",
+                        "archivedAt",
+                        "rowCount",
+                        "total"
+                      ]
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "parentId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "depth": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "isLeaf": {
+                            "type": "boolean"
+                          },
+                          "amount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "amountReporting": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "versionId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "dimensionValues": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "startDate": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          },
+                          "endDate": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          },
+                          "now": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+                            "nullable": true
+                          },
+                          "change": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "ended": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "envelopeId",
+                          "parentId",
+                          "depth",
+                          "name",
+                          "isLeaf",
+                          "amount",
+                          "amountReporting",
+                          "currency",
+                          "versionId",
+                          "dimensionValues",
+                          "startDate",
+                          "endDate",
+                          "now",
+                          "change",
+                          "ended"
+                        ]
+                      }
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "baseline",
+                    "rows",
+                    "currency",
+                    "truncated"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/baselines/{id}/export.csv": {
+      "get": {
+        "operationId": "exportBaselineCsv",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The snapshot's rows as CSV (text/csv)"
           }
         }
       }

@@ -4,7 +4,7 @@
  * import a `commands/` module (apps/mcp/src/readonly.test.ts walks the import graph).
  */
 export { listApprovals } from "./modules/approvals/queries/approvals.js";
-export { baselineReport, listBaselines } from "./modules/baselines/queries/baselines.js";
+export { baselineReport, baselineRows, listBaselines } from "./modules/baselines/queries/baselines.js";
 export { getMe } from "./modules/auth/queries/get-me.js";
 export { closureByPeriod, closureReport, listClosures } from "./modules/closures/queries/closures.js";
 export { getEnvelope } from "./modules/envelopes/queries/get-envelope.js";

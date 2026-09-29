@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   BaselineReport,
+  BaselineRowsResponse,
+  BaselineView,
   EndEnvelopeInput,
   ReintroduceInput,
   BaselinesResponse,
@@ -415,7 +417,14 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "saveBaseline", parameters: [workspaceParam], requestBody: json(CreateBaselineInput), responses: { "201": { description: "A snapshot of the workspace, a filter or one budget's subtree, taken now" } } },
       },
       "/api/v1/baselines/{id}": {
+        get: { operationId: "getBaseline", parameters: [idParam, workspaceHeader], responses: { "200": { description: "One snapshot", ...json(BaselineView) } } },
         patch: { operationId: "updateBaseline", parameters: [idParam, workspaceHeader], requestBody: json(UpdateBaselineInput), responses: { "200": { description: "Renamed, re-noted or archived; its rows never change" } } },
+      },
+      "/api/v1/baselines/{id}/rows": {
+        get: { operationId: "getBaselineRows", parameters: [idParam, workspaceHeader, { name: "limit", in: "query", required: false, schema: { type: "integer" } }], responses: { "200": { description: "The snapshot's frozen rows as the tree they were saved in, cut to the caller's scope", ...json(BaselineRowsResponse) } } },
+      },
+      "/api/v1/baselines/{id}/export.csv": {
+        get: { operationId: "exportBaselineCsv", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The snapshot's rows as CSV (text/csv)" } } },
       },
       "/api/v1/baselines/{id}/report": {
         get: { operationId: "baselineReport", parameters: [idParam, workspaceHeader, { name: "against", in: "query", required: false, schema: { type: "string", format: "uuid" } }, { name: "limit", in: "query", required: false, schema: { type: "integer" } }], responses: { "200": { description: "The snapshot against now or another snapshot", ...json(BaselineReport) } } },
