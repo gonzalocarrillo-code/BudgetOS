@@ -408,6 +408,8 @@ export async function cleanupOrg(org: FixtureOrg): Promise<void> {
     `DELETE FROM spend_fact WHERE workspace_id IN ${ws}`,
     `DELETE FROM kpi_fact WHERE workspace_id IN ${ws}`,
     `DELETE FROM projection_fact WHERE workspace_id IN ${ws}`,
+    `DELETE FROM budget_baseline_row WHERE workspace_id IN ${ws}`,
+    `DELETE FROM budget_baseline WHERE workspace_id IN ${ws}`,
     `DELETE FROM envelope_dimension WHERE envelope_id IN ${env}`,
     `DELETE FROM envelope_version WHERE envelope_id IN ${env}`,
     `DELETE FROM envelope WHERE workspace_id IN ${ws}`,

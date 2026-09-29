@@ -75,6 +75,15 @@ describe("snapshots (Phase E)", () => {
     expect(report.topMovers.find((m) => m.envelopeId === leaf)?.abs).toBe("-100.00");
     expect(Object.values(report.counts).reduce((a, b) => a + b, 0)).toBe(snap.rowCount);
 
+    // H-004: /query compares with the snapshot: the leaf's change, and 404 for an unknown snapshot.
+    const query = (compareTo: unknown) =>
+      as("planner", "POST", `/api/v1/workspaces/${ws}/query`, { workspaceId: ws, period: { kind: "range", start: "2026-01-01", end: "2026-12-31" }, measures: ["budget", "budget_baseline", "budget_change_abs"], compareTo, limit: 1000 });
+    const compared = await query({ baselineId: snap.id });
+    expect(compared.status, JSON.stringify(compared.body)).toBeLessThan(300);
+    const leafRow = (compared.body["rows"] as Array<{ envelopeId: string; measures: Record<string, string | null> }>).find((r) => r.envelopeId === leaf);
+    expect(leafRow?.measures).toMatchObject({ budget_baseline: row.amountReporting.toFixed(2), budget_change_abs: "-100.00" });
+    expect((await query({ baselineId: randomUUID() })).status).toBe(404);
+
     // The version History shows which snapshot saved it.
     const versions = (await as("planner", "GET", `/api/v1/envelopes/${leaf}/versions`)).body as unknown as Array<{ id: string; snapshots: Array<{ name: string }> }>;
     expect(versions.find((v) => v.id === before.currentVersionId)?.snapshots.map((x) => x.name)).toEqual(["Q4 plan"]);

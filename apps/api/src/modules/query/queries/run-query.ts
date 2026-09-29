@@ -14,7 +14,7 @@ import type { AuthContext } from "../../../common/tenant.js";
  */
 
 type Row = Record<string, unknown>;
-const MONEY = new Set(["budget", "budget_in_period", "actual", "projected", "remaining", "variance_abs"]);
+const MONEY = new Set(["budget", "budget_in_period", "budget_baseline", "budget_change_abs", "actual", "projected", "remaining", "variance_abs"]);
 const measure = (k: string, v: unknown) => (v === null || v === undefined ? null : MONEY.has(k) ? new Decimal(String(v)).toFixed(2) : String(v));
 const text = (v: unknown) => (v === null || v === undefined ? null : String(v));
 
@@ -31,6 +31,10 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
   const q = scopedQuery(auth, raw);
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: q.workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
+    // H-004: a snapshot to compare with must exist in this workspace (RLS hides other workspaces').
+    if (q.compareTo && "baselineId" in q.compareTo && (await tx.budgetBaseline.count({ where: { id: q.compareTo.baselineId } })) === 0) {
+      throw new DomainError("NOT_FOUND", "Snapshot not found", { baselineId: q.compareTo.baselineId });
+    }
     const today = now.toISOString().slice(0, 10);
     const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
     const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period);

@@ -9,6 +9,7 @@ export {
   LIVE_LEAVES,
   TOP_LEVEL,
   MeasureKey,
+  COMPARE_MEASURES,
   Predicate,
   RelativeDate,
   emptyFilter,

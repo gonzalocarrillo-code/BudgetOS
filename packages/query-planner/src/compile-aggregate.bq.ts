@@ -54,7 +54,7 @@ function filterSupported(g: FilterGroupT): boolean {
 
 /** Whether BigQuery can answer this query: grouped rows or totals over the base measures, with the filters above. */
 export function bigQuerySupported(q: QueryRequest, opts: CompileOptions = {}): boolean {
-  return aggregateShape(q, opts) && q.asOf === undefined && filterSupported(q.filter ?? { logic: "and", children: [] });
+  return aggregateShape(q, opts) && q.asOf === undefined && q.compareTo === undefined && filterSupported(q.filter ?? { logic: "and", children: [] });
 }
 
 const TABLE = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){0,2}$/;
