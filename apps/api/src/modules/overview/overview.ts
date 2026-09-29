@@ -179,6 +179,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   const attention = attentionOf({ over, under, noSpend, kpiOff });
   const byRule = await rulesOf(alerts, rules, place, rowKey, labels.rows, (scope) => q({ filter: scope, measures: ["budget"], limit: 1 }));
   const headRow = headTotals?.totals ?? null;
+  const assigned = (heat?.totals ?? over.totals)["budget"] ?? null;
   const remaining = headRow?.["remaining"] ?? null;
   const daysLeft = range.daysLeft;
   return {
@@ -194,7 +195,10 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
             actual: headRow["actual"] ?? null,
             spentPct: headRow["spend_to_date_pct"] ?? null,
             paceIndex: headRow["pace_index"] ?? null,
-            assigned: (heat?.totals ?? over.totals)["budget"] ?? null,
+            assigned,
+            // ADR-051: what is approved at the top but not split into leaves yet, and the share that is.
+            unassigned: assigned !== null && headRow["budget"] ? new Decimal(headRow["budget"]).minus(assigned).toFixed(2) : null,
+            assignedPct: assigned !== null && headRow["budget"] && new Decimal(headRow["budget"]).gt(0) ? new Decimal(assigned).div(headRow["budget"]).toDecimalPlaces(4).toString() : null,
             remaining,
             // What is left over the calendar days left: a division, not a forecast.
             runRateNeeded: remaining !== null && daysLeft > 0 && new Decimal(remaining).gt(0) ? new Decimal(remaining).div(daysLeft).toDecimalPlaces(2).toFixed(2) : null,

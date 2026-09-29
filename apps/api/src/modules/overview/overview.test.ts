@@ -152,6 +152,8 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview`);
     const o = res.body as Body & { headline: Record<string, string | null>; period: { end: string; daysLeft: number }; compare: { id: string; name: string; explicit: boolean; changeAbs: string } | null };
     expect(o.headline["remaining"]).toBe(new Decimal(o.headline["budget"] ?? 0).minus(o.headline["actual"] ?? 0).toFixed(2));
+    expect(o.headline["unassigned"]).toBe(new Decimal(o.headline["budget"] ?? 0).minus(o.headline["assigned"] ?? 0).toFixed(2));
+    expect(o.headline["assignedPct"]).toBe(new Decimal(o.headline["assigned"] ?? 0).div(o.headline["budget"] ?? 1).toDecimalPlaces(4).toString());
     const today = new Date().toISOString().slice(0, 10);
     expect(o.period.daysLeft).toBe(Math.round((Date.parse(`${o.period.end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000) + 1);
     expect(o.headline["runRateNeeded"]).toBe(new Decimal(o.headline["remaining"] ?? 0).div(o.period.daysLeft).toDecimalPlaces(2).toFixed(2));
@@ -209,5 +211,28 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=fiscal:2026-Q2`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect((res.body as { period: { start: string; end: string } }).period).toMatchObject({ start: "2026-04-01", end: "2026-06-30" });
+  });
+
+  // Last: it loads projections, which the tests above expect none of.
+  it("projects the close only from loaded projections, and says which source loaded them (HO-012)", async () => {
+    const ws = golden.workspaceId;
+    const runId = golden.ingest?.runId;
+    if (!runId) throw new Error("the golden has no ingest run");
+    const [leaf] = await owner.$queryRaw<Array<{ id: string }>>`
+      SELECT e.id FROM envelope e WHERE e.workspace_id = ${ws}::uuid AND e.status = 'APPROVED' AND e.ended_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id) ORDER BY e.id LIMIT 1`;
+    if (!leaf) throw new Error("no live leaf");
+    try {
+      await owner.$executeRaw`
+        INSERT INTO projection_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id)
+        VALUES (${ws}::uuid, ${leaf.id}::uuid, '{}'::jsonb, '2026-06-15', 'spend', 1234.5, 1234.5, 'ho-012-test', '2026-12-31', 'test', ${runId}::uuid)`;
+      const o = (await as("planner", "GET", `/api/v1/workspaces/${ws}/overview`)).body as { headline: { projected: string | null; projectedClosePct: string | null }; freshness: { projections: { source: string | null; loadedAt: string } | null } };
+      expect(o.headline.projected).not.toBeNull();
+      expect(new Decimal(o.headline.projected ?? 0).gte("1234.50")).toBe(true);
+      expect(o.headline.projectedClosePct).not.toBeNull();
+      expect(o.freshness.projections).toMatchObject({ source: "Golden actuals (CSV)" });
+    } finally {
+      await owner.$executeRaw`DELETE FROM projection_fact WHERE workspace_id = ${ws}::uuid AND formula_version = 'ho-012-test'`;
+    }
   });
 });

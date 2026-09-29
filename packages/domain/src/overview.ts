@@ -130,6 +130,8 @@ export const OverviewResponse = z.object({
       spentPct: z.string().nullable(),
       paceIndex: z.string().nullable(),
       assigned: z.string().nullable(),
+      unassigned: z.string().nullable().optional(),
+      assignedPct: z.string().nullable().optional(),
       remaining: z.string().nullable().optional(),
       runRateNeeded: z.string().nullable().optional(),
       projected: z.string().nullable().optional(),
