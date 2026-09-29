@@ -4,7 +4,9 @@ import { AccessRepository } from "../../common/auth/access.repository.js";
 import { ROLE_CACHE, type RoleCache } from "../../common/auth/role-cache.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { getSlackSettings, handleCommand, handleInteraction, sendSlackTest, updateSlackSettings } from "./slack.service.js";
+import { handleInteraction } from "./interactions.js";
+import { getSlackSettings, sendSlackTest, updateSlackSettings } from "./slack.service.js";
+import { handleCommand } from "./slash/index.js";
 
 /** Slack settings, and the endpoints Slack itself calls (signed, no JWT; ADR-046). */
 @Controller()
