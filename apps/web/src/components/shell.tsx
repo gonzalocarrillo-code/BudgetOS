@@ -1,4 +1,4 @@
-import { Avatar, Button, Dialog, DialogContent, FormField, Input, Kbd, Logo, Popover, PopoverContent, PopoverTrigger, Toaster, cn, Select } from "@budget/ui";
+import { Avatar, Button, Dialog, DialogContent, FormField, Input, Kbd, Logo, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Toaster, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -28,11 +28,13 @@ import {
   Building2,
   Settings,
   Archive,
-  Menu,
+  Menu as MenuIcon,
   Monitor,
   Moon,
   Sun,
   Camera,
+  Check,
+  ChevronDown,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
@@ -117,7 +119,6 @@ const SETTINGS_HUB = "/w/$ws/admin/settings";
  */
 export type SettingsGroup = "workspace" | "people" | "taxonomy" | "pacing" | "data" | "onboarding";
 export const SETTINGS_GROUPS: Array<{ id: SettingsGroup; label: MessageKey; pages: Array<NavItem & { description: MessageKey }> }> = [];
-const ORG_CONSOLE = "__org_console__";
 const byPath = (to: string) => [...SETTINGS_PAGES, ...ADMIN_SETTINGS].find((p) => p.to === to) as NavItem & { description: MessageKey };
 SETTINGS_GROUPS.push(
   { id: "workspace", label: "settings.group.workspace", pages: [byPath("/w/$ws/admin/workspace"), byPath("/w/$ws/admin/periods"), byPath("/w/$ws/admin/templates")] },
@@ -178,6 +179,7 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
   const archived = me.archivedWorkspaces.find((w) => w.workspaceId === ws);
   const current = me.workspaces.find((w) => w.workspaceId === ws) ?? (archived ? { workspaceId: archived.workspaceId, name: archived.name, roles: ["ORG_ADMIN"] } : undefined);
   // ADR-052: a superadmin here through the org-wide role only (no role of their own in this workspace).
+  const shownWorkspace = current?.name ?? me.archivedWorkspaces.find((w) => w.workspaceId === ws)?.name ?? "?";
   const asSuperadmin = me.isOrgAdmin && (current?.roles ?? []).every((r) => r === "ORG_ADMIN");
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const inSettings = settingsPath(pathname, ws);
@@ -188,41 +190,65 @@ export function Shell({ me, ws, children }: { me: Me; ws: string; children: Reac
     <div className="flex h-dvh flex-col overflow-hidden bg-surface">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border bg-card px-3 md:gap-4 md:px-4">
         <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label={t("nav.open")} aria-expanded={navOpen} data-testid="nav-open">
-          <Menu className="size-5" aria-hidden />
+          <MenuIcon className="size-5" aria-hidden />
         </Button>
         <Link to="/w/$ws/home" params={{ ws }} className="flex shrink-0 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("shell.homeLink")} data-testid="brand">
           <Logo size={26} className="hidden lg:inline-flex" />
           <Logo variant="mark" size={28} className="lg:hidden" />
         </Link>
         <span className="hidden h-7 w-px shrink-0 bg-border lg:block" aria-hidden />
-        <label className="flex h-10 w-36 min-w-0 shrink items-center gap-2 rounded-lg border border-border bg-card px-2.5 shadow-xs sm:w-48 lg:w-60" data-tour="workspace-switcher">
-          <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-xs font-semibold text-primary-foreground" aria-hidden>
-            {(current?.name ?? "?").slice(0, 1).toUpperCase()}
-          </span>
-          <span className="sr-only">{t("shell.workspace")}</span>
-          <Select
-            className="truncate font-medium text-foreground" wrapperClassName="min-w-0 flex-1"
-            value={ws}
-            data-testid="workspace-switcher"
-            onChange={(e) => (e.target.value === ORG_CONSOLE ? void navigate({ to: "/org/workspaces" }) : void navigate({ to: "/w/$ws", params: { ws: e.target.value } }))}
-          >
+        <Menu>
+          <MenuTrigger asChild>
+            <button
+              type="button"
+              className="flex h-10 w-36 min-w-0 shrink items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-sm shadow-xs outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring sm:w-48 lg:w-60"
+              aria-label={t("shell.workspace")}
+              data-testid="workspace-switcher"
+              data-value={ws}
+              data-tour="workspace-switcher"
+            >
+              <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-xs font-semibold text-primary-foreground" aria-hidden>
+                {shownWorkspace.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-left font-medium text-foreground">{shownWorkspace}</span>
+              <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            </button>
+          </MenuTrigger>
+          <MenuContent align="start" className="w-72" data-testid="workspace-menu">
+            <MenuLabel>{t("shell.workspace")}</MenuLabel>
             {me.workspaces.map((w) => (
-              <option key={w.workspaceId} value={w.workspaceId}>
-                {w.name}
-              </option>
+              <MenuItem key={w.workspaceId} onSelect={() => void navigate({ to: "/w/$ws", params: { ws: w.workspaceId } })} className="items-center gap-2" data-testid="workspace-option" data-value={w.workspaceId}>
+                <span className="grid size-6 shrink-0 place-items-center rounded-md bg-secondary text-xs font-semibold text-foreground" aria-hidden>
+                  {w.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                {w.workspaceId === ws ? <Check className="size-4 shrink-0 text-primary" aria-label={t("shell.currentWorkspace")} /> : null}
+              </MenuItem>
             ))}
             {me.archivedWorkspaces.length > 0 ? (
-              <optgroup label={t("shell.archived")}>
+              <>
+                <MenuSeparator />
+                <MenuLabel>{t("shell.archived")}</MenuLabel>
                 {me.archivedWorkspaces.map((w) => (
-                  <option key={w.workspaceId} value={w.workspaceId}>
-                    {w.name}
-                  </option>
+                  <MenuItem key={w.workspaceId} onSelect={() => void navigate({ to: "/w/$ws", params: { ws: w.workspaceId } })} className="items-center gap-2 text-muted-foreground" data-testid="workspace-option" data-value={w.workspaceId}>
+                    <Archive className="size-4 shrink-0" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                    {w.workspaceId === ws ? <Check className="size-4 shrink-0 text-primary" aria-label={t("shell.currentWorkspace")} /> : null}
+                  </MenuItem>
                 ))}
-              </optgroup>
+              </>
             ) : null}
-            {me.isOrgAdmin ? <option value={ORG_CONSOLE}>{t("shell.manageWorkspaces")}</option> : null}
-          </Select>
-        </label>
+            {me.isOrgAdmin ? (
+              <>
+                <MenuSeparator />
+                <MenuItem onSelect={() => void navigate({ to: "/org/workspaces" })} className="items-center gap-2" data-testid="workspace-manage">
+                  <Building2 className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  {t("shell.manageWorkspaces")}
+                </MenuItem>
+              </>
+            ) : null}
+          </MenuContent>
+        </Menu>
         {asSuperadmin ? (
           <span className="hidden shrink-0 items-center gap-1 rounded-full bg-info-soft px-2.5 py-1 text-xs font-medium text-info-text xl:inline-flex" title={t("shell.superadminHint")} data-testid="superadmin-badge">
             <ShieldCheck className="size-3.5" aria-hidden />
