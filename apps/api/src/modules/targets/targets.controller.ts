@@ -2,7 +2,7 @@ import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestj
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto } from "../approvals/dto.js";
-import { CreateTargetDraftDto, CreateTargetDto, ListTargetsQueryDto } from "./dto.js";
+import { CreateTargetDraftDto, CreateTargetDto, ListTargetsQueryDto, UpdateTargetDatesDto } from "./dto.js";
 import { TargetsService } from "./targets.service.js";
 
 /** Targets (spec §10, §17). Entity routes take the workspace from X-Workspace-Id; RLS does the rest. */
@@ -26,6 +26,13 @@ export class TargetsController {
   @Permission("target.edit_draft")
   draft(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: CreateTargetDraftDto) {
     return this.targets.draft(auth, id, body);
+  }
+
+  /** ADR-060: the period the target covers, changed in place and audited; its values keep their versions. */
+  @Patch("targets/:id/dates")
+  @Permission("target.edit_draft")
+  dates(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateTargetDatesDto) {
+    return this.targets.dates(auth, id, body);
   }
 
   @Post("targets/:id/submit")

@@ -1,4 +1,4 @@
-import { Button, cn, StatusChip, RowActions, toast } from "@budget/ui";
+import { Button, cn, Input, StatusChip, RowActions, toast } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -192,7 +192,26 @@ function AlertRow({ ws, a, tags, canAct, pending, onAct, weekFromNow, selected, 
       </td>
       <td className="whitespace-nowrap py-2 pr-3 text-muted-foreground">
         <time dateTime={a.openedAt}>{new Date(a.openedAt).toLocaleDateString()}</time>
-        {a.snoozedUntil && a.status === "SNOOZED" ? <div className="text-xs">{t("alerts.snoozedUntil", { date: new Date(a.snoozedUntil).toLocaleDateString() })}</div> : null}
+        {a.snoozedUntil && a.status === "SNOOZED" ? (
+          canAct && !pending ? (
+            // ADR-060: the snooze date is editable; a new date re-snoozes the alert until the end of that day.
+            <label className="mt-1 flex items-center gap-1 text-xs">
+              {t("alerts.snoozedUntilLabel")}
+              <Input
+                type="date"
+                className="h-7 w-36 text-xs"
+                value={a.snoozedUntil.slice(0, 10)}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => {
+                  if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) onAct({ status: "SNOOZED", snoozedUntil: `${e.target.value}T23:59:59.000Z` });
+                }}
+                data-testid="alert-snooze-until"
+              />
+            </label>
+          ) : (
+            <div className="text-xs">{t("alerts.snoozedUntil", { date: new Date(a.snoozedUntil).toLocaleDateString() })}</div>
+          )
+        ) : null}
       </td>
       <td className="py-2">
         <RowActions className="flex-wrap">

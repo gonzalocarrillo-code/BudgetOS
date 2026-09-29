@@ -5874,6 +5874,61 @@
         }
       }
     },
+    "/api/v1/targets/{id}/dates": {
+      "patch": {
+        "operationId": "updateTargetDates",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "startDate",
+                  "endDate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The target with its new dates; values keep their versions (ADR-060)"
+          }
+        }
+      }
+    },
     "/api/v1/targets/{id}/submit": {
       "post": {
         "operationId": "submitTarget",
@@ -10387,6 +10442,14 @@
                             "format": "uuid",
                             "nullable": true
                           },
+                          "startDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "endDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "childCount": {
                             "type": "integer"
                           },
@@ -10695,6 +10758,14 @@
                           "nodeEnvelopeId": {
                             "type": "string",
                             "format": "uuid",
+                            "nullable": true
+                          },
+                          "startDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "endDate": {
+                            "type": "string",
                             "nullable": true
                           },
                           "childCount": {

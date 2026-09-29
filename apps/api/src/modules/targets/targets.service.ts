@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import type { AuthContext } from "../../common/tenant.js";
 import { createTarget, createTargetDraft } from "./commands/create-target.js";
 import { submitTarget } from "./commands/submit-target.js";
+import { updateTargetDates } from "./commands/target-dates.js";
 import { envelopeTargets, listTargets, targetVersions } from "./queries/targets.js";
 
 @Injectable()
@@ -17,6 +18,9 @@ export class TargetsService {
   }
   draft(auth: AuthContext, id: string, body: unknown) {
     return createTargetDraft(this.prisma, auth, id, body);
+  }
+  dates(auth: AuthContext, id: string, body: unknown) {
+    return updateTargetDates(this.prisma, auth, id, body);
   }
   submit(auth: AuthContext, id: string, body: unknown) {
     return submitTarget(this.prisma, auth, id, body);

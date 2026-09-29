@@ -800,6 +800,22 @@ export interface paths {
         patch: operations["createTargetDraft"];
         trace?: never;
     };
+    "/api/v1/targets/{id}/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateTargetDates"];
+        trace?: never;
+    };
     "/api/v1/targets/{id}/submit": {
         parameters: {
             query?: never;
@@ -4711,6 +4727,36 @@ export interface operations {
             };
         };
     };
+    updateTargetDates: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    startDate: string;
+                    endDate: string;
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The target with its new dates; values keep their versions (ADR-060) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     submitTarget: {
         parameters: {
             query?: never;
@@ -6141,6 +6187,8 @@ export interface operations {
                             depth?: number;
                             /** Format: uuid */
                             nodeEnvelopeId?: string | null;
+                            startDate?: string | null;
+                            endDate?: string | null;
                             childCount?: number;
                             /** Format: uuid */
                             parentId?: string | null;
@@ -6247,6 +6295,8 @@ export interface operations {
                             depth?: number;
                             /** Format: uuid */
                             nodeEnvelopeId?: string | null;
+                            startDate?: string | null;
+                            endDate?: string | null;
                             childCount?: number;
                             /** Format: uuid */
                             parentId?: string | null;

@@ -89,6 +89,7 @@ export {
   TargetComparator,
   TargetScope,
   TargetValue,
+  UpdateTargetDatesInput,
 } from "./targets.js";
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";

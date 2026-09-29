@@ -241,6 +241,7 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/workspaces/{ws}/targets", permission: "target.read", url: () => `/api/v1/workspaces/${wsA}/targets` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/targets", permission: "target.edit_draft", url: () => `/api/v1/workspaces/${wsA}/targets`, body: {} },
   { method: "PATCH", path: "/api/v1/targets/{id}/draft", permission: "target.edit_draft", url: () => `/api/v1/targets/${rid}/draft`, headers: X(), body: {} },
+  { method: "PATCH", path: "/api/v1/targets/{id}/dates", permission: "target.edit_draft", url: () => `/api/v1/targets/${rid}/dates`, headers: X(), body: {} },
   { method: "POST", path: "/api/v1/targets/{id}/submit", permission: "target.submit", url: () => `/api/v1/targets/${rid}/submit`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/targets/{id}/versions", permission: "target.read", url: () => `/api/v1/targets/${rid}/versions`, headers: X() },
   { method: "GET", path: "/api/v1/envelopes/{id}/targets", permission: "target.read", url: () => `/api/v1/envelopes/${rid}/targets`, headers: X() },
