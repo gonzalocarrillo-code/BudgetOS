@@ -519,8 +519,8 @@ Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The 
 | HO-002 | G1 | `PaceBar`, `StatTile`, `HeadlineStrip`, `AsOfChip`, `PaceLegend` in `@budget/ui`; pace band tokens (AA in both themes); `formatMoneyCompact` | done |
 | HO-003 | G1 | Pace as of the data: coverage per source grain, `elapsedThrough` in both planner dialects, as-of chip, stale banner | done (ADR-062) |
 | HO-004 | G1 | Short country names; the ISO name kept as the external id `iso_name`; migration `20261008000000_short_country_labels` | done |
-| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-065) |
-| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-065) |
+| HO-005 | G2 | `/me/home` as the desk: request cards, unsent drafts, alerts on your budgets, closures due, failed runs, data to map by permission, sent requests, strips with what is open | done (ADR-063) |
+| HO-006 | G2 | Home v2: one-line pulse, Waiting on you by urgency, strips with the pace bar, recents with what you did, Sent by you; Alerts filter by rule and subtree | done (ADR-063) |
 | HO-007 | G2 | Decide from Home in a side sheet; the approval detail parts shared with the request page | done |
 | HO-008 | G2 | Home steps in the planner, approver and finance tours; strings; status rows | done |
 | HO-009 | G3 | `ahead_of_plan_abs` (actual − budget in period × time gone) in both planner dialects, derived at query time | done (ADR-064) |
