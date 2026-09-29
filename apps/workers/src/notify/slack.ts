@@ -56,6 +56,12 @@ export function slackFromEnv(env: NodeJS.ProcessEnv = process.env): SlackClient 
   return token ? new WebApiSlack(token) : null;
 }
 
+/** What is missing for Slack messages to work, said once at start (a token without the web app's URL posts dead links). */
+export function slackConfigWarnings(env: Record<string, string | undefined> = process.env): string[] {
+  if (!env["SLACK_BOT_TOKEN"]) return [];
+  return env["APP_BASE_URL"] ? [] : ["SLACK_BOT_TOKEN is set without APP_BASE_URL: links in Slack messages point at https://budget-os.example"];
+}
+
 export interface Outgoing {
   channel: string;
   message: SlackMessage;
@@ -299,9 +305,9 @@ async function lastActor(tx: Tx, entityType: string, id: string): Promise<string
 
 function testMessage(baseUrl: string, workspaceId: string, by: string | null): SlackMessage {
   return {
-    text: ":white_check_mark: Budget OS is connected",
+    text: ":white_check_mark: BudgetOS is connected",
     blocks: [
-      { type: "section", text: { type: "mrkdwn", text: `:white_check_mark: *Budget OS is connected.*${by ? ` Test sent by ${by}.` : ""} Alerts and approvals for this workspace post here.` } },
+      { type: "section", text: { type: "mrkdwn", text: `:white_check_mark: *BudgetOS is connected.*${by ? ` Test sent by ${by}.` : ""} Alerts and approvals for this workspace post here.` } },
       { type: "context", elements: [{ type: "mrkdwn", text: `<${baseUrl.replace(/\/$/, "")}/w/${workspaceId}/admin/slack|Slack settings>` }] },
     ],
   };

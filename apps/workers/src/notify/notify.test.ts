@@ -218,7 +218,7 @@ describe("Slack bot: buttons, routing and keeping messages current (feedback 202
   it("a test message goes to the channel asked for", async () => {
     const slack = new RecordingSlack();
     await handleSlackEvent(app, slack, await event("slack.test", { channel: "#budget-ops", requestedBy: "Name planner" }));
-    expect(slack.sent.map((m) => [m.channel, m.text])).toEqual([["C-budget-ops", ":white_check_mark: Budget OS is connected"]]);
+    expect(slack.sent.map((m) => [m.channel, m.text])).toEqual([["C-budget-ops", ":white_check_mark: BudgetOS is connected"]]);
   });
 });
 

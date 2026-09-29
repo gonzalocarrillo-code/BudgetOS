@@ -43,8 +43,7 @@ export async function authenticate(deps: AuthDeps, input: { authorization: strin
       if (input.use === "write") throw new DomainError("LOCKED", "This workspace is archived: restore it to make changes", { archived: true });
     }
   }
-  // A superadmin acting in a workspace where they hold no role of their own (ADR-052).
-  const actingAs = workspaceId !== null && access.isOrgAdmin && !access.assignments.some((a) => a.role !== "ORG_ADMIN") ? ("superadmin" as const) : null;
+  const actingAs = workspaceId !== null ? actingAsIn(access) : null;
   return {
     ctx: { workspaceId, orgId: user.orgId, userId: user.id, isOrgAdmin: access.isOrgAdmin && workspaceId === null, actorType: input.actorType ?? "user", requestId, actingAs },
     user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
@@ -54,13 +53,20 @@ export async function authenticate(deps: AuthDeps, input: { authorization: strin
   };
 }
 
+/** A superadmin acting in a workspace where they hold no role of their own (ADR-052): their audit rows say so. */
+function actingAsIn(access: WorkspaceAccess): "superadmin" | null {
+  return access.isOrgAdmin && !access.assignments.some((a) => a.role !== "ORG_ADMIN") ? "superadmin" : null;
+}
+
 /**
  * An AuthContext for an email another trusted system vouches for (the Slack user of a linked
- * Slack team, product feedback 2026-09-28): the same user, workspace and role checks as a JWT.
+ * Slack team, product feedback 2026-09-28): the same user, workspace and role checks as a JWT, and
+ * the same superadmin marking. Emails are stored lower-case; a Slack profile's may not be.
  */
 export async function authenticateVerifiedEmail(deps: Pick<AuthDeps, "access" | "cache">, input: { email: string; workspaceId: string; requestId: string }): Promise<AuthContext> {
-  const user = await deps.access.findUser({ sub: `external:${input.email}`, email: input.email, emailVerified: true, googleSub: null });
-  if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "No active Budget OS account for this Slack user's email");
+  const email = input.email.trim().toLowerCase();
+  const user = await deps.access.findUser({ sub: `external:${email}`, email, emailVerified: true, googleSub: null });
+  if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "No active BudgetOS account for this Slack user's email");
   const ws = await deps.access.workspaceInfo(input.workspaceId, user, input.requestId);
   if (ws === null || ws.orgId !== user.orgId || ws.deleted) throw new DomainError("FORBIDDEN", "No access to this workspace");
   if (ws.status === "ARCHIVED") throw new DomainError("FORBIDDEN", "This workspace is archived", { archived: true });
@@ -70,7 +76,7 @@ export async function authenticateVerifiedEmail(deps: Pick<AuthDeps, "access" | 
     deps.cache.set(user.id, input.workspaceId, access);
   }
   return {
-    ctx: { workspaceId: input.workspaceId, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user", requestId: input.requestId },
+    ctx: { workspaceId: input.workspaceId, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user", requestId: input.requestId, actingAs: actingAsIn(access) },
     user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name },
     isOrgAdmin: access.isOrgAdmin,
     roles: [...new Set(access.assignments.map((a) => a.role))] as Role[],

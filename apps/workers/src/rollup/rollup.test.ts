@@ -79,6 +79,7 @@ afterAll(async () => {
     `DELETE FROM period_closure WHERE workspace_id = $1::uuid`,
     `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,
     `DELETE FROM approval_request WHERE workspace_id = $1::uuid`,
+    `DELETE FROM bulk_change WHERE workspace_id = $1::uuid`,
     `DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`,
     `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
     `UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL, parent_id = NULL WHERE workspace_id = $1::uuid`,
@@ -231,5 +232,20 @@ describe("rollup-worker", () => {
       { requestId, action: "approval.withdrawn", comment: null, status: "WITHDRAWN" },
     );
     expect(withdrawn).toEqual({ "": 0, LATAM: 0, "LATAM/meta": 0 });
+  });
+
+  it("a bulk change's request event refreshes nothing: the budget.changed written with it already did (S-003)", async () => {
+    // A real bulk change over a real envelope: without the skip, its request event would refresh that path.
+    const requestId = randomUUID();
+    const versionId = randomUUID();
+    const bulkChangeId = randomUUID();
+    await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by) VALUES ($1::uuid, $2::uuid, 3, 330, 330, 'PENDING', $3::uuid)`, versionId, env["latamMeta"], userId);
+    await owner.$executeRawUnsafe(`INSERT INTO bulk_change (id, workspace_id, kind, version_ids, archive_ids, created_ids, created_by, payload) VALUES ($1::uuid, $2::uuid, 'edit', ARRAY[$3::uuid], '{}', '{}', $4::uuid, '{}'::jsonb)`, bulkChangeId, ws, versionId, userId);
+    await owner.$executeRawUnsafe(`INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by) VALUES ($1::uuid, $2::uuid, 'bulk_change', $3::uuid, $4::uuid, 1, '{}'::jsonb, 's003', $5::uuid)`, requestId, ws, bulkChangeId, randomUUID(), userId);
+    const payload = { requestId, action: "approval.requested", bulkChangeId, status: "PENDING", step: 0 };
+    await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `s003-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "approval.changed", payload }));
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const body = { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "approval.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
+    expect(await handleRollupEvent(app, body, TODAY)).toMatchObject({ outcome: "applied", upserted: 0, rebuilt: false });
   });
 });

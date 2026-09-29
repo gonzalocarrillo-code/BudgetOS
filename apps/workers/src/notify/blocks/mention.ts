@@ -29,7 +29,7 @@ export function mentionMessage(m: MentionMessageInput): SlackMessage {
     blocks: [
       header(`💬 ${m.authorName} mentioned you`),
       section(`*${esc(m.threadTitle ?? m.anchorLabel)}*\n${esc(excerpt).replace(/^/gm, "> ")}`),
-      { type: "actions", elements: [button("Reply in Budget OS", url, "open_thread", "primary")] },
+      { type: "actions", elements: [button("Reply in BudgetOS", url, "open_thread", "primary")] },
       context(esc(m.anchorLabel)),
     ],
   };

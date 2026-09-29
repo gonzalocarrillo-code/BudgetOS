@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { handleInApp, handleSlackEvent, type SlackClient } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
@@ -22,7 +23,8 @@ const TEAM = "T0GOLDEN1";
 const email = (p: string) => `${p.toLowerCase()}@${slug}.golden.test`;
 const views: Array<{ trigger: string; view: Record<string, unknown> }> = [];
 const fake: SlackApi = {
-  userEmail: async (slackUserId) => (slackUserId.startsWith("U-") ? email(slackUserId.slice(2)) : null),
+  // "U-<persona>" is that persona; "U-CAPS-<persona>" has the same email in capitals, as some Slack profiles do.
+  userEmail: async (slackUserId) => (slackUserId.startsWith("U-CAPS-") ? email(slackUserId.slice(7)).toUpperCase() : slackUserId.startsWith("U-") ? email(slackUserId.slice(2)) : null),
   openView: async (trigger, view) => void views.push({ trigger, view }),
   team: async () => ({ id: TEAM, name: "Golden Slack" }),
 };
@@ -98,7 +100,7 @@ describe("Slack requests", () => {
     await click("stranger", "alert.resolve", alert!.id);
     const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
     expect(still?.status).toBe("SNOOZED");
-    expect(views.map((v) => JSON.stringify(v.view))).toEqual([expect.stringContaining("not linked"), expect.stringContaining("No active Budget OS account")]);
+    expect(views.map((v) => JSON.stringify(v.view))).toEqual([expect.stringContaining("not linked"), expect.stringContaining("No active BudgetOS account")]);
   });
 
   it("approves from Slack, and rejects with a reason through the form", async () => {
@@ -117,6 +119,9 @@ describe("Slack requests", () => {
     await click("orgAdmin", "approval.approve", first);
     const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; decided_by: string }>>(`SELECT decision::text, channel::text, decided_by::text FROM approval_decision WHERE request_id = $1::uuid ORDER BY decided_at DESC LIMIT 1`, first);
     expect(d).toMatchObject({ decision: "approve", channel: "slack", decided_by: golden.users.orgAdmin });
+    // The org admin holds no role of their own here: the audit row says they acted as a superadmin (ADR-052), as in the app.
+    const [trail] = await owner.$queryRawUnsafe<Array<{ actor_context: string | null }>>(`SELECT actor_context FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.approve'`, first);
+    expect(trail?.actor_context).toBe("superadmin");
 
     const next = (await as("orgAdmin", "GET", "/approvals?assignee=me&limit=10")).body as { rows: Array<{ id: string }> };
     const other = next.rows.find((r) => r.id !== first);
@@ -141,6 +146,90 @@ describe("Slack requests", () => {
     expect(budget.body).toMatchObject({ response_type: "ephemeral" });
     expect(JSON.stringify(budget.body)).toMatch(/budget [\d,]+/);
     const nobody = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-stranger" });
-    expect(String(nobody.body["text"])).toContain("No Budget OS workspace");
+    expect(String(nobody.body["text"])).toContain("No BudgetOS workspace");
+  });
+});
+
+describe("Slack acts with the app's permissions (S-001)", () => {
+  it("a role that may not decide in the app is refused in Slack, even on a step for its role", async () => {
+    // A policy whose only step is PLANNER, for the budget owner's changes: eligible_approver() lets a
+    // planner decide it, but a planner lacks approval.decide, so the app refuses them.
+    const policyId = randomUUID();
+    await owner.approvalPolicy.create({ data: { id: policyId, workspaceId: golden.workspaceId, name: "Planner step (S-001 test)", priority: -1, conditions: { requester: { userIds: [golden.users.budgetOwner] } }, chain: [{ role: "PLANNER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true } });
+    let requestId: string | null = null;
+    for (const envelopeId of [...golden.envelopeIds.values()].slice(20, 60)) {
+      const env = (await as("budgetOwner", "GET", `/envelopes/${envelopeId}`)).body as { current?: { id: string; amount: string } | null; draft?: unknown; status?: string };
+      if (!env.current || env.draft || env.status !== "APPROVED") continue;
+      const draft = await as("budgetOwner", "PATCH", `/envelopes/${envelopeId}/draft`, { amount: (Number(env.current.amount) + 1000).toFixed(2), basedOnVersionId: env.current.id });
+      if (draft.status !== 200) continue;
+      const sent = await as("budgetOwner", "POST", `/envelopes/${envelopeId}/submit`, { versionId: draft.body["id"] });
+      if (sent.body["autoApproved"] === false) {
+        requestId = String(sent.body["requestId"]);
+        break;
+      }
+    }
+    expect(requestId, "the budget owner's change waits on the planner step").not.toBeNull();
+    if (!requestId) return;
+    views.length = 0;
+    await click("planner", "approval.approve", requestId);
+    expect(JSON.stringify(views[0]?.view)).toContain("Missing permission approval.decide");
+    const [n] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    expect(Number(n?.n)).toBe(0);
+    expect((await as("planner", "POST", `/approvals/${requestId}/decisions`, { decision: "approve" })).status, "the app refuses the same person").toBe(403);
+    await as("budgetOwner", "POST", `/approvals/${requestId}/withdraw`, {});
+    await owner.approvalPolicy.update({ where: { id: policyId }, data: { isActive: false } });
+  });
+
+  it("someone with a role only in another workspace is refused here, and told so", async () => {
+    const otherWs = randomUUID();
+    const outsider = randomUUID();
+    await owner.workspace.create({ data: { id: otherWs, orgId: golden.orgId, slug: `${slug}-other`, name: "Other client", reportingCurrency: "USD" } });
+    await owner.user.create({ data: { id: outsider, orgId: golden.orgId, email: email("outsider"), name: "Outside Person", googleSub: `golden-${slug}-outsider` } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: otherWs, principalType: "user", principalId: outsider, role: "APPROVER", createdBy: golden.users.orgAdmin } });
+    const [alert] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM alert WHERE workspace_id = $1::uuid AND status = 'OPEN' ORDER BY opened_at LIMIT 1`, golden.workspaceId);
+    expect(alert).toBeDefined();
+    views.length = 0;
+    await click("outsider", "alert.resolve", alert!.id);
+    expect(JSON.stringify(views[0]?.view)).toContain("No role in this workspace");
+    const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
+    expect(still?.status).toBe("OPEN");
+    // /budget shows them nothing of this workspace either.
+    expect(String((await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-outsider" })).body["text"])).toContain("No BudgetOS workspace");
+  });
+
+  it("finds the account when the Slack profile's email is in capitals", async () => {
+    const res = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-CAPS-admin" });
+    expect(JSON.stringify(res.body)).toMatch(/open alerts/i);
+  });
+});
+
+describe("every approval request reaches Slack (S-003)", () => {
+  it("a bulk edit's request posts with Approve / Reject, and its approvers are told in the app", async () => {
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", link: true })).status).toBe(200);
+    const ids: string[] = [];
+    for (const envelopeId of [...golden.envelopeIds.values()].slice(60, 120)) {
+      const env = (await as("planner", "GET", `/envelopes/${envelopeId}`)).body as { current?: unknown; draft?: unknown; status?: string };
+      if (env.current && !env.draft && env.status === "APPROVED") ids.push(envelopeId);
+      if (ids.length === 2) break;
+    }
+    const preview = await as("planner", "POST", "/envelopes/bulk", { workspaceId: golden.workspaceId, selection: { envelopeIds: ids }, operation: { op: "pct", pct: 20 }, rationale: "S-003 bulk request" });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(201);
+    const committed = await as("planner", "POST", `/envelopes/bulk/${String(preview.body["previewId"])}/commit`);
+    expect(committed.body, "a 20% raise waits for approval").toMatchObject({ autoApproved: false });
+    const requestId = String(committed.body["requestId"]);
+
+    // The outbox row the notify worker receives (as Pub/Sub, or the local runner, would deliver it).
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, requestId);
+    expect(row, "the request's approval.changed row").toBeDefined();
+    const push = { message: { data: Buffer.from(JSON.stringify(row!.payload)).toString("base64"), attributes: { outboxId: row!.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: "approval.changed" }, messageId: `s003-${row!.id}` }, subscription: "notify-worker" };
+    const posts: Array<{ channel: string; text: string; blocks: unknown[] }> = [];
+    const slackClient: SlackClient = { postMessage: async (m) => void posts.push(m), updateMessage: async () => undefined, lookupUserByEmail: async () => null };
+    await handleInApp(app, push);
+    await handleSlackEvent(app, slackClient, push);
+    expect(posts.map((p) => p.channel)).toEqual(["#budget"]);
+    expect(posts[0]?.text).toMatch(/Approval requested/);
+    expect(JSON.stringify(posts[0]?.blocks)).toContain('"action_id":"approval.approve"');
+    const [told] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM notification WHERE user_id = $1::uuid AND kind = 'approval_requested' AND payload->>'requestId' = $2`, golden.users.budgetOwner, requestId);
+    expect(Number(told?.n), "the first step's approver (the budget owner)").toBe(1);
   });
 });

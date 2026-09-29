@@ -52,7 +52,7 @@ export function approvalMessage(a: ApprovalMessageInput): SlackMessage {
           button(a.kind === "requested" || a.kind === "escalated" ? "Review" : "Open", url, "open_approval", a.actions ? undefined : "primary"),
         ],
       },
-      context(a.actions && (a.kind === "requested" || a.kind === "escalated") ? "Approve or reject here, or review the change in Budget OS" : "Budget OS approvals"),
+      context(a.actions && (a.kind === "requested" || a.kind === "escalated") ? "Approve or reject here, or review the change in BudgetOS" : "BudgetOS approvals"),
     ],
   };
 }

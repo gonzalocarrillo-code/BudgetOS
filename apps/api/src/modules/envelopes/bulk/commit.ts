@@ -4,7 +4,7 @@ import { Decimal } from "decimal.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseId, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { addHours, finalizeBulk, type PolicySnapshot } from "../../approvals/engine.js";
+import { addHours, finalizeBulk, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
 import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { resolveFx } from "../commands/version-writer.js";
 import { capViolations } from "./caps.js";
@@ -125,6 +125,8 @@ export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPre
         });
         await tx.envelopeVersion.updateMany({ where: { id: { in: versionIds } }, data: { status: "PENDING" } });
         await setDraftPointers(tx, pointers, "PENDING");
+        // S-003: announced like a single change's request, so the notify worker posts it and tells its approvers.
+        await recordRequestChange(tx, auth.ctx, { id: requestId, workspaceId }, "approval.requested", { bulkChangeId, policy: policy.name, policyVersion: policy.version, status: "PENDING", step: 0 });
       }
 
       await auditMany(

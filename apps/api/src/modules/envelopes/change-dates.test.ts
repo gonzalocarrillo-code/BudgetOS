@@ -105,7 +105,8 @@ describe("change a budget's dates (R9-002)", () => {
     const waiting = await env(id(parentKey));
     expect(waiting).toMatchObject({ status: "PENDING", endDate: parent.endDate, pendingKind: "dates" });
     const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId);
-    expect(audits.map((a) => a.action)).toEqual(["envelope.dates_requested"]);
+    // The date change, and (S-003) the request it waits in, announced like every other request.
+    expect(audits.map((a) => a.action).sort()).toEqual(["approval.requested", "envelope.dates_requested"]);
     const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'dates' AND payload->>'requestId' = $2`, golden.workspaceId, String(res.body["requestId"]));
     expect(Number(out[0]?.n)).toBe(1);
 

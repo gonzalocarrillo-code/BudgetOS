@@ -310,6 +310,9 @@ async function statusEnvelopes(tx: Tx, topic: string, payload: Record<string, un
   if (r === null) return [];
   if (r.entityType === "envelope_version") return (await tx.envelopeVersion.findMany({ where: { id: r.entityId }, select: { envelopeId: true } })).map((v) => v.envelopeId);
   if (r.entityType !== "bulk_change") return []; // targets and manual entries have no envelope status
+  // A bulk change's request is created with a budget.changed of its own (bulk edit, split, merge,
+  // end, reintroduce, import, dates), which already refreshed these envelopes (S-003).
+  if (payload["action"] === "approval.requested") return [];
   const bulk = await loadBulkChange(tx, r.entityId);
   if (bulk === null) return [];
   const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { envelopeId: true } });

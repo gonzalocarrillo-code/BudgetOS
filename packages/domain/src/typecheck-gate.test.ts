@@ -19,6 +19,8 @@ const expectedScripts = {
   "db:migrate": "pnpm --filter @budget/db prisma migrate deploy",
   "db:seed": "pnpm --filter @budget/db tsx seed/golden.ts",
   "db:reset": "./scripts/dev-reset.sh",
+  // The Slack app manifest for an API URL (docs/runbooks/slack.md).
+  "slack:manifest": "pnpm --silent --filter @budget/api slack:manifest",
   // ADR 0004: license-checker-rseidelsohn saw no pnpm workspace dependencies.
   "license-check": "node scripts/license-check.mjs",
   bench: "turbo run bench",

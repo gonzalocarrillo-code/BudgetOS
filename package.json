@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @budget/db prisma migrate deploy",
     "db:seed": "pnpm --filter @budget/db tsx seed/golden.ts",
     "db:reset": "./scripts/dev-reset.sh",
+    "slack:manifest": "pnpm --silent --filter @budget/api slack:manifest",
     "license-check": "node scripts/license-check.mjs",
     "bench": "turbo run bench",
     "test:e2e": "pnpm --filter @budget/web test:e2e"
