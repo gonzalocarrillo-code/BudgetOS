@@ -26,6 +26,7 @@ import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
 import { DatesDialog } from "../features/structure/dates-dialog.js";
+import { can } from "../features/ops/queries.js";
 import { Camera, Plus, Upload } from "lucide-react";
 import { BudgetImportDialog } from "../features/import/budget-import-dialog.js";
 import { SaveSnapshotDialog } from "../features/snapshots/save-snapshot-dialog.js";
@@ -388,6 +389,12 @@ function ExplorerPage(): ReactElement {
                   currency="USD"
                   onSelect={(id) => setSearch({ select: id })}
                   onAsOf={(asOf) => setSearch({ asOf })}
+                  canEdit={can(me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [], me?.isOrgAdmin ?? false, "envelope.edit_draft")}
+                  onDatesChanged={(r) => {
+                    setNotice({ kind: "ok", text: r.applied ? t("dates.done") : t("dates.sent"), ...(r.requestId ? { requestId: r.requestId } : {}) });
+                    setReload((n) => n + 1);
+                    void client.invalidateQueries({ queryKey: ["approvals", ws] });
+                  }}
                 />
               </div>
             ) : (

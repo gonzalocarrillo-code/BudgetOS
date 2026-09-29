@@ -11,8 +11,11 @@ import "./timeline.css";
 /**
  * BudgetTimeline (spec §23.2) on the SVAR React Gantt MIT core: fiscal scales, bar templates
  * (spend fill, projected-close tick, pace colour; thin target bars with their effective ranges),
- * our marker overlay (SVAR's markers are PRO), a today line and the as-of scrubber. Read-only in
- * Phase 1: drag and resize are plan epic 2.5. The caller does the fetching; this renders `data`.
+ * our marker overlay (SVAR's markers are PRO), a today line and the as-of scrubber. With
+ * `onReschedule` (plan epic 2.5, ADR-061) a budget's bar can be dragged or its ends resized: the new
+ * dates go to the caller, which confirms them (and the approval they need) or reverts the bar.
+ * Nothing else SVAR could edit is allowed: no adding, deleting, linking, progress or cell edits.
+ * The caller does the fetching; this renders `data`.
  */
 
 export type TimelineOpen = { kind: "bar"; bar: TimelineBar } | { kind: "marker"; bar: TimelineBar; markers: TimelineMarker[] };
@@ -45,13 +48,23 @@ export interface BudgetTimelineProps {
   onToggle?: (key: string, open: boolean) => void;
   /** Called when the scrubber is released: end of that day (UTC), or undefined when dropped on today or later. */
   onAsOfChange: (asOf: string | undefined) => void;
+  /** Which bars can be dragged or resized (with `readOnly` false). */
+  canReschedule?: (bar: TimelineBar) => boolean;
+  /**
+   * A bar was dropped with new dates (inclusive, yyyy-MM-dd). It stays where it was dropped until the
+   * caller calls `revert` (cancelled) or passes new `data` (the change applied).
+   */
+  onReschedule?: (bar: TimelineBar, dates: { start: string; end: string }, revert: () => void) => void;
 }
 
 const ROW = 36;
+/** SVAR actions that would edit anything but a budget bar's dates: always refused. */
+const REFUSED = ["add-task", "delete-task", "copy-task", "move-task", "indent-task", "add-link", "update-link", "delete-link", "show-editor"] as const;
+const REVERT = "budget-os-revert";
 const TYPES = [...defaultTaskTypes, { id: "group", label: "Group" }, { id: "envelope", label: "Envelope" }, { id: "target", label: "Target" }, { id: "experiment", label: "Experiment" }];
 
-type Ctx = { labels: BudgetTimelineLabels; formatMoney: (a: string) => string; metricLabel: (m: string) => string };
-let ctx: Ctx = { labels: {} as BudgetTimelineLabels, formatMoney: (a) => a, metricLabel: (m) => m };
+type Ctx = { labels: BudgetTimelineLabels; formatMoney: (a: string) => string; metricLabel: (m: string) => string; movable: (bar: TimelineBar) => boolean };
+let ctx: Ctx = { labels: {} as BudgetTimelineLabels, formatMoney: (a) => a, metricLabel: (m) => m, movable: () => false };
 
 const pct = (n: number | undefined) => `${Math.round(Math.max(0, n ?? 0) * 100)}%`;
 const comparatorSign: Record<string, string> = { lte: "≤", gte: "≥", eq: "=", between: "↔" };
@@ -77,7 +90,7 @@ function BarTemplate({ data }: { data: ITask }): ReactElement {
   }
   const style: CSSProperties = { width: pct(Math.min(1, bar.spendPct ?? 0)) };
   return (
-    <div className={`bt-bar bt-${bar.kind}`} data-bar-key={bar.key} data-pace={bar.paceState} data-kind={bar.kind}>
+    <div className={`bt-bar bt-${bar.kind}`} data-bar-key={bar.key} data-pace={bar.paceState} data-kind={bar.kind} data-movable={ctx.movable(bar) ? "true" : "false"}>
       <span className="bt-fill" style={style} />
       {bar.projectedPct !== undefined && bar.projectedPct > 0 ? <span className="bt-projected" style={{ left: `min(${pct(bar.projectedPct)}, calc(100% - 2px))` }} title={pct(bar.projectedPct)} /> : null}
       <span className="bt-bar-label">{bar.kind === "group" && bar.name === "∅" ? (ctx.labels.noneAt?.(bar.level) ?? ctx.labels.none) : bar.kind === "experiment" && bar.status ? `${bar.name} · ${bar.status.toLowerCase()}` : bar.name}</span>
@@ -134,8 +147,8 @@ function readGeometry(api: IApi): Geometry | null {
   return { width: scales.width, height: Math.max(rows.length * ROW, (s as { _chartHeight?: number })._chartHeight ?? 0), xOf, rows };
 }
 
-export function BudgetTimeline({ data, zoom, asOf, today, readOnly = true, labels, formatMoney, metricLabel, onOpen, onToggle, onAsOfChange }: BudgetTimelineProps): ReactElement {
-  ctx = { labels, formatMoney, metricLabel: metricLabel ?? ((m) => m.toUpperCase()) };
+export function BudgetTimeline({ data, zoom, asOf, today, readOnly = true, labels, formatMoney, metricLabel, onOpen, onToggle, onAsOfChange, canReschedule, onReschedule }: BudgetTimelineProps): ReactElement {
+  ctx = { labels, formatMoney, metricLabel: metricLabel ?? ((m) => m.toUpperCase()), movable: (bar) => !readOnly && onReschedule !== undefined && (canReschedule?.(bar) ?? false) };
   const [openEnvelopes, setOpenEnvelopes] = useState<Set<string>>(() => new Set());
   const [api, setApi] = useState<IApi | null>(null);
   const [geometry, setGeometry] = useState<Geometry | null>(null);
@@ -145,8 +158,8 @@ export function BudgetTimeline({ data, zoom, asOf, today, readOnly = true, label
   const tasks = useMemo(() => toSvarTasks(data.bars, openEnvelopes), [data.bars, openEnvelopes]);
   const scales = useMemo(() => fiscalScales(zoom, data.calendar), [zoom, data.calendar]);
   const range = useMemo(() => chartRange(data.calendar), [data.calendar]);
-  const callbacks = useRef({ onOpen, onToggle, byKey });
-  callbacks.current = { onOpen, onToggle, byKey };
+  const callbacks = useRef({ onOpen, onToggle, byKey, canReschedule, onReschedule, editable: !readOnly });
+  callbacks.current = { onOpen, onToggle, byKey, canReschedule, onReschedule, editable: !readOnly };
 
   const columns = useMemo(
     () => [
@@ -175,7 +188,38 @@ export function BudgetTimeline({ data, zoom, asOf, today, readOnly = true, label
       const bar = callbacks.current.byKey.get(String(id));
       if (bar) callbacks.current.onOpen({ kind: "bar", bar });
     });
-    a.intercept("show-editor", () => false);
+    for (const action of REFUSED) a.intercept(action, () => false);
+    // Epic 2.5: only a budget bar the caller allows moves, and only its dates.
+    const movable = (id: string | number) => {
+      const c = callbacks.current;
+      const bar = c.byKey.get(String(id));
+      return c.editable && c.onReschedule !== undefined && bar !== undefined && (c.canReschedule?.(bar) ?? false);
+    };
+    a.intercept("drag-task", ({ id }: { id: string | number }) => movable(id));
+    const before = new Map<string, { start: Date; end: Date }>();
+    a.intercept("update-task", (ev: { id: string | number; task: Partial<ITask>; eventSource?: string }) => {
+      if (ev.eventSource === REVERT) return true;
+      // A drop carries start and/or end (and a diff); progress, text and anything else are refused.
+      const keys = Object.keys(ev.task ?? {});
+      if (keys.length === 0 || keys.some((k) => k !== "start" && k !== "end") || !movable(ev.id)) return false;
+      const t = a.getTask(ev.id) as ITask | undefined;
+      if (t?.start && t.end) before.set(String(ev.id), { start: t.start, end: t.end });
+      return true;
+    });
+    a.on("update-task", (ev: { id: string | number; eventSource?: string; inProgress?: boolean }) => {
+      if (ev.eventSource === REVERT || ev.inProgress) return;
+      const key = String(ev.id);
+      const was = before.get(key);
+      before.delete(key);
+      const bar = callbacks.current.byKey.get(key);
+      const t = a.getTask(ev.id) as ITask | undefined;
+      if (!was || !bar || !t?.start || !t.end) return;
+      // SVAR's end is exclusive (see tasks.ts): the last day is the day before it.
+      const dates = { start: fromLocal(t.start), end: fromLocal(new Date(t.end.getTime() - 86_400_000)) };
+      const revert = () => void a.exec("update-task", { id: ev.id, task: { start: was.start, end: was.end }, eventSource: REVERT });
+      if (dates.start === bar.start && dates.end === bar.end) return revert();
+      callbacks.current.onReschedule?.(bar, dates, revert);
+    });
     setApi(a);
   }, []);
 

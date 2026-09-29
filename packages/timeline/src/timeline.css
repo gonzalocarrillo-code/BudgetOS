@@ -44,6 +44,25 @@
 .bt-root .wx-bar .wx-progress-wrapper,
 .bt-root .wx-bar .wx-progress-marker,
 .bt-root .wx-bar .wx-link { display: none !important; }
+/* Epic 2.5: a budget bar that can move shows it; its ends resize (SVAR sets col-resize there). */
+.bt-root .bt-bar[data-movable="true"] { cursor: grab; }
+.bt-root .bt-bar[data-movable="true"]:active { cursor: grabbing; }
+.bt-root .bt-bar[data-movable="true"]::before,
+.bt-root .bt-bar[data-movable="true"]::after {
+  content: "";
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  width: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--bt-pace) 55%, #fff);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.bt-root .bt-bar[data-movable="true"]::before { left: 2px; }
+.bt-root .bt-bar[data-movable="true"]::after { right: 2px; }
+.bt-root .wx-bar:hover .bt-bar[data-movable="true"]::before,
+.bt-root .wx-bar:hover .bt-bar[data-movable="true"]::after { opacity: 1; }
 
 .bt-bar {
   position: relative;

@@ -3,15 +3,19 @@ import { useExplorerLabels } from "../explorer/labels.js";
 import { formatMoney } from "@budget/grid";
 import { BudgetTimeline, type BudgetTimelineLabels } from "@budget/timeline";
 import { t } from "@budget/ui/i18n";
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
-import { useMemo, type ReactElement } from "react";
+import { keepPreviousData, queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState, type ReactElement } from "react";
+import { DatesDialog, type DatesResult } from "../structure/dates-dialog.js";
 import { api, unwrap } from "../../lib/api.js";
 import { encodeFilter } from "../../lib/filters.js";
 
 /**
  * The Explorer's Timeline view (spec §23.3, T-037): the same search params as the tree (filter,
  * hierarchy template, period, as-of) drawn by `@budget/timeline`. The server groups, totals and
- * places targets; this view only fetches pages and hands them over. Read-only (drag is epic 2.5).
+ * places targets; this view only fetches pages and hands them over. A budget's bar can be dragged
+ * or resized (epic 2.5, ADR-061) when the caller may edit and no past as-of is shown: the drop opens
+ * Change dates with the new dates, whose preview and approval rules apply (ADR-060); cancelling
+ * puts the bar back.
  */
 
 /** Envelope bars fetched per view: pages of 2,000 up to 5,000 (the 5k-bar budget, spec §23.2). */
@@ -62,15 +66,22 @@ export function TimelineView({
   currency,
   onSelect,
   onAsOf,
+  canEdit = false,
+  onDatesChanged,
 }: {
   ws: string;
   search: TimelineSearch;
   currency: string;
   onSelect: (envelopeId: string) => void;
   onAsOf: (asOf: string | undefined) => void;
+  /** The caller may change budgets' dates (envelope.edit_draft). */
+  canEdit?: boolean;
+  onDatesChanged?: (r: DatesResult) => void;
 }): ReactElement {
   const today = new Date().toISOString().slice(0, 10);
+  const client = useQueryClient();
   const { data, isPending, error, isFetching } = useQuery(timelineQuery(ws, search));
+  const [dropped, setDropped] = useState<{ envelopeId: string; dates: { startDate: string; endDate: string }; revert: () => void } | null>(null);
   const explorer = useExplorerLabels(ws);
   const levels = data?.levels;
   const labels: BudgetTimelineLabels = useMemo(
@@ -110,13 +121,42 @@ export function TimelineView({
               if (o.bar.envelopeId) onSelect(o.bar.envelopeId);
             }}
             onAsOfChange={onAsOf}
+            // A past as-of is a read of history: nothing moves there.
+            readOnly={!canEdit || search.asOf !== undefined}
+            canReschedule={(bar) => bar.kind === "envelope" && bar.envelopeId !== undefined && !MOVELESS.has(bar.status ?? "")}
+            onReschedule={(bar, dates, revert) => {
+              if (bar.envelopeId) setDropped({ envelopeId: bar.envelopeId, dates: { startDate: dates.start, endDate: dates.end }, revert });
+              else revert();
+            }}
           />
         </div>
       )}
       <Legend />
+      {dropped ? (
+        <DatesDialog
+          ws={ws}
+          envelopeId={dropped.envelopeId}
+          proposed={dropped.dates}
+          onClose={() => {
+            dropped.revert();
+            setDropped(null);
+          }}
+          onDone={(r) => {
+            // Applied: the refetch draws the bar at its new dates. Waiting for approval: it goes back until then.
+            if (!r.applied) dropped.revert();
+            setDropped(null);
+            void client.invalidateQueries({ queryKey: ["timeline", ws] });
+            void client.invalidateQueries({ queryKey: ["envelope", ws] });
+            onDatesChanged?.(r);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
+
+/** Budgets whose dates cannot change from a drag: ended, closed, archived, or waiting for approval. */
+const MOVELESS = new Set(["ENDED", "LOCKED", "ARCHIVED", "PENDING"]);
 
 function Legend(): ReactElement {
   const dot = "inline-block size-2.5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.12)]";
