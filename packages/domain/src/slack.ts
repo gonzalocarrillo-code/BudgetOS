@@ -48,8 +48,12 @@ export type UpdateSlackSettingsInput = z.infer<typeof UpdateSlackSettingsInput>;
 /** POST /workspaces/:ws/integrations/slack/test */
 export const SlackTestInput = z.object({ channel: Channel.optional() });
 
-/** A button's `value`: the workspace and entity it acts on. */
-export const SlackActionValue = z.object({ ws: z.string().uuid(), id: z.string().uuid() });
+/**
+ * A button's `value`: the workspace and entity it acts on, and (S-006) the private message it sits
+ * on (`o`: the /budget approvals list, or a card), which is replaced after the action. A form
+ * opened from such a button carries the message's response_url (`r`) to replace it on submit.
+ */
+export const SlackActionValue = z.object({ ws: z.string().uuid(), id: z.string().uuid(), o: z.enum(["list", "card"]).optional(), r: z.string().url().max(500).optional() });
 export type SlackActionValue = z.infer<typeof SlackActionValue>;
 
 export const SLACK_ACTIONS = ["alert.acknowledge", "alert.snooze", "alert.resolve", "approval.approve", "approval.reject", "approval.changes"] as const;

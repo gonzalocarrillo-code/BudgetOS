@@ -27,8 +27,12 @@ export const header = (text: string): Block => ({ type: "header", text: { type: 
 export const section = (text: string, fields?: string[]): Block => ({ type: "section", text: { type: "mrkdwn", text: text.slice(0, 3000) }, ...(fields?.length ? { fields: fields.slice(0, 10).map((f) => ({ type: "mrkdwn" as const, text: f.slice(0, 2000) })) } : {}) });
 export const context = (...parts: string[]): Block => ({ type: "context", elements: parts.filter(Boolean).map((text) => ({ type: "mrkdwn" as const, text })) });
 export const button = (text: string, url: string, actionId: string, style?: "primary" | "danger"): Button => ({ type: "button" as const, text: { type: "plain_text" as const, text, emoji: true as const }, url, action_id: actionId, ...(style ? { style } : {}) });
-/** A button the bot handles (POST /slack/interactions): acknowledge, snooze, resolve, approve, reject. */
-export const actionButton = (text: string, actionId: string, workspaceId: string, id: string, style?: "primary" | "danger"): Button => ({ type: "button" as const, text: { type: "plain_text" as const, text, emoji: true as const }, action_id: actionId, value: JSON.stringify({ ws: workspaceId, id }), ...(style ? { style } : {}) });
+/**
+ * A button the bot handles (POST /slack/interactions): acknowledge, snooze, resolve, approve, reject,
+ * request changes. `origin` says which private (ephemeral) message it sits on, so the API can
+ * replace that message after acting (S-006); messages the worker posted leave it out.
+ */
+export const actionButton = (text: string, actionId: string, workspaceId: string, id: string, style?: "primary" | "danger", origin?: "list" | "card"): Button => ({ type: "button" as const, text: { type: "plain_text" as const, text, emoji: true as const }, action_id: actionId, value: JSON.stringify({ ws: workspaceId, id, ...(origin ? { o: origin } : {}) }), ...(style ? { style } : {}) });
 
 /** Money for Slack: grouped thousands and the currency code; the value stays a decimal string. */
 export function money(amount: string | null, currency: string): string {

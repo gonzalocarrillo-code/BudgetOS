@@ -5,6 +5,7 @@ import { listAlerts } from "../../pacing/queries.js";
 import { search } from "../../search/search.js";
 import { linkedWorkspaces, slackRequestId, type SlackDeps } from "../identity.js";
 import { appUrl } from "../slack-config.js";
+import { approvalsReply } from "./approvals.js";
 import { slackApi } from "../slack-api.js";
 
 /**
@@ -18,6 +19,7 @@ const money = (v: unknown) => (v === null || v === undefined ? "—" : Number(v)
 
 const HELP = [
   "*BudgetOS* — `/budget` answers only you:",
+  "• `/budget approvals` — requests waiting on you, with Approve / Request changes / Reject",
   "• `/budget alerts` — open alerts you can see",
   "• `/budget search <text>` — budgets, approvals, alerts, targets",
   "• `/budget <budget name>` — a budget's amount, spend and pace",
@@ -52,6 +54,7 @@ export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: 
   const url = (path: string) => `${appUrl()}/w/${ws}${path}`;
   const footer = linked.length > 1 ? ` · workspace *${chosen.name}*` : "";
   try {
+    if (text === "approvals" || text === "inbox") return await approvalsReply(prisma, auth, ws, { footer });
     if (text === "alerts") {
       authorize(auth, "envelope.read"); // GET /alerts
       const alerts = (await listAlerts(prisma, auth, { limit: "10" })) as Array<{ id: string; severity: string; status: string; envelopeName: string | null; ruleName: string | null }>;

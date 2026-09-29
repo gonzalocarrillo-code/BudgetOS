@@ -87,7 +87,21 @@ The bot runs where everything else runs (spec §20): the API as `budget-api` and
 
 The Terraform for this lands with T-008 (the GCP project); `docs/SLACK_TOOLSET_PLAN.md` §3.12 has the detail.
 
-## 7. When something goes wrong
+## 7. Commands
+
+`/budget` answers only the person who typed it (an ephemeral reply), for the workspace linked to their Slack team where they have a role.
+
+| Command | Answers |
+|---|---|
+| `/budget help` | this list |
+| `/budget approvals` | the requests waiting on you, with Approve / Request changes / Reject; acting replaces the list with what is left |
+| `/budget alerts` | open alerts you can see |
+| `/budget search <text>` | budgets, approvals, alerts, targets |
+| `/budget <budget name>` | a budget's amount, spend and pace |
+
+A reply that says it could not be updated means Slack's link to that message expired (30 minutes, or five uses): the action stands; run the command again.
+
+## 8. When something goes wrong
 
 | Symptom | Cause and fix |
 |---|---|
