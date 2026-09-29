@@ -10,6 +10,8 @@ export interface LockedEnvelopeRow {
   draftVersionId: string | null;
   currentVersionId: string | null;
   rowVersion: number;
+  /** H-011: set once an end is approved; an ended budget is read-only. */
+  endedAt?: string | null;
 }
 
 /** Locks the envelope row for the rest of the transaction (spec §7.1). RLS applies: another tenant's id reads as missing. */
@@ -18,7 +20,7 @@ export async function lockEnvelope(tx: Tx, envelopeId: string): Promise<LockedEn
     SELECT id::text AS id, workspace_id::text AS "workspaceId", status::text AS status, currency,
            start_date::text AS "startDate", end_date::text AS "endDate",
            draft_version_id::text AS "draftVersionId", current_version_id::text AS "currentVersionId",
-           row_version AS "rowVersion"
+           row_version AS "rowVersion", ended_at::text AS "endedAt"
     FROM envelope WHERE id = ${envelopeId}::uuid FOR UPDATE`;
   return rows[0] ?? null;
 }

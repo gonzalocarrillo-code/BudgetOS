@@ -192,6 +192,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/envelopes/{id}/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEnvelopeSpend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["endEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/envelopes/{id}/reintroduce": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reintroduceEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/envelopes/{id}/split": {
         parameters: {
             query?: never;
@@ -2589,6 +2637,102 @@ export interface operations {
             };
         };
     };
+    getEnvelopeSpend: {
+        parameters: {
+            query?: {
+                through?: string;
+            };
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Spend up to a date in the budget's currency: { through, currency, spend } (H-011) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    endEnvelope: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    endDate: string;
+                    finalAmount: string;
+                    /** @default  */
+                    rationale?: string;
+                    /** Format: uuid */
+                    basedOnVersionId: string;
+                    successor?: {
+                        name?: string;
+                        startDate: string;
+                        endDate: string;
+                        amount: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description A final-amount version (and an optional successor) routed through the approval policy; the end date applies on approval (H-011) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reintroduceEnvelope: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    startDate: string;
+                    endDate: string;
+                    amount: string;
+                    /** @default  */
+                    rationale?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description A successor under the same parent with lineage `continues`, routed through the approval policy (H-012) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     splitEnvelope: {
         parameters: {
             query?: never;
@@ -2691,6 +2835,38 @@ export interface operations {
                             [key: string]: string;
                         };
                         rationale: string;
+                    };
+                } | {
+                    /** @enum {string} */
+                    op: "end";
+                    /** Format: uuid */
+                    envelopeId: string;
+                    input: {
+                        endDate: string;
+                        finalAmount: string;
+                        /** @default  */
+                        rationale?: string;
+                        /** Format: uuid */
+                        basedOnVersionId: string;
+                        successor?: {
+                            name?: string;
+                            startDate: string;
+                            endDate: string;
+                            amount: string;
+                        };
+                    };
+                } | {
+                    /** @enum {string} */
+                    op: "reintroduce";
+                    /** Format: uuid */
+                    envelopeId: string;
+                    input: {
+                        name?: string;
+                        startDate: string;
+                        endDate: string;
+                        amount: string;
+                        /** @default  */
+                        rationale?: string;
                     };
                 };
             };

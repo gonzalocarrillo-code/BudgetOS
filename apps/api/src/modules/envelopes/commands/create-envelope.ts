@@ -33,8 +33,9 @@ export async function insertEnvelopeRow(tx: Tx, auth: AuthContext, workspaceId: 
   const pairs = values.map((v) => ({ dimensionId: v.dimensionId, valueId: v.id }));
   assertInScope(auth, action, await scopeTargetForValues(tx, pairs));
   if (input.parentId !== null) {
-    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { id: true, status: true } });
+    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { id: true, status: true, endedAt: true } });
     if (parent === null) throw new DomainError("NOT_FOUND", "Parent envelope not found");
+    if (parent.endedAt !== null) throw new DomainError("LOCKED", "The parent budget has ended; reintroduce it first");
     if (parent.status === "LOCKED") throw new DomainError("LOCKED", "Parent period is closed");
     if (parent.status === "ARCHIVED") throw new DomainError("CONFLICT", "Parent envelope is archived");
   }

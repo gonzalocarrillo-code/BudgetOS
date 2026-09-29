@@ -1,4 +1,4 @@
-import { AlertOctagon, AlertTriangle, Archive, Ban, Check, CheckCircle2, Circle, Clock, FlaskConical, Info, Loader2, Lock, LockOpen, PencilLine, RotateCcw, XCircle, type LucideIcon } from "lucide-react";
+import { AlertOctagon, AlertTriangle, Archive, Ban, Check, CheckCircle2, Circle, Clock, Flag, FlaskConical, Info, Loader2, Lock, LockOpen, PencilLine, RotateCcw, XCircle, type LucideIcon } from "lucide-react";
 import type { HTMLAttributes, ReactElement, ReactNode } from "react";
 import { cn } from "./cn.js";
 import { hasMessage, t } from "./i18n.js";
@@ -31,6 +31,7 @@ const VOCABULARY: Record<string, { tone: ChipTone; icon: LucideIcon }> = {
   SUPERSEDED: { tone: "neutral", icon: Archive },
   LOCKED: { tone: "info", icon: Lock },
   ARCHIVED: { tone: "neutral", icon: Archive },
+  ENDED: { tone: "neutral", icon: Flag },
   OPEN: { tone: "warning", icon: Circle },
   ACKNOWLEDGED: { tone: "info", icon: Check },
   SNOOZED: { tone: "neutral", icon: Clock },

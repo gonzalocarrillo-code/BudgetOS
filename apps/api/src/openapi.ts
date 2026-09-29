@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   BaselineReport,
+  EndEnvelopeInput,
+  ReintroduceInput,
   BaselinesResponse,
   CreateBaselineInput,
   UpdateBaselineInput,
@@ -177,6 +179,15 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/envelopes/{id}/move": {
         post: { operationId: "moveEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(MoveEnvelopeInput), responses: { "200": { description: "Moved; lineage written; an open request re-routed if its policy changed" }, "409": { description: "Stale rowVersion" }, "422": { description: "CAP_EXCEEDED under the new parent, or a cycle" } } },
+      },
+      "/api/v1/envelopes/{id}/spend": {
+        get: { operationId: "getEnvelopeSpend", parameters: [idParam, workspaceHeader, { name: "through", in: "query", required: false, schema: { type: "string", format: "date" } }], responses: { "200": { description: "Spend up to a date in the budget's currency: { through, currency, spend } (H-011)" } } },
+      },
+      "/api/v1/envelopes/{id}/end": {
+        post: { operationId: "endEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(EndEnvelopeInput), responses: { "200": { description: "A final-amount version (and an optional successor) routed through the approval policy; the end date applies on approval (H-011)" } } },
+      },
+      "/api/v1/envelopes/{id}/reintroduce": {
+        post: { operationId: "reintroduceEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(ReintroduceInput), responses: { "200": { description: "A successor under the same parent with lineage `continues`, routed through the approval policy (H-012)" } } },
       },
       "/api/v1/envelopes/{id}/split": {
         post: { operationId: "splitEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(SplitEnvelopeInput), responses: { "200": { description: "New siblings with drafts summing to the approved amount; one approval (or auto-approved); source archived once approved" } } },

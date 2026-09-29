@@ -3,7 +3,7 @@ import type { TimelineParams } from "./queries/timeline.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { SubmitVersionDto, WithdrawDto } from "../approvals/dto.js";
-import { AddChildDto, BulkRequestDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
+import { AddChildDto, BulkRequestDto, EndEnvelopeDto, ReintroduceDto, FamilyInputDto, MergeEnvelopesDto, StructurePreviewDto, MoveEnvelopeDto, SplitEnvelopeDto, CsvExportDto, CsvImportDto, CreateDraftVersionDto, CreateEnvelopeDto, RestoreVersionDto, UpdateEnvelopeDto, UpdatePhasingDto } from "./dto.js";
 import { EnvelopesService } from "./envelopes.service.js";
 
 @Controller()
@@ -26,6 +26,13 @@ export class EnvelopesController {
   @Permission("envelope.read")
   timeline(@Tenant() auth: AuthContext, @Param("id") id: string, @Query() params: TimelineParams) {
     return this.envelopes.timeline(auth, id, params);
+  }
+
+  /** H-011: spend up to a date, which End proposes as the final amount. */
+  @Get("envelopes/:id/spend")
+  @Permission("envelope.read")
+  spend(@Tenant() auth: AuthContext, @Param("id") id: string, @Query("through") through?: string) {
+    return this.envelopes.spend(auth, id, through);
   }
 
   @Get("envelopes/:id/versions")
@@ -122,6 +129,20 @@ export class EnvelopesController {
   @Permission("envelope.move")
   split(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: SplitEnvelopeDto) {
     return this.envelopes.split(auth, id, body);
+  }
+
+  /** H-011: end a budget with its final amount (and optionally its successor), through the approval policy. */
+  @Post("envelopes/:id/end")
+  @Permission("envelope.move")
+  end(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: EndEnvelopeDto) {
+    return this.envelopes.end(auth, id, body);
+  }
+
+  /** H-012: a successor for an ended budget (lineage `continues`), through the approval policy. */
+  @Post("envelopes/:id/reintroduce")
+  @Permission("envelope.create")
+  reintroduce(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: ReintroduceDto) {
+    return this.envelopes.reintroduce(auth, id, body);
   }
 
   /** Bulk edit (spec §7.4): preview first; nothing changes until commit. */

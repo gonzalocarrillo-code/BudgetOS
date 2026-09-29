@@ -110,6 +110,13 @@ export async function actualsByEnvelope(tx: Tx, ids: string[]): Promise<Map<stri
   return new Map(rows.map((r) => [r.id, r.s]));
 }
 
+/** Spend on one envelope up to and including `through` (reporting currency): End proposes it as the final amount (H-011). */
+export async function spendThrough(tx: Tx, envelopeId: string, through: string): Promise<string> {
+  const [row] = await tx.$queryRaw<Array<{ s: string | null }>>`
+    SELECT sum(amount_reporting)::text AS s FROM spend_fact WHERE envelope_id = ${envelopeId}::uuid AND period_date <= ${through}::date`;
+  return row?.s ?? "0";
+}
+
 /**
  * `copy_previous_period`: for each envelope, the latest earlier envelope with the same dimension
  * tuple that ended before this one starts, and its approved amount (envelope currency).
@@ -200,9 +207,17 @@ export async function insertBulkVersions(tx: Tx, rows: BulkVersionRow[], created
     SELECT vid, month, CASE WHEN rn = 1 THEN amt - (sum(scaled) OVER (PARTITION BY vid) - scaled) ELSE scaled END FROM r`;
 }
 
+export type BulkKind = "edit" | "split" | "merge" | "end" | "reintroduce";
+
+/** What an `end` applies on approval (H-011): the budget stops on `endDate`. */
+export interface BulkEndPayload {
+  end?: { envelopeId: string; endDate: string; reason: string };
+}
+
 export interface BulkChangeRow {
   id: string;
-  kind: "edit" | "split" | "merge";
+  kind: BulkKind;
+  payload: BulkEndPayload;
   versionIds: string[];
   archiveIds: string[];
   createdIds: string[];
@@ -212,19 +227,37 @@ export interface BulkChangeRow {
 export async function loadBulkChange(tx: Tx, id: string): Promise<BulkChangeRow | null> {
   const [row] = await tx.$queryRaw<BulkChangeRow[]>`
     SELECT id::text AS id, kind, version_ids::text[] AS "versionIds", archive_ids::text[] AS "archiveIds",
-           created_ids::text[] AS "createdIds", created_by::text AS "createdBy"
+           created_ids::text[] AS "createdIds", created_by::text AS "createdBy", payload
     FROM bulk_change WHERE id = ${id}::uuid`;
   return row ?? null;
 }
 
 export async function insertBulkChange(
   tx: Tx,
-  row: { id: string; workspaceId: string; kind: "edit" | "split" | "merge"; versionIds: string[]; archiveIds?: string[]; createdIds?: string[]; createdBy: string },
+  row: { id: string; workspaceId: string; kind: BulkKind; versionIds: string[]; archiveIds?: string[]; createdIds?: string[]; createdBy: string; payload?: BulkEndPayload },
 ): Promise<void> {
   await tx.$executeRaw`
-    INSERT INTO bulk_change (id, workspace_id, kind, version_ids, archive_ids, created_ids, created_by)
+    INSERT INTO bulk_change (id, workspace_id, kind, version_ids, archive_ids, created_ids, created_by, payload)
     VALUES (${row.id}::uuid, ${row.workspaceId}::uuid, ${row.kind}, ${row.versionIds}::uuid[], ${row.archiveIds ?? []}::text[]::uuid[],
-            ${row.createdIds ?? []}::text[]::uuid[], ${row.createdBy}::uuid)`;
+            ${row.createdIds ?? []}::text[]::uuid[], ${row.createdBy}::uuid, ${JSON.stringify(row.payload ?? {})}::jsonb)`;
+}
+
+/** The open approval request of the bulk change (split, merge, end…) that holds this version, if any. */
+export async function openBulkRequestFor(tx: Tx, versionId: string): Promise<{ id: string; status: string; summary: string; kind: BulkKind } | null> {
+  const [row] = await tx.$queryRaw<Array<{ id: string; status: string; summary: string; kind: BulkKind }>>`
+    SELECT r.id::text AS id, r.status::text AS status, r.summary, b.kind
+    FROM bulk_change b JOIN approval_request r ON r.entity_type = 'bulk_change' AND r.entity_id = b.id
+    WHERE ${versionId}::uuid = ANY(b.version_ids) AND r.status IN ('PENDING', 'ESCALATED', 'CHANGES_REQUESTED')
+    ORDER BY r.requested_at DESC LIMIT 1`;
+  return row ?? null;
+}
+
+/** Ends a budget once its end is approved (H-011): new end date, marked ended, read-only from then on. */
+export async function applyEnd(tx: Tx, end: { envelopeId: string; endDate: string; reason: string }, endedBy: string): Promise<void> {
+  await tx.$executeRaw`
+    UPDATE envelope SET end_date = ${end.endDate}::date, ended_at = now(), ended_by = ${endedBy}::uuid, ended_reason = ${end.reason},
+           row_version = row_version + 1, updated_at = now()
+    WHERE id = ${end.envelopeId}::uuid`;
 }
 
 /** Archives envelopes (split / merge sources after approval, never-approved parts after a rejection). */

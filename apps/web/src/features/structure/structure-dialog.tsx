@@ -10,7 +10,7 @@ import { z } from "zod";
 import { api, unwrap } from "../../lib/api.js";
 import { registryQuery, searchQuery, type EnvelopeDetail } from "../../lib/queries.js";
 
-export type StructureOp = "add_child" | "move" | "split" | "merge";
+export type StructureOp = "add_child" | "move" | "split" | "merge" | "end" | "reintroduce";
 
 const Cap = z.object({ id: z.string(), name: z.string(), approved: z.string().nullable(), childrenBefore: z.string(), childrenAfter: z.string(), remainingAfter: z.string().nullable(), overCap: z.boolean(), allowOverAllocation: z.boolean() });
 const Preview = z.union([
@@ -40,7 +40,16 @@ const MONEY = /^\d{1,16}(\.\d{1,2})?$/;
 /** "50,000,000" or " 1200.50 " as typed; the API gets plain digits. */
 const plain = (v: string) => v.replace(/[,\s]/g, "");
 const field = "w-full";
-const TITLES: Record<StructureOp, MessageKey> = { add_child: "structure.addChild", move: "structure.move", split: "structure.split", merge: "structure.merge" };
+const TITLES: Record<StructureOp, MessageKey> = { add_child: "structure.addChild", move: "structure.move", split: "structure.split", merge: "structure.merge", end: "structure.end", reintroduce: "structure.reintroduce" };
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A calendar date `days` after an ISO date (UTC, so no time zone shifts it). */
+const addDays = (iso: string, days: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+const Spend = z.object({ through: z.string(), currency: z.string(), spend: z.string() });
 
 /**
  * Structure changes from the tree or the drawer (T-031b, plan 0.6 §9.3): add a child, move under
@@ -66,6 +75,37 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
   const siblings = env.structure.siblings.filter((s) => s.currency === env.currency && s.approved !== null && s.status !== "PENDING");
   const [mergeIds, setMergeIds] = useState<string[]>([]);
   const [mergeName, setMergeName] = useState("");
+  // end (H-011): the last day defaults to today, inside the budget's dates
+  const today = new Date().toISOString().slice(0, 10);
+  const [endDate, setEndDate] = useState(() => (today < env.startDate ? env.startDate : today > env.endDate ? env.endDate : today));
+  const [finalAmount, setFinalAmount] = useState("");
+  const [finalTouched, setFinalTouched] = useState(false);
+  const [withSuccessor, setWithSuccessor] = useState(false);
+  // reintroduce (H-012), alone or with the end: the same length as the old budget, from the day after it ends
+  const lastDay = op === "end" ? endDate : env.endDate;
+  const length = Math.max(daysBetween(env.startDate, env.endDate), 0);
+  const [succName, setSuccName] = useState(env.name);
+  const [succStart, setSuccStart] = useState(() => addDays(env.endDate, 1));
+  const [succEnd, setSuccEnd] = useState(() => addDays(env.endDate, 1 + length));
+  const [succAmount, setSuccAmount] = useState(op === "reintroduce" ? approved : "");
+  const spend = useQuery({
+    queryKey: ["envelope-spend", ws, env.id, endDate],
+    queryFn: async () => Spend.parse(await unwrap(api.GET("/api/v1/envelopes/{id}/spend", { params: { path: { id: env.id }, query: { through: endDate }, header: { "X-Workspace-Id": ws } } }))),
+    enabled: op === "end" && DATE.test(endDate),
+  });
+  // Propose the spend to the last day as the final amount, until the person types their own.
+  useEffect(() => {
+    if (op === "end" && !finalTouched && spend.data) setFinalAmount(spend.data.spend);
+  }, [op, finalTouched, spend.data]);
+  const released = MONEY.test(plain(finalAmount)) ? Decimal.max(new Decimal(approved).minus(plain(finalAmount)), 0).toFixed(2) : "";
+  const toggleSuccessor = (on: boolean) => {
+    setWithSuccessor(on);
+    if (on) {
+      setSuccStart(addDays(endDate, 1));
+      setSuccEnd(env.endDate > endDate ? env.endDate : addDays(endDate, 1 + length));
+      if (!succAmount) setSuccAmount(released);
+    }
+  };
 
   useEffect(() => {
     // The first field, not the close button that comes before it.
@@ -87,8 +127,12 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
     if (op === "add_child") return !childName.trim() ? t("structure.needName") : !MONEY.test(plain(childAmount)) ? t("structure.needAmount") : null;
     if (op === "move") return moveTo === null ? t("structure.needParent") : null;
     if (op === "split") return parts.some((p) => !p.name.trim() || !MONEY.test(plain(p.amount))) ? t("structure.needParts") : null;
-    return mergeIds.length === 0 ? t("structure.needSiblings") : !mergeName.trim() ? t("structure.needName") : null;
+    if (op === "merge") return mergeIds.length === 0 ? t("structure.needSiblings") : !mergeName.trim() ? t("structure.needName") : null;
+    const successorWhy = !succName.trim() ? t("structure.needName") : !DATE.test(succStart) || !DATE.test(succEnd) || succStart > succEnd ? t("structure.needDates") : !MONEY.test(plain(succAmount)) ? t("structure.needAmount") : null;
+    if (op === "end") return !DATE.test(endDate) ? t("structure.needEndDate") : !MONEY.test(plain(finalAmount)) ? t("structure.needAmount") : withSuccessor ? successorWhy : null;
+    return successorWhy;
   })();
+  const successor = { name: succName.trim(), startDate: succStart, endDate: succEnd, amount: plain(succAmount) };
   const body = why
     ? null
     : op === "add_child"
@@ -97,7 +141,11 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
         ? { op, envelopeId: env.id, input: { parentId: moveTo?.id ?? null, rowVersion: env.rowVersion, rationale: reason } }
         : op === "split"
           ? { op, envelopeId: env.id, input: { basedOnVersionId: env.draftVersionId ?? env.currentVersionId, rationale: reason, parts: parts.map((p) => ({ name: p.name.trim(), amount: plain(p.amount) })) } }
-          : { op, input: { sourceIds: mergeSources, name: mergeName.trim(), dimensionValues: shared, rationale: reason } };
+          : op === "merge"
+            ? { op, input: { sourceIds: mergeSources, name: mergeName.trim(), dimensionValues: shared, rationale: reason } }
+            : op === "end"
+              ? { op, envelopeId: env.id, input: { endDate, finalAmount: plain(finalAmount), rationale: reason, basedOnVersionId: env.draftVersionId ?? env.currentVersionId, ...(withSuccessor ? { successor } : {}) } }
+              : { op, envelopeId: env.id, input: { ...successor, rationale: reason } };
   const settled = useSettled(body);
   const pending = JSON.stringify(settled) !== JSON.stringify(body);
   const preview = useQuery({
@@ -125,6 +173,11 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
       if (body.op === "split") {
         const r = pick(await unwrap(api.POST("/api/v1/envelopes/{id}/split", { params: { path: { id: env.id }, header }, body: body.input as never })));
         return { op, requestId: r.requestId ?? null, autoApproved: r.autoApproved ?? null, newIds: r.partIds ?? [] };
+      }
+      if (body.op === "end" || body.op === "reintroduce") {
+        const path = body.op === "end" ? ("/api/v1/envelopes/{id}/end" as const) : ("/api/v1/envelopes/{id}/reintroduce" as const);
+        const r = pick(await unwrap(api.POST(path, { params: { path: { id: env.id }, header }, body: body.input as never }))) as { requestId?: string | null; autoApproved?: boolean; successorId?: string | null };
+        return { op, requestId: r.requestId ?? null, autoApproved: r.autoApproved ?? null, newIds: r.successorId ? [r.successorId] : [] };
       }
       const r = pick(await unwrap(api.POST("/api/v1/envelopes/merge", { params: { header }, body: body.input as never })));
       return { op, requestId: r.requestId ?? null, autoApproved: r.autoApproved ?? null, newIds: r.targetId ? [r.targetId] : [] };
@@ -234,6 +287,37 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
           </div>
         ) : null}
 
+        {op === "end" ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm">{t("structure.approvedNow", { amount: formatMoney(approved, env.currency) })}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Labeled label={t("structure.endDate")}>
+                <Input type="date" className={field} min={env.startDate} max={env.endDate} value={endDate} onChange={(e) => setEndDate(e.target.value)} data-testid="end-date" />
+              </Labeled>
+              <Labeled label={t("structure.finalAmount", { currency: env.currency })}>
+                <Input className={cn(field, "text-right tabular")} inputMode="decimal" value={finalAmount} onChange={(e) => (setFinalTouched(true), setFinalAmount(e.target.value))} placeholder="0.00" data-testid="end-final-amount" />
+              </Labeled>
+            </div>
+            {spend.data ? (
+              <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="end-spend">
+                {t("structure.spentBy", { date: spend.data.through, amount: formatMoney(spend.data.spend, env.currency) })}
+                {plain(finalAmount) !== spend.data.spend ? (
+                  <Button size="sm" variant="ghost" onClick={() => (setFinalTouched(false), setFinalAmount(spend.data.spend))} data-testid="end-use-spend">
+                    {t("structure.useSpend")}
+                  </Button>
+                ) : null}
+              </p>
+            ) : null}
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={withSuccessor} onChange={(e) => toggleSuccessor(e.target.checked)} data-testid="end-with-successor" />
+              {t("structure.alsoReintroduce")}
+            </label>
+            {withSuccessor ? <SuccessorFields env={env} name={succName} setName={setSuccName} start={succStart} setStart={setSuccStart} end={succEnd} setEnd={setSuccEnd} amount={succAmount} setAmount={setSuccAmount} after={lastDay} /> : null}
+          </div>
+        ) : null}
+
+        {op === "reintroduce" ? <SuccessorFields env={env} name={succName} setName={setSuccName} start={succStart} setStart={setSuccStart} end={succEnd} setEnd={setSuccEnd} amount={succAmount} setAmount={setSuccAmount} after={lastDay} /> : null}
+
         <Labeled label={t("structure.reason")}>
           <Input className={field} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder={t("structure.reasonHint")} data-testid="structure-reason" />
         </Labeled>
@@ -257,6 +341,30 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** The new budget that continues an ended one (H-012): its name, dates and amount. */
+function SuccessorFields(p: { env: EnvelopeDetail; name: string; setName: (v: string) => void; start: string; setStart: (v: string) => void; end: string; setEnd: (v: string) => void; amount: string; setAmount: (v: string) => void; after: string }): ReactElement {
+  return (
+    <div className="grid gap-3 rounded-lg border border-border bg-surface p-3 sm:grid-cols-2" data-testid="successor-fields">
+      <div className="sm:col-span-2">
+        <Labeled label={t("structure.successorName")}>
+          <Input className={field} value={p.name} onChange={(e) => p.setName(e.target.value)} data-testid="successor-name" />
+        </Labeled>
+      </div>
+      <Labeled label={t("structure.startDate")}>
+        <Input type="date" className={field} min={addDays(p.after, 1)} value={p.start} onChange={(e) => p.setStart(e.target.value)} data-testid="successor-start" />
+      </Labeled>
+      <Labeled label={t("structure.endsOn")}>
+        <Input type="date" className={field} min={p.start} value={p.end} onChange={(e) => p.setEnd(e.target.value)} data-testid="successor-end" />
+      </Labeled>
+      <div className="sm:col-span-2">
+        <Labeled label={t("structure.amount", { currency: p.env.currency })}>
+          <Input className={cn(field, "text-right tabular")} inputMode="decimal" value={p.amount} onChange={(e) => p.setAmount(e.target.value)} placeholder="0.00" data-testid="successor-amount" />
+        </Labeled>
+      </div>
+    </div>
   );
 }
 

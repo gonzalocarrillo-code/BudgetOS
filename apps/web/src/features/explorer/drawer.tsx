@@ -9,7 +9,7 @@ import { HistoryList } from "../history/history-list.js";
 import { threadsQuery } from "../threads/queries.js";
 import { TagChips } from "../threads/tag-chips.js";
 import { ThreadPanel } from "../threads/thread-panel.js";
-import { envelopeQuery, registryQuery } from "../../lib/queries.js";
+import { envelopeQuery, registryQuery, type EnvelopeDetail } from "../../lib/queries.js";
 import { api, unwrap } from "../../lib/api.js";
 import { STATUS_LABELS } from "./labels.js";
 import { DimensionIcon } from "../registry/dimension-icon.js";
@@ -52,6 +52,8 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
   const hasChildren = (data?.structure.children.length ?? 0) > 0;
   const { data: family } = useQuery({ ...familyQuery(ws, id), enabled: hasChildren });
   const [tab, setTab] = useState<Tab>("details");
+  // H-011: an ended budget keeps status APPROVED underneath; it reads as "Ended".
+  const shownStatus = data?.ended ? "ENDED" : (data?.status ?? "DRAFT");
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "details", label: t("drawer.tab.details") },
     { id: "history", label: t("drawer.tab.history") },
@@ -112,13 +114,28 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
           {error ? <p className="text-xs text-destructive" data-testid="drawer-error">{error.message}</p> : null}
           {rename.error ? <p className="text-xs text-destructive" role="alert">{rename.error.message}</p> : null}
           {data ? (
-            <StatusChip status={data.status} label={STATUS_LABELS()[data.status] ?? data.status} className="mt-1" title={t(`status.help.${data.status}` as MessageKey)} data-testid="drawer-status" />
+            <StatusChip status={shownStatus} label={STATUS_LABELS()[shownStatus] ?? shownStatus} className="mt-1" title={t(`status.help.${shownStatus}` as MessageKey)} data-testid="drawer-status" />
           ) : null}
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("drawer.close")}>
           <X className="size-4" aria-hidden />
         </Button>
       </div>
+      {data?.ended ? (
+        <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" role="status" data-testid="drawer-ended">
+          <p>{t("drawer.ended", { date: data.endDate })}</p>
+          {data.ended.reason ? <p className="text-xs text-muted-foreground">{t("drawer.endedReason", { reason: data.ended.reason })}</p> : null}
+        </div>
+      ) : data?.pendingKind === "end" ? (
+        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm" role="status" data-testid="drawer-pending-end">
+          {t("drawer.pendingEnd")}{" "}
+          {data.openRequest ? (
+            <Link to="/w/$ws/approvals/$id" params={{ ws, id: data.openRequest.id }} className="font-medium text-primary hover:underline">
+              {t("structure.openRequest")}
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
       {data ? <SendForApproval ws={ws} envelopeId={id} /> : null}
       <div role="tablist" aria-label={data?.name ?? ""} className="flex gap-1 border-b border-border" onKeyDown={onTabKey}>
         {tabs.map((x) => (
@@ -139,7 +156,8 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
         ))}
       </div>
       {tab === "history" ? (
-        <div role="tabpanel" id="drawer-panel-history" aria-labelledby="drawer-tab-history">
+        <div role="tabpanel" id="drawer-panel-history" aria-labelledby="drawer-tab-history" className="flex flex-col gap-3">
+          {data ? <LineageLinks ws={ws} env={data} /> : null}
           <HistoryList ws={ws} envelopeId={id} currency={data?.currency ?? "USD"} />
         </div>
       ) : null}
@@ -162,6 +180,11 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
           <dd className="text-right">
             {data.startDate} – {data.endDate}
           </dd>
+          {data.lineage.continues || data.lineage.continuedBy.length ? (
+            <dd className="col-span-2">
+              <LineageLinks ws={ws} env={data} />
+            </dd>
+          ) : null}
           <dt className="col-span-2 flex items-center gap-2 pt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
             {t("drawer.dimensions")}
             {editingDims === null ? (
@@ -280,5 +303,37 @@ export function EnvelopeDrawer({ ws, id, onClose, onStructure, onFamily, onChang
         </dl>
       ) : null}
     </aside>
+  );
+}
+
+/** H-012: "Continues …" and "Continued by …", linking the ended budget and its successors. */
+function LineageLinks({ ws, env }: { ws: string; env: EnvelopeDetail }): ReactElement | null {
+  const { continues, continuedBy } = env.lineage;
+  if (!continues && continuedBy.length === 0) return null;
+  const link = (l: { id: string; name: string; startDate: string; endDate: string }) => (
+    <Link key={l.id} to="/w/$ws/budgets" params={{ ws }} search={(prev: Record<string, unknown>) => ({ ...prev, select: l.id })} className="font-medium hover:text-primary">
+      {l.name} <span className="text-xs font-normal text-muted-foreground">({l.startDate} – {l.endDate})</span>
+    </Link>
+  );
+  return (
+    <div className="flex flex-col gap-1 text-sm" data-testid="drawer-lineage">
+      {continues ? (
+        <p data-testid="drawer-continues">
+          <span className="text-muted-foreground">{t("drawer.continues")} </span>
+          {link(continues)}
+        </p>
+      ) : null}
+      {continuedBy.length ? (
+        <p data-testid="drawer-continued-by">
+          <span className="text-muted-foreground">{t("drawer.continuedBy")} </span>
+          {continuedBy.map((c, i) => (
+            <span key={c.id}>
+              {i > 0 ? ", " : null}
+              {link(c)}
+            </span>
+          ))}
+        </p>
+      ) : null}
+    </div>
   );
 }

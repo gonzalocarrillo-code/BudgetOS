@@ -386,7 +386,7 @@ function ExplorerPage(): ReactElement {
             onClose={() => setStructure(null)}
             onDone={(r) => {
               setStructure(null);
-              const key = r.op === "move" ? "structure.done.move" : r.requestId ? "structure.done.request" : "structure.done.auto";
+              const key = r.op === "move" ? "structure.done.move" : r.requestId ? "structure.done.request" : r.op === "end" ? "structure.done.end" : "structure.done.auto";
               setNotice({ kind: "ok", text: t(key, { name: selected.name }), ...(r.requestId ? { requestId: r.requestId } : {}) });
               setReload((n) => n + 1);
               void client.invalidateQueries({ queryKey: ["envelope", ws] });

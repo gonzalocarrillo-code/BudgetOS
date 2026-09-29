@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EndEnvelopeInput, ReintroduceInput } from "./baselines.js";
 import { FilterGroup } from "./filter-ast.js";
 
 /** NUMERIC(18,2): up to 16 integer digits and 2 decimals, as a decimal string (never a JS number). */
@@ -208,6 +209,9 @@ export const StructurePreviewInput = z.discriminatedUnion("op", [
   z.object({ op: z.literal("move"), envelopeId: z.string().uuid(), input: MoveEnvelopeInput }),
   z.object({ op: z.literal("split"), envelopeId: z.string().uuid(), input: SplitEnvelopeInput }),
   z.object({ op: z.literal("merge"), input: MergeEnvelopesInput }),
+  // H-011 / H-012 (ADR-053): ending a budget and reintroducing it preview the same way.
+  z.object({ op: z.literal("end"), envelopeId: z.string().uuid(), input: EndEnvelopeInput }),
+  z.object({ op: z.literal("reintroduce"), envelopeId: z.string().uuid(), input: ReintroduceInput }),
 ]);
 export type StructurePreviewInput = z.infer<typeof StructurePreviewInput>;
 

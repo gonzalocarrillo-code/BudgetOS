@@ -1,5 +1,7 @@
 import { DomainError, canInScope } from "@budget/domain";
-import { withTenant, type Tx } from "@budget/db";
+import { openBulkRequestFor, spendThrough, withTenant, type Tx } from "@budget/db";
+import { Decimal } from "decimal.js";
+import { resolveFx } from "../fx.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
@@ -42,7 +44,7 @@ export function versionDto(v: VersionRow) {
  * siblings, each with its approved amount; the ones outside the caller's scope are left out.
  */
 async function structureOf(tx: Tx, auth: AuthContext, env: { id: string; parentId: string | null; workspaceId: string }) {
-  const select = { id: true, name: true, status: true, currency: true, currentVersionId: true, dimensionValues: true } as const;
+  const select = { id: true, name: true, status: true, currency: true, currentVersionId: true, dimensionValues: true, endedAt: true } as const;
   const live = { status: { not: "ARCHIVED" as const } };
   const [parent, children, siblings] = await Promise.all([
     env.parentId ? tx.envelope.findUnique({ where: { id: env.parentId }, select }) : null,
@@ -54,7 +56,7 @@ async function structureOf(tx: Tx, auth: AuthContext, env: { id: string; parentI
   const amounts = new Map((await tx.envelopeVersion.findMany({ where: { id: { in: versionIds } }, select: { id: true, amount: true } })).map((v) => [v.id, v.amount.toFixed(2)]));
   const scopes = await envelopeScopeTargets(tx, all.map((e) => e.id));
   const visible = (id: string) => auth.isOrgAdmin || canInScope(auth.assignments, "envelope.read", scopes.get(id) ?? { dims: {} });
-  const node = (e: (typeof all)[number]) => ({ id: e.id, name: e.name, status: e.status, currency: e.currency, dimensionValues: e.dimensionValues as Record<string, string>, approved: e.currentVersionId ? (amounts.get(e.currentVersionId) ?? null) : null });
+  const node = (e: (typeof all)[number]) => ({ id: e.id, name: e.name, status: e.status, currency: e.currency, dimensionValues: e.dimensionValues as Record<string, string>, approved: e.currentVersionId ? (amounts.get(e.currentVersionId) ?? null) : null, ended: e.endedAt !== null });
   return {
     parent: parent && visible(parent.id) ? node(parent) : null,
     children: children.filter((c) => visible(c.id)).map(node),
@@ -77,9 +79,12 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
     assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
     const [current, draft] = await Promise.all([loadVersion(tx, env.currentVersionId), loadVersion(tx, env.draftVersionId)]);
     // The draft's pending approval request, so the drawer can link to it (product feedback 3).
-    const openRequest = env.draftVersionId
+    const versionRequest = env.draftVersionId
       ? await tx.approvalRequest.findFirst({ where: { entityType: "envelope_version", entityId: env.draftVersionId, status: { in: ["PENDING", "ESCALATED", "CHANGES_REQUESTED"] } }, select: { id: true, status: true, summary: true } })
       : null;
+    // Or the split / merge / end request that holds the draft (H-011: "Waiting for approval").
+    const bulkRequest = versionRequest === null && env.draftVersionId ? await openBulkRequestFor(tx, env.draftVersionId) : null;
+    const openRequest = versionRequest ?? (bulkRequest ? { id: bulkRequest.id, status: bulkRequest.status, summary: bulkRequest.summary } : null);
     // Where the open draft would go if this caller sent it now (product feedback 6): a policy
     // with no steps sets it at once ("Apply now"); otherwise, who approves it first.
     const draftPolicy =
@@ -99,9 +104,29 @@ export async function getEnvelope(prisma: PrismaClient, auth: AuthContext, rawId
             orderBy: { approvedAt: "desc" },
             include: { phasing: { orderBy: { month: "asc" } } },
           });
+    // H-011 / H-012: when it ended, and the budgets it continues and that continue it.
+    const [continues, continuedBy] = await Promise.all([
+      tx.envelopeLineage.findFirst({ where: { toEnvelopeId: id, kind: "continues" }, orderBy: { at: "desc" }, select: { fromEnvelopeId: true } }),
+      tx.envelopeLineage.findMany({ where: { fromEnvelopeId: id, kind: "continues" }, orderBy: { at: "asc" }, select: { toEnvelopeId: true } }),
+    ]);
+    const linked = await tx.envelope.findMany({
+      where: { id: { in: [...(continues ? [continues.fromEnvelopeId] : []), ...continuedBy.map((c) => c.toEnvelopeId)] } },
+      select: { id: true, name: true, status: true, startDate: true, endDate: true, endedAt: true },
+    });
+    const link = (lid: string) => {
+      const e = linked.find((x) => x.id === lid);
+      return e ? { id: e.id, name: e.name, status: e.status, startDate: e.startDate.toISOString().slice(0, 10), endDate: e.endDate.toISOString().slice(0, 10), ended: e.endedAt !== null } : null;
+    };
     return {
       id: env.id,
       workspaceId: env.workspaceId,
+      ended: env.endedAt ? { at: env.endedAt.toISOString(), by: env.endedBy, reason: env.endedReason } : null,
+      pendingKind: bulkRequest?.kind ?? null,
+      lineage: {
+        continues: continues ? link(continues.fromEnvelopeId) : null,
+        // Successors whose request was rejected are archived; they are not "continued by".
+        continuedBy: continuedBy.map((c) => link(c.toEnvelopeId)).filter((x): x is NonNullable<typeof x> => x !== null && x.status !== "ARCHIVED"),
+      },
       parentId: env.parentId,
       name: env.name,
       displayName: env.displayName,
@@ -138,5 +163,23 @@ export async function listVersions(prisma: PrismaClient, auth: AuthContext, rawI
     // Phase E: the snapshots each version was saved in (the History tab's markers).
     const saved = await snapshotsByVersion(tx, id);
     return versions.map((v) => ({ ...versionDto(v), snapshots: saved.get(v.id) ?? [] }));
+  });
+}
+
+/**
+ * GET /envelopes/:id/spend?through=YYYY-MM-DD: spend on the budget up to a date, in its own
+ * currency. End proposes it as the final amount so the unspent part goes back to the parent (H-011).
+ */
+export async function getEnvelopeSpend(prisma: PrismaClient, auth: AuthContext, rawId: string, rawThrough?: string) {
+  const id = parseId(rawId);
+  if (rawThrough !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(rawThrough)) throw new DomainError("VALIDATION", "through must be a date (YYYY-MM-DD)", { through: rawThrough });
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const env = await tx.envelope.findUnique({ where: { id }, select: { currency: true, workspaceId: true } });
+    if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
+    assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
+    const through = rawThrough ?? new Date().toISOString().slice(0, 10);
+    const reportingSpend = new Decimal(await spendThrough(tx, id, through));
+    const rate = (await resolveFx(tx, env.currency, env.workspaceId)).rate;
+    return { through, currency: env.currency, spend: reportingSpend.div(rate).toDecimalPlaces(2).toFixed(2) };
   });
 }
