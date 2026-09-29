@@ -25,7 +25,8 @@ import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } f
 import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
-import { Camera, Plus } from "lucide-react";
+import { Camera, Plus, Upload } from "lucide-react";
+import { BudgetImportDialog } from "../features/import/budget-import-dialog.js";
 import { SaveSnapshotDialog } from "../features/snapshots/save-snapshot-dialog.js";
 import { snapshotLabel, snapshotsQuery, savedOn } from "../features/snapshots/queries.js";
 
@@ -108,6 +109,7 @@ function ExplorerPage(): ReactElement {
   const { data: snapshots = [] } = useQuery(snapshotsQuery(ws));
   const comparing = search.compareTo ? (snapshots.find((x) => x.id === search.compareTo) ?? null) : null;
   const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [importing, setImporting] = useState(false);
   const measures = useMemo(
     () => [...new Set([...MEASURE_COLUMNS.map((m) => m.key), ...search.measures, ...(search.compareTo ? COMPARE_COLUMNS.map((c) => c.key) : [])])],
     [search.measures, search.compareTo],
@@ -299,6 +301,10 @@ function ExplorerPage(): ReactElement {
             </Select>
           </label>
         ) : null}
+        <Button size="sm" variant="outline" onClick={() => setImporting(true)} data-testid="budget-import" data-tour="budget-import">
+          <Upload className="size-4" aria-hidden />
+          {t("import.button")}
+        </Button>
         <Button size="sm" variant="outline" onClick={() => setSavingSnapshot(true)} data-testid="save-snapshot" data-tour="save-snapshot">
           <Camera className="size-4" aria-hidden />
           {t("snapshots.save")}
@@ -404,6 +410,20 @@ function ExplorerPage(): ReactElement {
               void client.invalidateQueries({ queryKey: ["family"] });
               void client.invalidateQueries({ queryKey: ["envelope"] });
               setReload((n) => n + 1);
+            }}
+          />
+        ) : null}
+        {importing ? (
+          <BudgetImportDialog
+            ws={ws}
+            templateId={search.templateId}
+            onClose={() => setImporting(false)}
+            onDone={(text, requestId) => {
+              setImporting(false);
+              setNotice({ kind: "ok", text, ...(requestId ? { requestId } : {}) });
+              setReload((n) => n + 1);
+              void client.invalidateQueries({ queryKey: ["envelope", ws] });
+              void client.invalidateQueries({ queryKey: ["approvals", ws] });
             }}
           />
         ) : null}

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
   BaselineReport,
+  BudgetImportCommitInput,
+  BudgetImportInput,
+  BudgetImportPreview,
   CreateMappingProfileInput,
   CreateMappingSynonymInput,
   MappingPreviewInput,
@@ -192,6 +195,15 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/envelopes/{id}/move": {
         post: { operationId: "moveEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(MoveEnvelopeInput), responses: { "200": { description: "Moved; lineage written; an open request re-routed if its policy changed" }, "409": { description: "Stale rowVersion" }, "422": { description: "CAP_EXCEEDED under the new parent, or a cycle" } } },
+      },
+      "/api/v1/workspaces/{ws}/budget-import/template": {
+        get: { operationId: "budgetImportTemplate", parameters: [workspaceParam, { name: "templateId", in: "query", required: false, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "The CSV this workspace's import takes: one column per granularity, the template's columns, the fiscal year's months, and two live budgets as examples (text/csv)" } } },
+      },
+      "/api/v1/workspaces/{ws}/budget-import/preview": {
+        post: { operationId: "previewBudgetImport", parameters: [workspaceParam], requestBody: json(BudgetImportInput), responses: { "201": { description: "Each line's status and problems, the parents it creates, budgets that would go over cap (D-008); nothing is written", ...json(BudgetImportPreview) } } },
+      },
+      "/api/v1/workspaces/{ws}/budget-import/commit": {
+        post: { operationId: "commitBudgetImport", parameters: [workspaceParam], requestBody: json(BudgetImportCommitInput), responses: { "201": { description: "Drafts under one approval (or applied at once by policy): new budgets, created parents and changes" } } },
       },
       "/api/v1/envelopes/{id}/spend": {
         get: { operationId: "getEnvelopeSpend", parameters: [idParam, workspaceHeader, { name: "through", in: "query", required: false, schema: { type: "string", format: "date" } }], responses: { "200": { description: "Spend up to a date in the budget's currency: { through, currency, spend } (H-011)" } } },

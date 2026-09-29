@@ -222,3 +222,17 @@ export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";
 export type { GroupSums } from "./rollup-measures.js";
 export { BaselineKind, BaselineReport, BaselineReportQuery, BaselineRowsQuery, BaselineRowsResponse, BaselineTreeRow, BaselineScope, BaselineView, BaselinesResponse, CreateBaselineInput, EndEnvelopeInput, ReintroduceInput, UpdateBaselineInput } from "./baselines.js";
+export {
+  BUDGET_IMPORT_COLUMNS,
+  BUDGET_IMPORT_MAX_ROWS,
+  BudgetImportCommitInput,
+  BudgetImportInput,
+  BudgetImportLine,
+  BudgetImportOverCap,
+  BudgetImportParent,
+  BudgetImportPreview,
+  BudgetImportProblem,
+  BudgetImportTemplateQuery,
+  editDistance,
+  nearestCode,
+} from "./budget-import.js";

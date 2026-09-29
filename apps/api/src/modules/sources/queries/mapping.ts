@@ -1,4 +1,4 @@
-import { DEFAULT_COLUMN_SYNONYMS, DEFAULT_METRIC_SYNONYMS, MappingPreviewInput, MatchMappingProfileInput, SourceMapping, compileParsePattern, normTerm, type ColumnMapping, type MappingPreviewReport, type MappingProfileView, type MappingSynonymView, type MappingSynonymsResponse, type MatchMappingProfileResponse } from "@budget/domain";
+import { DEFAULT_COLUMN_SYNONYMS, DEFAULT_METRIC_SYNONYMS, MappingPreviewInput, nearestCode, MatchMappingProfileInput, SourceMapping, compileParsePattern, normTerm, type ColumnMapping, type MappingPreviewReport, type MappingProfileView, type MappingSynonymView, type MappingSynonymsResponse, type MatchMappingProfileResponse } from "@budget/domain";
 import { withTenant, type Tx } from "@budget/db";
 import { loadRegistry, normalize, transformDimension, type RegistryIndex } from "@budget/workers";
 import type { MappingProfile, PrismaClient } from "@prisma/client";
@@ -99,35 +99,6 @@ async function ratioMetricWords(tx: Tx, orgId: string, workspaceId: string, syn?
   return words;
 }
 
-/** Levenshtein distance; the preview's "did you mean" for an unknown value. */
-function distance(a: string, b: string): number {
-  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i += 1) {
-    let prev = row[0] as number;
-    row[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const cur = row[j] as number;
-      row[j] = Math.min((row[j] as number) + 1, (row[j - 1] as number) + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = cur;
-    }
-  }
-  return row[b.length] as number;
-}
-
-/** The code whose code, label or alias is closest to `raw`, when it is close enough to be a typo. */
-function nearest(raw: string, candidates: Array<{ code: string; names: string[] }>): string | null {
-  const target = normTerm(raw);
-  let best: { code: string; d: number; len: number } | null = null;
-  for (const c of candidates) {
-    for (const n of c.names) {
-      const name = normTerm(n);
-      const d = distance(target, name);
-      if (best === null || d < best.d) best = { code: c.code, d, len: name.length };
-    }
-  }
-  return best && best.d <= Math.max(1, Math.floor(Math.max(target.length, best.len) * 0.34)) ? best.code : null;
-}
-
 function describe(c: ColumnMapping | undefined, dimensionLabel: (k: string) => string): string {
   if (!c) return "not mapped";
   if ("dimension" in c) return dimensionLabel(c.dimension);
@@ -186,7 +157,7 @@ export async function previewMapping(prisma: PrismaClient, auth: AuthContext, ra
         }
         const values = [...counts].map(([rawValue, count]) => {
           const resolved = registry.resolve(c.dimension, transformDimension(rawValue, c));
-          return "error" in resolved ? { raw: rawValue, code: null, suggestion: nearest(rawValue, candidates(c.dimension)), count } : { raw: rawValue, code: resolved.code, suggestion: null, count };
+          return "error" in resolved ? { raw: rawValue, code: null, suggestion: nearestCode(rawValue, candidates(c.dimension)), count } : { raw: rawValue, code: resolved.code, suggestion: null, count };
         });
         const unknown = values.filter((v) => v.code === null);
         if (unknown.length) issues.push(`${unknown.length} value${unknown.length === 1 ? "" : "s"} the registry does not know: ${unknown.slice(0, 5).map((v) => `"${v.raw}"${v.suggestion ? ` (did you mean ${v.suggestion}?)` : ""}`).join(", ")}`);
