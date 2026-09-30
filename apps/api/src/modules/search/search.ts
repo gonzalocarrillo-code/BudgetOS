@@ -1,4 +1,4 @@
-import { DomainError, can, parseSearch, settingById, type ScopeFilter } from "@budget/domain";
+import { DomainError, can, parseSearch, settingById, type ScopeFilter, threadPath } from "@budget/domain";
 import { withTenant } from "@budget/db";
 import { SEARCH_CANDIDATES, SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
@@ -29,7 +29,8 @@ export function deepLink(workspaceId: string, type: string, id: string, title: s
     case "alert":
       return `${w}/alerts?select=${id}`;
     case "comment":
-      return `${w}/threads?comment=${id}`;
+      // Resolved from the comment's thread in search(); without it, the person's Home.
+      return `${w}/home`;
     case "experiment":
       return `${w}/experiments/${id}`;
     case "setting":
@@ -50,11 +51,19 @@ export async function search(prisma: PrismaClient, auth: AuthContext, query: { q
   const parsed = parseSearch(q);
   if (query.types) parsed.types.push(...query.types.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean));
   const c = compileSearch(parsed, { workspaceId, userId: auth.user.id, scopes: readScopes(auth), limitPerType: limit });
-  const rows = await withTenant(prisma, auth.ctx, (tx) => tx.$queryRawUnsafe<Hit[]>(c.sql, ...c.values));
+  const { rows, threadOf } = await withTenant(prisma, auth.ctx, async (tx) => {
+    const found = await tx.$queryRawUnsafe<Hit[]>(c.sql, ...c.values);
+    // A comment opens where its thread lives (a budget's Comments tab, an approval), not a page of its own.
+    const commentIds = found.filter((r) => r.entity_type === "comment").map((r) => r.entity_id);
+    const comments = commentIds.length ? await tx.comment.findMany({ where: { id: { in: commentIds } }, select: { id: true, thread: { select: { anchorType: true, anchorId: true } } } }) : [];
+    const versionIds = comments.filter((x) => x.thread.anchorType === "envelope_version").map((x) => x.thread.anchorId);
+    const versions = new Map((versionIds.length ? await tx.envelopeVersion.findMany({ where: { id: { in: versionIds } }, select: { id: true, envelopeId: true } }) : []).map((v) => [v.id, v.envelopeId]));
+    return { rows: found, threadOf: new Map(comments.map((x) => [x.id, threadPath(workspaceId, { ...x.thread, envelopeId: versions.get(x.thread.anchorId) ?? null })])) };
+  });
   const groups = new Map<string, { type: string; count: number; more: boolean; hits: unknown[] }>();
   for (const r of rows) {
     const g = groups.get(r.entity_type) ?? { type: r.entity_type, count: Math.min(Number(r.type_count), SEARCH_CANDIDATES), more: Number(r.type_count) > SEARCH_CANDIDATES, hits: [] };
-    g.hits.push({ id: r.entity_id, title: r.title, path: r.path, status: r.status, facets: r.numeric_facets, deepLink: deepLink(workspaceId, r.entity_type, r.entity_id, r.title) });
+    g.hits.push({ id: r.entity_id, title: r.title, path: r.path, status: r.status, facets: r.numeric_facets, deepLink: threadOf.get(r.entity_id) ?? deepLink(workspaceId, r.entity_type, r.entity_id, r.title) });
     groups.set(r.entity_type, g);
   }
   // Settings are listed last, except when the text names one ("pacing rules", "match keys"): then

@@ -62,6 +62,8 @@ jobs:
             --set-env-vars "SUPERADMIN_EMAIL=$SUPERADMIN_EMAIL,ORG_NAME=DEPT" \
             --command sh --args="-c,cd /app && pnpm --filter @budget/db exec prisma migrate deploy && apps/api/node_modules/.bin/tsx apps/api/src/deploy/bootstrap.ts"
           gcloud run jobs execute budgetos-migrate --project "$PROJECT" --region "$REGION" --wait
+      # budgetos-slack keeps one instance warm: Slack gives a button 3 seconds, and a cold start
+      # (tsx compiling the API) takes 25–30.
       - name: Deploy the app (behind IAP), the Slack endpoint and the worker
         run: |
           APP_URL="https://budgetos-app-$PROJECT_NUMBER.$REGION.run.app"
@@ -74,7 +76,7 @@ jobs:
             --set-env-vars "$COMMON,AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app"
           gcloud run deploy budgetos-slack --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
-            --cpu 1 --memory 1Gi --min-instances 0 --max-instances 2 --timeout 60 \
+            --cpu 1 --memory 1Gi --min-instances 1 --max-instances 2 --timeout 60 --cpu-boost \
             --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,PUBLIC_ROUTES=slack,AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app"
           gcloud run deploy budgetos-worker --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \

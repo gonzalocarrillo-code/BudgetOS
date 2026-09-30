@@ -101,3 +101,26 @@ export const AppliedTagsQuery = z.object({
     .pipe(z.array(z.string().uuid()).min(1).max(200)),
 });
 export type AppliedTagsQuery = z.infer<typeof AppliedTagsQuery>;
+
+/**
+ * Where a thread is read and answered in the web app (R11 follow-up): a budget's drawer on its
+ * Comments tab, an approval's page, a target, an alert. Relative to the app's origin. Slack's
+ * mention DMs and search hits link here; there is no page of threads on their own.
+ */
+export function threadPath(workspaceId: string, anchor: { anchorType: string; anchorId: string; envelopeId?: string | null }): string {
+  const w = `/w/${workspaceId}`;
+  const q = (v: string) => encodeURIComponent(JSON.stringify(v));
+  const envelope = anchor.anchorType === "envelope" || anchor.anchorType === "cell" ? anchor.anchorId : (anchor.envelopeId ?? null);
+  if (anchor.anchorType === "approval_request") return `${w}/approvals/${anchor.anchorId}`;
+  if (envelope) return `${w}/budgets?select=${q(envelope)}&tab=${q("comments")}`;
+  if (anchor.anchorType === "target") return `${w}/targets`;
+  if (anchor.anchorType === "alert") return `${w}/alerts`;
+  return `${w}/home`;
+}
+
+/** A comment's text with its canonical tokens as people read them: @Name, #envelope. */
+export function renderMentions(bodyMd: string, names: Record<string, string>): string {
+  return bodyMd
+    .replace(/@\[(user|group):([0-9a-f-]{36})\]/g, (_m, _t: string, id: string) => `@${names[id] ?? "someone"}`)
+    .replace(/#\[(envelope|target|alert|request):[0-9a-f-]{36}\]/g, (_m, t: string) => `#${t}`);
+}

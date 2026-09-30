@@ -537,7 +537,7 @@ exports[`mention blocks > mention DM 1`] = `
             "type": "plain_text",
           },
           "type": "button",
-          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/threads?comment=01927a00-0000-7000-8000-0000000000a9",
+          "url": "https://budget-os.example/w/01927a00-0000-7000-8000-00000000a0a0/budgets?select=%2201927a00-0000-7000-8000-0000000000b1%22&tab=%22comments%22",
         },
       ],
       "type": "actions",

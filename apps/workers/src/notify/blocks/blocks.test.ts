@@ -112,6 +112,7 @@ describe("mention blocks", () => {
       mentionMessage({
         ...base,
         commentId: "01927a00-0000-7000-8000-0000000000a9",
+        threadPath: `/w/${base.workspaceId}/budgets?select=%22${user}%22&tab=%22comments%22`,
         authorName: "Planner Pat",
         anchorLabel: "LATAM › Brazil › Meta",
         threadTitle: "Pacing check",
@@ -120,8 +121,13 @@ describe("mention blocks", () => {
       }),
     ).toMatchSnapshot();
   });
+  it("Reply in BudgetOS opens the thread where it lives (not a /threads page)", () => {
+    const url = JSON.stringify(mentionMessage({ ...base, commentId: user, threadPath: `/w/${base.workspaceId}/approvals/${user}`, authorName: "A", anchorLabel: "x", threadTitle: null, bodyMd: "hi", names: {} }));
+    expect(url).toContain(`/w/${base.workspaceId}/approvals/${user}`);
+    expect(url).not.toContain("/threads?");
+  });
   it("long bodies are cut", () => {
-    const m = mentionMessage({ ...base, commentId: user, authorName: "A", anchorLabel: "x", threadTitle: null, bodyMd: "y".repeat(800), names: {} });
+    const m = mentionMessage({ ...base, commentId: user, threadPath: "/w/x/home", authorName: "A", anchorLabel: "x", threadTitle: null, bodyMd: "y".repeat(800), names: {} });
     expect(JSON.stringify(m)).toContain("…");
     expect(JSON.stringify(m)).not.toContain("y".repeat(501));
   });

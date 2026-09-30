@@ -1,4 +1,5 @@
 import { envelopePaths, lastActorId, loadBulkChange, type Tx } from "@budget/db";
+import { threadPath } from "@budget/domain";
 import { WebClient } from "@slack/web-api";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce, type OutboxEvent } from "../consumer.js";
@@ -304,7 +305,9 @@ async function mentionPosts(tx: Tx, event: OutboxEvent, p: Record<string, unknow
   const users = await tx.user.findMany({ where: { id: { in: [...recipients, c.authorId, ...mentions.map((m) => m.id)] } }, select: { id: true, name: true, email: true } });
   const groups = await tx.group.findMany({ where: { id: { in: groupIds } }, select: { id: true, name: true } });
   const display = Object.fromEntries([...users.map((u) => [u.id, u.name]), ...groups.map((g) => [g.id, g.name])]);
-  const envelopeId = c.thread.anchorType === "envelope" || c.thread.anchorType === "cell" ? c.thread.anchorId : null;
+  const version = c.thread.anchorType === "envelope_version" ? await tx.envelopeVersion.findUnique({ where: { id: c.thread.anchorId }, select: { envelopeId: true } }) : null;
+  const envelopeId = c.thread.anchorType === "envelope" || c.thread.anchorType === "cell" ? c.thread.anchorId : (version?.envelopeId ?? null);
+  const path = threadPath(event.workspaceId, { anchorType: c.thread.anchorType, anchorId: c.thread.anchorId, envelopeId });
   const anchorLabel = envelopeId ? ((await envelopePaths(tx, [envelopeId])).get(envelopeId) ?? []).join(" › ") : c.thread.anchorType.replace(/_/g, " ");
   const out: Outgoing[] = [];
   for (const userId of recipients.sort()) {
@@ -313,7 +316,7 @@ async function mentionPosts(tx: Tx, event: OutboxEvent, p: Record<string, unknow
     if (!slackUser) continue; // not in the Slack workspace: in-app only
     out.push({
       channel: slackUser,
-      message: mentionMessage({ baseUrl, workspaceId: event.workspaceId, commentId: c.id, authorName: display[c.authorId] ?? "Someone", anchorLabel, threadTitle: c.thread.title, bodyMd: c.bodyMd, names: display }),
+      message: mentionMessage({ baseUrl, workspaceId: event.workspaceId, commentId: c.id, threadPath: path, authorName: display[c.authorId] ?? "Someone", anchorLabel, threadTitle: c.thread.title, bodyMd: c.bodyMd, names: display }),
     });
   }
   return out;

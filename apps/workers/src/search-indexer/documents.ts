@@ -1,4 +1,4 @@
-import { QueryRequest, SETTINGS, resolvePeriod, type FilterGroupT } from "@budget/domain";
+import { QueryRequest, SETTINGS, resolvePeriod, type FilterGroupT, renderMentions } from "@budget/domain";
 import { envelopePaths, plannerOptions, type SearchDoc, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -219,16 +219,23 @@ export async function buildComments(tx: Tx, ctx: IndexContext, ids: string[] | n
   const anchorEnv = await anchorEnvelopes(tx, threads);
   const envs = new Map((await tx.envelope.findMany({ where: { id: { in: [...new Set(anchorEnv.values())] } }, select: { id: true, dimensionValues: true } })).map((e) => [e.id, e]));
   const paths = await envelopePaths(tx, [...envs.keys()]);
+  // Mentions read as @Name, not as their canonical tokens, in both the title and the text searched.
+  const mentioned = [...new Set(live.flatMap((c) => [...c.bodyMd.matchAll(/@\[(?:user|group):([0-9a-f-]{36})\]/g)].map((m) => m[1] as string)))];
+  const names: Record<string, string> = Object.fromEntries([
+    ...(await tx.user.findMany({ where: { id: { in: mentioned } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
+    ...(await tx.group.findMany({ where: { id: { in: mentioned } }, select: { id: true, name: true } })).map((g) => [g.id, g.name]),
+  ]);
   return {
     upserts: live.map((c) => {
       const envId = anchorEnv.get(c.threadId);
+      const text = renderMentions(c.bodyMd, names);
       return {
         workspaceId: ctx.workspaceId,
         entityType: "comment",
         entityId: c.id,
-        title: c.thread.title ?? c.bodyMd.replace(/\s+/g, " ").slice(0, 80),
+        title: c.thread.title ? `${c.thread.title}: ${text.replace(/\s+/g, " ").slice(0, 60)}` : text.replace(/\s+/g, " ").slice(0, 80),
         path: envId ? (paths.get(envId) ?? []).join(" › ") : c.thread.anchorType,
-        body: c.bodyMd,
+        body: text,
         tags: [],
         dimensionValues: (envId ? (envs.get(envId)?.dimensionValues ?? {}) : {}) as Record<string, string>,
         numericFacets: {},

@@ -26,7 +26,7 @@ type Tab = "details" | "history" | "comments";
  * The envelope drawer (`select` search param): Details (approved budget, open draft, dimensions,
  * tags), History (every change, T-029) and Comments (threads, T-030). Every budget always has all three.
  */
-export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFamily, onChanged }: { ws: string; id: string; compareTo?: string | undefined; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void; onChanged?: () => void }): ReactElement {
+export function EnvelopeDrawer({ ws, id, compareTo, initialTab, onClose, onStructure, onFamily, onChanged }: { ws: string; id: string; compareTo?: string | undefined; initialTab?: Tab | undefined; onClose: () => void; onStructure?: (op: StructureOp) => void; onFamily?: (id: string) => void; onChanged?: () => void }): ReactElement {
   const client = useQueryClient();
   const { data, error } = useQuery(envelopeQuery(ws, id));
   const [renaming, setRenaming] = useState(false);
@@ -55,7 +55,7 @@ export function EnvelopeDrawer({ ws, id, compareTo, onClose, onStructure, onFami
   const open = threads?.filter((x) => x.status === "open").length ?? 0;
   const hasChildren = (data?.structure.children.length ?? 0) > 0;
   const { data: family } = useQuery({ ...familyQuery(ws, id), enabled: hasChildren });
-  const [tab, setTab] = useState<Tab>("details");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "details");
   // H-011: an ended budget keeps status APPROVED underneath; it reads as "Ended".
   const shownStatus = data?.ended ? "ENDED" : (data?.status ?? "DRAFT");
   const tabs: Array<{ id: Tab; label: string }> = [
