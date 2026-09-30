@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import { DomainError } from "@budget/domain";
 import { Injectable } from "@nestjs/common";
 import { createLocalJWKSet, createRemoteJWKSet, errors, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
@@ -127,8 +128,11 @@ function googleIdentity(payload: JWTPayload): string | null {
 function fetchedJwks(url: string) {
   let cached: { at: number; set: ReturnType<typeof createLocalJWKSet>; kids: Set<string> } | null = null;
   const load = async () => {
-    const res = await fetch(url, { headers: { accept: "application/json" } });
-    const text = await res.text();
+    // Uncompressed, please; and if a gzip body arrives undecoded anyway (seen inside the API process
+    // on Cloud Run, where the global fetch is replaced), decompress it here.
+    const res = await fetch(url, { headers: { accept: "application/json", "accept-encoding": "identity" } });
+    const bytes = Buffer.from(await res.arrayBuffer());
+    const text = (bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes).toString("utf8");
     if (!res.ok) throw new Error(`IAP keys: HTTP ${res.status}`);
     let body: JSONWebKeySet;
     try {
