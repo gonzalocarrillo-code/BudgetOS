@@ -93,8 +93,8 @@ export class JwtVerifier {
       if (this.config.mode === "iap") {
         const claims = (() => {
           try {
-            const [h, p] = token.split(".").map((part) => JSON.parse(Buffer.from(part ?? "", "base64url").toString()) as Record<string, unknown>);
-            return { alg: h?.["alg"], iss: p?.["iss"], aud: p?.["aud"], expected: this.config.audience };
+            const [h, p] = token.split(".").slice(0, 2).map((part) => JSON.parse(Buffer.from(part ?? "", "base64url").toString()) as Record<string, unknown>);
+            return { alg: h?.["alg"], kid: h?.["kid"], iss: p?.["iss"], aud: p?.["aud"], expected: this.config.audience, error: error instanceof Error ? error.message.slice(0, 200) : String(error) };
           } catch {
             return { unreadable: true };
           }
