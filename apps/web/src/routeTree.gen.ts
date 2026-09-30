@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgRouteImport } from './routes/org'
 import { Route as OrgIndexRouteImport } from './routes/org.index'
 import { Route as OrgPeopleRouteImport } from './routes/org.people'
+import { Route as OrgSlackRouteImport } from './routes/org.slack'
 import { Route as OrgWorkspacesRouteImport } from './routes/org.workspaces'
 import { Route as WWsRouteImport } from './routes/w.$ws'
 import { Route as WWsIndexRouteImport } from './routes/w.$ws.index'
@@ -64,6 +65,11 @@ const OrgIndexRoute = OrgIndexRouteImport.update({
 const OrgPeopleRoute = OrgPeopleRouteImport.update({
   id: '/people',
   path: '/people',
+  getParentRoute: () => OrgRoute,
+} as any)
+const OrgSlackRoute = OrgSlackRouteImport.update({
+  id: '/slack',
+  path: '/slack',
   getParentRoute: () => OrgRoute,
 } as any)
 const OrgWorkspacesRoute = OrgWorkspacesRouteImport.update({
@@ -231,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/org': typeof OrgRouteWithChildren
   '/org/people': typeof OrgPeopleRoute
+  '/org/slack': typeof OrgSlackRoute
   '/org/workspaces': typeof OrgWorkspacesRoute
   '/w/$ws': typeof WWsRouteWithChildren
   '/org/': typeof OrgIndexRoute
@@ -268,6 +275,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/org/people': typeof OrgPeopleRoute
+  '/org/slack': typeof OrgSlackRoute
   '/org/workspaces': typeof OrgWorkspacesRoute
   '/org': typeof OrgIndexRoute
   '/w/$ws/alerts': typeof WWsAlertsRoute
@@ -303,6 +311,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/org': typeof OrgRouteWithChildren
   '/org/people': typeof OrgPeopleRoute
+  '/org/slack': typeof OrgSlackRoute
   '/org/workspaces': typeof OrgWorkspacesRoute
   '/w/$ws': typeof WWsRouteWithChildren
   '/org/': typeof OrgIndexRoute
@@ -343,6 +352,7 @@ export interface FileRouteTypes {
     | '/'
     | '/org'
     | '/org/people'
+    | '/org/slack'
     | '/org/workspaces'
     | '/w/$ws'
     | '/org/'
@@ -380,6 +390,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/org/people'
+    | '/org/slack'
     | '/org/workspaces'
     | '/org'
     | '/w/$ws/alerts'
@@ -414,6 +425,7 @@ export interface FileRouteTypes {
     | '/'
     | '/org'
     | '/org/people'
+    | '/org/slack'
     | '/org/workspaces'
     | '/w/$ws'
     | '/org/'
@@ -483,6 +495,13 @@ declare module '@tanstack/react-router' {
       path: '/people'
       fullPath: '/org/people'
       preLoaderRoute: typeof OrgPeopleRouteImport
+      parentRoute: typeof OrgRoute
+    }
+    '/org/slack': {
+      id: '/org/slack'
+      path: '/slack'
+      fullPath: '/org/slack'
+      preLoaderRoute: typeof OrgSlackRouteImport
       parentRoute: typeof OrgRoute
     }
     '/org/workspaces': {
@@ -714,12 +733,14 @@ declare module '@tanstack/react-router' {
 
 interface OrgRouteChildren {
   OrgPeopleRoute: typeof OrgPeopleRoute
+  OrgSlackRoute: typeof OrgSlackRoute
   OrgWorkspacesRoute: typeof OrgWorkspacesRoute
   OrgIndexRoute: typeof OrgIndexRoute
 }
 
 const OrgRouteChildren: OrgRouteChildren = {
   OrgPeopleRoute: OrgPeopleRoute,
+  OrgSlackRoute: OrgSlackRoute,
   OrgWorkspacesRoute: OrgWorkspacesRoute,
   OrgIndexRoute: OrgIndexRoute,
 }
