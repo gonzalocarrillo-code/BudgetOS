@@ -171,6 +171,15 @@ describe("search", () => {
     expect(titles(await search(planner, "carnival"), "comment")).toEqual([]);
   });
 
+  it("a comment reads @Name, not its mention token, and opens where its thread lives", async () => {
+    await call(planner, "POST", "/threads", { anchorType: "envelope", anchorId: env["emea"], firstComment: { bodyMd: `@[user:${orgAdmin.id}] zebra budget needs a look` } });
+    await index();
+    const hit = ((await search(planner, "zebra")).find((g) => g.type === "comment")?.hits ?? [])[0] as { title: string; deepLink: string } | undefined;
+    const name = (await owner.user.findUniqueOrThrow({ where: { id: orgAdmin.id }, select: { name: true } })).name;
+    expect(hit?.title).toBe(`@${name} zebra budget needs a look`);
+    expect(hit?.deepLink).toBe(`/w/${ws}/budgets?select=${encodeURIComponent(JSON.stringify(env["emea"]))}&tab=${encodeURIComponent(JSON.stringify("comments"))}`);
+  });
+
   it("re-tags envelope documents when a tag is applied or renamed", async () => {
     const tag = await call(admin, "POST", `/workspaces/${ws}/tags`, { name: "carnaval" });
     await call(planner, "POST", "/tags/apply", { tagId: tag.body["id"], entities: [{ type: "envelope", id: env["br"] }] });

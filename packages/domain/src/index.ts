@@ -150,6 +150,8 @@ export {
   UpdateCommentInput,
   UpdateTagInput,
   extractMentions,
+  renderMentions,
+  threadPath,
 } from "./threads.js";
 export type { Mention, Reference } from "./threads.js";
 

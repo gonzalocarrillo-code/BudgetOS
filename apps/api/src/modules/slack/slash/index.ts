@@ -53,6 +53,11 @@ export function setCommandDeadline(ms: number | undefined): void {
  * command's response_url once ready, replacing that line (ADR-065). Deployed, the API must keep
  * CPU after answering for that to finish (Cloud Run: CPU always allocated).
  */
+/** How search hits of each kind are labelled in Slack (budgets carry none). */
+const KIND: Record<string, string> = { comment: "💬 Comment", target: "🎯 Target", approval_request: "📝 Approval", alert: "🔔 Alert", tag: "🏷 Tag", dimension_value: "Value", experiment: "🧪 Experiment", setting: "⚙️ Setting" };
+/** Slack mrkdwn: a title may hold < > & (link syntax). */
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 export async function handleCommand(prisma: PrismaClient, deps: SlackDeps, raw: unknown): Promise<Record<string, unknown>> {
   const body = (raw ?? {}) as Record<string, string | undefined>;
   const work = answer(prisma, deps, body).catch((e: unknown) => reply(`:no_entry: ${messageOf(e)}`));
@@ -123,7 +128,9 @@ async function answer(prisma: PrismaClient, deps: SlackDeps, body: Record<string
           g.hits.map((h) => {
             const f = h.facets ?? {};
             const numbers = g.type === "envelope" ? ` — budget ${money(f["budget"])}, spent ${money(f["actual"])}${f["budget"] ? ` (${pct(Number(f["actual"] ?? 0) / Number(f["budget"]))})` : ""}${f["pace_index"] !== undefined && f["pace_index"] !== null ? `, pace ${Number(f["pace_index"]).toFixed(2)}` : ""}` : "";
-            return `• <${appUrl()}${h.deepLink}|${h.title}>${h.path ? ` _${h.path}_` : ""}${numbers}`;
+            // Say what each hit is, so a comment or a registry value is not taken for a budget.
+            const kind = g.type === "envelope" ? "" : `${KIND[g.type] ?? g.type.replace(/_/g, " ")}: `;
+            return `• ${kind}<${appUrl()}${h.deepLink}|${esc(h.title)}>${h.path ? ` _${esc(h.path)}_` : ""}${numbers}`;
           }),
         );
         return reply(`Results for “${cmd.text}”${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*Search: ${cmd.text}*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);

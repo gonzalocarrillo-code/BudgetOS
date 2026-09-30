@@ -1,10 +1,12 @@
-import { button, context, esc, header, link, section, type SlackMessage } from "./common.js";
+import { button, context, esc, header, section, type SlackMessage } from "./common.js";
 
 /** Direct message to a mentioned user (spec §19 blocks/mention.ts). */
 export interface MentionMessageInput {
   baseUrl: string;
   workspaceId: string;
   commentId: string;
+  /** Where the thread is read and answered (threadPath in @budget/domain), from the app's origin. */
+  threadPath: string;
   authorName: string;
   anchorLabel: string; // "LATAM › Brazil › Meta", "Approval · …"
   threadTitle: string | null;
@@ -23,7 +25,7 @@ export function renderBody(bodyMd: string, names: Record<string, string>): strin
 export function mentionMessage(m: MentionMessageInput): SlackMessage {
   const body = renderBody(m.bodyMd, m.names);
   const excerpt = body.length > 500 ? `${body.slice(0, 497)}…` : body;
-  const url = link(m.baseUrl, m.workspaceId, `/threads?comment=${m.commentId}`);
+  const url = `${m.baseUrl.replace(/\/$/, "")}${m.threadPath}`;
   return {
     text: `${m.authorName} mentioned you on ${m.anchorLabel}`,
     blocks: [

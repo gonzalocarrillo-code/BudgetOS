@@ -49,6 +49,8 @@ const ExplorerSearch = z.object({
   view: z.enum(["tree", "pivot", "timeline"]).default("tree"),
   zoom: z.enum(["week", "month", "quarter", "fy"]).default("month"),
   select: z.string().uuid().optional(),
+  /** The drawer's tab when a link opens it (a Slack mention or search hit: "comments"). */
+  tab: z.enum(["details", "history", "comments"]).optional().catch(undefined),
   savedViewId: z.string().uuid().optional(),
   /** Expanded tree nodes (lz-string in the URL, spec §18.2). */
   expanded: z.array(z.string()).default([]),
@@ -460,7 +462,7 @@ function ExplorerPage(): ReactElement {
             }}
           />
         ) : null}
-        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} compareTo={search.compareTo} onClose={() => setSearch({ select: undefined })} onStructure={setStructure} onFamily={setFamilyOf} onChanged={() => setReload((n) => n + 1)} /> : null}
+        {search.select ? <EnvelopeDrawer ws={ws} id={search.select} compareTo={search.compareTo} initialTab={search.tab} onClose={() => setSearch({ select: undefined, tab: undefined })} onStructure={setStructure} onFamily={setFamilyOf} onChanged={() => setReload((n) => n + 1)} /> : null}
         {familyOf ? (
           <FamilyEditor
             ws={ws}
