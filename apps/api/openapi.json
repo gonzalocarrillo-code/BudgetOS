@@ -19918,7 +19918,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest"
+            "description": "Whether the org is connected to Slack and to which team, and this workspace's channels and switches"
           }
         }
       },
@@ -19969,9 +19969,6 @@
                   },
                   "dms": {
                     "type": "boolean"
-                  },
-                  "link": {
-                    "type": "boolean"
                   }
                 }
               }
@@ -20010,6 +20007,69 @@
                     "pattern": "^[#@]?[A-Za-z0-9._-]{1,80}$"
                   }
                 }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A test message is queued for the notify worker"
+          }
+        }
+      }
+    },
+    "/api/v1/org/integrations/slack": {
+      "get": {
+        "operationId": "getOrgSlack",
+        "responses": {
+          "200": {
+            "description": "Superadmins: whether the bot token and signing secret are set, the Slack team the org is linked to, the URLs Slack calls, the app manifest, and each workspace's channels"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateOrgSlack",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "link": {
+                    "type": "boolean"
+                  },
+                  "unlink": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Superadmins: the org's Slack team after linking or unlinking"
+          }
+        }
+      }
+    },
+    "/api/v1/org/integrations/slack/test": {
+      "post": {
+        "operationId": "sendOrgSlackTest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "pattern": "^[#@]?[A-Za-z0-9._-]{1,80}$"
+                  }
+                },
+                "required": [
+                  "channel"
+                ]
               }
             }
           }

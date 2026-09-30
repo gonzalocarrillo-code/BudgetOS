@@ -155,7 +155,7 @@ export type { Mention, Reference } from "./threads.js";
 
 export { CreateSavedViewInput, ListSavedViewsQuery, OVERVIEW_BLOCKS, OVERVIEW_SECTIONS, OverviewLayout, SavedViewScreen, SavedViewVisibility, UpdateSavedViewInput, readOverviewLayout } from "./views.js";
 export type { OverviewBlock } from "./views.js";
-export { SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, SlackUserSettings, UpdateSlackSettingsInput, parseSlackAmount, shortRequestId } from "./slack.js";
+export { OrgSlackSettings, OrgSlackTestInput, SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, SlackUserSettings, UpdateOrgSlackInput, UpdateSlackSettingsInput, parseSlackAmount, shortRequestId } from "./slack.js";
 export { OUTBOX_TOPICS, topicsFor } from "./outbox-topics.js";
 export { parseRequestRef, parseSlackCommand } from "./slack-command.js";
 export type { DecisionVerb, RequestRef, SlackCommand } from "./slack-command.js";

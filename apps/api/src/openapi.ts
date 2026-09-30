@@ -119,6 +119,8 @@ import {
   UpdateMeInput,
   UpdateWorkspaceInput,
   UpdateSlackSettingsInput,
+  UpdateOrgSlackInput,
+  OrgSlackTestInput,
   SlackTestInput,
 } from "@budget/domain";
 import { zodV3ToOpenAPI } from "nestjs-zod";
@@ -676,11 +678,18 @@ export function openApiDocument(): Record<string, unknown> {
         patch: { operationId: "updateWorkspaceGeneral", parameters: [workspaceParam], requestBody: json(UpdateWorkspaceInput), responses: { "200": { description: "The renamed workspace" } } },
       },
       "/api/v1/workspaces/{ws}/integrations/slack": {
-        get: { operationId: "getSlackSettings", parameters: [workspaceParam], responses: { "200": { description: "Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest" } } },
+        get: { operationId: "getSlackSettings", parameters: [workspaceParam], responses: { "200": { description: "Whether the org is connected to Slack and to which team, and this workspace's channels and switches" } } },
         patch: { operationId: "updateSlackSettings", parameters: [workspaceParam], requestBody: json(UpdateSlackSettingsInput), responses: { "200": { description: "The workspace's Slack settings" } } },
       },
       "/api/v1/workspaces/{ws}/integrations/slack/test": {
         post: { operationId: "sendSlackTest", parameters: [workspaceParam], requestBody: json(SlackTestInput), responses: { "201": { description: "A test message is queued for the notify worker" } } },
+      },
+      "/api/v1/org/integrations/slack": {
+        get: { operationId: "getOrgSlack", responses: { "200": { description: "Superadmins: whether the bot token and signing secret are set, the Slack team the org is linked to, the URLs Slack calls, the app manifest, and each workspace's channels" } } },
+        patch: { operationId: "updateOrgSlack", requestBody: json(UpdateOrgSlackInput), responses: { "200": { description: "Superadmins: the org's Slack team after linking or unlinking" } } },
+      },
+      "/api/v1/org/integrations/slack/test": {
+        post: { operationId: "sendOrgSlackTest", requestBody: json(OrgSlackTestInput), responses: { "201": { description: "A test message is queued for the notify worker" } } },
       },
       "/api/v1/slack/interactions": {
         post: { operationId: "slackInteractions", description: "Called by Slack (signed with SLACK_SIGNING_SECRET; no JWT): button clicks and form submissions", responses: { "200": { description: "What Slack expects: {} or form errors" } } },

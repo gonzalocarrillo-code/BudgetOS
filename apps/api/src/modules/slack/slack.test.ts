@@ -82,22 +82,38 @@ afterAll(async () => {
 });
 
 describe("Slack settings", () => {
-  it("members read them; admins set channels and link the Slack team (audited)", async () => {
+  it("the org admin links the org once; every workspace answers to that team; members read, admins route (audited)", async () => {
     const read = await as("planner", "GET", `/workspaces/${golden.workspaceId}/integrations/slack`);
     expect(read.status).toBe(200);
-    expect(read.body).toMatchObject({ connected: { signingSecret: true }, urls: { interactions: expect.stringMatching(/\/api\/v1\/slack\/interactions$/) } });
+    expect(read.body).toMatchObject({ connected: false, team: null });
+    expect(read.body).not.toHaveProperty("manifest");
+    // R11-002: the connection is the org's: only an org admin links it, once.
+    expect((await as("admin", "PATCH", "/org/integrations/slack", { link: true })).status).toBe(403);
+    const org = await as("orgAdmin", "GET", "/org/integrations/slack");
+    expect(org.body).toMatchObject({ secrets: { signingSecret: true }, team: null, urls: { interactions: expect.stringMatching(/\/api\/v1\/slack\/interactions$/) } });
+    const linked = await as("orgAdmin", "PATCH", "/org/integrations/slack", { link: true });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    expect(linked.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack" });
+    const [audited] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'slack.org_linked'`, golden.orgId);
+    expect(Number(audited?.n)).toBe(1);
+    // A workspace that never touched Slack is linked through its org.
+    expect((await as("planner", "GET", `/workspaces/${golden.workspaceId}/integrations/slack`)).body).toMatchObject({ connected: true, team: { id: TEAM, name: "Golden Slack" } });
+
     expect((await as("planner", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget" })).status).toBe(403);
-    const set = await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], link: true });
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { link: true })).status).toBe(422);
+    const set = await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"] });
     expect(set.status, JSON.stringify(set.body)).toBe(200);
-    expect(set.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack", defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], dms: true });
+    expect(set.body).toMatchObject({ defaultChannel: "#budget", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], dms: true });
     // S-004: direct messages to approvers and requesters can be turned off, and back on.
     expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { dms: false })).body).toMatchObject({ dms: false, defaultChannel: "#budget" });
     expect(((await as("planner", "GET", `/workspaces/${golden.workspaceId}/integrations/slack`)).body["settings"] as { dms: boolean }).dms).toBe(false);
     expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { dms: true })).body).toMatchObject({ dms: true });
     const test = await as("admin", "POST", `/workspaces/${golden.workspaceId}/integrations/slack/test`, {});
     expect(test.body).toMatchObject({ queued: true, channel: "#budget" });
+    const orgTest = await as("orgAdmin", "POST", "/org/integrations/slack/test", { channel: "#general" });
+    expect(orgTest.body).toMatchObject({ queued: true, channel: "#general" });
     const [q] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'slack.test'`, golden.workspaceId);
-    expect(Number(q?.n)).toBe(1);
+    expect(Number(q?.n)).toBe(2);
   });
 });
 
@@ -222,8 +238,10 @@ describe("Slack acts with the app's permissions (S-001)", () => {
     expect(JSON.stringify(views[0]?.view)).toContain("No role in this workspace");
     const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
     expect(still?.status).toBe("OPEN");
-    // /budget shows them nothing of this workspace either.
-    expect(String((await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-outsider" })).body["text"])).toContain("No BudgetOS workspace");
+    // R11-002: their own workspace is linked through the org, so /budget answers for it, and only it.
+    const answer = JSON.stringify((await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-outsider" })).body);
+    expect(answer).toContain("No open alerts");
+    expect(answer).not.toContain(alert!.id);
   });
 
   it("finds the account when the Slack profile's email is in capitals", async () => {
@@ -234,7 +252,8 @@ describe("Slack acts with the app's permissions (S-001)", () => {
 
 describe("every approval request reaches Slack (S-003)", () => {
   it("a bulk edit's request posts with Approve / Reject, and its approvers are told in the app", async () => {
-    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", link: true })).status).toBe(200);
+    expect((await as("orgAdmin", "PATCH", "/org/integrations/slack", { link: true })).status).toBe(200);
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget" })).status).toBe(200);
     const ids: string[] = [];
     for (const envelopeId of [...golden.envelopeIds.values()].slice(60, 120)) {
       const env = (await as("planner", "GET", `/envelopes/${envelopeId}`)).body as { current?: unknown; draft?: unknown; status?: string };
@@ -494,7 +513,8 @@ describe("which workspace /budget answers for (S-010)", () => {
     await owner.workspace.create({ data: { id: second, orgId: golden.orgId, slug: `${slug}-second`, name: "Second", reportingCurrency: "USD", settings: { slack: { teamId: TEAM, defaultChannel: "#second-budgets" } } } });
     await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: second, principalType: "user", principalId: golden.users.planner, role: "PLANNER", createdBy: golden.users.orgAdmin } });
     // The golden workspace posts to #budget (the settings test linked it and set it).
-    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget", link: true })).status).toBe(200);
+    expect((await as("orgAdmin", "PATCH", "/org/integrations/slack", { link: true })).status).toBe(200);
+    expect((await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/integrations/slack`, { defaultChannel: "#budget" })).status).toBe(200);
   });
 
   it("a workspace's own channel answers for it", async () => {

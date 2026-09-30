@@ -5,7 +5,7 @@ import { ROLE_CACHE, type RoleCache } from "../../common/auth/role-cache.js";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { handleInteraction } from "./interactions.js";
-import { getSlackSettings, sendSlackTest, updateSlackSettings } from "./slack.service.js";
+import { getOrgSlack, getSlackSettings, sendOrgSlackTest, sendSlackTest, updateOrgSlack, updateSlackSettings } from "./slack.service.js";
 import { handleCommand } from "./slash/index.js";
 
 /** Slack settings, and the endpoints Slack itself calls (signed, no JWT; ADR-046). */
@@ -33,6 +33,25 @@ export class SlackController {
   @Permission("user.manage")
   test(@Tenant() auth: AuthContext, @Body() body: unknown) {
     return sendSlackTest(this.prisma, auth, body);
+  }
+
+  /** R11-002: the org's Slack connection (Org console › Slack). */
+  @Get("org/integrations/slack")
+  @Permission("org.admin")
+  getOrg(@Tenant() auth: AuthContext) {
+    return getOrgSlack(this.prisma, auth);
+  }
+
+  @Patch("org/integrations/slack")
+  @Permission("org.admin")
+  updateOrg(@Tenant() auth: AuthContext, @Body() body: unknown) {
+    return updateOrgSlack(this.prisma, auth, body);
+  }
+
+  @Post("org/integrations/slack/test")
+  @Permission("org.admin")
+  testOrg(@Tenant() auth: AuthContext, @Body() body: unknown) {
+    return sendOrgSlackTest(this.prisma, auth, body);
   }
 
   @Post("slack/interactions")

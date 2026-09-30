@@ -14,6 +14,8 @@ model Organization {
   name       String
   workspaces Workspace[]
   createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  /// R11-002: `slack` is the Slack team every workspace of the org answers to.
+  settings   Json        @default("{}")
 
   @@map("organization")
 }

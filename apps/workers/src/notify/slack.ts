@@ -333,7 +333,11 @@ export async function handleSlackEvent(prisma: PrismaClient, slack: SlackClient 
     if (slack === null) return;
     const p = (event.payload ?? {}) as Record<string, unknown>;
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: event.workspaceId }, select: { settings: true } });
-    const s: SlackSettings = ((ws.settings ?? {}) as Settings).slack ?? {};
+    const own: SlackSettings = ((ws.settings ?? {}) as Settings).slack ?? {};
+    // R11-002: the org's linked team links every workspace (buttons need a linked team).
+    const org = await tx.organization.findUnique({ where: { id: event.orgId }, select: { settings: true } });
+    const orgTeam = ((org?.settings ?? {}) as { slack?: { teamId?: string } }).slack?.teamId;
+    const s: SlackSettings = { ...own, teamId: orgTeam ?? own.teamId };
     const post = async (o: Outgoing) => {
       const ref = await slack.postMessage({ channel: o.channel, text: o.message.text, blocks: o.message.blocks });
       if (ref && o.about) {

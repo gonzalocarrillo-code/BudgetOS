@@ -5,7 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { authenticateVerifiedEmail, type AuthDeps } from "../../common/auth/authenticate.js";
 import { mySlackSettings } from "../auth/commands/slack-workspace.js";
 import type { AuthContext } from "../../common/tenant.js";
-import { slackSettingsOf } from "./slack-config.js";
+import { slackSettingsOf, slackTeamOf } from "./slack-config.js";
 import { slackApi } from "./slack-api.js";
 
 /**
@@ -23,9 +23,12 @@ export async function slackAuth(prisma: PrismaClient, deps: SlackDeps, workspace
   const email = await api.userEmail(slackUserId);
   if (!email) throw new DomainError("FORBIDDEN", "Your Slack profile has no email BudgetOS can match");
   const auth = await authenticateVerifiedEmail(deps, { email, workspaceId, requestId: slackRequestId() });
-  // Only the Slack team this workspace is linked to may act on it.
-  const ws = await withTenant(prisma, auth.ctx, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { settings: true } }));
-  if (slackSettingsOf(ws.settings).teamId !== teamId) throw new DomainError("FORBIDDEN", "This BudgetOS workspace is not linked to your Slack workspace");
+  // Only the Slack team this workspace answers to (its org's, R11-002) may act on it.
+  const { ws, org } = await withTenant(prisma, auth.ctx, async (tx) => ({
+    ws: await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { settings: true } }),
+    org: await tx.organization.findUnique({ where: { id: auth.user.orgId }, select: { settings: true } }),
+  }));
+  if (slackTeamOf(org?.settings, ws.settings)?.id !== teamId) throw new DomainError("FORBIDDEN", "This BudgetOS workspace is not linked to your Slack workspace");
   return auth;
 }
 
@@ -46,10 +49,14 @@ export async function linkedWorkspaces(prisma: PrismaClient, deps: SlackDeps, te
   const user = await deps.access.findUser({ sub: `external:${email}`, email, emailVerified: true, googleSub: null });
   if (user === null || !user.isActive) return [];
   const ctx = { workspaceId: null, orgId: user.orgId, userId: user.id, isOrgAdmin: false, actorType: "user" as const, requestId: slackRequestId() };
-  const all = await withTenant(prisma, ctx, (tx) => tx.workspace.findMany({ where: { orgId: user.orgId }, select: { id: true, name: true, slug: true, settings: true }, orderBy: { name: "asc" } }));
+  const { all, org } = await withTenant(prisma, ctx, async (tx) => ({
+    all: await tx.workspace.findMany({ where: { orgId: user.orgId, deletedAt: null, status: "ACTIVE" }, select: { id: true, name: true, slug: true, settings: true }, orderBy: { name: "asc" } }),
+    org: await tx.organization.findUnique({ where: { id: user.orgId }, select: { settings: true } }),
+  }));
+  // R11-002: an org linked to the team links every workspace of it.
   return all
     .map((w) => ({ w, s: slackSettingsOf(w.settings) }))
-    .filter(({ s }) => s.teamId === teamId)
+    .filter(({ w }) => slackTeamOf(org?.settings, w.settings)?.id === teamId)
     .map(({ w, s }) => ({ id: w.id, name: w.name, slug: w.slug, channels: [s.defaultChannel, s.alertChannel].filter((c): c is string => Boolean(c)).map(channelKey) }));
 }
 

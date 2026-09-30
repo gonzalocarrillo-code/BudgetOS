@@ -2112,6 +2112,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/org/integrations/slack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOrgSlack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateOrgSlack"];
+        trace?: never;
+    };
+    "/api/v1/org/integrations/slack/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sendOrgSlackTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/slack/interactions": {
         parameters: {
             query?: never;
@@ -9778,7 +9810,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Whether the bot token and signing secret are set, the workspace's Slack settings, the URLs Slack calls and the app manifest */
+            /** @description Whether the org is connected to Slack and to which team, and this workspace's channels and switches */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9804,7 +9836,6 @@ export interface operations {
                     alertSeverities?: ("info" | "warning" | "critical" | "data")[];
                     approvals?: boolean;
                     dms?: boolean;
-                    link?: boolean;
                 };
             };
         };
@@ -9831,6 +9862,73 @@ export interface operations {
             content: {
                 "application/json": {
                     channel?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description A test message is queued for the notify worker */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getOrgSlack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Superadmins: whether the bot token and signing secret are set, the Slack team the org is linked to, the URLs Slack calls, the app manifest, and each workspace's channels */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateOrgSlack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    link?: boolean;
+                    unlink?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Superadmins: the org's Slack team after linking or unlinking */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sendOrgSlackTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    channel: string;
                 };
             };
         };
