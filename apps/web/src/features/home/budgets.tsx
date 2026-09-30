@@ -31,10 +31,13 @@ export function YourBudgets({ ws, home, canCreate }: { ws: string; home: HomeRes
             const band = paceBand(s.paceIndex);
             return (
               <li key={s.envelopeId ?? s.label}>
-                <Link to="/w/$ws/budgets" params={{ ws }} search={{ select: s.envelopeId } as never} className="grid gap-x-6 gap-y-2 rounded-lg py-3 hover:bg-accent/40 md:grid-cols-[14rem_1fr_13rem] md:items-center" data-testid="home-scope">
+                {/* The whole strip opens the budget (a stretched link); its chips open their own lists. */}
+                <div className="relative grid gap-x-6 gap-y-2 rounded-lg py-3 hover:bg-accent/40 md:grid-cols-[14rem_1fr_13rem] md:items-center" data-testid="home-scope">
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 font-semibold">
-                      <span className="truncate">{s.label}</span>
+                      <Link to="/w/$ws/budgets" params={{ ws }} search={{ select: s.envelopeId } as never} className="truncate after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring" data-testid="home-scope-open">
+                        {s.label}
+                      </Link>
                       {s.owner ? <Chip tone="info">{t("home.budgets.owner")}</Chip> : null}
                     </p>
                     <p className="tabular text-xs text-muted-foreground">{t("home.spentOf", { actual: s.actual ? formatMoney(s.actual, currency) : "—", budget: s.budget ? formatMoney(s.budget, currency) : "—" })}</p>
@@ -42,12 +45,28 @@ export function YourBudgets({ ws, home, canCreate }: { ws: string; home: HomeRes
                   <div className="flex min-w-0 flex-col gap-2">
                     <PaceBar spent={num(s.spentPct)} elapsed={elapsed} band={band} pace={num(s.paceIndex)} testId="home-scope-bar" />
                     <div className="flex flex-wrap gap-1.5">
-                      <Chip tone={(s.pending ?? 0) > 0 ? "info" : "neutral"} icon={Flag}>
-                        {t("home.budgets.waiting", { count: s.pending ?? 0 })}
-                      </Chip>
-                      <Chip tone={(s.alerts ?? 0) > 0 ? "danger" : "neutral"} icon={Bell}>
-                        {t("home.budgets.alerts", { count: s.alerts ?? 0 })}
-                      </Chip>
+                      {(s.pending ?? 0) > 0 ? (
+                        <Link to="/w/$ws/approvals" params={{ ws }} search={{ tab: "open" } as never} className="relative z-[1] rounded-full hover:opacity-80" data-testid="home-scope-waiting">
+                          <Chip tone="info" icon={Flag}>
+                            {t("home.budgets.waiting", { count: s.pending ?? 0 })}
+                          </Chip>
+                        </Link>
+                      ) : (
+                        <Chip tone="neutral" icon={Flag}>
+                          {t("home.budgets.waiting", { count: 0 })}
+                        </Chip>
+                      )}
+                      {(s.alerts ?? 0) > 0 && s.envelopeId ? (
+                        <Link to="/w/$ws/alerts" params={{ ws }} search={{ status: "OPEN", under: s.envelopeId } as never} className="relative z-[1] rounded-full hover:opacity-80" data-testid="home-scope-alerts">
+                          <Chip tone="danger" icon={Bell}>
+                            {t("home.budgets.alerts", { count: s.alerts ?? 0 })}
+                          </Chip>
+                        </Link>
+                      ) : (
+                        <Chip tone="neutral" icon={Bell}>
+                          {t("home.budgets.alerts", { count: s.alerts ?? 0 })}
+                        </Chip>
+                      )}
                       <Chip tone="neutral">{s.projected && Number(s.projected) > 0 ? t("home.budgets.projected", { amount: formatMoney(s.projected, currency) }) : t("home.budgets.noProjections")}</Chip>
                     </div>
                   </div>
@@ -61,7 +80,7 @@ export function YourBudgets({ ws, home, canCreate }: { ws: string; home: HomeRes
                     </span>
                     <span className="text-xs text-muted-foreground">{s.remaining ? t("home.budgets.remaining", { amount: formatMoney(s.remaining, currency) }) : ""}</span>
                   </div>
-                </Link>
+                </div>
               </li>
             );
           })}

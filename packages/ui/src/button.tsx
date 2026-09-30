@@ -44,7 +44,8 @@ export function Button({ className, variant, size, asChild = false, disabled, re
           </span>
         </Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content className="rounded-md bg-inverse px-3 py-1.5 text-xs text-inverse-foreground" sideOffset={4}>
+          {/* Above cards, sticky headers, drawers and popovers (z-50), and kept inside the screen. */}
+          <Tooltip.Content className="z-[100] max-w-xs rounded-md bg-inverse px-3 py-1.5 text-xs text-inverse-foreground shadow-md" sideOffset={4} collisionPadding={8}>
             {reason}
           </Tooltip.Content>
         </Tooltip.Portal>

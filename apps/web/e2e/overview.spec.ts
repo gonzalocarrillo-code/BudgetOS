@@ -107,8 +107,11 @@ test("overview: every block, in under 1.5 s", async ({ page }) => {
   await page.getByTestId("heatmap-row").and(page.locator('[data-code="BR"]')).getByTestId("heatmap-cell").first().click();
   await expect(page.getByTestId("cell-popover")).toContainText("Brazil ×");
   await page.getByTestId("cell-open-budgets").click();
-  await expect(page).toHaveURL(/\/budgets\?.*view=pivot/);
+  // The tree, not the pivot: its rows are the cell's budgets, each of which opens its drawer.
+  await expect(page).toHaveURL(/\/budgets\?.*filter=/);
+  expect(page.url()).not.toContain("view=pivot");
   await expect(page.getByTestId("filter-chip")).toHaveCount(2);
+  await expect.poll(async () => Number(await page.getByTestId("explorer-grid").getAttribute("data-rows"))).toBeGreaterThan(0);
 });
 
 /** HO-012: four tiles about money; Projected close only with projections (the golden has none). */

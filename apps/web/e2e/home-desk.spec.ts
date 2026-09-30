@@ -76,6 +76,13 @@ test("home: the budget owner decides, and opens the alerts on their budgets by r
   await expect(page.getByTestId("alerts-table").locator("tbody tr").first()).toBeVisible();
   await page.getByTestId("alerts-only-clear").click();
   await expect(page.getByTestId("alerts-only")).toHaveCount(0);
+  // "1 alert" on a budget in Home's budgets strip opens that budget's alerts (round 12).
+  await page.goBack();
+  await page.goBack();
+  const chip = page.getByTestId("home-scope-alerts").first();
+  await chip.click();
+  await expect(page).toHaveURL(/\/alerts\?.*under=/);
+  await expect(page.getByTestId("alerts-table").locator("tbody tr").first()).toBeVisible();
 });
 
 test("home: the planner sees what they sent waiting on others, and no data to map", async ({ page }) => {
@@ -84,7 +91,7 @@ test("home: the planner sees what they sent waiting on others, and no data to ma
   await expect(page.getByTestId("home-unmatched")).toHaveCount(0);
   await expect(page.getByTestId("home-recent").first()).toBeVisible();
   // A strip opens its budget in Budgets.
-  await page.getByTestId("home-scope").first().click();
+  await page.getByTestId("home-scope-open").first().click();
   await expect(page).toHaveURL(/\/budgets\?.*select=/);
 });
 

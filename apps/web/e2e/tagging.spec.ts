@@ -61,7 +61,8 @@ test("filter Budgets by tag", async ({ page }) => {
   await page.goto(`/w/${ws}/budgets?view="pivot"&groupBy=${encodeURIComponent(JSON.stringify(["country"]))}&period=${encodeURIComponent(JSON.stringify(FY))}`);
   await page.getByTestId("filter-add").click();
   await page.getByTestId("filter-dimension").selectOption({ label: "Tag" });
-  await page.getByTestId("filter-values").selectOption(String(tag.body["name"]));
+  await page.getByTestId("filter-values-search").fill(String(tag.body["name"]));
+  await page.locator(`[data-testid="filter-value-option"][data-value="${String(tag.body["name"])}"]`).click();
   await page.getByTestId("filter-apply").click();
   await expect(page.getByTestId("filter-chip")).toHaveText(`Tag: ${String(tag.body["name"])}`);
   expect(new URL(page.url()).searchParams.get("filter")).toBe(enc({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "in", value: [tag.body["name"]] }] }));

@@ -4,6 +4,7 @@ import { t } from "@budget/ui/i18n";
 import { Plus, X } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import type { Dimension } from "../../lib/queries.js";
+import { ValuePicker } from "./value-picker.js";
 
 /**
  * Filter chips (spec §18.3): one chip per top-level predicate of the URL's FilterGroup. "Add
@@ -35,7 +36,7 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
   const [adding, setAdding] = useState(false);
   const [dimKey, setDimKey] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
-  const dim = dimKey === TAG_KEY ? { key: TAG_KEY, values: tags.map((x) => ({ code: x.name, label: x.name })) } : dimensions.find((d) => d.key === dimKey);
+  const dim = dimKey === TAG_KEY ? { key: TAG_KEY, label: t("explorer.filter.tag"), values: tags.map((x) => ({ code: x.name, label: x.name })) } : dimensions.find((d) => d.key === dimKey);
   const apply = () => {
     if (!dimKey || picked.length === 0) return;
     const predicate: Predicate = dimKey === TAG_KEY ? { field: { kind: "attr", key: "tag" }, op: "in", value: picked } : { field: { kind: "dimension", key: dimKey }, op: "in", value: picked };
@@ -69,20 +70,7 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
             {tags.length ? <option value={TAG_KEY}>{t("explorer.filter.tag")}</option> : null}
           </Select>
           {dim ? (
-            <Select
-              multiple
-              wrapperClassName="min-w-40"
-              aria-label={t("explorer.filter.pickValues")}
-              value={picked}
-              onChange={(e) => setPicked([...e.target.selectedOptions].map((o) => o.value))}
-              data-testid="filter-values"
-            >
-              {dim.values.map((v) => (
-                <option key={v.code} value={v.code}>
-                  {v.label}
-                </option>
-              ))}
-            </Select>
+            <ValuePicker values={dim.values} picked={picked} onChange={setPicked} placeholder={t("explorer.filter.searchValues", { dimension: dim.label })} />
           ) : null}
           {picked.length ? (
             <Button size="sm" onClick={apply} data-testid="filter-apply">

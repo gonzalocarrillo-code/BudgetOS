@@ -57,6 +57,8 @@ export interface Labels {
 
 const PAGE = 1000;
 const LIVE = LIVE_LEAVES.filter((p) => p.field.kind === "attr" && p.field.key === "status");
+/** The leaf part of LIVE_LEAVES (no children): the budgets that split the money exactly (ADR-016). */
+const LEAF = LIVE_LEAVES.filter((p) => !(p.field.kind === "attr" && p.field.key === "status"));
 const prefix = (keys: string[], segments: string[]): Predicate[] =>
   keys.map((key, i) => (segments[i] === NONE ? { field: { kind: "dimension", key }, op: "is_empty" } : { field: { kind: "dimension", key }, op: "eq", value: segments[i] as string }));
 
@@ -86,6 +88,16 @@ export class ExplorerRowSource implements RowSource {
 
   private get structure(): boolean {
     return this.q.view === "tree" && this.q.structure === true;
+  }
+
+  /**
+   * The structure tree with a filter (owner feedback, 2026-09-30): top-level budgets rarely carry
+   * the filtered values (a country sits on the budgets below), so the tree would show nothing. It
+   * lists the matching lowest-level budgets instead, each by its path: they split the money
+   * exactly, so the totals row stays right, and each opens its drawer.
+   */
+  private get filteredStructure(): boolean {
+    return this.structure && this.q.filter.children.length > 0;
   }
 
   private filterWith(extra: Predicate[]): FilterGroupT {
@@ -177,6 +189,10 @@ export class ExplorerRowSource implements RowSource {
       this.roots = this.q.groupBy.length
         ? res.rows.map((r) => ({ ...r, level: 0, name: this.q.groupBy.map((k) => ((r.dimensions[k] ?? NONE) === NONE ? this.labels.none(k, 1) : this.labels.value(k, r.dimensions[k] as string))).join(" · "), hasChildren: false, expanded: false }))
         : this.envelopeRows(res.rows, 0);
+    } else if (this.filteredStructure) {
+      const res = await this.all([], [...LEAF], [{ key: "name", dir: "asc" }]);
+      Object.assign(this, { totals: res.totals, dataVersion: String(res.dataVersion) });
+      this.roots = this.envelopeRows(res.rows, 0).map((r) => ({ ...r, name: r.path.join(" › ") || r.name, hasChildren: false, expanded: false }));
     } else if (this.structure || this.q.levels.length === 0) {
       const res = await this.all([], this.structure ? this.underParent(null) : [], [{ key: "name", dir: "asc" }]);
       Object.assign(this, { totals: res.totals, dataVersion: String(res.dataVersion) });

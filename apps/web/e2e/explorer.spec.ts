@@ -5,6 +5,12 @@ import LZString from "lz-string";
 import { state, tokenFor } from "./auth.js";
 import { PORTS } from "./env.js";
 
+/** The filter's value picker: type to search, then click the value (owner feedback, round 12). */
+const pickValue = async (scope: Page, code: string) => {
+  await scope.getByTestId("filter-values-search").fill(code);
+  await scope.locator(`[data-testid="filter-value-option"][data-value="${code}"]`).click();
+  await expect(scope.locator(`[data-testid="filter-value-picked"]`).first()).toBeVisible();
+};
 /**
  * T-027 done-when (spec §22): filter → URL → reload; the inline edit conflict flow; pivot totals ==
  * tree totals == Budget structure's (ADR-059). The grid draws on canvas, so rows are read from the /query responses the page made
@@ -65,7 +71,7 @@ test.describe("Explorer (T-027)", () => {
     await pick(page, "template-picker", { label: "Region first" });
     await page.getByTestId("filter-add").click();
     await pick(page, "filter-dimension", "region");
-    await pick(page, "filter-values", "LATAM");
+    await pickValue(page, "LATAM");
     await page.getByTestId("filter-apply").click();
     await expect(page.getByTestId("filter-chip")).toHaveCount(1);
     await expect(page).toHaveURL(/[?&]filter=[A-Za-z0-9+\-$]+/);

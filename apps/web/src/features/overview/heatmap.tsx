@@ -280,7 +280,7 @@ function CellPopover({ ws, cell, cellRef, currency, period, compareName, onEdit,
           ))}
         </dl>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Link to="/w/$ws/budgets" params={{ ws }} search={{ view: "pivot", groupBy: [cellRef.row.key, cellRef.col.key], filter: cellFilter(cellRef), period } as never} className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent" data-testid="cell-open-budgets">
+          <Link to="/w/$ws/budgets" params={{ ws }} search={{ filter: cellFilter(cellRef), period } as never} className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent" data-testid="cell-open-budgets">
             {t("overview.cell.open")}
           </Link>
           <Button
