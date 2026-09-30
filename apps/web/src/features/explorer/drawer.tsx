@@ -1,3 +1,4 @@
+import type { FamilySum } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
 import { Button, StatusChip, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
@@ -16,7 +17,7 @@ import { DimensionIcon } from "../registry/dimension-icon.js";
 import type { StructureOp } from "../structure/structure-dialog.js";
 import { StructureActions } from "../structure/structure-actions.js";
 import { SendForApproval } from "./send-for-approval.js";
-import { FamilySumLine, familyQuery } from "./family-editor.js";
+import { FamilyProposedLine, FamilySumLine, familyQuery } from "./family-editor.js";
 import { DrawerSnapshots, SnapshotCompareLine } from "../snapshots/drawer-snapshots.js";
 import { DatesDialog } from "../structure/dates-dialog.js";
 
@@ -308,7 +309,15 @@ export function EnvelopeDrawer({ ws, id, compareTo, initialTab, onClose, onStruc
             )}
             {hasChildren ? (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-                {family?.sums[0] ? <FamilySumLine sum={family.sums[0]} currency={data.currency} testId="drawer-family-sum" /> : <span className="text-sm text-muted-foreground">{t("shell.loading")}</span>}
+                {family ? (
+                  // What is approved decides the red "over by"; drafts and pending requests get their own flag.
+                  <div className="flex flex-col gap-1.5">
+                    {(family.approvedSum ?? family.sums[0]) ? <FamilySumLine sum={(family.approvedSum ?? family.sums[0]) as FamilySum} currency={data.currency} testId="drawer-family-sum" /> : null}
+                    {family.approvedSum && family.proposals && family.sums[0]?.status === "over" ? <FamilyProposedLine sum={family.sums[0]} count={family.proposals} currency={data.currency} /> : null}
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">{t("shell.loading")}</span>
+                )}
                 {onFamily ? (
                   <Button size="sm" variant="outline" onClick={() => onFamily(id)} data-testid="drawer-family-edit">
                     {t("family.edit")}

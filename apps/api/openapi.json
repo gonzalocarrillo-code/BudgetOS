@@ -3724,6 +3724,45 @@
                           "status"
                         ]
                       }
+                    },
+                    "approvedSum": {
+                      "type": "object",
+                      "properties": {
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "parentAmount": {
+                          "type": "string"
+                        },
+                        "childrenTotal": {
+                          "type": "string"
+                        },
+                        "unallocated": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "balanced",
+                            "under",
+                            "over"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "parentId",
+                        "parentAmount",
+                        "childrenTotal",
+                        "unallocated",
+                        "status"
+                      ],
+                      "nullable": true
+                    },
+                    "proposals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": false
                     }
                   },
                   "required": [
@@ -4089,6 +4128,45 @@
                           "status"
                         ]
                       }
+                    },
+                    "approvedSum": {
+                      "type": "object",
+                      "properties": {
+                        "parentId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "parentAmount": {
+                          "type": "string"
+                        },
+                        "childrenTotal": {
+                          "type": "string"
+                        },
+                        "unallocated": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "balanced",
+                            "under",
+                            "over"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "parentId",
+                        "parentAmount",
+                        "childrenTotal",
+                        "unallocated",
+                        "status"
+                      ],
+                      "nullable": true
+                    },
+                    "proposals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": false
                     }
                   },
                   "required": [

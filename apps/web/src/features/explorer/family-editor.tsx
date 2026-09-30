@@ -34,6 +34,21 @@ export function FamilySumLine({ sum, currency, testId }: { sum: FamilySum; curre
   );
 }
 
+/**
+ * The proposed flag (owner feedback, round 12): the family's drafts and pending requests add up to
+ * more than the parent, although the approved amounts do not. Blue, apart from the red over-budget
+ * line, which only approved money can trigger.
+ */
+export function FamilyProposedLine({ sum, count, currency }: { sum: FamilySum; count: number; currency: string }): ReactElement {
+  const money = (v: string) => formatMoney(v, currency);
+  return (
+    <p className="rounded-md bg-info-soft px-2 py-1 text-sm text-info-text" data-testid="drawer-family-proposed">
+      {t("family.proposedOver", { amount: money(sum.unallocated.replace(/^-/, "")) })}
+      <span className="block text-xs opacity-80">{t("family.proposedDetail", { children: money(sum.childrenTotal), parent: money(sum.parentAmount), count })}</span>
+    </p>
+  );
+}
+
 const pctOf = (amount: string | null, parent: string | null) => {
   if (amount === null || parent === null || Number(parent) === 0) return "";
   // Four decimals: a share keeps the child within cents of where it is (the API takes six).

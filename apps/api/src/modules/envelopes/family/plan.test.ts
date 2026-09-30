@@ -37,6 +37,22 @@ describe("planFamily", () => {
     expect(plan.sums).toEqual([{ parentId: ID.P, parentAmount: "1000.00", childrenTotal: "900.00", unallocated: "100.00", status: "under" }]);
   });
 
+  it("approved amounts decide 'over'; drafts and pending requests are counted apart (round 12)", () => {
+    // The Mexico case: children approved 42,000 + 46,000 of 96,800; their drafts add up to 120,100.
+    const t = tree(
+      { ...node("P", null, "96800.00", null, ["A", "B"]), approved: "96800.00", proposed: false },
+      { ...node("A", "P", "56700.00", { mode: "manual", pct: null }), approved: "42000.00", proposed: true },
+      { ...node("B", "P", "63400.00", { mode: "manual", pct: null }), approved: "46000.00", proposed: true },
+    );
+    const plan = planFamily(t, ID.P, null);
+    expect(plan.approvedSum).toEqual({ parentId: ID.P, parentAmount: "96800.00", childrenTotal: "88000.00", unallocated: "8800.00", status: "under" });
+    expect(plan.sums[0]).toMatchObject({ childrenTotal: "120100.00", unallocated: "-23300.00", status: "over" });
+    expect(plan.proposals).toBe(2);
+    // A family never approved has no approved sum; one with no drafts has no proposals.
+    expect(planFamily(tree({ ...node("P", null, "10.00", null, ["A"]), approved: null }, node("A", "P", "5.00", null)), ID.P, null).approvedSum).toBeNull();
+    expect(planFamily(family(), ID.P, null)).toMatchObject({ approvedSum: { status: "under", childrenTotal: "900.00" }, proposals: 0 });
+  });
+
   it("the parent doubles: % children follow, down the tree; manual ones stay and are flagged", () => {
     const plan = planFamily(family(), ID.P, FamilyInput.parse({ parentAmount: "2000.00" }));
     const after = Object.fromEntries([plan.parent, ...plan.members].map((m) => [name[m.envelopeId], m.after]));
