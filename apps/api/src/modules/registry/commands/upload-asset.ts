@@ -14,7 +14,7 @@ export async function uploadAsset(
 ): Promise<{ gcsObject: string; icon: string }> {
   assertCanManage(roles);
   const input = parseInput(UploadAssetInput, raw);
-  const clean = sanitizeSvg(input.svg);
+  const clean = await sanitizeSvg(input.svg);
   const gcsObject = `icons/${newId()}.svg`;
   await store.put(gcsObject, new TextEncoder().encode(clean), input.contentType);
   await inWorkspace(prisma, ctx, async (tx, workspace) => {
