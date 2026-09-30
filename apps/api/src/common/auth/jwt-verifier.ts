@@ -1,6 +1,6 @@
 import { DomainError } from "@budget/domain";
 import { Injectable } from "@nestjs/common";
-import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
+import { createLocalJWKSet, createRemoteJWKSet, errors, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 
 /** Google's public keys for Identity Platform (securetoken) ID tokens. */
 const IDENTITY_PLATFORM_JWKS = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -52,11 +52,11 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthCon
 @Injectable()
 export class JwtVerifier {
   private readonly config: AuthConfig;
-  private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
+  private readonly jwks: Parameters<typeof jwtVerify>[1] & ((...args: never[]) => unknown);
 
   constructor() {
     this.config = authConfigFromEnv();
-    this.jwks = createRemoteJWKSet(new URL(this.config.jwksUrl));
+    this.jwks = this.config.mode === "iap" ? fetchedJwks(this.config.jwksUrl) : createRemoteJWKSet(new URL(this.config.jwksUrl));
   }
 
   /** The credential of a request: the IAP assertion behind IAP, else the bearer token. */
@@ -117,4 +117,31 @@ function googleIdentity(payload: JWTPayload): string | null {
   const identities = (firebase as { identities?: Record<string, unknown> }).identities;
   const google = identities?.["google.com"];
   return Array.isArray(google) && typeof google[0] === "string" ? google[0] : null;
+}
+
+/**
+ * IAP's keys, fetched with Node's fetch and cached for an hour (ADR-065). On Cloud Run jose's
+ * remote key set failed to parse gstatic's response ("Failed to parse the JSON Web Key Set HTTP
+ * response as JSON") although the same URL parses everywhere else; an unknown `kid` refetches.
+ */
+function fetchedJwks(url: string) {
+  let cached: { at: number; set: ReturnType<typeof createLocalJWKSet>; kids: Set<string> } | null = null;
+  const load = async () => {
+    const res = await fetch(url, { headers: { accept: "application/json" } });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`IAP keys: HTTP ${res.status}`);
+    let body: JSONWebKeySet;
+    try {
+      body = JSON.parse(text) as JSONWebKeySet;
+    } catch {
+      throw new Error(`IAP keys are not JSON (HTTP ${res.status}, ${res.headers.get("content-type") ?? "no type"}): ${text.slice(0, 80)}`);
+    }
+    cached = { at: Date.now(), set: createLocalJWKSet(body), kids: new Set(body.keys.map((k) => k.kid ?? "")) };
+    return cached;
+  };
+  return async (header: { kid?: string }, token: unknown) => {
+    let c = cached as typeof cached;
+    if (c === null || Date.now() - c.at > 3_600_000 || (header.kid !== undefined && !c.kids.has(header.kid))) c = await load();
+    return c.set(header as never, token as never);
+  };
 }
