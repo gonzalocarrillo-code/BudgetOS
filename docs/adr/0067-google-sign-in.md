@@ -20,4 +20,4 @@ Cloud Run's built-in IAP uses a Google-managed OAuth client that admits only acc
 
 ## Consequences
 - IAP's IAM list no longer gates the app; the app's user list does. Adding someone is one step: Org console › People, or a workspace's Roles.
-- The OAuth consent screen names the app Google shows. `dmus-gonzalo`'s consent screen is BrandOS's, so the client belongs in a project of its own, with an External, published consent screen named Budget OS.
+- The client is a Web application client in `dmus-gonzalo` (owner's choice, 2026-09-30), so Google's sign-in screen shows that project's consent screen name, "DEPT BrandOS". Who can sign in at Google's end (External, In production) is that shared consent screen's setting; the app admits only its own users either way.
