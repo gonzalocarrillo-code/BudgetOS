@@ -1,6 +1,8 @@
 import { pathToFileURL } from "node:url";
 import { newId } from "@budget/domain";
+import { withTenant } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
+import { ensureDefaultMetrics } from "../modules/registry/commands/metrics.js";
 
 /**
  * The deployment's one-time setup (ADR-065), run by the `budgetos-migrate` Cloud Run job after
@@ -33,6 +35,13 @@ export async function bootstrap(owner: PrismaClient, env: NodeJS.ProcessEnv = pr
   if (!user.isActive) await owner.user.update({ where: { id: user.id }, data: { isActive: true } });
   const admin = await owner.roleAssignment.findFirst({ where: { workspaceId: null, principalType: "user", principalId: user.id, role: "ORG_ADMIN" } });
   if (!admin) await owner.roleAssignment.create({ data: { id: newId(), workspaceId: null, principalType: "user", principalId: user.id, role: "ORG_ADMIN", createdBy: user.id } });
+  // R11-001: an org whose workspaces were created before workspace creation seeded the metric
+  // library gets it now (its CPA and ROAS rules could not run without it).
+  const first = await owner.workspace.findFirst({ where: { orgId, deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (first && (await owner.metricDefinition.count({ where: { orgId } })) === 0) {
+    const ctx = { workspaceId: first.id, orgId, userId: user.id, isOrgAdmin: true, actorType: "system" as const, requestId: "bootstrap-metrics" };
+    await withTenant(owner, ctx, (tx) => ensureDefaultMetrics(tx, ctx, { id: first.id, orgId }));
+  }
   return { orgId, userId: user.id };
 }
 
