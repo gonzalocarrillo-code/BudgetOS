@@ -23,7 +23,8 @@ test.describe("pacing rules (T-032)", () => {
     const editor = page.getByTestId("rule-editor");
     await editor.getByTestId("filter-add").click();
     await editor.getByTestId("filter-dimension").selectOption("region");
-    await editor.getByTestId("filter-values").selectOption("LATAM");
+    await editor.getByTestId("filter-values-search").fill("LATAM");
+    await editor.locator(`[data-testid="filter-value-option"][data-value="LATAM"]`).click();
     await editor.getByTestId("filter-apply").click();
     await expect(editor.getByTestId("filter-chip")).toHaveCount(1);
     await expect(page.getByTestId("rule-summary")).toContainText("Critical alert when Projected close % of budget > 1.2 · for 2 days");

@@ -167,7 +167,7 @@ export function CellEditor({ ws, cell, period, currency, onClose }: { ws: string
       <Link
         to="/w/$ws/budgets"
         params={{ ws }}
-        search={{ view: "pivot", groupBy: [cell.row.key, cell.col.key], filter } as never}
+        search={{ filter } as never}
         className="text-sm text-primary hover:underline"
         data-testid="cell-editor-open-budgets"
       >

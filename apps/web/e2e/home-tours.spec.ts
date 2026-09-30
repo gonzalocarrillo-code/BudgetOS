@@ -61,7 +61,7 @@ test("home: waiting on you first, then pacing per budget; each block opens its s
   await expect(page.getByTestId("home-scope").first()).toBeVisible();
   await expect(page.getByTestId("home-scope-spent").first()).toHaveText(/^\d+%$/);
   // HO-006: a strip opens its top-level budget in Budgets.
-  await page.getByTestId("home-scope").first().click();
+  await page.getByTestId("home-scope-open").first().click();
   await expect(page).toHaveURL(/\/budgets\?.*select=/);
 });
 

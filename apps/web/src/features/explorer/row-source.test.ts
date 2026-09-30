@@ -58,3 +58,20 @@ describe("the Budgets tree folds no-value groups into the level above", () => {
     expect(after.map((r) => [r.name, r.level])).toEqual([["FY2026 Media", 0], ["EMEA", 0], ["acme", 0], ["LATAM", 1]]);
   });
 });
+
+describe("the structure tree with a filter (owner feedback, 2026-09-30)", () => {
+  it("lists the matching lowest-level budgets by their path, not top-level budgets that carry no such value", async () => {
+    const { api } = await import("../../lib/api.js");
+    const post = api.POST as unknown as ReturnType<typeof vi.fn>;
+    post.mockClear();
+    post.mockImplementationOnce(async () => ({ rows: [{ ...envelope("00000000-0000-4000-8000-0000000000f2", "MX google_ads conversion"), path: ["FY2026 Media", "LATAM", "MX google_ads conversion"] }], nextCursor: null, totals: { budget: "42000.00" }, dataAsOf: "2026-09-30T00:00:00.000Z", dataVersion: 1, elapsedMs: 1 }));
+    const filter = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: "country" }, op: "eq" as const, value: "MX" }] };
+    const tree = new ExplorerRowSource({ ws: "w", view: "tree", structure: true, filter, period: {}, measures: ["budget"], levels: [], groupBy: [], expanded: [], sort: [] }, labels, () => undefined);
+    const rows = (await tree.getRows({ start: 0, end: 10 })).rows as Array<{ name: string; hasChildren: boolean }>;
+    expect(rows).toEqual([expect.objectContaining({ name: "FY2026 Media › LATAM › MX google_ads conversion", hasChildren: false })]);
+    const body = (post.mock.calls[0]?.[1] as { body: { filter: { children: Array<{ field: { key: string } }> } } }).body;
+    const keys = body.filter.children.map((c) => ("field" in c ? c.field.key : "group"));
+    expect(keys).toContain("is_leaf");
+    expect(keys).not.toContain("parent_id");
+  });
+});
