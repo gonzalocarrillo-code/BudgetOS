@@ -68,12 +68,13 @@ test("home: waiting on you first, then pacing per budget; each block opens its s
 test("templates: a workspace from the template is usable in under 60 s; its demo data goes in one click", async ({ page }) => {
   await signIn(page, "orgAdmin");
   const ws = state().workspaceId;
-  await page.goto(`/w/${ws}/admin/templates`);
-  await expect(page.getByTestId("template-card").first()).toBeVisible();
-  await expect(page.getByTestId("workspace-create-submit")).toBeDisabled();
-  await page.getByTestId("workspace-name").fill(`E2E Agency ${Date.now()}`);
+  // R11-004: workspaces are created from templates in the org console only.
+  await page.goto("/org/workspaces");
+  await page.getByTestId("org-new-workspace").click();
+  await page.getByTestId("org-create-name").fill(`E2E Agency ${Date.now()}`);
+  await page.getByTestId("org-create-demo").check();
   const started = Date.now();
-  await page.getByTestId("workspace-create-submit").click();
+  await page.getByTestId("org-create-submit").click();
   await expect(page).toHaveURL(/\/w\/[0-9a-f-]{36}\/home$/, { timeout: 60_000 });
   expect(page.url()).not.toContain(ws);
   await expect(page.getByTestId("home-demo")).toBeVisible();
@@ -81,6 +82,7 @@ test("templates: a workspace from the template is usable in under 60 s; its demo
   expect(Date.now() - started).toBeLessThan(60_000);
 
   await page.getByRole("link", { name: "Manage demo data" }).click();
+  await expect(page).toHaveURL(/\/admin\/workspace#demo-data$/);
   await expect(page.getByTestId("demo-count")).toContainText("9 budgets");
   await page.getByTestId("demo-purge").click();
   await page.getByTestId("demo-purge-confirm").click();
@@ -91,11 +93,11 @@ test("templates: a workspace from the template is usable in under 60 s; its demo
 /** Product feedback 2026-09-28: a blank workspace says "Add your first budgets", and that works end to end. */
 test("home: a blank workspace starts with its first budgets; the greeting is the person's name", async ({ page }) => {
   await signIn(page, "orgAdmin");
-  await page.goto(`/w/${state().workspaceId}/admin/templates`);
-  await expect(page.getByTestId("template-card").first()).toBeVisible();
-  await page.getByTestId("workspace-name").fill(`E2E Blank ${Date.now()}`);
-  await page.getByTestId("workspace-demo").uncheck();
-  await page.getByTestId("workspace-create-submit").click();
+  await page.goto("/org/workspaces");
+  await page.getByTestId("org-new-workspace").click();
+  await page.getByTestId("org-create-name").fill(`E2E Blank ${Date.now()}`);
+  await page.getByTestId("org-create-demo").uncheck();
+  await page.getByTestId("org-create-submit").click();
   await expect(page).toHaveURL(/\/w\/[0-9a-f-]{36}\/home$/, { timeout: 60_000 });
 
   await expect(page.getByTestId("page-title")).toHaveText(/^Good (morning|afternoon|evening), Golden$/);

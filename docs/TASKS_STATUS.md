@@ -532,3 +532,15 @@ Plan: `docs/HOME_OVERVIEW_PLAN.md` (tasks HO-001…HO-017, phases G1–G4). The 
 | HO-015 | G3 | Customise v2: reorder, remembered rows/columns/sort, "Set as the workspace default" for admins, `OverviewLayout` in `@budget/domain` | done |
 | HO-016 | G4 | Phones and dark mode: the title row scrolls away on phones for Home and the Overview, 12 px smallest text there, attention chips' focus ring; a11y spec at 375 px in both themes | done |
 | HO-017 | G4 | Loading skeletons in the shape of the new Home and Overview; runbook note on the freshness thresholds; ADR index (`docs/adr/README.md`); render budget test kept | done |
+
+## Round 11: search index, Slack in two places, org-only pages (2026-09-30)
+
+Plan: `docs/ORG_SLACK_SEARCH_PLAN.md`.
+
+| ID | Task | Status |
+|---|---|---|
+| R11-001 | The deployed worker indexes search (every outbox row; empty indexes at start, all daily); new orgs get the metric library, and pacing skips a rule on a missing metric | done |
+| R11-002 | The organization links to Slack once (`organization.settings`, `/org/integrations/slack`); every workspace answers to that team | done |
+| R11-003 | Org console › Slack holds the connection; workspace Settings › Slack only routes | done |
+| R11-004 | Templates leave workspace Settings (org console creates workspaces); demo data in Settings › General; tours stay per workspace | done |
+

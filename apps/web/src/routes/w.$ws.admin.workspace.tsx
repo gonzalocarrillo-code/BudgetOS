@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
+import { DemoData } from "../features/workspace/demo-data.js";
 
 /** Settings › Workspace (product feedback 2026-09-28): its name, and what identifies it. */
 export const Route = createFileRoute("/w/$ws/admin/workspace")({ component: WorkspacePage });
@@ -75,6 +76,7 @@ function WorkspacePage(): ReactElement {
             <Row label={t("workspace.created")}>{data ? new Date(data.createdAt).toLocaleDateString() : "—"}</Row>
           </dl>
         </Card>
+        <DemoData ws={ws} />
       </div>
     </Page>
   );

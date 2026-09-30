@@ -11,7 +11,6 @@ import {
   Gauge,
   House,
   LayoutDashboard,
-  LayoutTemplate,
   Lock,
   LogOut,
   Map,
@@ -108,7 +107,6 @@ export const SETTINGS_PAGES: Array<NavItem & { description: MessageKey }> = [
   { to: "/w/$ws/admin/sources", label: "admin.sources", icon: Plug, requires: ["source.manage"], description: "settings.desc.sources" },
   { to: "/w/$ws/admin/naming", label: "admin.naming", icon: Type, requires: ["registry.manage"], description: "settings.desc.naming" },
   { to: "/w/$ws/admin/periods", label: "admin.periods", icon: CalendarRange, requires: ["registry.manage", "closure.close", "closure.restate"], description: "settings.desc.periods" },
-  { to: "/w/$ws/admin/templates", label: "admin.templates", icon: LayoutTemplate, requires: ["user.manage"], description: "settings.desc.templates" },
   { to: "/w/$ws/admin/tours", label: "admin.tours", icon: Map, requires: ["user.manage"], description: "settings.desc.tours" },
 ];
 const SETTINGS_HUB = "/w/$ws/admin/settings";
@@ -121,7 +119,7 @@ export type SettingsGroup = "workspace" | "people" | "taxonomy" | "pacing" | "da
 export const SETTINGS_GROUPS: Array<{ id: SettingsGroup; label: MessageKey; pages: Array<NavItem & { description: MessageKey }> }> = [];
 const byPath = (to: string) => [...SETTINGS_PAGES, ...ADMIN_SETTINGS].find((p) => p.to === to) as NavItem & { description: MessageKey };
 SETTINGS_GROUPS.push(
-  { id: "workspace", label: "settings.group.workspace", pages: [byPath("/w/$ws/admin/workspace"), byPath("/w/$ws/admin/periods"), byPath("/w/$ws/admin/templates")] },
+  { id: "workspace", label: "settings.group.workspace", pages: [byPath("/w/$ws/admin/workspace"), byPath("/w/$ws/admin/periods")] },
   { id: "people", label: "settings.group.people", pages: [byPath("/w/$ws/admin/roles"), byPath("/w/$ws/admin/policies")] },
   { id: "taxonomy", label: "settings.group.taxonomy", pages: [byPath("/w/$ws/admin/registry"), byPath("/w/$ws/admin/tags"), byPath("/w/$ws/admin/naming")] },
   { id: "pacing", label: "settings.group.pacing", pages: [byPath("/w/$ws/admin/rules")] },
