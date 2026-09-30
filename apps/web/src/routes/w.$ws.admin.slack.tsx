@@ -1,8 +1,8 @@
 import { Button, cn, Input } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Copy, Link2, Send, XCircle } from "lucide-react";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { CheckCircle2, Send, XCircle } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -10,8 +10,9 @@ import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
 
 /**
- * Admin › Slack (product feedback 2026-09-28, ADR-046): connect the Budget OS bot, choose where
- * alerts and approvals post, send a test. Alerts carry Acknowledge / Snooze / Resolve, approval
+ * Settings › Slack (ADR-046, R11-003): where this workspace's alerts and approvals post, and a
+ * test. The connection is the organization's (Org console › Slack): once it is linked, every
+ * workspace answers to that Slack team; this page only routes. Alerts carry Acknowledge / Snooze / Resolve, approval
  * requests Approve / Reject, and /budget answers alerts, search and budget questions — each as the
  * Slack user's Budget OS account (matched by email), with that account's permissions.
  */
@@ -19,10 +20,9 @@ export const Route = createFileRoute("/w/$ws/admin/slack")({ component: SlackPag
 
 const SEVERITIES = ["critical", "warning", "info", "data"] as const;
 const Settings = z.object({
-  connected: z.object({ botToken: z.boolean(), signingSecret: z.boolean() }),
-  settings: z.object({ teamId: z.string().optional(), teamName: z.string().optional(), defaultChannel: z.string().optional(), alertChannel: z.string().optional(), alertSeverities: z.array(z.string()).default(["critical"]), approvals: z.boolean().default(true), dms: z.boolean().default(true) }),
-  urls: z.object({ interactions: z.string(), commands: z.string() }),
-  manifest: z.record(z.string(), z.unknown()),
+  connected: z.boolean(),
+  team: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
+  settings: z.object({ defaultChannel: z.string().optional(), alertChannel: z.string().optional(), alertSeverities: z.array(z.string()).default(["critical"]), approvals: z.boolean().default(true), dms: z.boolean().default(true) }),
 });
 type Settings = z.infer<typeof Settings>;
 
@@ -35,21 +35,12 @@ function SlackPage(): ReactElement {
     <Page title={t("slack.title")}>
       <p className="-mt-2 max-w-3xl text-sm text-muted-foreground">{t("slack.intro")}</p>
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
-      {isPending || !data ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : <SlackBody ws={ws} data={data} canManage={canManage} />}
+      {isPending || !data ? <p className="text-sm text-muted-foreground">{t("shell.loading")}</p> : <SlackBody ws={ws} data={data} canManage={canManage} isOrgAdmin={me?.isOrgAdmin === true} />}
     </Page>
   );
 }
 
-function Status({ ok, label }: { ok: boolean; label: string }): ReactElement {
-  return (
-    <li className="flex items-center gap-2 text-sm" data-ok={ok}>
-      {ok ? <CheckCircle2 className="size-4 text-success" aria-hidden /> : <XCircle className="size-4 text-muted-foreground" aria-hidden />}
-      {label}
-    </li>
-  );
-}
-
-function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canManage: boolean }): ReactElement {
+function SlackBody({ ws, data, canManage, isOrgAdmin }: { ws: string; data: Settings; canManage: boolean; isOrgAdmin: boolean }): ReactElement {
   const client = useQueryClient();
   const s = data.settings;
   const [defaultChannel, setDefaultChannel] = useState(s.defaultChannel ?? "");
@@ -59,7 +50,6 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
   const [dms, setDms] = useState(s.dms);
   const [testChannel, setTestChannel] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-  const connected = data.connected.botToken && data.connected.signingSecret;
   const save = useMutation({
     meta: { success: t("toast.slackSaved") },
     mutationFn: async (body: Record<string, unknown>) => unwrap(api.PATCH("/api/v1/workspaces/{ws}/integrations/slack", { params: { path: { ws } }, body: body as never })),
@@ -77,36 +67,20 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
   const field = "";
   const channelOk = (c: string) => c.trim() === "" || /^[#@]?[A-Za-z0-9._-]{1,80}$/.test(c.trim());
   const saveWhy = noManage ?? (!channelOk(defaultChannel) || !channelOk(alertChannel) ? t("slack.badChannel") : save.isPending ? t("shell.loading") : null);
-  const linkWhy = noManage ?? (!data.connected.botToken ? t("slack.needToken") : save.isPending ? t("shell.loading") : null);
-  const testWhy = noManage ?? (!data.connected.botToken ? t("slack.needToken") : !testChannel.trim() && !s.defaultChannel ? t("slack.needChannel") : test.isPending ? t("shell.loading") : null);
-  const copy = (text: string) => void navigator.clipboard?.writeText(text);
+  const testWhy = noManage ?? (!data.connected ? t("slack.notConnectedShort") : !testChannel.trim() && !s.defaultChannel ? t("slack.needChannel") : test.isPending ? t("shell.loading") : null);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_24rem]">
+    <div className="flex max-w-3xl flex-col gap-5">
       <div className="flex flex-col gap-5">
-        <Card title={t("slack.connection")}>
-          <div className="flex flex-col gap-3" data-testid="slack-status">
-            <ul className="flex flex-col gap-1.5">
-              <Status ok={data.connected.botToken} label={t("slack.botToken")} />
-              <Status ok={data.connected.signingSecret} label={t("slack.signingSecret")} />
-              <Status ok={Boolean(s.teamId)} label={s.teamId ? t("slack.linked", { team: s.teamName ?? s.teamId }) : t("slack.notLinked")} />
-            </ul>
-            <div className="flex flex-wrap items-center gap-2">
-              {linkWhy ? (
-                <Button size="sm" disabled reason={linkWhy}>
-                  <Link2 className="size-4" aria-hidden />
-                  {s.teamId ? t("slack.relink") : t("slack.link")}
-                </Button>
-              ) : (
-                <Button size="sm" onClick={() => save.mutate({ link: true })} data-testid="slack-link">
-                  <Link2 className="size-4" aria-hidden />
-                  {s.teamId ? t("slack.relink") : t("slack.link")}
-                </Button>
-              )}
-              {!connected ? <span className="text-xs text-muted-foreground">{t("slack.setupFirst")}</span> : null}
-            </div>
-          </div>
-        </Card>
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm shadow-xs" data-testid="slack-status" data-connected={data.connected}>
+          {data.connected ? <CheckCircle2 className="size-4 text-success" aria-hidden /> : <XCircle className="size-4 text-muted-foreground" aria-hidden />}
+          <span className="flex-1">{data.connected ? t("slack.connectedTo", { team: data.team?.name ?? data.team?.id ?? "Slack" }) : t("slack.notConnectedOrg")}</span>
+          {isOrgAdmin ? (
+            <Link to="/org/slack" className="font-medium text-primary hover:underline" data-testid="slack-open-org">
+              {t("slack.openOrgSlack")} →
+            </Link>
+          ) : null}
+        </div>
 
         <Card title={t("slack.routing")}>
           <form
@@ -179,43 +153,6 @@ function SlackBody({ ws, data, canManage }: { ws: string; data: Settings; canMan
         </Card>
       </div>
 
-      <Card title={t("slack.setup")}>
-        <ol className="flex list-decimal flex-col gap-3 pl-4 text-sm" data-testid="slack-setup">
-          <li>
-            {t("slack.step1")}
-            <div className="mt-1.5 flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => copy(JSON.stringify(data.manifest, null, 2))} data-testid="slack-copy-manifest">
-                <Copy className="size-4" aria-hidden />
-                {t("slack.copyManifest")}
-              </Button>
-            </div>
-          </li>
-          <li>{t("slack.step2")}</li>
-          <li>
-            {t("slack.step3")}
-            <code className="mt-1 block rounded bg-surface px-2 py-1 text-xs">SLACK_BOT_TOKEN · SLACK_SIGNING_SECRET · API_PUBLIC_URL · APP_BASE_URL</code>
-          </li>
-          <li>
-            {t("slack.step4")}
-            <UrlRow label={t("slack.interactionsUrl")} url={data.urls.interactions} onCopy={copy} />
-            <UrlRow label={t("slack.commandsUrl")} url={data.urls.commands} onCopy={copy} />
-          </li>
-          <li>{t("slack.step5")}</li>
-        </ol>
-        <p className="mt-3 text-xs text-muted-foreground">{t("slack.localNote")}</p>
-      </Card>
-    </div>
-  );
-}
-
-function UrlRow({ label, url, onCopy }: { label: string; url: string; onCopy: (s: string) => void }): ReactElement {
-  return (
-    <div className="mt-1.5 flex items-center gap-2">
-      <span className="w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 truncate rounded bg-surface px-2 py-1 text-xs" title={url}>{url}</code>
-      <button type="button" className="rounded p-1 text-muted-foreground hover:bg-accent" onClick={() => onCopy(url)} aria-label={t("slack.copy")}>
-        <Copy className="size-3.5" aria-hidden />
-      </button>
     </div>
   );
 }

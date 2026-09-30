@@ -1,7 +1,7 @@
 import { Button, Logo, Toaster, cn } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Building2, LogOut, Users, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Building2, LogOut, MessageSquare, Users, type LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { clearToken } from "../lib/auth.js";
 import type { Me } from "../lib/queries.js";
@@ -10,9 +10,10 @@ import type { Me } from "../lib/queries.js";
  * The org console's frame (ADR-052, plan §3.3): superadmins manage workspaces and people here,
  * outside any workspace. Same brand and header as a workspace, its own navigation.
  */
-const NAV: Array<{ to: "/org/workspaces" | "/org/people"; label: MessageKey; icon: LucideIcon; testId: string }> = [
+const NAV: Array<{ to: "/org/workspaces" | "/org/people" | "/org/slack"; label: MessageKey; icon: LucideIcon; testId: string }> = [
   { to: "/org/workspaces", label: "org.nav.workspaces", icon: Building2, testId: "org-nav-workspaces" },
   { to: "/org/people", label: "org.nav.people", icon: Users, testId: "org-nav-people" },
+  { to: "/org/slack", label: "org.nav.slack", icon: MessageSquare, testId: "org-nav-slack" },
 ];
 const linkClass = "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-foreground";
 
