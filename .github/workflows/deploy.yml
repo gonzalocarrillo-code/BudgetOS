@@ -4,8 +4,9 @@ name: deploy
 # GitHub signs in through the budgetos-github workload identity pool (this repository only) as
 # budgetos-deployer, whose Cloud Run rights are limited to resources named budgetos-*.
 # Order: image → budgetos-migrate (migrations + bootstrap) → app, slack, worker.
-# IAP on budgetos-app and who may pass it are set once by hand (docs/runbooks/deploy.md); a deploy
-# never changes them.
+# The four resources, IAP on budgetos-app, who may pass it and the public invoker of budgetos-slack
+# were created once by hand (docs/runbooks/deploy.md): the deployer may only update budgetos-*
+# resources, and a deploy never changes their access.
 
 on:
   push:
@@ -67,17 +68,17 @@ jobs:
           SLACK_URL="https://budgetos-slack-$PROJECT_NUMBER.$REGION.run.app"
           COMMON="GOOGLE_CLOUD_PROJECT=$PROJECT,UPLOAD_BUCKET=dmus-gonzalo-budgetos-uploads,CLOSURE_DATASET=budgetos_closures,APP_BASE_URL=$APP_URL,API_PUBLIC_URL=$SLACK_URL"
           gcloud run deploy budgetos-app --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
-            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" --no-allow-unauthenticated \
+            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
             --cpu 1 --memory 1Gi --min-instances 0 --max-instances 3 --timeout 300 \
             --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app"
           gcloud run deploy budgetos-slack --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
-            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" --no-allow-unauthenticated \
+            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
             --cpu 1 --memory 1Gi --min-instances 0 --max-instances 2 --timeout 60 \
             --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,PUBLIC_ROUTES=slack,AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app"
           gcloud run deploy budgetos-worker --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
-            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" --no-allow-unauthenticated --ingress internal \
+            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" --ingress internal \
             --cpu 1 --memory 1Gi --min-instances 1 --max-instances 1 --no-cpu-throttling \
             --set-secrets "DATABASE_URL=budgetos-database-url:latest,APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,LISTEN_HOST=0.0.0.0,LOCAL_WORKSPACE_PREFIX=,PACING_EVERY_MS=900000" \

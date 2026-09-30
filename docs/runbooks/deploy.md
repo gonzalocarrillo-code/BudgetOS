@@ -28,3 +28,14 @@ Every push to `main` runs `.github/workflows/deploy.yml`: build the image, run `
 - **Migrations:** `gcloud run jobs executions list --job budgetos-migrate --region us-central1 --project dmus-gonzalo`, then the execution's logs.
 - **Worker:** logs of `budgetos-worker`. It must stay at one instance.
 - **"Unknown or inactive user" for the superadmin:** re-run the workflow. The bootstrap is idempotent.
+
+## One-time setup (done 2026-09-29)
+The deployer may update only `budgetos-*` resources and never changes access, so these were done once, by hand, as a project owner:
+- **Data resources:** Cloud SQL `budgetos-db` with database `budget`, the `budgetos-*` secrets (DB passwords and the two connection URLs), bucket `dmus-gonzalo-budgetos-uploads`, dataset `budgetos_closures`, Artifact Registry `budgetos`.
+- **Accounts and GitHub:** service accounts `budgetos-runtime` and `budgetos-deployer` with their grants (ADR-065), and the workload identity pool `budgetos-github` with repository variables `GCP_WIF_PROVIDER` and `GCP_DEPLOYER_SA`.
+- **First creation:** `budgetos-migrate`, `budgetos-app`, `budgetos-slack` and `budgetos-worker`, with the flags in `deploy.yml`.
+- **Access:**
+  - `gcloud beta run services update budgetos-app --iap`;
+  - `roles/run.invoker` on `budgetos-app` for `service-666309304754@gcp-sa-iap.iam.gserviceaccount.com`;
+  - `roles/iap.httpsResourceAccessor` for the superadmin;
+  - `roles/run.invoker` for `allUsers` on `budgetos-slack`.
