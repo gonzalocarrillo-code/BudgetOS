@@ -85,6 +85,18 @@ export class JwtVerifier {
       }));
     } catch (error) {
       const reason = error instanceof errors.JOSEError ? error.code : "ERR_JWT_INVALID";
+      // Behind IAP, say what came (never the signature) so a misconfigured audience is visible.
+      if (this.config.mode === "iap") {
+        const claims = (() => {
+          try {
+            const [h, p] = token.split(".").map((part) => JSON.parse(Buffer.from(part ?? "", "base64url").toString()) as Record<string, unknown>);
+            return { alg: h?.["alg"], iss: p?.["iss"], aud: p?.["aud"], expected: this.config.audience };
+          } catch {
+            return { unreadable: true };
+          }
+        })();
+        process.stdout.write(`${JSON.stringify({ level: 40, msg: "IAP assertion rejected", reason, ...claims })}\n`);
+      }
       throw new DomainError("UNAUTHENTICATED", "Invalid token", { reason });
     }
     const email = typeof payload["email"] === "string" ? payload["email"].toLowerCase() : null;
