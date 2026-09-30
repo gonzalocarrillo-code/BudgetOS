@@ -144,9 +144,13 @@ export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspac
       const rules = await tx.pacingRule.findMany({ where: { workspaceId: tenant.workspaceId, isActive: true, deletedAt: null }, orderBy: { id: "asc" } });
       result.rules = rules.length;
       const parsed: Array<{ rule: PacingRule; args: RuleMetricArgs }> = [];
+      // A rule on a metric the org's library lacks is skipped, not the whole workspace (R11-001).
+      const known = new Set((await tx.metricDefinition.findMany({ where: { orgId: tenant.orgId }, select: { key: true } })).map((m) => m.key));
       for (const rule of rules) {
         const args = RuleMetricArgs.safeParse(rule.metricArgs);
-        if (args.success) parsed.push({ rule, args: args.data });
+        const missing = args.success ? targetsFor(rule, args.data).filter((t) => !known.has(t)) : [];
+        if (args.success && missing.length) log.warn({ ruleId: rule.id, workspaceId: tenant.workspaceId, requestId: ctx.requestId, missing }, "pacing rule names metrics the library lacks; skipped");
+        else if (args.success) parsed.push({ rule, args: args.data });
         else log.error({ ruleId: rule.id, workspaceId: tenant.workspaceId, requestId: ctx.requestId, issues: args.error.flatten() }, "pacing rule has unreadable metricArgs; skipped");
       }
       const groupTargets = new Map<string, Set<string>>();

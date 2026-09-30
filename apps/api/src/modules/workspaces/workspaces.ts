@@ -6,6 +6,7 @@ import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import { orgAdminCtx, type AuthContext } from "../../common/tenant.js";
 import { insertPolicy } from "../approvals/commands/policies.js";
 import { insertRule } from "../pacing/rules.js";
+import { ensureDefaultMetrics } from "../registry/commands/metrics.js";
 import { InMemoryAssetStore } from "../registry/assets/asset-store.js";
 import { addValues } from "../registry/commands/add-values.js";
 import { createDimension } from "../registry/commands/create-dimension.js";
@@ -67,6 +68,8 @@ export async function createWorkspace(prisma: PrismaClient, auth: AuthContext, r
     for (const h of hierarchies) await tx.hierarchyTemplate.create({ data: { id: newId(), workspaceId, name: h.name, path: h.path, isDefault: h.isDefault, createdBy: auth.user.id } });
     const policies = z.array(z.unknown()).parse(template.policies);
     for (const p of policies) await insertPolicy(tx, ctx, workspaceId, parseInput(CreatePolicyInput, p));
+    // The rules below name library metrics (CPA, ROAS): a new org gets the defaults first.
+    await ensureDefaultMetrics(tx, ctx, { id: workspaceId, orgId: auth.user.orgId });
     const rules = z.array(z.record(z.string(), z.unknown())).parse(template.rules);
     for (const r of rules) await insertRule(tx, ctx, workspaceId, parseInput(CreateRuleInput, { ...r, delivery: { inApp: true } }));
     const views = z.array(TemplateSavedView).parse(template.savedViews);

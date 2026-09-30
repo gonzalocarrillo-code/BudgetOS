@@ -60,15 +60,21 @@ export async function createMetric(prisma: PrismaClient, ctx: TenantContext, rol
 /** Seeds plan §4.8's default metrics into the org; skips keys that exist. */
 export async function seedDefaultMetrics(prisma: PrismaClient, ctx: TenantContext): Promise<number> {
   if (!ctx.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin can seed metrics");
-  return inWorkspace(prisma, ctx, async (tx, workspace) => {
-    let created = 0;
-    for (const m of DEFAULT_METRICS) {
-      if (await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: workspace.orgId, key: m.key } }, select: { id: true } })) continue;
-      await insertMetric(tx, ctx, workspace, parseInput(CreateMetricInput, m), true);
-      created += 1;
-    }
-    return created;
-  });
+  return inWorkspace(prisma, ctx, async (tx, workspace) => ensureDefaultMetrics(tx, ctx, workspace));
+}
+
+/**
+ * The default metrics in the org's library, inside the caller's transaction: a new workspace's
+ * pacing rules name CPA and ROAS, so its org must have them (R11-001). Existing keys are kept.
+ */
+export async function ensureDefaultMetrics(tx: Tx, ctx: TenantContext, workspace: WorkspaceRef): Promise<number> {
+  let created = 0;
+  for (const m of DEFAULT_METRICS) {
+    if (await tx.metricDefinition.findUnique({ where: { orgId_key: { orgId: workspace.orgId, key: m.key } }, select: { id: true } })) continue;
+    await insertMetric(tx, ctx, workspace, parseInput(CreateMetricInput, m), true);
+    created += 1;
+  }
+  return created;
 }
 
 /** GET /workspaces/:ws/metrics: the org's library, active first, by key. */
