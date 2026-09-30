@@ -11,6 +11,7 @@ import { purgeDueWorkspaces } from "./purge/purge.js";
 import { retentionFromEnv, runRetention } from "./retention/retention.js";
 import { checkSnapshotIntegrity } from "./integrity/snapshots.js";
 import { runPacing } from "./pacing/main.js";
+import { handleSearchEvent, reindexWorkspace } from "./search-indexer/indexer.js";
 
 /**
  * Local stand-in for Pub/Sub + the ingest, roll-up and notify workers (T-032, ADR-038), for the
@@ -73,6 +74,9 @@ async function pass(): Promise<number> {
         const result = await handleRollupEvent(app, push("rollup-worker"));
         log.info({ outboxId: row.id, workspaceId: row.workspace_id, topic: row.topic, result }, "local roll-up refresh");
       }
+      // The search indexer takes every topic (spec §12.1) and decides what each one touched.
+      const indexed = await handleSearchEvent(app, push("search-indexer"));
+      if (indexed.upserted || indexed.deleted) log.info({ outboxId: row.id, topic: row.topic, ...indexed }, "local search index");
       if (NOTIFY.includes(row.topic)) {
         await handleInApp(app, push("notify-worker"));
         const result = await handleSlackEvent(app, slack, push("notify-worker"));
@@ -132,6 +136,26 @@ async function integrityPass(): Promise<void> {
   if (orgs.length) await checkSnapshotIntegrity(app, orgs.map((o) => o.org_id));
 }
 
+// Search (R11-001): workspaces whose index is empty are indexed on the first pass (a deployment
+// started before the worker indexed, or a restored database); every workspace once a day.
+let lastFullReindex = Date.now(); // startup indexes only the empty ones; the full pass comes a day later
+let checkedEmpty = false;
+async function reindexPass(): Promise<void> {
+  const full = Date.now() - lastFullReindex > 86_400_000;
+  if (!full && checkedEmpty) return;
+  const rows = await owner.$queryRawUnsafe<Array<{ id: string; org_id: string; empty: boolean }>>(
+    `SELECT w.id::text AS id, w.org_id::text AS org_id, NOT EXISTS (SELECT 1 FROM search_document d WHERE d.workspace_id = w.id) AS empty
+       FROM workspace w WHERE w.deleted_at IS NULL AND w.status = 'ACTIVE' AND ($2::text IS NULL AND w.slug LIKE $1 OR w.org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
+    `${prefix}%`,
+    orgFrom,
+  );
+  const due = rows.filter((r) => full || r.empty);
+  for (const w of due) await reindexWorkspace(app, { workspaceId: w.id, orgId: w.org_id });
+  checkedEmpty = true;
+  if (full) lastFullReindex = Date.now();
+  if (due.length) log.info({ workspaces: due.length, full }, "search reindex pass finished");
+}
+
 // Pacing (spec §11): the org's rules, every PACING_EVERY_MS (900000 = the spec's 15 minutes).
 let lastPacing = 0;
 async function pacingPass(): Promise<void> {
@@ -150,6 +174,7 @@ async function pacingPass(): Promise<void> {
 }
 
 for (;;) {
+  await reindexPass().catch((err: unknown) => log.error({ err }, "search reindex pass failed"));
   await pacingPass().catch((err: unknown) => log.error({ err }, "pacing pass failed"));
   await integrityPass().catch((err: unknown) => log.error({ err }, "local integrity pass failed"));
   await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
