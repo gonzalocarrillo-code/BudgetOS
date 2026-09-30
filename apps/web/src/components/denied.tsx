@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "@tanstack/react-router";
 import { ChevronRight, LockKeyhole, LogOut, TriangleAlert } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
-import { clearToken } from "../lib/auth.js";
+import { signOut } from "../lib/auth.js";
 import { meQuery } from "../lib/queries.js";
 
 /**
@@ -18,7 +18,7 @@ function Frame({ children }: { children: ReactNode }): ReactElement {
         <Link to="/" aria-label={t("shell.homeLink")}>
           <Logo size={26} />
         </Link>
-        <Button variant="ghost" size="sm" onClick={() => clearToken()}>
+        <Button variant="ghost" size="sm" onClick={() => signOut()}>
           <LogOut className="size-4" aria-hidden />
           {t("shell.signOut")}
         </Button>
@@ -27,6 +27,32 @@ function Frame({ children }: { children: ReactNode }): ReactElement {
     </div>
   );
 }
+
+/** ADR-067: signed in with Google, but no Budget OS user has that email yet. */
+export function NotAdded(): ReactElement {
+  const { data } = useQuery({ queryKey: ["auth-me"], queryFn: async () => (await (await fetch("/auth/me")).json()) as { email: string | null }, retry: false });
+  return (
+    <Frame>
+      <div className="flex w-full max-w-lg flex-col gap-5 rounded-2xl border border-border bg-card p-8 shadow-sm" data-testid="not-added">
+        <span className="grid size-11 place-items-center rounded-xl bg-info-soft text-info-text">
+          <LockKeyhole className="size-5" aria-hidden />
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-[22px] font-semibold leading-7 tracking-[-0.02em]" data-testid="page-title">{t("denied.notAdded.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("denied.notAdded.body", { email: data?.email ?? t("denied.notAdded.thisAccount") })}</p>
+        </div>
+        <div className="flex">
+          <Button variant="outline" size="sm" onClick={() => signOut()} data-testid="not-added-switch">
+            {t("denied.notAdded.switch")}
+          </Button>
+        </div>
+      </div>
+    </Frame>
+  );
+}
+
+/** The API's answer for a Google account with no Budget OS user (authenticate()). */
+export const isNotAdded = (error: unknown) => error instanceof Error && "status" in error && (error as { status: number }).status === 403 && /Unknown or inactive user/.test(error.message);
 
 export function NoAccess({ reason = "workspace" }: { reason?: "workspace" | "none" }): ReactElement {
   const { data: me } = useQuery(meQuery);

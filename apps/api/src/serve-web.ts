@@ -3,6 +3,7 @@ import { extname, join, normalize } from "node:path";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { JwtVerifier } from "./common/auth/jwt-verifier.js";
 import { McpOAuth } from "./common/auth/mcp-oauth.js";
+import { SESSION_COOKIE, cookie, googleLoginFromEnv, loginCallback, loginRedirect, logoutCookie, verifySession } from "./common/auth/google-login.js";
 
 /**
  * Deployed hosting (ADR-065). WEB_DIST: the API also serves the built SPA, so the web and the API
@@ -33,9 +34,33 @@ export function serveWeb(app: NestFastifyApplication, env: NodeJS.ProcessEnv = p
     });
     return;
   }
-  // ADR-066: the MCP OAuth authorization endpoint, behind IAP like the rest of the app.
+  // ADR-067: Budget OS's own Google sign-in (AUTH_MODE=session).
+  const google = env["AUTH_MODE"] === "session" ? googleLoginFromEnv(env) : null;
+  if (google) {
+    fastify.get("/auth/login", async (req, reply) => {
+      const r = await loginRedirect(google, (req.query as { next?: string }).next);
+      return reply.header("set-cookie", r.setCookie).header("cache-control", "no-store").redirect(r.location, 302);
+    });
+    fastify.get("/auth/callback", async (req, reply) => {
+      try {
+        const r = await loginCallback(google, req.query as { code?: string; state?: string; error?: string }, req.headers.cookie);
+        return reply.header("set-cookie", r.setCookies).header("cache-control", "no-store").redirect(r.location, 302);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return reply.header("cache-control", "no-store").redirect(`/?login_error=${encodeURIComponent(message)}`, 302);
+      }
+    });
+    // Who the session names, without the database: the "not added yet" page says which account.
+    fastify.get("/auth/me", async (req, reply) => {
+      const token = cookie(req.headers.cookie, SESSION_COOKIE);
+      const who = token ? await verifySession(google.sessionKey, token).catch(() => null) : null;
+      return reply.header("cache-control", "no-store").send(who ? { email: who.email } : { email: null });
+    });
+    fastify.get("/auth/logout", async (_req, reply) => reply.header("set-cookie", logoutCookie()).header("cache-control", "no-store").redirect("/", 302));
+  }
+  // ADR-066: the MCP OAuth authorization endpoint, signed in like the rest of the app.
   const oauth = McpOAuth.fromEnv(env);
-  if (oauth && env["AUTH_MODE"] === "iap") {
+  if (oauth && (env["AUTH_MODE"] === "iap" || env["AUTH_MODE"] === "session")) {
     const verifier = new JwtVerifier();
     fastify.get("/oauth/authorize", async (req, reply) => authorizePage(oauth, verifier, req as unknown as Req, reply as unknown as Reply));
   }
@@ -45,7 +70,7 @@ export function serveWeb(app: NestFastifyApplication, env: NodeJS.ProcessEnv = p
   fastify.addHook("onRequest", async (req, reply) => {
     if (req.method !== "GET" && req.method !== "HEAD") return;
     const path = decodeURIComponent(req.url.split("?")[0] ?? "/");
-    if (path.startsWith("/api/") || path === "/health" || path === "/oauth/authorize") return;
+    if (path.startsWith("/api/") || path.startsWith("/auth/") || path === "/health" || path === "/oauth/authorize") return;
     let file = normalize(join(root, path));
     if (!file.startsWith(root)) return reply.code(404).send();
     const isFile = await stat(file).then((s) => s.isFile()).catch(() => false);
@@ -60,6 +85,7 @@ export function serveWeb(app: NestFastifyApplication, env: NodeJS.ProcessEnv = p
 
 /** What the authorize page uses of Fastify's request and reply (the API has no direct fastify dependency). */
 interface Req {
+  url?: string;
   query: unknown;
   headers: Record<string, string | string[] | undefined>;
 }
@@ -93,6 +119,8 @@ async function authorizePage(oauth: McpOAuth, verifier: JwtVerifier, req: Req, r
   try {
     identity = await verifier.verify(verifier.credential(req.headers));
   } catch {
+    // Signed out: sign in with Google, then come back to this same authorization request.
+    if (process.env["AUTH_MODE"] === "session") return reply.redirect(`/auth/login?next=${encodeURIComponent(req.url ?? "/")}`, 302);
     return reply.code(401).type("text/html; charset=utf-8").send(page("Sign in", "<h1>Sign in first</h1><p>Reload this page to sign in with Google.</p>"));
   }
   const grant = { email: identity.email, googleSub: identity.googleSub ?? identity.sub };

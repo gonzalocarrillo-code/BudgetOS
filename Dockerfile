@@ -11,7 +11,9 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @budget/db exec prisma generate
-RUN cd apps/web && VITE_AUTH_MODE=iap node_modules/.bin/vite build
+# iap (ADR-065) or session: Budget OS's own Google sign-in (ADR-067), chosen by the deploy.
+ARG WEB_AUTH_MODE=iap
+RUN cd apps/web && VITE_AUTH_MODE=$WEB_AUTH_MODE node_modules/.bin/vite build
 ENV NODE_ENV=production WEB_DIST=/app/apps/web/dist PORT=8080
 WORKDIR /app/apps/api
 CMD ["node_modules/.bin/tsx", "src/main.ts"]

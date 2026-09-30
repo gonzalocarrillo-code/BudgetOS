@@ -53,3 +53,16 @@ gcloud run jobs execute budgetos-migrate --project dmus-gonzalo --region us-cent
   --update-env-vars SANDBOX_CHANNEL=#budgetos-test \
   --args="-c,cd /app/apps/api && node_modules/.bin/tsx src/deploy/slack-sandbox.ts"
 ```
+
+## Google sign-in (ADR-067)
+Until the OAuth client exists, the app stays behind IAP. To switch:
+1. In a Google Cloud project for Budget OS's consent screen (not dmus-gonzalo, whose consent screen is BrandOS's):
+   - APIs & Services › OAuth consent screen: External, app name "Budget OS", scopes openid, email and profile. Publish it ("In production"); no Google review is needed for these scopes.
+   - Credentials › Create OAuth client ID › Web application, with the authorized redirect URI `https://budgetos-app-666309304754.us-central1.run.app/auth/callback`.
+2. Store the client:
+   - `printf %s '<client id>' | gcloud secrets versions add budgetos-google-oauth-client-id --project dmus-gonzalo --data-file=-`
+   - the same for `budgetos-google-oauth-client-secret`.
+3. Once, as a project owner:
+   - `gcloud beta run services update budgetos-app --project dmus-gonzalo --region us-central1 --no-iap`
+   - `gcloud run services add-iam-policy-binding budgetos-app --project dmus-gonzalo --region us-central1 --member=allUsers --role=roles/run.invoker`
+4. Run the deploy workflow. It sees the client secret and deploys session mode.

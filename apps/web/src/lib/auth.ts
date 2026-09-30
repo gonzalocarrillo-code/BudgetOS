@@ -24,8 +24,20 @@ const devToken = env?.DEV && env.VITE_DEV_ID_TOKEN ? env.VITE_DEV_ID_TOKEN : nul
 export const IAP = env?.VITE_AUTH_MODE === "iap";
 export const IAP_SESSION = "iap";
 
+/**
+ * ADR-067: Budget OS's own Google sign-in (a build with VITE_AUTH_MODE=session). The session is an
+ * HttpOnly cookie the page cannot read: it counts as signed in until the API answers 401, then shows
+ * the sign-in page, whose button starts /auth/login. Sign out clears the cookie on the server.
+ */
+export const SESSION = env?.VITE_AUTH_MODE === "session";
+let signedOut = false;
+
+/** Whether requests carry a cookie instead of a bearer token (IAP or the session). */
+export const COOKIE_AUTH = IAP || SESSION;
+
 export function getToken(): string | null {
   if (IAP) return IAP_SESSION;
+  if (SESSION) return signedOut ? null : "session";
   try {
     return sessionStorage.getItem(KEY) ?? (devToken && sessionStorage.getItem(SIGNED_OUT) === null ? devToken : null);
   } catch {
@@ -40,6 +52,11 @@ export function setToken(token: string): void {
 }
 
 export function clearToken(): void {
+  if (SESSION) {
+    signedOut = true;
+    listeners.forEach((l) => l());
+    return;
+  }
   if (IAP) {
     window.location.assign("/?gcp-iap-mode=CLEAR_LOGIN_COOKIE");
     return;
@@ -47,6 +64,15 @@ export function clearToken(): void {
   sessionStorage.removeItem(KEY);
   if (devToken) sessionStorage.setItem(SIGNED_OUT, "1");
   listeners.forEach((l) => l());
+}
+
+/** The person's Sign out: the session ends on the server (session mode), else the token goes. */
+export function signOut(): void {
+  if (SESSION) {
+    window.location.assign("/auth/logout");
+    return;
+  }
+  clearToken();
 }
 
 export function onTokenChange(listener: () => void): () => void {

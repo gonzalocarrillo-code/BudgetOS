@@ -41,10 +41,23 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@v2
+      # ADR-067: with a Google OAuth client in Secret Manager, Budget OS signs people in itself (any
+      # Google account) and budgetos-app is public; without one it stays behind IAP (ADR-065).
+      - name: Sign-in mode
+        run: |
+          if [ -n "$(gcloud secrets versions list budgetos-google-oauth-client-secret --project "$PROJECT" --filter=state=enabled --limit=1 --format='value(name)' 2>/dev/null)" ]; then
+            echo "AUTH_MODE=session" >> "$GITHUB_ENV"
+            echo "AUTH_ENV=AUTH_MODE=session" >> "$GITHUB_ENV"
+            echo "AUTH_SECRETS=,SESSION_KEY=budgetos-session-key:latest,GOOGLE_OAUTH_CLIENT_ID=budgetos-google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=budgetos-google-oauth-client-secret:latest" >> "$GITHUB_ENV"
+          else
+            echo "AUTH_MODE=iap" >> "$GITHUB_ENV"
+            echo "AUTH_ENV=AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app" >> "$GITHUB_ENV"
+            echo "AUTH_SECRETS=" >> "$GITHUB_ENV"
+          fi
       - name: Build and push the image
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-          docker build -t "$IMAGE:$GITHUB_SHA" -t "$IMAGE:latest" .
+          docker build --build-arg WEB_AUTH_MODE="$AUTH_MODE" -t "$IMAGE:$GITHUB_SHA" -t "$IMAGE:latest" .
           docker push --all-tags "$IMAGE"
       - name: Optional secrets (Slack, OpenAI) that have a value
         run: |
@@ -72,8 +85,8 @@ jobs:
           gcloud run deploy budgetos-app --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
             --cpu 1 --memory 1Gi --min-instances 0 --max-instances 3 --timeout 300 \
-            --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest,MCP_OAUTH_KEY=budgetos-mcp-oauth-key:latest$OPTIONAL_SECRETS" \
-            --set-env-vars "$COMMON,AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app"
+            --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest,MCP_OAUTH_KEY=budgetos-mcp-oauth-key:latest$AUTH_SECRETS$OPTIONAL_SECRETS" \
+            --set-env-vars "$COMMON,$AUTH_ENV"
           gcloud run deploy budgetos-slack --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
             --cpu 1 --memory 1Gi --min-instances 1 --max-instances 2 --timeout 60 --cpu-boost \

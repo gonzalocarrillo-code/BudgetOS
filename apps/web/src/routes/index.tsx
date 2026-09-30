@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { NoAccess } from "../components/denied.js";
+import { NoAccess, NotAdded, RouteFailure, isNotAdded } from "../components/denied.js";
 import { getToken } from "../lib/auth.js";
 import { meQuery, type Me } from "../lib/queries.js";
 
@@ -15,4 +15,6 @@ export const Route = createFileRoute("/")({
   },
   // Signed in with no role anywhere (UX-004): the same branded page, with what to do next.
   component: () => <NoAccess reason="none" />,
+  // A Google account nobody has added yet (ADR-067): say so, with a way to switch accounts.
+  errorComponent: ({ error }) => (isNotAdded(error) ? <NotAdded /> : <RouteFailure message={error instanceof Error ? error.message : String(error)} />),
 });
