@@ -44,3 +44,12 @@ The deployer may update only `budgetos-*` resources and never changes access, so
 - URL for MCP clients: `https://budgetos-mcp-666309304754.us-central1.run.app/mcp` (Streamable HTTP, OAuth). Adding it in Claude or the MCP Inspector opens Google sign-in, then an "Allow" page.
 - Access is the same as the app: the person needs IAP access and an app user with a role. Tools are read-only.
 - Signing key: `budgetos-mcp-oauth-key`. Adding a new version signs every MCP client out.
+
+## Slack sandbox (test data for the bot)
+`apps/api/src/deploy/slack-sandbox.ts` creates the workspace "Slack sandbox" (demo budgets) and a test user "BudgetOS Tester" (Planner). The superadmin gets Budget owner, Approver and Finance there. Each run adds approval requests from the tester (while budgets are free), three alerts, and comments that @mention the superadmin. Run it after Slack is linked; the worker marks events it cannot post as delivered.
+
+```bash
+gcloud run jobs execute budgetos-migrate --project dmus-gonzalo --region us-central1 --wait \
+  --update-env-vars SANDBOX_CHANNEL=#budgetos-test \
+  --args="-c,cd /app/apps/api && APP_DATABASE_URL=\$(echo \$DATABASE_URL | sed 's#postgres:[^@]*@#budget_app:'\$APP_DB_PASSWORD'@#') node_modules/.bin/tsx src/deploy/slack-sandbox.ts"
+```
