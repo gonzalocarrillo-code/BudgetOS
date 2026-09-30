@@ -1,6 +1,6 @@
 import createClient, { type Middleware } from "openapi-fetch";
 import type { paths } from "./api.gen.js";
-import { IAP, clearToken, getToken } from "./auth.js";
+import { COOKIE_AUTH, IAP, clearToken, getToken } from "./auth.js";
 
 /**
  * Typed API client generated from apps/api/openapi.json (`pnpm --filter @budget/web api:generate`,
@@ -18,7 +18,7 @@ export class ApiError extends Error {
 
 const auth: Middleware = {
   onRequest({ request }) {
-    const token = IAP ? null : getToken();
+    const token = COOKIE_AUTH ? null : getToken();
     if (token) request.headers.set("authorization", `Bearer ${token}`);
     return request;
   },

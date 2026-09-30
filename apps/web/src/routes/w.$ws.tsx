@@ -2,7 +2,7 @@ import { t } from "@budget/ui/i18n";
 import { Outlet, createFileRoute, type ErrorComponentProps } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
-import { NoAccess, RouteFailure } from "../components/denied.js";
+import { NoAccess, NotAdded, RouteFailure, isNotAdded } from "../components/denied.js";
 import { Shell } from "../components/shell.js";
 import { SignIn } from "../components/sign-in.js";
 import { ApiError } from "../lib/api.js";
@@ -43,6 +43,7 @@ function WorkspaceLayout(): ReactElement {
 function WorkspaceError({ error }: ErrorComponentProps): ReactElement {
   if (error instanceof ApiError && error.status === 401) return <SignIn expired />;
   // UX-004: a workspace the caller cannot use is a boundary with a way out, not an error.
+  if (isNotAdded(error)) return <NotAdded />;
   if (error instanceof ApiError && error.status === 403) return <NoAccess />;
   return <RouteFailure message={error instanceof Error ? error.message : String(error)} />;
 }

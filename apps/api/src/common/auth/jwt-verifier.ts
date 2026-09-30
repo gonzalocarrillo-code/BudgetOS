@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { DomainError } from "@budget/domain";
+import { SESSION_COOKIE, cookie, verifySession } from "./google-login.js";
 import { Injectable } from "@nestjs/common";
 import { createLocalJWKSet, createRemoteJWKSet, errors, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 
@@ -21,8 +22,10 @@ export interface VerifiedIdentity {
 }
 
 export interface AuthConfig {
-  /** `identity-platform` (a bearer ID token) or `iap` (the IAP assertion header, ADR-065). */
-  mode: "identity-platform" | "iap";
+  /** `identity-platform` (a bearer ID token), `iap` (the IAP assertion header, ADR-065), or `session` (Budget OS's own Google sign-in cookie, ADR-067). */
+  mode: "identity-platform" | "iap" | "session";
+  /** session mode: the key sessions are signed with. */
+  sessionKey?: string;
   issuer: string;
   audience: string;
   jwksUrl: string;
@@ -36,6 +39,11 @@ export interface AuthConfig {
  */
 export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthConfig {
   const audience = env["AUTH_AUDIENCE"];
+  if (env["AUTH_MODE"] === "session") {
+    const sessionKey = env["SESSION_KEY"];
+    if (!sessionKey) throw new Error("SESSION_KEY is required with AUTH_MODE=session");
+    return { mode: "session", audience: "budget-os-web", issuer: "budget-os", jwksUrl: "", sessionKey };
+  }
   if (env["AUTH_MODE"] === "iap") {
     if (!audience) throw new Error("AUTH_AUDIENCE is required (the IAP audience)");
     return { mode: "iap", audience, issuer: env["AUTH_ISSUER"] ?? IAP_ISSUER, jwksUrl: env["AUTH_JWKS_URL"] ?? IAP_JWKS };
@@ -57,7 +65,8 @@ export class JwtVerifier {
 
   constructor() {
     this.config = authConfigFromEnv();
-    this.jwks = this.config.mode === "iap" ? fetchedJwks(this.config.jwksUrl) : createRemoteJWKSet(new URL(this.config.jwksUrl));
+    // session mode checks its own HS256 cookie and never reads a key set.
+    this.jwks = this.config.mode === "identity-platform" ? createRemoteJWKSet(new URL(this.config.jwksUrl)) : fetchedJwks(this.config.jwksUrl);
   }
 
   /** The credential of a request: the IAP assertion behind IAP, else the bearer token. */
@@ -66,6 +75,10 @@ export class JwtVerifier {
       const v = headers[name];
       return Array.isArray(v) ? v[0] : v;
     };
+    if (this.config.mode === "session") {
+      const session = cookie(headers["cookie"], SESSION_COOKIE);
+      return session ? `Bearer ${session}` : undefined;
+    }
     if (this.config.mode === "iap") {
       const assertion = pick(IAP_HEADER);
       if (process.env["IAP_DEBUG"] === "1") {
@@ -81,6 +94,7 @@ export class JwtVerifier {
     const match = /^Bearer\s+(\S+)$/i.exec(authorization ?? "");
     const token = match?.[1];
     if (token === undefined) throw new DomainError("UNAUTHENTICATED", "Missing bearer token");
+    if (this.config.mode === "session") return verifySession(this.config.sessionKey ?? "", token);
     let payload: JWTPayload;
     try {
       ({ payload } = await jwtVerify(token, this.jwks, {

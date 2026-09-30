@@ -3,7 +3,7 @@ import { t, type MessageKey } from "@budget/ui/i18n";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Building2, LogOut, MessageSquare, Users, type LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
-import { clearToken } from "../lib/auth.js";
+import { signOut } from "../lib/auth.js";
 import type { Me } from "../lib/queries.js";
 
 /**
@@ -33,7 +33,7 @@ export function OrgShell({ me, children }: { me: Me; children: ReactNode }): Rea
             <span className="block font-medium">{me.user.name}</span>
             <span className="block text-xs text-muted-foreground">{me.user.email}</span>
           </span>
-          <Button variant="ghost" size="sm" onClick={() => clearToken()}>
+          <Button variant="ghost" size="sm" onClick={() => signOut()}>
             <LogOut className="size-4" aria-hidden />
             {t("shell.signOut")}
           </Button>
