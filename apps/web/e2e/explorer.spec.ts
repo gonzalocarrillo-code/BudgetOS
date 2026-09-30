@@ -241,6 +241,31 @@ test.describe("Explorer (T-027)", () => {
     expect(after.members[row]?.mode).toBe("percent");
   });
 
+  test("a family's drafts over the parent get their own flag; 'over by' counts approved money only (round 12)", async ({ page }) => {
+    const token = await signIn(page);
+    const s = state();
+    // Colombia: no other test drafts there. Its country budget and one child without a draft.
+    const found = await api(token, "POST", `/workspaces/${s.workspaceId}/query`, { workspaceId: s.workspaceId, period: FY, filter: { logic: "and", children: [...LIVE, { field: { kind: "dimension", key: "country" }, op: "eq", value: "CO" }] }, measures: ["budget"], sort: [{ key: "name", dir: "asc" }], limit: 100 });
+    const rows = (found.body["rows"] as Array<{ envelopeId: string; path: string[] }>).sort((a, b) => a.path.length - b.path.length);
+    const parentId = rows[0]?.envelopeId ?? "";
+    const family = (await api(token, "GET", `/envelopes/${parentId}/family`)).body as { approvedSum: { parentAmount: string; childrenTotal: string; status: string } | null; members: Array<{ envelopeId: string }> };
+    expect(family.approvedSum, "Colombia has an approved amount and children").not.toBeNull();
+    let child: Record<string, unknown> | null = null;
+    for (const m of family.members) {
+      const env = (await api(token, "GET", `/envelopes/${m.envelopeId}`)).body;
+      if (!child && env["draft"] === null) child = env;
+    }
+    expect(child, "a Colombian child without a draft").not.toBeNull();
+    // A draft on that child worth the whole parent: proposed children exceed it, approved ones do not change.
+    const res = await api(token, "PATCH", `/envelopes/${String(child?.["id"])}/draft`, { amount: family.approvedSum?.parentAmount, basedOnVersionId: child?.["currentVersionId"], rationale: "e2e: proposed over" });
+    expect(res.status).toBeLessThan(300);
+
+    await page.goto(`${budgetsUrl({ period: FY })}&select=${parentId}`);
+    await expect(page.getByTestId("drawer-family-sum")).toHaveAttribute("data-status", family.approvedSum?.status ?? "");
+    await expect(page.getByTestId("drawer-family-proposed")).toBeVisible();
+    await expect(page.getByTestId("drawer-family-proposed")).toContainText("Proposed budgets exceed the parent");
+  });
+
   test("inline edit conflict: a stale edit shows the current value; reload, then the edit saves", async ({ page }) => {
     const token = await signIn(page);
     const s = state();

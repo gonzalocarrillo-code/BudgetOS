@@ -15,7 +15,7 @@ import { planFamily, type Node } from "./plan.js";
  * preview. Amounts are never written here: the bulk commit makes the drafts and one approval.
  */
 
-/** The parent and its live descendants, each with its current amount (open draft, else approved) and rule. */
+/** The parent and its live descendants, each with its current amount (open draft, else approved), its approved amount and rule. */
 async function loadFamily(tx: Tx, rootId: string): Promise<Map<string, Node>> {
   const root = await tx.envelope.findUnique({ where: { id: rootId } });
   if (root === null) throw new DomainError("NOT_FOUND", "Envelope not found", { id: rootId });
@@ -25,7 +25,7 @@ async function loadFamily(tx: Tx, rootId: string): Promise<Map<string, Node>> {
     envs.push(...kids);
     level = kids.map((k) => k.id);
   }
-  const versionIds = envs.map((e) => e.draftVersionId ?? e.currentVersionId).filter((v): v is string => v !== null);
+  const versionIds = envs.flatMap((e) => [e.draftVersionId, e.currentVersionId]).filter((v): v is string => v !== null);
   const amounts = new Map((await tx.envelopeVersion.findMany({ where: { id: { in: versionIds } }, select: { id: true, amount: true } })).map((v) => [v.id, v.amount.toFixed(2)]));
   const rules = new Map(
     (await tx.envelopeAllocation.findMany({ where: { childEnvelopeId: { in: envs.map((e) => e.id) }, supersededAt: null }, select: { childEnvelopeId: true, mode: true, pct: true } })).map((r) => [
@@ -36,7 +36,7 @@ async function loadFamily(tx: Tx, rootId: string): Promise<Map<string, Node>> {
   const nodes = new Map<string, Node>();
   for (const e of envs) {
     const head = e.draftVersionId ?? e.currentVersionId;
-    nodes.set(e.id, { id: e.id, name: e.displayName ?? e.name, parentId: e.id === root.id ? null : e.parentId, currency: e.currency, status: e.status, amount: head ? (amounts.get(head) ?? null) : null, rule: rules.get(e.id) ?? null, children: [] });
+    nodes.set(e.id, { id: e.id, name: e.displayName ?? e.name, parentId: e.id === root.id ? null : e.parentId, currency: e.currency, status: e.status, amount: head ? (amounts.get(head) ?? null) : null, approved: e.currentVersionId ? (amounts.get(e.currentVersionId) ?? null) : null, proposed: e.draftVersionId !== null, rule: rules.get(e.id) ?? null, children: [] });
   }
   for (const n of nodes.values()) if (n.parentId) nodes.get(n.parentId)?.children.push(n.id);
   return nodes;

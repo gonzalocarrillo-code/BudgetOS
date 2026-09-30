@@ -323,5 +323,12 @@ export const FamilyPlan = z.object({
   parent: FamilyMember,
   members: z.array(FamilyMember),
   sums: z.array(FamilySum),
+  /**
+   * The parent against its children on approved amounts only (drafts and pending requests left
+   * out): what the budget holds today. Null when the parent has no approved amount.
+   */
+  approvedSum: FamilySum.nullable().optional(),
+  /** How many of the parent and its direct children have an open draft or a pending request. */
+  proposals: z.number().int().nonnegative().optional(),
 });
 export type FamilyPlan = z.infer<typeof FamilyPlan>;

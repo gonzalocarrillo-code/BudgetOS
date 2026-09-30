@@ -18,6 +18,10 @@ export interface Node {
   amount: string | null;
   rule: { mode: "percent" | "manual"; pct: string | null } | null;
   children: string[];
+  /** The approved amount alone (null when never approved); `amount` when not given. */
+  approved?: string | null;
+  /** An open draft or a pending request. */
+  proposed?: boolean;
 }
 
 const HUNDRED = new Decimal(100);
@@ -123,5 +127,11 @@ export function planFamily(nodes: Map<string, Node>, rootId: string, input: Fami
     }
   };
   walk(rootId, 1);
-  return { parent: member(root, 0), members, sums };
+  // Approved amounts only, as the family stands today; the drafts and pending requests are the "proposed" sums above.
+  const approvedOf = (n: Node) => (n.approved === undefined ? n.amount : n.approved);
+  const rootApproved = approvedOf(root);
+  const kids = root.children.map((cid) => nodes.get(cid) as Node);
+  const approvedSum = root.children.length && rootApproved !== null ? sumOf(rootId, new Decimal(rootApproved), kids.map((k) => new Decimal(approvedOf(k) ?? 0))) : null;
+  const proposals = [root, ...kids].filter((n) => n.proposed === true).length;
+  return { parent: member(root, 0), members, sums, approvedSum, proposals };
 }

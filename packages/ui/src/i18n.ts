@@ -1024,6 +1024,8 @@ const en = {
   "family.balanced": "they add up",
   "family.under": "{amount} unallocated",
   "family.over": "over by {amount}",
+  "family.proposedOver": "Proposed budgets exceed the parent by {amount}",
+  "family.proposedDetail": "Children {children} of {parent}, counting drafts and pending requests ({count})",
   "family.deeper": "{count} budgets further down follow by %",
   "family.rationale": "Why (approvers see this)",
   "family.rationaleDefault": "Family edit",

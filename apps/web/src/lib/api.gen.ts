@@ -3747,6 +3747,16 @@ export interface operations {
                             /** @enum {string} */
                             status: "balanced" | "under" | "over";
                         }[];
+                        approvedSum?: {
+                            /** Format: uuid */
+                            parentId: string;
+                            parentAmount: string;
+                            childrenTotal: string;
+                            unallocated: string;
+                            /** @enum {string} */
+                            status: "balanced" | "under" | "over";
+                        } | null;
+                        proposals?: number;
                     };
                 };
             };
@@ -3873,6 +3883,16 @@ export interface operations {
                             /** @enum {string} */
                             status: "balanced" | "under" | "over";
                         }[];
+                        approvedSum?: {
+                            /** Format: uuid */
+                            parentId: string;
+                            parentAmount: string;
+                            childrenTotal: string;
+                            unallocated: string;
+                            /** @enum {string} */
+                            status: "balanced" | "under" | "over";
+                        } | null;
+                        proposals?: number;
                     };
                 };
             };
