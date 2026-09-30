@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { pathToFileURL } from "node:url";
-import { AccessRepository, JwtVerifier, MemoryRoleCache } from "@budget/api/auth";
+import { AccessRepository, JwtVerifier, McpOAuth, MemoryRoleCache } from "@budget/api/auth";
 import { objectStoreFromEnv } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { buildHttp } from "./http.js";
@@ -17,7 +17,12 @@ async function main(): Promise<void> {
   const url = process.env["MCP_DATABASE_URL"];
   if (!url) throw new Error("MCP_DATABASE_URL is required (the read-only budget_mcp role)");
   const prisma = new PrismaClient({ datasources: { db: { url } } });
-  const app = buildHttp({ prisma, auth: { verifier: new JwtVerifier(), access: new AccessRepository(prisma), cache: new MemoryRoleCache() }, limiter: await rateLimiterFromEnv(), store: objectStoreFromEnv() });
+  // ADR-066: with MCP_OAUTH_KEY, callers bring this server's own OAuth access tokens.
+  const oauth = McpOAuth.fromEnv();
+  const verifier = oauth ? (oauth.verifier() as unknown as JwtVerifier) : new JwtVerifier();
+  const config = oauth ? { oauth, publicUrl: (process.env["MCP_PUBLIC_URL"] ?? "").replace(/\/$/, ""), appUrl: (process.env["APP_BASE_URL"] ?? "").replace(/\/$/, "") } : null;
+  if (config && (!config.publicUrl || !config.appUrl)) throw new Error("MCP_PUBLIC_URL and APP_BASE_URL are required with MCP_OAUTH_KEY");
+  const app = buildHttp({ prisma, auth: { verifier, access: new AccessRepository(prisma), cache: new MemoryRoleCache() }, limiter: await rateLimiterFromEnv(), store: objectStoreFromEnv() }, config);
   const port = Number(process.env["PORT"] ?? 8080);
   await app.listen({ port, host: "0.0.0.0" });
   log.info({ port }, "mcp-readonly listening");

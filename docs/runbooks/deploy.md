@@ -39,3 +39,8 @@ The deployer may update only `budgetos-*` resources and never changes access, so
   - `roles/run.invoker` on `budgetos-app` for `service-666309304754@gcp-sa-iap.iam.gserviceaccount.com`;
   - `roles/iap.httpsResourceAccessor` for the superadmin;
   - `roles/run.invoker` for `allUsers` on `budgetos-slack`.
+
+## MCP server (ADR-066)
+- URL for MCP clients: `https://budgetos-mcp-666309304754.us-central1.run.app/mcp` (Streamable HTTP, OAuth). Adding it in Claude or the MCP Inspector opens Google sign-in, then an "Allow" page.
+- Access is the same as the app: the person needs IAP access and an app user with a role. Tools are read-only.
+- Signing key: `budgetos-mcp-oauth-key`. Adding a new version signs every MCP client out.
