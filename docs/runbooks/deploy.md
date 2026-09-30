@@ -56,9 +56,7 @@ gcloud run jobs execute budgetos-migrate --project dmus-gonzalo --region us-cent
 
 ## Google sign-in (ADR-067)
 Until the OAuth client exists, the app stays behind IAP. To switch:
-1. In a Google Cloud project for Budget OS's consent screen (not dmus-gonzalo, whose consent screen is BrandOS's):
-   - APIs & Services › OAuth consent screen: External, app name "Budget OS", scopes openid, email and profile. Publish it ("In production"); no Google review is needed for these scopes.
-   - Credentials › Create OAuth client ID › Web application, with the authorized redirect URI `https://budgetos-app-666309304754.us-central1.run.app/auth/callback`.
+1. In dmus-gonzalo: APIs & Services › Credentials › Create OAuth client ID › **Web application** (a Desktop client has no redirect URIs). Add the authorized redirect URI `https://budgetos-app-666309304754.us-central1.run.app/auth/callback`. The consent screen is the project's shared one ("DEPT BrandOS"); outside accounts need it External and In production.
 2. Store the client:
    - `printf %s '<client id>' | gcloud secrets versions add budgetos-google-oauth-client-id --project dmus-gonzalo --data-file=-`
    - the same for `budgetos-google-oauth-client-secret`.

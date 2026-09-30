@@ -41,7 +41,6 @@ export function SignIn({ expired = false }: { expired?: boolean }): ReactElement
             {t("auth.google")}
           </Button>
         )}
-        {SESSION ? <p className="text-xs text-muted-foreground">{t("auth.anyGoogle")}</p> : null}
         {SESSION ? null : (
         <details className="group rounded-lg border border-border px-3 py-2 text-sm" open>
           <summary className="cursor-pointer select-none font-medium text-muted-foreground group-open:text-foreground">{t("auth.developer")}</summary>
@@ -56,7 +55,7 @@ export function SignIn({ expired = false }: { expired?: boolean }): ReactElement
         </details>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{t("auth.footer")}</p>
+      <p className="text-xs text-muted-foreground" data-testid="sign-in-copyright">{t("auth.copyright", { year: new Date().getFullYear() })}</p>
     </main>
   );
 }
