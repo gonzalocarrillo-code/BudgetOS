@@ -55,7 +55,7 @@ function HomePage(): ReactElement {
         <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2.5 text-sm" data-testid="home-demo">
           <Sparkles className="size-4 text-primary" aria-hidden />
           <span className="flex-1">{t("home.demo", { count: demo.envelopes })}</span>
-          <Link to="/w/$ws/admin/templates" params={{ ws }} className="font-medium text-primary hover:underline">
+          <Link to="/w/$ws/admin/workspace" params={{ ws }} hash="demo-data" className="font-medium text-primary hover:underline">
             {t("home.demoManage")}
           </Link>
         </div>

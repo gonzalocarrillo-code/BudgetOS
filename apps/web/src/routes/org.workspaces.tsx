@@ -202,7 +202,7 @@ function NewWorkspace({ onClose }: { onClose: () => void }): ReactElement {
           </div>
         </fieldset>
         <label className="flex items-center gap-2 text-sm md:col-span-2">
-          <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} />
+          <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} data-testid="org-create-demo" />
           {t("templates.withDemo")}
         </label>
         {create.error ? <p role="alert" className="text-sm text-destructive md:col-span-2">{create.error.message}</p> : null}
