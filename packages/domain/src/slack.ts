@@ -15,7 +15,10 @@ export const SlackSeverity = z.enum(["info", "warning", "critical", "data"]);
 
 /** workspace.settings.slack */
 export const SlackSettings = z.object({
-  /** The Slack team this workspace answers (buttons and /budget from other teams are refused). */
+  /**
+   * Legacy (before R11-002): the Slack team this workspace was linked to by hand. The org's team
+   * (`OrgSlackSettings`) wins; this is read only while the org has none.
+   */
   teamId: z.string().regex(/^T[A-Z0-9]{2,20}$/).optional(),
   teamName: z.string().max(200).optional(),
   /** Approval requests and outcomes; critical alerts whose rule names no channel. */
@@ -39,14 +42,32 @@ export const UpdateSlackSettingsInput = z
     alertSeverities: z.array(SlackSeverity).max(4).optional(),
     approvals: z.boolean().optional(),
     dms: z.boolean().optional(),
-    /** Link this workspace to the bot's Slack team (read with auth.test). */
-    link: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type UpdateSlackSettingsInput = z.infer<typeof UpdateSlackSettingsInput>;
 
 /** POST /workspaces/:ws/integrations/slack/test */
 export const SlackTestInput = z.object({ channel: Channel.optional() });
+
+/**
+ * R11-002: the Slack team the whole organization answers to (`organization.settings.slack`). Linking
+ * it once links every workspace of the org: `/budget`, buttons and DMs work in all of them; each
+ * workspace only picks its channels.
+ */
+export const OrgSlackSettings = z.object({
+  teamId: z.string().regex(/^T[A-Z0-9]{2,20}$/).optional(),
+  teamName: z.string().max(200).optional(),
+  linkedAt: z.string().datetime().optional(),
+  linkedBy: z.string().max(200).optional(),
+});
+export type OrgSlackSettings = z.infer<typeof OrgSlackSettings>;
+
+/** PATCH /org/integrations/slack: link the bot's team (read with auth.test), or unlink. */
+export const UpdateOrgSlackInput = z.object({ link: z.boolean().optional(), unlink: z.boolean().optional() }).refine((v) => v.link === true || v.unlink === true, "link or unlink");
+export type UpdateOrgSlackInput = z.infer<typeof UpdateOrgSlackInput>;
+
+/** POST /org/integrations/slack/test: a hello to a channel, through the notify worker. */
+export const OrgSlackTestInput = z.object({ channel: Channel });
 
 /**
  * A button's `value`: the workspace and entity it acts on, and (S-006) the private message it sits
