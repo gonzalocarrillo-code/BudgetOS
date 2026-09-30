@@ -6,12 +6,17 @@ import { PrismaClient } from "@prisma/client";
  * The deployment's one-time setup (ADR-065), run by the `budgetos-migrate` Cloud Run job after
  * `prisma migrate deploy`, as the owner role. Idempotent: every run leaves the same state.
  *
+ * - The owner role bypasses RLS, as the local superuser does: migrations, this bootstrap and the
+ *   worker's outbox loop read across workspaces (every table forces RLS). Cloud SQL's owner is not
+ *   a superuser, but it may hold BYPASSRLS. The application role never does.
  * - The login roles the migrations create get their passwords from Secret Manager (the migrations
  *   carry a placeholder).
  * - The organization and its superadmin exist: SUPERADMIN_EMAIL holds ORG_ADMIN org-wide, so they
  *   can create workspaces and add people in the org console. Everyone else is added there.
  */
 export async function bootstrap(owner: PrismaClient, env: NodeJS.ProcessEnv = process.env): Promise<{ orgId: string; userId: string }> {
+  const [me] = await owner.$queryRawUnsafe<Array<{ bypass: boolean }>>("SELECT rolbypassrls AS bypass FROM pg_roles WHERE rolname = current_user");
+  if (!me?.bypass) await owner.$executeRawUnsafe("ALTER ROLE CURRENT_USER BYPASSRLS");
   for (const [role, key] of [["budget_app", "APP_DB_PASSWORD"], ["budget_publisher", "PUBLISHER_DB_PASSWORD"], ["budget_mcp", "MCP_DB_PASSWORD"]] as const) {
     const password = env[key];
     if (!password) throw new Error(`${key} is required`);
