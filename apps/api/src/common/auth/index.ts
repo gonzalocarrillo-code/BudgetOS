@@ -5,3 +5,5 @@ export { AccessRepository } from "./access.repository.js";
 export { JwtVerifier } from "./jwt-verifier.js";
 export { MemoryRoleCache } from "./role-cache.js";
 export type { AuthContext } from "../tenant.js";
+export { McpOAuth, MCP_AUDIENCE } from "./mcp-oauth.js";
+export type { McpClient, Grant } from "./mcp-oauth.js";

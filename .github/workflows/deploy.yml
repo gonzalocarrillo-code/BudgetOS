@@ -70,7 +70,7 @@ jobs:
           gcloud run deploy budgetos-app --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
             --cpu 1 --memory 1Gi --min-instances 0 --max-instances 3 --timeout 300 \
-            --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
+            --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest,MCP_OAUTH_KEY=budgetos-mcp-oauth-key:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,AUTH_MODE=iap,AUTH_AUDIENCE=/projects/$PROJECT_NUMBER/locations/$REGION/services/budgetos-app"
           gcloud run deploy budgetos-slack --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
@@ -83,3 +83,11 @@ jobs:
             --set-secrets "DATABASE_URL=budgetos-database-url:latest,APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,LISTEN_HOST=0.0.0.0,LOCAL_WORKSPACE_PREFIX=,PACING_EVERY_MS=900000" \
             --command sh --args="-c,cd /app/apps/workers && node_modules/.bin/tsx src/local-runner.ts"
+      - name: Deploy the MCP server (public, OAuth; ADR-066)
+        run: |
+          gcloud run deploy budgetos-mcp --project "$PROJECT" --region "$REGION" --image "$IMAGE:$GITHUB_SHA" \
+            --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
+            --cpu 1 --memory 1Gi --min-instances 0 --max-instances 2 --timeout 300 \
+            --set-secrets "MCP_DATABASE_URL=budgetos-mcp-database-url:latest,MCP_OAUTH_KEY=budgetos-mcp-oauth-key:latest" \
+            --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT,UPLOAD_BUCKET=dmus-gonzalo-budgetos-uploads,APP_BASE_URL=https://budgetos-app-$PROJECT_NUMBER.$REGION.run.app,MCP_PUBLIC_URL=https://budgetos-mcp-$PROJECT_NUMBER.$REGION.run.app" \
+            --command sh --args="-c,cd /app/apps/mcp && node_modules/.bin/tsx src/main.ts"

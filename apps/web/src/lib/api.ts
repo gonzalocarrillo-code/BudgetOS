@@ -25,7 +25,14 @@ const auth: Middleware = {
   onResponse({ response }) {
     // Behind IAP a 401 means the session ended: reload, and IAP signs in again.
     if (response.status === 401) {
-      if (IAP) window.location.reload();
+      if (IAP) {
+        // Once per 30 s at most: a reload signs in again; a second 401 right after is a real error.
+        const last = Number(sessionStorage.getItem("budget-os.iapReload") ?? 0);
+        if (Date.now() - last > 30_000) {
+          sessionStorage.setItem("budget-os.iapReload", String(Date.now()));
+          window.location.reload();
+        }
+      }
       else clearToken();
     }
     return response;

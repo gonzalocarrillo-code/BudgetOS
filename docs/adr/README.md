@@ -72,3 +72,4 @@ record with its status line; regenerate it when you add one.
 | [ADR-063](0063-home-is-the-desk.md) | Home is each person's desk | Accepted |
 | [ADR-064](0064-ahead-of-plan.md) | Ahead of plan, pace in money | Accepted |
 | [ADR-065](0065-hosting-on-dmus-gonzalo.md) | Hosting on the dmus-gonzalo project, signed in by IAP | Accepted (product owner, 2026-09-29) |
+| [ADR-066](0066-mcp-oauth.md) | The MCP server signs people in with OAuth, through the app's Google sign-in | Accepted (product owner, 2026-09-29: "make sure the MCP is live with OAuth") |
