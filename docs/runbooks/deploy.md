@@ -51,5 +51,5 @@ The deployer may update only `budgetos-*` resources and never changes access, so
 ```bash
 gcloud run jobs execute budgetos-migrate --project dmus-gonzalo --region us-central1 --wait \
   --update-env-vars SANDBOX_CHANNEL=#budgetos-test \
-  --args="-c,cd /app/apps/api && APP_DATABASE_URL=\$(echo \$DATABASE_URL | sed 's#postgres:[^@]*@#budget_app:'\$APP_DB_PASSWORD'@#') node_modules/.bin/tsx src/deploy/slack-sandbox.ts"
+  --args="-c,cd /app/apps/api && node_modules/.bin/tsx src/deploy/slack-sandbox.ts"
 ```
