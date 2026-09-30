@@ -67,6 +67,10 @@ export class JwtVerifier {
     };
     if (this.config.mode === "iap") {
       const assertion = pick(IAP_HEADER);
+      if (process.env["IAP_DEBUG"] === "1") {
+        const shape = Object.fromEntries(Object.entries(headers).filter(([k]) => k.startsWith("x-goog") || k.startsWith("x-serverless") || k === "authorization").map(([k, v]) => [k, { n: Array.isArray(v) ? v.length : 1, len: String(v).length, parts: String(v).split(".").length, head: String(v).slice(0, 12) }]));
+        process.stdout.write(`${JSON.stringify({ level: 40, msg: "IAP headers", shape })}\n`);
+      }
       return assertion ? `Bearer ${assertion}` : undefined;
     }
     return pick("authorization");
