@@ -3,10 +3,10 @@
 /**
  * Format a value for CSV output, preventing formula injection and applying RFC 4180 quoting.
  * - Returns empty string for null/undefined
- * - Prefixes dangerous prefixes (=, +, -, @, tab, carriage return) with a single quote
+ * - Prefixes dangerous prefixes (=, +, -, @, tab, carriage return) with a single quote, EXCEPT for plain numbers
  * - Quotes cells containing double-quote, comma, newline, or carriage return (doubling inner quotes)
  *
- * Use for text cells only. For numeric cells (amounts), check the column kind before calling this.
+ * Use for text cells only. For numeric columns (amounts), check the column kind before calling this.
  */
 export function csvCell(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "";
@@ -14,7 +14,9 @@ export function csvCell(value: string | number | null | undefined): string {
   const s = String(value);
 
   // Prevent formula injection: prefix dangerous characters with a single quote
-  const escaped = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  // BUT skip prefixing for plain numbers (they're safe and round-trip correctly)
+  const isPlainNumber = /^[-+]?\d+(\.\d+)?$/.test(s);
+  const escaped = !isPlainNumber && /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
 
   // RFC 4180 quoting: quote if the cell contains special characters
   return /[",\r\n]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;

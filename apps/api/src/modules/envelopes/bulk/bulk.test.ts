@@ -261,4 +261,12 @@ describe("CSV round trip and the end of a bulk request", () => {
     // The CSV should contain the name with apostrophe prefix to prevent formula execution
     expect(csv).toContain(`'${dangerousName}`);
   });
+
+  it("CSV amount column with negative number round-trips unchanged (plain numbers not prefixed)", () => {
+    const header = ["envelope_id", "path", "currency", "approved_amount", "amount"];
+    const rows = [[randomUUID(), "test", "USD", "", "-12.50"]];
+    const csv = toCsv(header, rows);
+    const parsed = parseCsv(csv);
+    expect(parsed[1]?.[4]).toBe("-12.50"); // amount unchanged after round-trip
+  });
 });

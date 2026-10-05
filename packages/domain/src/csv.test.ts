@@ -6,12 +6,16 @@ it("returns empty string for null and undefined", () => {
   expect(csvCell(undefined)).toBe("");
 });
 
-it("prefixes dangerous formula characters", () => {
+it("prefixes dangerous formula characters (except plain numbers)", () => {
   // Formula characters without special CSV chars (no quoting needed)
   expect(csvCell("=LINK")).toBe("'=LINK");
-  expect(csvCell("+1000")).toBe("'+1000");
-  expect(csvCell("-12.50")).toBe("'-12.50");
   expect(csvCell("@SUM")).toBe("'@SUM");
+  // Plain numbers: NOT prefixed (they're safe)
+  expect(csvCell("-12.50")).toBe("-12.50");
+  expect(csvCell("+34")).toBe("+34");
+  // Non-plain numbers with special chars: prefixed AND quoted
+  expect(csvCell("-1,000")).toBe("\"'-1,000\"");
+  expect(csvCell("=1+2")).toBe("'=1+2");
   // Tab (prefix only, no quoting needed)
   expect(csvCell("\ttab")).toBe("'\ttab");
   // Carriage return (prefix AND quote because \r is in quoting regex)
