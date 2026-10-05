@@ -1,3 +1,4 @@
+import process from "node:process";
 import { defineConfig, mergeConfig } from "vitest/config";
 import root from "../../vitest.config.mjs";
 
