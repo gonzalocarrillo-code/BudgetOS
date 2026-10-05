@@ -43,9 +43,13 @@ const ownerUrl = process.env["DATABASE_URL"] ?? "postgresql://budget:budget@loca
 const appUrl =
   process.env["APP_DATABASE_URL"] ??
   "postgresql://budget_app:replace-in-secret-manager@localhost:5432/budget";
+const mcpUrl =
+  process.env["MCP_DATABASE_URL"] ??
+  "postgresql://budget_mcp:replace-in-secret-manager@localhost:5432/budget";
 
 const owner = new PrismaClient({ datasources: { db: { url: ownerUrl } } });
 const app = new PrismaClient({ datasources: { db: { url: appUrl } } });
+const mcp = new PrismaClient({ datasources: { db: { url: mcpUrl } } });
 
 const actorId = randomUUID();
 const orgA = randomUUID();
@@ -300,6 +304,7 @@ afterAll(async () => {
   await owner.$executeRaw`DELETE FROM organization WHERE id = ANY(${orgs}::uuid[])`;
   await owner.$disconnect();
   await app.$disconnect();
+  await mcp.$disconnect();
 });
 
 describe("org-admin RLS bypass is scoped to the admin's org", () => {
@@ -507,6 +512,130 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
     expect(seen.users).toEqual([orgA]);
     expect(seen.groups).toEqual([orgA]);
     expect(seen.members).toEqual([orgA]);
+  });
+});
+
+// W2-4 (audit S-4): audit_event's INSERT policy was `WITH CHECK (true)`, so any session — including
+// budget_mcp, which holds INSERT on audit_event only (ADR-019) — could write an audit row into
+// another workspace's trail, or with workspace_id NULL claiming any org. These tests cover the
+// replacement policy (migration 20261010000000_audit_event_org_scoped_insert).
+describe("audit_event insert policy is bound to the tenant (W2-4, audit S-4)", () => {
+  it("a workspace session cannot insert an audit row for another workspace", async () => {
+    const session = ctx({ orgId: orgA, workspaceId: wsA1 });
+    const anotherWorkspaceSameOrg = withTenant(app, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (${wsA2}::uuid, 'user', 'rls.test', 'envelope', ${randomUUID()}::uuid)`,
+    );
+    await expect(anotherWorkspaceSameOrg).rejects.toThrow(/row-level security/);
+    const anotherOrgsWorkspace = withTenant(app, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (${wsB1}::uuid, 'user', 'rls.test', 'envelope', ${randomUUID()}::uuid)`,
+    );
+    await expect(anotherOrgsWorkspace).rejects.toThrow(/row-level security/);
+  });
+
+  it("a non-admin workspace session can insert workspace_id NULL for its own org, but not for another org", async () => {
+    // apps/mcp/src/server.ts's list_workspaces tool writes an org-level (workspace_id NULL)
+    // mcp.list_workspaces audit row for every authenticated caller, not only org admins, so the
+    // NULL-workspace branch is gated on org_id alone, not app_is_org_admin() as well.
+    const entityId = randomUUID();
+    await withTenant(app, ctx({ orgId: orgA, workspaceId: wsA1 }), (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (NULL, 'user', 'rls.test', 'organization', ${entityId}::uuid)`,
+    );
+    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
+      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    expect(row?.orgId, "org_id defaults from the session even for a non-admin").toBe(orgA);
+
+    const forAnotherOrg = withTenant(app, ctx({ orgId: orgA, workspaceId: wsA1 }), (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, org_id, actor_type, action, entity_type, entity_id)
+        VALUES (NULL, ${orgB}::uuid, 'user', 'rls.test', 'organization', ${randomUUID()}::uuid)`,
+    );
+    await expect(forAnotherOrg, "org_id must match the session's own org").rejects.toThrow(/row-level security/);
+  });
+
+  it("an org admin can insert a NULL-workspace row for its own org, but not for another org", async () => {
+    const entityId = randomUUID();
+    await withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (NULL, 'user', 'rls.test', 'organization', ${entityId}::uuid)`,
+    );
+    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
+      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    expect(row?.orgId, "org_id defaults from the session's app.org_id (no caller change needed)").toBe(orgA);
+
+    const mismatchedOrgId = withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, org_id, actor_type, action, entity_type, entity_id)
+        VALUES (NULL, ${orgB}::uuid, 'user', 'rls.test', 'organization', ${randomUUID()}::uuid)`,
+    );
+    await expect(mismatchedOrgId, "an explicit org_id must match the session's own org").rejects.toThrow(
+      /row-level security/,
+    );
+  });
+
+  it("budget_mcp can insert audit_event for a workspace it can see, and not for one it cannot", async () => {
+    const entityId = randomUUID();
+    const session = ctx({ orgId: orgA, workspaceId: wsA1, actorType: "mcp" });
+    await withTenant(mcp, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (${wsA1}::uuid, 'mcp', 'mcp.test', 'envelope', ${entityId}::uuid)`,
+    );
+    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
+      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    expect(row?.orgId, "org_id defaults from the session even for budget_mcp").toBe(orgA);
+
+    const forAWorkspaceItCannotSee = withTenant(mcp, session, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (${wsB1}::uuid, 'mcp', 'mcp.test', 'envelope', ${randomUUID()}::uuid)`,
+    );
+    await expect(forAWorkspaceItCannotSee).rejects.toThrow(/row-level security/);
+  });
+
+  it("budget_mcp can insert the org-level mcp.list_workspaces audit row for a non-admin caller", async () => {
+    // Regression check: apps/mcp/src/server.ts's list_workspaces tool calls audit(tx, { workspaceId:
+    // null, ... }) for every authenticated caller (connected as budget_mcp), not only org admins.
+    // An earlier version of this policy required app_is_org_admin() for workspace_id NULL and broke
+    // this exact call (apps/mcp/src/tools.test.ts: "Cannot read properties of undefined").
+    const entityId = randomUUID();
+    const nonAdminMcpSession = ctx({ orgId: orgA, workspaceId: null, isOrgAdmin: false, actorType: "mcp" });
+    await withTenant(mcp, nonAdminMcpSession, (tx) =>
+      tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (NULL, 'mcp', 'mcp.list_workspaces', 'mcp_call', ${entityId}::uuid)`,
+    );
+    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
+      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    expect(row?.orgId).toBe(orgA);
+  });
+
+  it("an org admin reads its own org's org-level audit rows, and not another org's", async () => {
+    const entityId = randomUUID();
+    await owner.$executeRaw`
+      INSERT INTO audit_event (workspace_id, org_id, actor_type, action, entity_type, entity_id)
+      VALUES (NULL, ${orgA}::uuid, 'system', 'rls.org-level.test', 'organization', ${entityId}::uuid)`;
+    const seenByOwnAdmin = await withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
+      tx.$queryRaw<Array<{ id: string }>>`
+        SELECT entity_id::text AS id FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+    );
+    expect(seenByOwnAdmin.map((r) => r.id)).toEqual([entityId]);
+    const seenByOtherOrgsAdmin = await withTenant(app, ctx({ orgId: orgB, isOrgAdmin: true }), (tx) =>
+      tx.$queryRaw<Array<{ id: string }>>`
+        SELECT entity_id::text AS id FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+    );
+    expect(seenByOtherOrgsAdmin).toEqual([]);
+    const seenByNonAdmin = await withTenant(app, ctx({ orgId: orgA, workspaceId: wsA1 }), (tx) =>
+      tx.$queryRaw<Array<{ id: string }>>`
+        SELECT entity_id::text AS id FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+    );
+    expect(seenByNonAdmin, "a non-admin workspace session does not see org-level rows").toEqual([]);
   });
 });
 
