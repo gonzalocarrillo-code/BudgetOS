@@ -36,4 +36,4 @@ If the tree looks stale:
 
 ## Safety: seed, reset and load guards (B-7, I-31)
 
-Seed, reset and load tooling refuse to run against non-local databases (remote Cloud SQL, production RDS) to prevent accidental data destruction. They check the `DATABASE_URL` hostname and reject any non-local host unless `ALLOW_REMOTE_DB=1` is set. Local hosts include `localhost`, `127.0.0.1`, `[::1]`, `db`, `postgres`, and any hostname ending with `.localhost` or `.internal`. Set `ALLOW_REMOTE_DB=1` only when you know what you are doing (e.g. seeding a staging environment from a remote client); scripts always warn before proceeding.
+Seed, reset and load tooling refuse to run against non-local databases (remote Cloud SQL, production RDS) to prevent accidental data destruction. They check the `DATABASE_URL` hostname and reject any non-local host unless `ALLOW_REMOTE_DB=1` is set. Local hosts include `localhost`, `127.0.0.1`, `[::1]`, `db`, `postgres`, and any hostname ending with `.localhost`. Set `ALLOW_REMOTE_DB=1` only when you know what you are doing (e.g. seeding a staging environment from a remote client); scripts always warn before proceeding.
