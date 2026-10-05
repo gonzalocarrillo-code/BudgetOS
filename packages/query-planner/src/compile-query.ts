@@ -101,6 +101,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   if (q.templateId !== undefined) throw new DomainError("VALIDATION", "templateId tree order is not supported by the Postgres planner");
   const held = q.unallocated === true;
   if (held && q.subtree === true) throw new DomainError("VALIDATION", "unallocated rows cannot be combined with subtree");
+  // T-5 (audit): demo envelopes and demo facts are excluded unless the caller opts in.
+  const includeDemo = q.includeDemo === true;
   const b = new SqlBuilder();
   const ctx: CompileCtx = { workspaceId: q.workspaceId, periodStart: period.start, periodEnd: period.end, today };
   const asOf = q.asOf ? `${b.p(q.asOf)}::timestamptz` : "now()";
@@ -153,9 +155,9 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     if (!def) throw new DomainError("VALIDATION", `unknown metric ${mk}`);
     const s = sanitize(mk);
     const mult = def.multiplier === undefined || new Decimal(def.multiplier).equals(1) ? "" : ` * ${b.p(def.multiplier)}::numeric`;
-    const num = def.numerator === "budget" ? budgetSql : factSql(mk, def.numerator, b, pStart, pEnd, ws, period);
+    const num = def.numerator === "budget" ? budgetSql : factSql(mk, def.numerator, b, pStart, pEnd, ws, includeDemo, period);
     if (def.denominator) {
-      const den = def.denominator === "budget" ? budgetSql : factSql(mk, def.denominator, b, pStart, pEnd, ws, period);
+      const den = def.denominator === "budget" ? budgetSql : factSql(mk, def.denominator, b, pStart, pEnd, ws, includeDemo, period);
       kpiCols += `, ${num} AS num_${s}, ${den} AS den_${s}`;
       kpiNames.push(`num_${s}`, `den_${s}`);
       kpiDerived += `, (num_${s}${mult} / NULLIF(den_${s},0)) AS kpi_${s}`;
@@ -200,7 +202,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
     sub AS (
       SELECT o.envelope_id AS root, o.envelope_id AS node FROM m_own o
       UNION ALL
-      SELECT s.root, c.id FROM sub s JOIN envelope c ON c.parent_id = s.node AND c.status <> 'ARCHIVED'
+      SELECT s.root, c.id FROM sub s JOIN envelope c ON c.parent_id = s.node AND c.status <> 'ARCHIVED'${includeDemo ? "" : " AND NOT c.demo"}
     ),
     m AS (
       SELECT o.envelope_id, o.budget,${compare === undefined ? "" : " o.budget_baseline,"} o.period_share, coalesce(x.actual, 0) AS actual, coalesce(x.projected, 0) AS projected${kpiNames.map((n) => `, o.${n}`).join("")}
@@ -218,7 +220,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
       SELECT c.parent_id, sum(${budgetOf("c")}) AS budget, sum(${budgetOf("c")} * ${shareOf("c")}) AS budget_in_period,${compare === undefined ? "" : ` sum(${baselineOf("c")}) AS budget_baseline,`} count(*) AS n
       FROM envelope c
       WHERE c.workspace_id = ${ws}::uuid AND c.parent_id IS NOT NULL AND c.status <> 'ARCHIVED'
-        AND c.start_date <= ${pEnd} AND c.end_date >= ${pStart}${opts.envelopeIds === undefined ? "" : ` AND c.parent_id = ANY(${b.p([...opts.envelopeIds])}::uuid[])`}
+        AND c.start_date <= ${pEnd} AND c.end_date >= ${pStart}${includeDemo ? "" : " AND NOT c.demo"}${opts.envelopeIds === undefined ? "" : ` AND c.parent_id = ANY(${b.p([...opts.envelopeIds])}::uuid[])`}
       GROUP BY c.parent_id
     ),
     m AS (
@@ -233,12 +235,12 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         ${budgetSql} AS budget,${compare === undefined ? "" : `
         ${baselineSql} AS budget_baseline,`}
         ${shareOf("e")} AS period_share,
-        ${spendSql(b, period, ws)} AS actual,
+        ${spendSql(b, period, ws, includeDemo)} AS actual,
         ${opts.hasProjections === false ? "0::numeric" : "coalesce(p.projected, 0)"} AS projected
         ${kpiCols}
       FROM envelope e${projectionJoin("e.id")}
       WHERE e.workspace_id = ${ws}::uuid
-        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${subtree ? "" : onlyIds}
+        AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${includeDemo ? "" : " AND NOT e.demo"}${subtree ? "" : onlyIds}
     )${subtreeCte}${heldCte},
     m1 AS (
       SELECT *${held ? "" : ", budget * period_share AS budget_in_period"} FROM m
@@ -467,23 +469,23 @@ function ratioExpr(mk: string, elapsedFrac: string): string {
 }
 
 /** One source of a metric over facts for envelope alias e. `ws` is the workspace placeholder so the fact indexes apply. */
-function factSql(metricKey: string, ref: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, period?: { start: string; end: string }): string {
+function factSql(metricKey: string, ref: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, includeDemo: boolean, period?: { start: string; end: string }): string {
   if (ref === "spend") {
-    if (period) return spendSql(b, period, ws);
-    return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd})`;
+    if (period) return spendSql(b, period, ws, includeDemo);
+    return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd}${includeDemo ? "" : " AND NOT demo"})`;
   }
   if (!ref.startsWith("kpi:")) throw new DomainError("VALIDATION", `metric ${metricKey} references unknown source ${ref}`);
-  return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd})`;
+  return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd}${includeDemo ? "" : " AND NOT demo"})`;
 }
 
 /** Derived metric for one envelope alias e (a single ratio; roll-ups use compileQuery's num/den columns). */
-export function derivedMetricSql(metricKey: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, metrics: ReadonlyMap<string, MetricDef> = metricRegistry): string {
+export function derivedMetricSql(metricKey: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, metrics: ReadonlyMap<string, MetricDef> = metricRegistry, includeDemo = false): string {
   const def = metrics.get(metricKey);
   if (!def) throw new DomainError("VALIDATION", `unknown metric ${metricKey}`);
   if (def.numerator === "budget" || def.denominator === "budget") throw new DomainError("VALIDATION", `metric ${metricKey} needs the planner's budget column; use compileQuery`);
   const mult = def.multiplier === undefined || new Decimal(def.multiplier).equals(1) ? "" : ` * ${b.p(def.multiplier)}::numeric`;
-  const num = factSql(metricKey, def.numerator, b, pStart, pEnd, ws);
-  return def.denominator ? `${num}${mult} / NULLIF(${factSql(metricKey, def.denominator, b, pStart, pEnd, ws)},0)` : `${num}${mult}`;
+  const num = factSql(metricKey, def.numerator, b, pStart, pEnd, ws, includeDemo);
+  return def.denominator ? `${num}${mult} / NULLIF(${factSql(metricKey, def.denominator, b, pStart, pEnd, ws, includeDemo)},0)` : `${num}${mult}`;
 }
 
 /**
@@ -509,11 +511,18 @@ export function monthSplit(start: string, end: string): { full: [string, string]
 /**
  * Spend of envelope alias e over the period (ADR-037): whole months from spend_month, the partial
  * months at the edges from spend_fact. Same total as summing spend_fact over the period.
+ *
+ * T-5: `spend_month` has no `demo` column (it sums every fact of the envelope, ADR-037's whole
+ * reason to exist). Excluding demo by default relies on the envelope-level filter instead: a demo
+ * envelope's row never reaches this expression, so its spend_month total is never read. Only a
+ * fact whose own `demo` flag disagrees with the envelope it is matched to (a demo fact matched onto
+ * a non-demo envelope — matchRunFacts does not consider `demo` at all) could still leak through a
+ * whole month; the partial-month edges, read from spend_fact directly, are filtered exactly.
  */
-function spendSql(b: SqlBuilder, period: { start: string; end: string }, ws: string): string {
+function spendSql(b: SqlBuilder, period: { start: string; end: string }, ws: string, includeDemo: boolean): string {
   const split = monthSplit(period.start, period.end);
   const parts = split.edges.map(
-    ([from, to]) => `(SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${b.p(from)}::date AND ${b.p(to)}::date)`,
+    ([from, to]) => `(SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${b.p(from)}::date AND ${b.p(to)}::date${includeDemo ? "" : " AND NOT sf.demo"})`,
   );
   if (split.full) parts.unshift(`(SELECT coalesce(sum(sm.amount_reporting),0) FROM spend_month sm WHERE sm.workspace_id = ${ws}::uuid AND sm.envelope_id = e.id AND sm.month >= ${b.p(split.full[0])}::date AND sm.month < ${b.p(split.full[1])}::date)`);
   return parts.length === 1 ? (parts[0] as string) : `(${parts.join(" + ")})`;

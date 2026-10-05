@@ -139,10 +139,14 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
     )`,
     )
     .join("");
+  // T-5: demo envelopes and demo facts are excluded unless the caller opts in (same default as
+  // the Postgres dialect). projection_fact has no `demo` column (the demo dataset never writes
+  // projections), so proj below is left unfiltered.
+  const includeDemo = q.includeDemo === true;
   const ctes = `
     sel AS (
       SELECT e.id, e.status, e.start_date, e.end_date FROM ${t("envelope")} e
-      WHERE e.workspace_id = ${ws} AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart} AND (${where})
+      WHERE e.workspace_id = ${ws} AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${includeDemo ? "" : " AND NOT e.demo"} AND (${where})
     ),
     bud AS (
       SELECT v.envelope_id, v.amount_reporting AS budget
@@ -153,7 +157,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
     act AS (
       SELECT sf.envelope_id, SUM(sf.amount_reporting) AS actual
       FROM ${t("spend_fact")} sf JOIN sel ON sel.id = sf.envelope_id
-      WHERE sf.workspace_id = ${ws} AND sf.period_date BETWEEN ${pStart} AND ${pEnd}
+      WHERE sf.workspace_id = ${ws} AND sf.period_date BETWEEN ${pStart} AND ${pEnd}${includeDemo ? "" : " AND NOT sf.demo"}
       GROUP BY sf.envelope_id
     )${
       withProjections

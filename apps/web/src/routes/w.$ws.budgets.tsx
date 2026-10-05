@@ -21,7 +21,7 @@ import { SavedViews } from "../features/explorer/saved-views.js";
 import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
-import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { demoStatusQuery, envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
 import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
@@ -112,6 +112,10 @@ function ExplorerPage(): ReactElement {
   // The timeline groups like the tree (structure or hierarchy template); it has its own data source.
   const view = search.view === "timeline" ? "tree" : search.view;
   const { data: snapshots = [] } = useQuery(snapshotsQuery(ws));
+  // T-5: demo budgets stay out of the Explorer once the workspace has real ones; while it is pure
+  // demo (onboarding, before the first real budget), it shows them so the workspace isn't blank.
+  const { data: demoStatus } = useQuery(demoStatusQuery(ws));
+  const includeDemo = (demoStatus?.envelopes ?? 0) > 0 && demoStatus?.hasRealBudgets === false;
   const comparing = search.compareTo ? (snapshots.find((x) => x.id === search.compareTo) ?? null) : null;
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -123,12 +127,12 @@ function ExplorerPage(): ReactElement {
   const labels = useExplorerLabels(ws);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, search.compareTo ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, search.compareTo ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, includeDemo, reload]);
   const source = useMemo(
     () =>
       !isTimeline && (byStructure || template || view === "pivot")
         ? new ExplorerRowSource(
-            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, compareTo: search.compareTo, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
+            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, compareTo: search.compareTo, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [], includeDemo },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
             // Only the current source reports: a replaced one (older filter) whose response lands

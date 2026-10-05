@@ -539,6 +539,7 @@ const samples: Record<string, readonly unknown[]> = {
     { name: "Default", path: ["client", "region", "country", "platform", "objective"], isDefault: true },
   ],
   UploadAssetInput: [{ contentType: "image/svg+xml", svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>" }],
+  PurgeDemoInput: [{ confirm: true }],
 };
 
 function isZodType(value: unknown): value is z.ZodType {

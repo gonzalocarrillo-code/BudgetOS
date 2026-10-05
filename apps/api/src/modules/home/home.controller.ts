@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } fr
 import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { CompleteTourDto, CreateWorkspaceDto, ListToursQueryDto, MarkNotificationsReadDto, UpdateTourDto } from "./dto.js";
+import { CompleteTourDto, CreateWorkspaceDto, ListToursQueryDto, MarkNotificationsReadDto, PurgeDemoDto, UpdateTourDto } from "./dto.js";
 import { getHome } from "./home.js";
 import { myNotifications, readNotifications } from "./notifications.js";
 import { completeTour, listTours, updateTour } from "../tours/tours.js";
@@ -74,7 +74,7 @@ export class HomeController {
 
   @Post("workspaces/:ws/demo-data/purge")
   @Permission("user.manage")
-  purge(@Tenant() auth: AuthContext) {
-    return purgeDemo(this.prisma, auth);
+  purge(@Tenant() auth: AuthContext, @Body() body: PurgeDemoDto) {
+    return purgeDemo(this.prisma, auth, body);
   }
 }

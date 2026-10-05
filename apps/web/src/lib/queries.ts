@@ -54,6 +54,16 @@ export const meQuery = queryOptions({
   staleTime: 60_000,
 });
 
+/** T-5 (audit): demo rows left, and whether the workspace has real (non-demo) budgets too. */
+export const DemoStatus = z.object({ envelopes: z.number(), targets: z.number(), hasRealBudgets: z.boolean().default(false) });
+export type DemoStatus = z.infer<typeof DemoStatus>;
+
+export const demoStatusQuery = (ws: string) =>
+  queryOptions({
+    queryKey: ["demo-data", ws],
+    queryFn: async () => DemoStatus.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/demo-data", { params: { path: { ws } } }))),
+  });
+
 export const registryQuery = (ws: string) =>
   queryOptions({
     queryKey: ["registry", ws],

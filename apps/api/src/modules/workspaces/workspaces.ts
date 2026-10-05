@@ -1,4 +1,4 @@
-import { CreatePolicyInput, CreateRuleInput, CreateWorkspaceInput, DomainError, TemplateSavedView, TourStep, newId, type Role } from "@budget/domain";
+import { CreatePolicyInput, CreateRuleInput, CreateWorkspaceInput, DomainError, PurgeDemoInput, TemplateSavedView, TourStep, newId, type Role } from "@budget/domain";
 import { audit, ensureDefaultTemplate, ensureDefaultTours, outbox, purgeDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
 import type { Prisma, PrismaClient, WorkspaceTemplate } from "@prisma/client";
 import { z } from "zod";
@@ -141,14 +141,19 @@ async function seedDemo(prisma: PrismaClient, auth: AuthContext, ctx: TenantCont
   );
 }
 
-/** GET /workspaces/:ws/demo-data — how many demo rows the workspace still has. */
+/** GET /workspaces/:ws/demo-data — how many demo rows the workspace still has, and T-5: whether it has real budgets too (the Explorer shows demo rows only while it does not). */
 export async function demoStatus(prisma: PrismaClient, auth: AuthContext) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  return withTenant(prisma, auth.ctx, async (tx) => ({ envelopes: await tx.envelope.count({ where: { workspaceId, demo: true } }), targets: await tx.target.count({ where: { workspaceId, demo: true } }) }));
+  return withTenant(prisma, auth.ctx, async (tx) => ({
+    envelopes: await tx.envelope.count({ where: { workspaceId, demo: true } }),
+    targets: await tx.target.count({ where: { workspaceId, demo: true } }),
+    hasRealBudgets: (await tx.envelope.count({ where: { workspaceId, demo: false } })) > 0,
+  }));
 }
 
-/** POST /workspaces/:ws/demo-data/purge — every demo row, in one transaction. */
-export async function purgeDemo(prisma: PrismaClient, auth: AuthContext) {
+/** POST /workspaces/:ws/demo-data/purge — every demo row, in one transaction. I-3: the caller must confirm. */
+export async function purgeDemo(prisma: PrismaClient, auth: AuthContext, raw: unknown) {
+  parseInput(PurgeDemoInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   return withTenant(
     prisma,

@@ -39,6 +39,14 @@ describe("compileAggregateBq", () => {
     expect(totals.sql).toMatch(/COUNT\(\*\) AS leaf_count FROM m$/);
   });
 
+  it("excludes demo envelopes and demo facts unless includeDemo (T-5)", () => {
+    const excluded = compileAggregateBq(q({ groupBy: ["country"], filter: leaves() }), period, "2026-06-30", "budget_os_dev");
+    expect(excluded.sql).toMatch(/AND NOT e\.demo AND \(/);
+    expect(excluded.sql).toMatch(/AND NOT sf\.demo\s+GROUP BY/);
+    const included = compileAggregateBq(q({ groupBy: ["country"], filter: leaves(), includeDemo: true }), period, "2026-06-30", "budget_os_dev");
+    expect(included.sql).not.toMatch(/\.demo/);
+  });
+
   it("refuses what BigQuery does not answer and a dataset that is not an identifier", () => {
     expect(bigQuerySupported(q({ groupBy: ["country"], filter: { logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: "q4" }] } }))).toBe(false);
     expect(bigQuerySupported(q({ groupBy: ["country"], asOf: "2026-01-01T00:00:00.000Z" }))).toBe(false);

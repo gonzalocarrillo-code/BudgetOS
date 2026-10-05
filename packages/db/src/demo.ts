@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DomainError } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { ensurePartitions, matchRunFacts, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 import type { Tx } from "./sql.js";
@@ -149,18 +150,51 @@ export async function seedDemoData(
   };
 }
 
+export interface PurgeSummary {
+  envelopes: number;
+  facts: number;
+  /** I-3: real facts that had matched onto a demo envelope, detached (not deleted) so they re-match. */
+  detachedFacts: number;
+  targets: number;
+  envelopeIds: string[];
+}
+
 /**
- * Deletes every demo row of the workspace in one statement group (spec §27): facts, target
- * versions and targets, what hangs off demo envelopes (alerts, rule state, threads' comments),
- * versions (their phasing cascades), and the envelopes, leaves first. Audit rows are kept.
+ * Deletes every demo row of the workspace in one statement group (spec §27, I-3). Only rows marked
+ * `demo = true` are deleted: a real fact that `matchRunFacts` happened to land on a demo envelope
+ * (same tuple, both live) is detached instead — `envelope_id` and `match_method` go back to NULL,
+ * so it sits in the unmatched queue until the next load of that row (same `source_row_hash`) runs
+ * `matchRunFacts` again and finds it a real envelope. `projection_fact` has no `demo` column (the
+ * demo dataset never writes projections, spec §27): every row of it on a demo envelope is real and
+ * is always detached, never deleted. A real target cannot be silently dropped this way — scopeType
+ * is fixed to an envelope, there is no "unmatch" for it — so the whole purge refuses first.
  */
-export async function purgeDemoData(tx: Tx, workspaceId: string): Promise<{ envelopes: number; facts: number; targets: number; envelopeIds: string[] }> {
+export async function purgeDemoData(tx: Tx, workspaceId: string): Promise<PurgeSummary> {
   const ids = (await tx.envelope.findMany({ where: { workspaceId, demo: true }, select: { id: true } })).map((e) => e.id);
-  const facts =
-    (await tx.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND (demo OR envelope_id = ANY(${ids}::uuid[]))`) +
-    (await tx.$executeRaw`DELETE FROM kpi_fact WHERE workspace_id = ${workspaceId}::uuid AND (demo OR envelope_id = ANY(${ids}::uuid[]))`) +
-    (await tx.$executeRaw`DELETE FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid AND envelope_id = ANY(${ids}::uuid[])`);
-  const demoTargets = (await tx.target.findMany({ where: { workspaceId, OR: [{ demo: true }, { envelopeId: { in: ids } }] }, select: { id: true } })).map((t) => t.id);
+  if (ids.length === 0) return { envelopes: 0, facts: 0, detachedFacts: 0, targets: 0, envelopeIds: [] };
+
+  const realTargets = (await tx.target.findMany({ where: { workspaceId, demo: false, envelopeId: { in: ids } }, select: { id: true } })).map((t) => t.id);
+  if (realTargets.length > 0) {
+    throw new DomainError("CONFLICT", "Real targets are attached to demo budgets; move or delete them first", { targetIds: realTargets });
+  }
+
+  let facts = 0;
+  let detachedFacts = 0;
+  for (const table of ["spend_fact", "kpi_fact"] as const) {
+    facts += await tx.$executeRawUnsafe(`DELETE FROM ${table} WHERE workspace_id = $1::uuid AND demo`, workspaceId);
+    detachedFacts += await tx.$executeRawUnsafe(
+      `UPDATE ${table} SET envelope_id = NULL, match_method = NULL WHERE workspace_id = $1::uuid AND NOT demo AND envelope_id = ANY($2::uuid[])`,
+      workspaceId,
+      ids,
+    );
+  }
+  detachedFacts += await tx.$executeRawUnsafe(
+    `UPDATE projection_fact SET envelope_id = NULL, match_method = NULL WHERE workspace_id = $1::uuid AND envelope_id = ANY($2::uuid[])`,
+    workspaceId,
+    ids,
+  );
+
+  const demoTargets = (await tx.target.findMany({ where: { workspaceId, demo: true }, select: { id: true } })).map((t) => t.id);
   await tx.target.updateMany({ where: { id: { in: demoTargets } }, data: { currentVersionId: null, draftVersionId: null } });
   await tx.targetVersion.deleteMany({ where: { targetId: { in: demoTargets } } });
   const targets = (await tx.target.deleteMany({ where: { id: { in: demoTargets } } })).count;
@@ -172,5 +206,5 @@ export async function purgeDemoData(tx: Tx, workspaceId: string): Promise<{ enve
   // Leaves before their parents (parent_id references envelope).
   await tx.envelope.updateMany({ where: { id: { in: ids } }, data: { parentId: null } });
   const envelopes = (await tx.envelope.deleteMany({ where: { id: { in: ids } } })).count;
-  return { envelopes, facts, targets, envelopeIds: ids };
+  return { envelopes, facts, detachedFacts, targets, envelopeIds: ids };
 }

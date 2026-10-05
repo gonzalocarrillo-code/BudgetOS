@@ -32,9 +32,11 @@ export interface EnvelopeSpec {
   currency?: string;
   createdAt?: string;
   versions?: VersionSpec[];
-  spend?: Array<{ date: string; amount: string }>;
-  kpi?: Array<{ date: string; metric: string; value: string }>;
+  spend?: Array<{ date: string; amount: string; demo?: boolean }>;
+  kpi?: Array<{ date: string; metric: string; value: string; demo?: boolean }>;
   projections?: Array<{ date: string; value: string; runId: string; loadedAt: string }>;
+  /** T-5: `demo = true` on the envelope, its versions, and (unless overridden per row) its spend and kpi facts. */
+  demo?: boolean;
 }
 
 export interface InsertedEnvelope {
@@ -121,8 +123,8 @@ export async function insertEnvelope(
   if (spec.geo) dims["geo"] = spec.geo;
   if (spec.platform) dims["platform"] = spec.platform;
   await owner.query(
-    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, owner_id, created_by, created_at, updated_at, parent_id)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::"EnvelopeStatus", $9, $10, $11, $11, $12)`,
+    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, owner_id, created_by, created_at, updated_at, parent_id, demo)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::"EnvelopeStatus", $9, $10, $11, $11, $12, $13)`,
     [
       id,
       workspaceId,
@@ -136,6 +138,7 @@ export async function insertEnvelope(
       org.users.u1,
       spec.createdAt ?? "2026-01-02T00:00:00Z",
       spec.parentId ?? null,
+      spec.demo ?? false,
     ],
   );
   for (const code of Object.values(dims)) {
@@ -151,9 +154,9 @@ export async function insertEnvelope(
   for (const [i, v] of (spec.versions ?? []).entries()) {
     const vid = randomUUID();
     await owner.query(
-      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, superseded_at)
-       VALUES ($1, $2, $3, $4, $4, $5::"VersionStatus", $6, $7, NULL)`,
-      [vid, id, i + 1, v.amount, v.status, org.users.u1, v.approvedAt ?? null],
+      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, superseded_at, demo)
+       VALUES ($1, $2, $3, $4, $4, $5::"VersionStatus", $6, $7, NULL, $8)`,
+      [vid, id, i + 1, v.amount, v.status, org.users.u1, v.approvedAt ?? null, spec.demo ?? false],
     );
     versionIds.push(vid);
     if (v.status === "APPROVED") current = vid;
@@ -164,16 +167,16 @@ export async function insertEnvelope(
   const dimsJson = JSON.stringify(dims);
   for (const s of spec.spend ?? []) {
     await owner.query(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-       VALUES ($1, $2, $3::jsonb, $4, 'USD', $5, $5, 'fixture', $6, $7)`,
-      [workspaceId, id, dimsJson, s.date, s.amount, randomUUID(), randomUUID()],
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo)
+       VALUES ($1, $2, $3::jsonb, $4, 'USD', $5, $5, 'fixture', $6, $7, $8)`,
+      [workspaceId, id, dimsJson, s.date, s.amount, randomUUID(), randomUUID(), s.demo ?? spec.demo ?? false],
     );
   }
   for (const k of spec.kpi ?? []) {
     await owner.query(
-      `INSERT INTO kpi_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, source_system, source_run_id, source_row_hash)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, 'fixture', $7, $8)`,
-      [workspaceId, id, dimsJson, k.date, k.metric, k.value, randomUUID(), randomUUID()],
+      `INSERT INTO kpi_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, source_system, source_run_id, source_row_hash, demo)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, 'fixture', $7, $8, $9)`,
+      [workspaceId, id, dimsJson, k.date, k.metric, k.value, randomUUID(), randomUUID(), k.demo ?? spec.demo ?? false],
     );
   }
   for (const p of spec.projections ?? []) {

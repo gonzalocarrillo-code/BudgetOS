@@ -6219,6 +6219,8 @@ export interface operations {
                     cursor?: string;
                     /** @default 200 */
                     limit?: number;
+                    /** @default false */
+                    includeDemo?: boolean;
                 };
             };
         };
@@ -7583,7 +7585,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo rows left: envelopes and targets */
+            /** @description Demo rows left: envelopes and targets, and whether the workspace has real (non-demo) budgets too */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7601,10 +7603,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": {
+                    confirm: boolean;
+                };
+            };
+        };
         responses: {
-            /** @description Every demo row deleted in one transaction; the template's configuration stays */
+            /** @description Every demo-only row deleted in one transaction; a real fact matched onto a demo envelope is detached, not deleted, and re-matches on its next load; the template's configuration stays */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A real (non-demo) target is attached to a demo envelope; move or delete it first */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8581,6 +8596,8 @@ export interface operations {
                         cursor?: string;
                         /** @default 200 */
                         limit?: number;
+                        /** @default false */
+                        includeDemo?: boolean;
                     };
                     filename?: string;
                 };

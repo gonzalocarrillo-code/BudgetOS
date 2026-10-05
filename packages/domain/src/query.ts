@@ -50,6 +50,12 @@ export const QueryRequest = z.object({
   sort: z.array(z.object({ key: z.string(), dir: z.enum(["asc", "desc"]) })).max(3).default([]),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(1000).default(200),
+  /**
+   * T-5 (audit): demo envelopes and demo facts (spec §27) are excluded by default, so a workspace
+   * with real budgets never mixes demo money into its totals. Home's demo banner query and the
+   * Explorer, while a workspace holds only demo data, opt in explicitly.
+   */
+  includeDemo: z.boolean().default(false),
 });
 export type QueryRequest = z.infer<typeof QueryRequest>;
 
