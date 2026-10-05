@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_HISTORY, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { assertLocalDatabase, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_HISTORY, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -417,6 +417,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   loadEnv(join(dirname(fileURLToPath(import.meta.url)), "../../../../packages/db/.env"));
+  assertLocalDatabase(process.env.DATABASE_URL);
   const app = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
   const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
   try {
