@@ -85,7 +85,7 @@ jobs:
             --service-account "$RUNTIME_SA" --set-cloudsql-instances "$SQL" --max-retries 0 --task-timeout 900s --memory 1Gi \
             --set-secrets "DATABASE_URL=budgetos-database-url:latest,APP_DATABASE_URL=budgetos-app-database-url:latest,APP_DB_PASSWORD=budgetos-db-app-password:latest,PUBLISHER_DB_PASSWORD=budgetos-db-publisher-password:latest,MCP_DB_PASSWORD=budgetos-db-mcp-password:latest" \
             --set-env-vars "SUPERADMIN_EMAIL=$SUPERADMIN_EMAIL,ORG_NAME=DEPT" \
-            --command sh --args="-c,cd /app && pnpm --filter @budget/db exec prisma migrate deploy && apps/api/node_modules/.bin/tsx apps/api/src/deploy/bootstrap.ts"
+            --command sh --args="-c,cd /app && apps/api/node_modules/.bin/tsx apps/api/src/deploy/bootstrap.ts --check-secrets && pnpm --filter @budget/db exec prisma migrate deploy && apps/api/node_modules/.bin/tsx apps/api/src/deploy/bootstrap.ts"
           gcloud run jobs execute budgetos-migrate --project "$PROJECT" --region "$REGION" --wait
       # budgetos-slack keeps one instance warm: Slack gives a button 3 seconds, and a cold start
       # (tsx compiling the API) takes 25–30.

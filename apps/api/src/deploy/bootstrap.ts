@@ -5,6 +5,29 @@ import { PrismaClient } from "@prisma/client";
 import { ensureDefaultMetrics } from "../modules/registry/commands/metrics.js";
 
 /**
+ * S-9 (docs/STACK_AUDIT_2026-10-04.md): the three login roles the migrations create carry the
+ * literal placeholder password until this file rotates it. Bootstrap must know all four deploy
+ * secrets exist BEFORE anything else runs — in particular before `prisma migrate deploy`, which
+ * is why `--check-secrets` (see the CLI dispatch below) validates this on its own, as an earlier
+ * step in the `budgetos-migrate` job than `bootstrap()` itself.
+ */
+export function assertDeploySecrets(env: NodeJS.ProcessEnv = process.env): void {
+  for (const key of ["APP_DB_PASSWORD", "PUBLISHER_DB_PASSWORD", "MCP_DB_PASSWORD", "SUPERADMIN_EMAIL"] as const) {
+    if (!env[key]) throw new Error(`${key} is required`);
+  }
+}
+
+/** `assertDeploySecrets` as a result instead of a throw, so the CLI exit code is unit-testable. */
+export function checkSecretsStatus(env: NodeJS.ProcessEnv = process.env): { ok: true } | { ok: false; message: string } {
+  try {
+    assertDeploySecrets(env);
+    return { ok: true };
+  } catch (err: unknown) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * The deployment's one-time setup (ADR-065), run by the `budgetos-migrate` Cloud Run job after
  * `prisma migrate deploy`, as the owner role. Idempotent: every run leaves the same state.
  *
@@ -17,16 +40,25 @@ import { ensureDefaultMetrics } from "../modules/registry/commands/metrics.js";
  *   attribute — an explicit, permanent, table-scoped policy. Nothing here, or anywhere else the
  *   owner connects, bypasses RLS on any other table.
  * - The login roles the migrations create get their passwords from Secret Manager (the migrations
- *   carry a placeholder).
+ *   carry a placeholder). S-9: before rotating, lock any role still on that placeholder
+ *   (`app_lock_placeholder_logins()`, from migration 20261010020000_role_placeholder_lock) so a
+ *   database where migrations ran but bootstrap never did cannot be reached with the public
+ *   password. Rotating a role re-enables LOGIN and records it in `app_role_state`.
  * - The organization and its superadmin exist: SUPERADMIN_EMAIL holds ORG_ADMIN org-wide, so they
  *   can create workspaces and add people in the org console. Everyone else is added there.
  */
 export async function bootstrap(owner: PrismaClient, env: NodeJS.ProcessEnv = process.env): Promise<{ orgId: string; userId: string }> {
+  assertDeploySecrets(env);
+  // app_lock_placeholder_logins() is SECURITY DEFINER (owned by `budget`, EXECUTE revoked from
+  // PUBLIC): altering a role's LOGIN attribute needs CREATEROLE, not RLS bypass, so this runs
+  // fine under W2-3's no-BYPASSRLS owner.
+  await owner.$executeRawUnsafe("SELECT app_lock_placeholder_logins()");
   for (const [role, key] of [["budget_app", "APP_DB_PASSWORD"], ["budget_publisher", "PUBLISHER_DB_PASSWORD"], ["budget_mcp", "MCP_DB_PASSWORD"]] as const) {
     const password = env[key];
     if (!password) throw new Error(`${key} is required`);
     // Role names are constants; the password is a quoted literal (no placeholders in ALTER ROLE).
-    await owner.$executeRawUnsafe(`ALTER ROLE ${role} PASSWORD '${password.replace(/'/g, "''")}'`);
+    await owner.$executeRawUnsafe(`ALTER ROLE ${role} LOGIN PASSWORD '${password.replace(/'/g, "''")}'`);
+    await owner.$executeRawUnsafe(`UPDATE app_role_state SET placeholder = false, rotated_at = now() WHERE role_name = '${role}'`);
   }
   const email = (env["SUPERADMIN_EMAIL"] ?? "").trim().toLowerCase();
   if (!email) throw new Error("SUPERADMIN_EMAIL is required");
@@ -65,12 +97,24 @@ export async function bootstrap(owner: PrismaClient, env: NodeJS.ProcessEnv = pr
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
-  bootstrap(owner)
-    .then((r) => process.stdout.write(`${JSON.stringify({ bootstrap: "ok", ...r })}\n`))
-    .catch((err: unknown) => {
-      process.stderr.write(`${String(err)}\n`);
+  if (process.argv.includes("--check-secrets")) {
+    // Validates env only; makes no connection. Run before `prisma migrate deploy` (deploy.yml) so
+    // a missing secret fails the deploy before anything touches the database.
+    const status = checkSecretsStatus();
+    if (status.ok) {
+      process.stdout.write("check-secrets: ok\n");
+    } else {
+      process.stderr.write(`${status.message}\n`);
       process.exitCode = 1;
-    })
-    .finally(() => void owner.$disconnect());
+    }
+  } else {
+    const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
+    bootstrap(owner)
+      .then((r) => process.stdout.write(`${JSON.stringify({ bootstrap: "ok", ...r })}\n`))
+      .catch((err: unknown) => {
+        process.stderr.write(`${String(err)}\n`);
+        process.exitCode = 1;
+      })
+      .finally(() => void owner.$disconnect());
+  }
 }
