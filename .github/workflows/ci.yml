@@ -68,6 +68,10 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # packages/db/src/datastream.test.ts reads packages/db/.env directly (unlike
+      # test-support/harness.ts, which guards with existsSync); local dev always has this file
+      # (copied from .env.example), so CI needs it too. Values match the job env above.
+      - run: cp packages/db/.env.example packages/db/.env
       # ADR-011: same image/flags as docker-compose.yml's gcs service. GitHub Actions service
       # containers cannot take a command, so start it directly instead of as a `services:` entry.
       - name: fake-gcs-server
