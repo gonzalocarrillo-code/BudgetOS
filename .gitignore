@@ -6,3 +6,11 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Terraform (infra/): the provider lock file for a root config (infra/envs/*) is committed; the
+# rest is a local working-directory cache and must never hold real state (no backend is configured
+# yet — see infra/envs/dmus-gonzalo/main.tf).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

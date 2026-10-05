@@ -155,6 +155,7 @@ T-0xx — <title> (Epic x.y — /goal: <paste the goal line from the plan>)
 | Experiments | §25 | §4.12 |
 | Manual result entry | §26 | §6.1 |
 | Home, tours, workspace templates | §27 | §11.7 |
+| Backups, restore | — | docs/runbooks/restore.md |
 
 ## 9. Things that look reasonable here but are wrong
 

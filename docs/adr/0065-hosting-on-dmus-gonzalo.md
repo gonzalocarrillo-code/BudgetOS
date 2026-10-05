@@ -21,3 +21,35 @@ The owner hosts Budget OS in the GCP project `dmus-gonzalo`, which runs other sy
 - The MCP server is not deployed yet.
 - `budgetos-slack` is public by design; every route on it checks Slack's signature.
 - Operating notes are in `docs/runbooks/deploy.md`.
+
+## Backups and recovery (2026-10-05)
+
+`docs/STACK_AUDIT_2026-10-04.md` (B-1, B-4) found that `budgetos-db` and
+`dmus-gonzalo-budgetos-uploads` were created once by hand with no Terraform, no restore runbook and
+no recorded RPO/RTO. Reading the live settings (`gcloud sql instances describe budgetos-db`,
+`gcloud storage buckets describe gs://dmus-gonzalo-budgetos-uploads`, both 2026-10-05) confirmed:
+daily backups were on (7 retained, 07:00 UTC) but **point-in-time recovery was off**, **deletion
+protection was off**, and the uploads bucket had **no versioning and no lifecycle rules** (only the
+default 7-day soft-delete window).
+
+**Decision:** turn point-in-time recovery on (7-day transaction log retention, the edition's
+maximum), raise retained daily backups from 7 to 35, turn on deletion protection at both the
+Terraform and the GCP level, and add versioning plus two lifecycle rules (delete `exports/` objects
+after 7 days per ADR-017; delete non-current object versions after 30 days) to the uploads bucket.
+Both resources move under Terraform (`infra/modules/cloudsql`), adopted via `import` blocks rather
+than recreated, with ZONAL availability, `db-g1-small` and the public IP left unchanged — a private
+IP migration is a separate, larger change and is out of scope here. `docs/runbooks/restore.md`
+records the resulting RPO/RTO (PITR: RPO ≈ minutes, RTO ≈ 30–60 min; backup-only, as before this
+change: RPO up to 24 h), the clone-from-PITR and restore-from-backup procedures, the migration
+rollback procedure, and a drill log — empty until the first drill is actually run.
+
+## Consequences (2026-10-05 addendum)
+- `terraform apply` for `infra/modules/cloudsql` is a deliberate action for a project owner
+  (`docs/runbooks/deploy.md` "One-time setup"), not automatic; this PR only adds the module and
+  does not run it.
+- The BigQuery replica and Datastream CDC pipeline (spec §20, D-001) are still not deployed to
+  `dmus-gonzalo` — only the unrelated `budgetos_closures` dataset exists there — and
+  `infra/modules/datastream` cannot be instantiated for this project until the private-IP migration
+  above happens, since it assumes a VPC-peered Cloud SQL instance.
+- The restore runbook's drill table has one open row ("pending — first drill"); scheduling that
+  drill is tracked separately, not by this change.
