@@ -114,16 +114,37 @@ function parseNumber(raw: string | number, dp: number): string | null {
   return new Decimal(s).toDecimalPlaces(dp, Decimal.ROUND_HALF_UP).toFixed(dp);
 }
 
-/** sha256(sourceId + JSON of the row with sorted keys) (spec §14 step 3); KPI facts add the metric. */
-export function rowHash(sourceId: string, row: RawRow, suffix = ""): string {
-  const sorted = Object.fromEntries(Object.keys(row).sort().map((k) => [k, row[k] ?? null]));
-  return createHash("sha256").update(sourceId + JSON.stringify(sorted) + suffix).digest("hex");
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+
+/** What identifies a row: the source's row id, or its business key (ADR-071). */
+export type RowIdentity = { rowId: string } | { periodDate: string; dimensionValues: Record<string, string>; matchKey: string | null };
+
+/**
+ * ADR-071 (replaces spec §14 step 3's hash of the whole row): a fact's natural key. With a row_id
+ * column it is the source and the row id; otherwise the business key: the source, the date, the
+ * dimension tuple (sorted) and the raw match key. `part` names the fact within the row (`spend`,
+ * `kpi:<metric>:<attribution>`, `projection:<metric>`). Never the measure, never an ignored column,
+ * so a restated amount is the same fact. A business key that repeats within one extract gets its
+ * occurrence appended by the pipeline (occurrenceKey).
+ */
+export function naturalKey(sourceId: string, identity: RowIdentity, part: string): string {
+  if ("rowId" in identity) return sha256(JSON.stringify(["nk1", sourceId, "row", identity.rowId, part]));
+  const tuple = Object.keys(identity.dimensionValues)
+    .sort()
+    .map((k) => [k, identity.dimensionValues[k]]);
+  return sha256(JSON.stringify(["nk1", sourceId, identity.periodDate, tuple, identity.matchKey, part]));
+}
+
+/** The n-th (n ≥ 1) repeat of a business key within one extract. */
+export function occurrenceKey(key: string, n: number): string {
+  return n === 0 ? key : sha256(`${key}#${n}`);
 }
 
 export function normalize(row: RawRow, mapping: SourceMapping, registry: RegistryIndex, sourceId: string, keys: MatchKeys = { envelopes: new Map(), pattern: null }): NormalizeResult {
   let dimensionValues: Record<string, string> = {};
   let viaExternalId = false;
   let matchKey: string | null = null;
+  let rowId: string | null = null;
   let periodDate: string | null = null;
   let amount: string | null = null;
   let currency: string | null = null;
@@ -187,6 +208,10 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
       case "match_key":
         matchKey = v;
         break;
+      case "row_id":
+        if (v === null) return { rejected: `missing ${column}` };
+        rowId = v;
+        break;
       case "ignore":
         break;
     }
@@ -217,20 +242,22 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
   const matchHint = viaExternalId ? ("external_id" as const) : viaMatchKey ? ("match_key" as const) : undefined;
 
   const facts: NormalizedFact[] = [];
-  const base = { dimensionValues, periodDate, ...(matchHint ? { matchHint } : {}) };
+  const base = { dimensionValues, periodDate, ...(matchHint ? { matchHint } : {}), ...(rowId !== null ? { byRowId: true as const } : {}) };
+  const identity: RowIdentity = rowId !== null ? { rowId } : { periodDate, dimensionValues, matchKey };
+  const key = (part: string) => naturalKey(sourceId, identity, part);
   if (mapping.kind === "spend" || mapping.kind === "spend+kpi") {
     if (amount !== null) {
       if (currency === null) return { rejected: "no currency for the amount" };
-      facts.push({ kind: "spend", ...base, currency, amount, rowHash: rowHash(sourceId, row) });
+      facts.push({ kind: "spend", ...base, currency, amount, rowHash: key("spend") });
     } else if (mapping.kind === "spend") return { rejected: "missing amount" };
   }
   if (mapping.kind === "kpi" || mapping.kind === "spend+kpi") {
-    for (const k of kpis) facts.push({ kind: "kpi", ...base, metric: k.metric, value: k.value, ...(k.attributionModel ? { attributionModel: k.attributionModel } : {}), rowHash: rowHash(sourceId, row, `:${k.metric}`) });
+    for (const k of kpis) facts.push({ kind: "kpi", ...base, metric: k.metric, value: k.value, ...(k.attributionModel ? { attributionModel: k.attributionModel } : {}), rowHash: key(`kpi:${k.metric}:${k.attributionModel ?? ""}`) });
   }
   if (mapping.kind === "projection") {
     if (projection === null) return { rejected: "missing projection value" };
     if (formulaVersion === null || horizonEnd === null) return { rejected: "missing formula_version or horizon_end" };
-    facts.push({ kind: "projection", ...base, metric: projection.metric, value: projection.value, formulaVersion, horizonEnd, rowHash: rowHash(sourceId, row) });
+    facts.push({ kind: "projection", ...base, metric: projection.metric, value: projection.value, formulaVersion, horizonEnd, rowHash: key(`projection:${projection.metric}`) });
   }
   if (facts.length === 0) return { rejected: "no values in the row" };
   return { facts };

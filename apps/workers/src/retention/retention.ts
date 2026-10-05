@@ -40,7 +40,8 @@ export class BigQueryReplicaTotals implements ReplicaTotals {
     const out: MonthTotals[] = [];
     for (const f of FACT_TABLES) {
       const [rows] = await this.client.query({
-        query: `SELECT COUNT(*) AS n, CAST(ROUND(COALESCE(SUM(CAST(${f.amount} AS BIGNUMERIC)), 0), 2) AS STRING) AS amount
+        // As factMonthTotals: every row counted, live rows summed (ADR-071; Datastream replicates superseded_at).
+        query: `SELECT COUNT(*) AS n, CAST(ROUND(COALESCE(SUM(IF(superseded_at IS NULL, CAST(${f.amount} AS BIGNUMERIC), NULL)), 0), 2) AS STRING) AS amount
                 FROM \`${this.dataset}.${f.table}\`
                 WHERE workspace_id = @ws AND period_date >= @m AND period_date < DATE_ADD(@m, INTERVAL 1 MONTH)`,
         params: { ws: workspaceId, m: month },

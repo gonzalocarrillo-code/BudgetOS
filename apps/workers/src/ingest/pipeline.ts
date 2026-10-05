@@ -1,4 +1,4 @@
-import { SourceConfig, SourceMapping, compileParsePattern, csvCell } from "@budget/domain";
+import { DomainError, SourceConfig, SourceMapping, compileParsePattern, csvCell, isIncrementalSource, rowIdentityProblem } from "@budget/domain";
 import {
   audit,
   bumpDataVersion,
@@ -8,6 +8,9 @@ import {
   matchRunFacts,
   outbox,
   runCoverage,
+  runEnvelopes,
+  supersedeMovedFacts,
+  supersedeUnseenFacts,
   upsertKpiFacts,
   upsertSpendFacts,
   withTenant,
@@ -23,7 +26,7 @@ import { Decimal } from "decimal.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { log } from "../log.js";
 import { connectorFor } from "./connectors/index.js";
-import { RegistryIndex, normalize, type MatchKeys, type RegistryValue } from "./normalize.js";
+import { RegistryIndex, normalize, occurrenceKey, type MatchKeys, type RegistryValue } from "./normalize.js";
 import type { ObjectStore } from "./object-store.js";
 import type { Connector, DataSourceRef, RawRow } from "./types.js";
 
@@ -31,6 +34,16 @@ import type { Connector, DataSourceRef, RawRow } from "./types.js";
  * runIngest (spec §14 pipeline): stream the source → normalize and validate against the registry →
  * upsert facts in batches → write rejected rows to the object store → match the run's facts to
  * envelopes → finish the run with one audit_event and one `facts.loaded` outbox row.
+ *
+ * ADR-071: a fact is keyed by its natural key (the source's row_id, or its business key), never by
+ * its measure, so a restated row updates its fact. A run is either
+ * - **full** (CSV, Sheets, a warehouse table without an updated-at column, the first run of an
+ *   incremental source, or a requested full resync): authoritative for its source over the dates it
+ *   covers. At the end, the source's live facts in that range the run did not load are superseded
+ *   (closed periods it may not restate are left alone); or
+ * - **incremental** (Snowflake, BigQuery with `updatedAtColumn`): only rows changed since the last
+ *   run, minus an overlap window; each upserts by row id, and a row that moved to another date
+ *   supersedes its old date. It cannot see deletes; a full resync can.
  */
 
 export interface IngestDeps {
@@ -56,6 +69,11 @@ export interface IngestResult {
 }
 
 const BATCH = 5_000;
+/**
+ * I-30: an incremental run re-reads rows updated up to this long before the previous run started,
+ * for warehouse rows committed late with an earlier updated-at. Row-id upserts make the re-read harmless.
+ */
+export const SINCE_OVERLAP_MS = 60 * 60 * 1000;
 const TX = { timeoutMs: 120_000 };
 
 function systemCtx(workspaceId: string, orgId: string, runId: string): TenantContext {
@@ -125,21 +143,30 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     if (source === null || source.workspaceId !== tenant.workspaceId) throw new Error(`source ${run.sourceId} not found in workspace`);
     await tx.ingestRun.update({ where: { id: runId }, data: { status: "running", startedAt: new Date() } });
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { reportingCurrency: true } });
-    const previous = await tx.ingestRun.findFirst({ where: { sourceId: source.id, status: "ok" }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
+    const previous = await tx.ingestRun.findFirst({ where: { sourceId: source.id, status: "ok" }, orderBy: { startedAt: "desc" }, select: { startedAt: true, summary: true } });
     // Facts dated in a closed period are rejected unless the run is flagged as its restatement (spec §15).
-    const restatementOf = ((run.summary ?? {}) as { restatementOf?: string }).restatementOf ?? null;
+    const requested = (run.summary ?? {}) as { restatementOf?: string; mode?: string };
+    const restatementOf = requested.restatementOf ?? null;
     const closed = (await closedPeriods(tx, tenant.workspaceId)).filter((c) => c.closureId !== restatementOf);
     // §24.3 step 2: every live envelope's match key → its tuple (only when the mapping has a match_key column).
     const parsed = SourceMapping.safeParse(source.mapping);
     const hasKey = parsed.success && Object.values(parsed.data.columns).some((c) => "role" in c && c.role === "match_key");
     const keyed = hasKey ? await tx.envelope.findMany({ where: { workspaceId: tenant.workspaceId, status: { not: "ARCHIVED" }, matchKey: { not: null } }, select: { matchKey: true, dimensionValues: true } }) : [];
     const keys: MatchKeys = { envelopes: new Map(keyed.map((e) => [String(e.matchKey).toLowerCase(), e.dimensionValues as Record<string, string>])), pattern: source.parsePattern ? compileParsePattern(source.parsePattern) : null };
-    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since: previous?.startedAt, closed, restatementOf, keys };
+    // ADR-071: incremental only after a run that already keyed its facts (a run before ADR-071 has no `mode`).
+    const previousKeyed = previous !== null && typeof (previous.summary as { mode?: unknown } | null)?.mode === "string";
+    const since = requested.mode !== "full" && previousKeyed ? new Date(previous.startedAt.getTime() - SINCE_OVERLAP_MS) : undefined;
+    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since, closed, restatementOf, keys };
   });
 
   try {
     const config = SourceConfig.parse(setup.source.config);
     const mapping = SourceMapping.parse(setup.source.mapping);
+    const identityProblem = rowIdentityProblem(config, mapping);
+    if (identityProblem) throw new DomainError("VALIDATION", identityProblem, { sourceId: setup.source.id });
+    const mode: "full" | "incremental" = isIncrementalSource(config) && setup.since !== undefined ? "incremental" : "full";
+    const since = mode === "incremental" ? setup.since : undefined;
+    const byRowId = Object.values(mapping.columns).some((c) => "role" in c && c.role === "row_id");
     const unknown = Object.values(mapping.columns).flatMap((c) => ("dimension" in c && !setup.registry.has(c.dimension) ? [c.dimension] : []));
     if (unknown.length) throw new Error(`mapping names unknown dimensions: ${[...new Set(unknown)].join(", ")}`);
     const groups = setup.keys.pattern ? [...(setup.source.parsePattern ?? "").matchAll(/\(\?<([a-z][a-z0-9_]*)>/g)].map((m) => m[1] as string) : [];
@@ -156,6 +183,10 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     let rowsAccepted = 0;
     const rejected: Array<{ line: number; row: RawRow; reason: string }> = [];
     let batch: Array<{ line: number; row: RawRow }> = [];
+    // ADR-071: how often each business key has occurred in this extract (the occurrence is part of the key).
+    const occurrences = new Map<string, number>();
+    let covered: { from: string; to: string } | null = null;
+    const moved = { count: 0, envelopeIds: new Set<string>() };
 
     const flush = async () => {
       if (batch.length === 0) return;
@@ -174,6 +205,8 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
               rejected.push({ line, row, reason: res.rejected });
               continue;
             }
+            const date = res.facts[0]?.periodDate;
+            if (date !== undefined) covered = covered === null ? { from: date, to: date } : { from: date < covered.from ? date : covered.from, to: date > covered.to ? date : covered.to };
             const pending: { spend: SpendFactInput[]; kpi: KpiFactInput[]; projection: ProjectionFactInput[] } = { spend: [], kpi: [], projection: [] };
             let reason: string | null = null;
             for (const f of res.facts) {
@@ -199,6 +232,13 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
               rejected.push({ line, row, reason });
               continue;
             }
+            if (!byRowId) {
+              for (const f of [...pending.spend, ...pending.kpi]) {
+                const n = occurrences.get(f.rowHash) ?? 0;
+                occurrences.set(f.rowHash, n + 1);
+                f.rowHash = occurrenceKey(f.rowHash, n);
+              }
+            }
             spend.push(...pending.spend);
             kpi.push(...pending.kpi);
             projection.push(...pending.projection);
@@ -206,15 +246,26 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
           }
           const dates = [...spend, ...kpi, ...projection].map((f) => f.periodDate).sort();
           if (dates.length) await ensurePartitions(tx, dates[0] as string, dates[dates.length - 1] as string);
-          await upsertSpendFacts(tx, load, spend);
-          await upsertKpiFacts(tx, load, kpi);
+          // One statement may not upsert a key twice: a row id delivered twice in a batch keeps its last delivery.
+          const last = <T extends { rowHash: string; periodDate: string }>(rows: T[]) => [...new Map(rows.map((r) => [`${r.rowHash}|${r.periodDate}`, r])).values()];
+          const spendRows = last(spend);
+          const kpiRows = last(kpi);
+          await upsertSpendFacts(tx, load, spendRows);
+          await upsertKpiFacts(tx, load, kpiRows);
           await insertProjectionFacts(tx, load, projection);
+          if (byRowId) {
+            for (const [table, rows] of [["spend_fact", spendRows], ["kpi_fact", kpiRows]] as const) {
+              const m = await supersedeMovedFacts(tx, tenant.workspaceId, runId, table, rows.map((r) => r.rowHash));
+              moved.count += m.count;
+              for (const e of m.envelopeIds) moved.envelopeIds.add(e);
+            }
+          }
         },
         TX,
       );
     };
 
-    for await (const row of connector.read(ref, secret, setup.since)) {
+    for await (const row of connector.read(ref, secret, since)) {
       rowsRead += 1;
       batch.push({ line: rowsRead + 1, row }); // line 1 is the header
       if (batch.length >= batchSize) await flush();
@@ -236,18 +287,26 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
       prisma,
       ctx,
       async (tx) => {
-        const envelopeIds = await matchRunFacts(tx, tenant.workspaceId, runId);
+        // ADR-071: a full extract supersedes the source's facts it no longer has, over the dates it covers.
+        const unseen =
+          mode === "full" && covered !== null
+            ? await supersedeUnseenFacts(tx, { workspaceId: tenant.workspaceId, sourceId: setup.source.id, runId, from: covered.from, to: covered.to, keep: setup.closed.map((c) => ({ start: c.start, end: c.end })) })
+            : { spend: 0, kpi: 0, projection: 0, envelopeIds: [] };
+        const matched = await matchRunFacts(tx, tenant.workspaceId, runId);
+        // Every envelope whose facts this run loaded, changed or superseded: their roll-ups are stale.
+        const envelopeIds = [...new Set([...matched, ...(await runEnvelopes(tx, tenant.workspaceId, runId)), ...unseen.envelopeIds, ...moved.envelopeIds])].sort();
+        const superseded = unseen.spend + unseen.kpi + unseen.projection + moved.count;
         const coverage = await runCoverage(tx, tenant.workspaceId, runId);
         const matchCoverage = new Decimal(coverage.spend).isZero() ? "1" : new Decimal(coverage.matchedSpend).div(coverage.spend).toDecimalPlaces(6).toString();
-        const summary = { ...coverage, matchCoverage, envelopes: envelopeIds.length, rejectReasons: reasons, ...(setup.restatementOf ? { restatementOf: setup.restatementOf } : {}) };
+        const summary = { ...coverage, matchCoverage, envelopes: envelopeIds.length, rejectReasons: reasons, mode, superseded, coveredRange: covered, ...(setup.restatementOf ? { restatementOf: setup.restatementOf } : {}) };
         await tx.ingestRun.update({
           where: { id: runId },
           data: { status: "ok", finishedAt: new Date(), rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, summary: summary as unknown as Prisma.InputJsonObject },
         });
-        await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "ingest.run.finished", entityType: "ingest_run", entityId: runId, after: { sourceId: setup.source.id, rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, matchCoverage }, requestId: ctx.requestId });
+        await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "ingest.run.finished", entityType: "ingest_run", entityId: runId, after: { sourceId: setup.source.id, rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, matchCoverage, mode, superseded, coveredRange: covered }, requestId: ctx.requestId });
         await outbox(tx, { workspaceId: tenant.workspaceId, topic: "facts.loaded", payload: { runId, sourceId: setup.source.id, envelopeIds } });
         await bumpDataVersion(tx, tenant.workspaceId);
-        log.info({ runId, sourceId: setup.source.id, workspaceId: tenant.workspaceId, requestId: ctx.requestId, rowsRead, rowsRejected: rejected.length, matchCoverage }, "ingest run finished");
+        log.info({ runId, sourceId: setup.source.id, workspaceId: tenant.workspaceId, requestId: ctx.requestId, rowsRead, rowsRejected: rejected.length, matchCoverage, mode, superseded }, "ingest run finished");
         return { runId, status: "ok" as const, rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, coverage: { ...coverage, matchCoverage }, envelopeIds };
       },
       TX,

@@ -29,12 +29,16 @@ export async function factMonthsBefore(tx: Tx, workspaceId: string, before: stri
   return rows.map((r) => r.m);
 }
 
-/** Row count and Σ amount per fact table for one month (yyyy-MM-01). */
+/**
+ * Row count and Σ amount per fact table for one month (yyyy-MM-01). `rows` counts every row, superseded
+ * or not (all of them are deleted, so all must be in the replica); `amount` sums the live ones (what
+ * reports read, ADR-071), so a supersession the replica has not caught up with holds the month.
+ */
 export async function factMonthTotals(tx: Tx, workspaceId: string, month: string): Promise<MonthTotals[]> {
   const out: MonthTotals[] = [];
   for (const f of FACT_TABLES) {
     const [row] = await tx.$queryRawUnsafe<Array<{ rows: bigint; amount: string }>>(
-      `SELECT count(*) AS rows, coalesce(sum(${f.amount}), 0)::numeric(18,2)::text AS amount FROM ${f.table}
+      `SELECT count(*) AS rows, coalesce(sum(${f.amount}) FILTER (WHERE superseded_at IS NULL), 0)::numeric(18,2)::text AS amount FROM ${f.table}
        WHERE workspace_id = $1::uuid AND period_date >= $2::date AND period_date < ($2::date + interval '1 month')`,
       workspaceId,
       month,
@@ -55,6 +59,6 @@ export async function deleteFactMonth(tx: Tx, workspaceId: string, month: string
 
 /** The newest spend fact's date (yyyy-MM-dd), or null: how fresh the actuals are. */
 export async function lastFactDate(tx: Tx, workspaceId: string): Promise<string | null> {
-  const [row] = await tx.$queryRaw<Array<{ d: string | null }>>`SELECT max(period_date)::text AS d FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+  const [row] = await tx.$queryRaw<Array<{ d: string | null }>>`SELECT max(period_date)::text AS d FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL`;
   return row?.d ?? null;
 }

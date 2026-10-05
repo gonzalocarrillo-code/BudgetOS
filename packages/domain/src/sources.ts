@@ -27,6 +27,8 @@ export const RoleColumn = z.discriminatedUnion("role", [
   z.object({ role: z.literal("horizon_end") }).strict(),
   /** T-036 (§24.3): compared with envelope.match_key, or parsed with the source's parse_pattern. */
   z.object({ role: z.literal("match_key") }).strict(),
+  /** ADR-071: the source's stable primary key. Required for incremental sources; a re-delivered row updates its fact. */
+  z.object({ role: z.literal("row_id") }).strict(),
   z.object({ role: z.literal("ignore") }).strict(),
 ]);
 
@@ -43,6 +45,7 @@ export const SourceMapping = z
     const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: ["columns"] });
     if (count("period_date") !== 1) issue("Map exactly one period_date column");
     if (count("match_key") > 1) issue("Map at most one match_key column");
+    if (count("row_id") > 1) issue("Map at most one row_id column");
     if (!Object.values(m.columns).some((c) => "dimension" in c) && count("match_key") === 0) issue("Map at least one dimension column, or a match_key column");
     if (m.kind === "spend" || m.kind === "spend+kpi") {
       if (count("amount") !== 1) issue("A spend source maps exactly one amount column");
@@ -87,6 +90,24 @@ export const SourceConfig = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 export type SourceConfig = z.infer<typeof SourceConfig>;
+
+/**
+ * ADR-071: a source read incrementally (only the rows changed since its last run): Snowflake
+ * (`UPDATED_AT`) and BigQuery with an `updatedAtColumn`. Every other source is a full extract.
+ */
+export function isIncrementalSource(config: SourceConfig): boolean {
+  return config.kind === "snowflake" || (config.kind === "bigquery" && config.updatedAtColumn !== undefined);
+}
+
+/**
+ * ADR-071: why a source cannot identify its rows, or null. An incremental run cannot see which
+ * earlier row a changed row replaces unless the mapping names the source's primary key (`row_id`).
+ */
+export function rowIdentityProblem(config: SourceConfig, mapping: SourceMapping): string | null {
+  if (!isIncrementalSource(config)) return null;
+  if (Object.values(mapping.columns).some((c) => "role" in c && c.role === "row_id")) return null;
+  return "An incremental source (read by its updated-at column) needs a row_id column: map the column that is the table's stable primary key as Row ID";
+}
 
 /** POST /workspaces/:ws/sources. */
 export const CreateSourceInput = z.object({

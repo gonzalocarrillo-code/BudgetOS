@@ -1,11 +1,14 @@
 import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
+import { QueryRequest } from "@budget/domain";
 import { outbox, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
+import { compileQuery } from "@budget/query-planner";
 import { Storage } from "@google-cloud/storage";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GcsObjectStore, MemoryObjectStore } from "./object-store.js";
 import { runIngest, type IngestDeps } from "./pipeline.js";
+import type { Connector, RawRow } from "./types.js";
 import { handleIngestRequested } from "./worker.js";
 
 /**
@@ -171,6 +174,9 @@ describe("runIngest (spec §14)", () => {
     expect(await count(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid`, ws)).toBe(before);
     expect(await count(`SELECT count(*) AS n FROM kpi_fact WHERE workspace_id = $1::uuid`, ws)).toBe(5);
     expect(again.coverage).toMatchObject({ spendRows: 5, matchedSpendRows: 3, matchCoverage: "0.826087" });
+    // ADR-071 (c): the identical file supersedes nothing and duplicates nothing.
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: again.runId } })).summary).toMatchObject({ mode: "full", superseded: 0, coveredRange: { from: "2025-12-01", to: "2030-06-01" } }); // the rows it read, rejected ones included
+    expect(await count(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND superseded_at IS NOT NULL`, ws)).toBe(0);
   });
 
   it("queues unmatched spend by tuple", async () => {
@@ -190,6 +196,9 @@ describe("runIngest (spec §14)", () => {
     expect(blocked).toMatchObject({ rowsRead: 9, rowsAccepted: 4, rowsRejected: 5 });
     const report = String(store.objects.get(blocked.errorReportUri ?? "")?.body ?? "");
     expect(report.split("\n").filter((l) => l.includes("period 2026-02 is closed"))).toHaveLength(2);
+    // ADR-071: a run never supersedes facts in a closed period it may not restate.
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: blocked.runId } })).summary).toMatchObject({ superseded: 0 });
+    expect(await count(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND period_date = '2026-02-01' AND superseded_at IS NULL`, ws)).toBe(2);
 
     const flagged = randomUUID();
     await owner.ingestRun.create({ data: { id: flagged, sourceId, status: "queued", summary: { restatementOf: closureId } } });
@@ -225,6 +234,137 @@ describe("ingest worker (ingest.requested)", () => {
     expect(first).toMatchObject({ status: "ok", runId });
     expect(await handleIngestRequested(app, deps(), body)).toEqual({ outcome: "duplicate" });
     expect(await count(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'ingest.run.finished'`, runId)).toBe(1);
+  });
+});
+
+/**
+ * ADR-071 fact identity: a fact is its source's business key (or the source's `row_id`), never its
+ * measure. A full extract is authoritative for the dates it covers; an incremental run upserts by row id.
+ */
+describe("fact identity and reconciliation (ADR-071)", () => {
+  const live = (sql: string, ...args: unknown[]) => count(sql.replace("WHERE", "WHERE superseded_at IS NULL AND"), ...args);
+  const month = async (envelopeId: string, m: string) =>
+    (await owner.$queryRawUnsafe<Array<{ amount: string; n: bigint }>>(`SELECT amount_reporting::text AS amount, fact_count AS n FROM spend_month WHERE workspace_id = $1::uuid AND envelope_id = $2::uuid AND month = $3::date`, ws, envelopeId, m)).map((r) => ({ amount: r.amount, n: Number(r.n) }));
+  const actual = async (envelopeId: string, start: string, end: string) => {
+    const q = QueryRequest.parse({ workspaceId: ws, measures: ["actual"], period: { kind: "range", start, end }, limit: 10 });
+    const c = compileQuery(q, { start, end }, "2026-12-31", { hasProjections: false, envelopeIds: [envelopeId] });
+    const [row] = await withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<{ actual: unknown }>>(c.sql, ...c.values));
+    return String(row?.actual);
+  };
+  const queue = async (source: string, summary: Record<string, unknown> = {}) => {
+    const id = randomUUID();
+    await owner.ingestRun.create({ data: { id, sourceId: source, status: "queued", summary: summary as never } });
+    return id;
+  };
+
+  describe("incremental warehouse source (row_id)", () => {
+    const bq = randomUUID();
+    let rows: RawRow[] = [];
+    const sinces: Array<Date | undefined> = [];
+    const connector: Connector = {
+      kind: "bigquery",
+      async *read(_s, _secret, since) {
+        sinces.push(since);
+        for (const r of rows) yield r;
+      },
+    };
+    const wh = (): IngestDeps => ({ ...deps(), connector: () => connector });
+    const row = (id: string, day: string, spend: string, updated: string): RawRow => ({ ID: id, COUNTRY: "BR", PLATFORM: "meta", DAY: day, SPEND: spend, CCY: "USD", UPDATED_AT: updated });
+    const whMapping = { kind: "spend", columns: { ID: { role: "row_id" }, COUNTRY: { dimension: "country" }, PLATFORM: { dimension: "platform", transform: "lower" }, DAY: { role: "period_date" }, SPEND: { role: "amount" }, CCY: { role: "currency" }, UPDATED_AT: { role: "ignore" } } };
+
+    beforeAll(async () => {
+      await owner.dataSource.create({ data: { id: bq, workspaceId: ws, kind: "bigquery", name: "warehouse", config: { kind: "bigquery", projectId: "p", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" }, mapping: whMapping } });
+    });
+
+    it("(a) a re-delivered row with a changed amount updates its one fact; spend_month keeps one fact with the new amount", async () => {
+      rows = [row("r1", "2026-05-03", "1000.00", "2026-05-04T00:00:00Z"), row("r2", "2026-05-04", "10.00", "2026-05-05T00:00:00Z")];
+      const first = await runIngest(wh(), tenant, await queue(bq));
+      expect(sinces.at(-1)).toBeUndefined(); // the first run reads everything
+      expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: first.runId } })).summary).toMatchObject({ mode: "full", superseded: 0 });
+      expect(await month(env["brMeta"] as string, "2026-05-01")).toEqual([{ amount: "1010.00", n: 2 }]);
+
+      rows = [row("r1", "2026-05-03", "1200.00", "2026-05-09T00:00:00Z")]; // the warehouse restated r1
+      const second = await runIngest(wh(), tenant, await queue(bq));
+      const since = sinces.at(-1);
+      expect(since).toBeInstanceOf(Date);
+      const started = (await owner.ingestRun.findUniqueOrThrow({ where: { id: first.runId } })).startedAt;
+      expect(since?.getTime()).toBeLessThan(started.getTime()); // an overlap window before the last run (I-30)
+      expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: second.runId } })).summary).toMatchObject({ mode: "incremental", superseded: 0 });
+      const r1 = await owner.$queryRawUnsafe<Array<{ amount: string; superseded: boolean }>>(
+        `SELECT amount::text, superseded_at IS NOT NULL AS superseded FROM spend_fact WHERE workspace_id = $1::uuid AND period_date = '2026-05-03'`,
+        ws,
+      );
+      expect(r1).toEqual([{ amount: "1200.00", superseded: false }]);
+      // An incremental run cannot see what it was not sent: r2 stays.
+      expect(await month(env["brMeta"] as string, "2026-05-01")).toEqual([{ amount: "1210.00", n: 2 }]);
+      expect(await actual(env["brMeta"] as string, "2026-05-01", "2026-05-31")).toBe("1210");
+    });
+
+    it("a row whose date moved leaves its old date (superseded there)", async () => {
+      rows = [row("r1", "2026-06-02", "1200.00", "2026-05-10T00:00:00Z")];
+      await runIngest(wh(), tenant, await queue(bq));
+      expect(await month(env["brMeta"] as string, "2026-05-01")).toEqual([{ amount: "10.00", n: 1 }]);
+      expect(await month(env["brMeta"] as string, "2026-06-01")).toEqual([{ amount: "1200.00", n: 1 }]);
+      expect(await live(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND period_date BETWEEN '2026-05-01' AND '2026-06-30'`, ws)).toBe(2);
+    });
+
+    it("a full resync reads everything and supersedes what the warehouse no longer has", async () => {
+      rows = [row("r1", "2026-06-02", "1200.00", "2026-05-10T00:00:00Z"), row("r3", "2026-05-01", "5.00", "2026-05-11T00:00:00Z")]; // r2 was deleted upstream
+      const full = await runIngest(wh(), tenant, await queue(bq, { mode: "full" }));
+      expect(sinces.at(-1)).toBeUndefined();
+      expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: full.runId } })).summary).toMatchObject({ mode: "full", superseded: 1, coveredRange: { from: "2026-05-01", to: "2026-06-02" } });
+      expect(full.envelopeIds).toContain(env["brMeta"]);
+      expect(await month(env["brMeta"] as string, "2026-05-01")).toEqual([{ amount: "5.00", n: 1 }]);
+    });
+  });
+
+  describe("full extract (CSV)", () => {
+    const csv = randomUUID();
+    const file = `gs://t017-uploads/uploads/${ws}/july.csv`;
+    const lines = (...rs: string[]) => ["COUNTRY,PLATFORM,MONTH,SPEND,CCY,CONV", ...rs].join("\n");
+    const jul = ["BR,meta,2026-07-01,100.00,USD,1", "BR,meta,2026-07-10,50.00,USD,2", "BR,meta,2026-07-20,25.00,USD,3"];
+
+    beforeAll(async () => {
+      await owner.dataSource.create({ data: { id: csv, workspaceId: ws, kind: "csv", name: "July", config: { kind: "csv", uri: file }, mapping: { ...mapping, columns: { ...mapping.columns, MONTH: { role: "period_date", format: "yyyy-MM-dd" } } } } });
+    });
+
+    it("(b) a row missing from a re-extract is superseded: not in actual, not in spend_month", async () => {
+      await store.write(file, lines(...jul), "text/csv");
+      await runIngest(deps(), tenant, await queue(csv));
+      expect(await actual(env["brMeta"] as string, "2026-07-01", "2026-07-31")).toBe("175");
+      expect(await month(env["brMeta"] as string, "2026-07-01")).toEqual([{ amount: "175.00", n: 3 }]);
+
+      await store.write(file, lines(jul[0] as string, (jul[2] as string).replace("25.00", "30.00")), "text/csv"); // the 10th is gone, the 20th restated
+      const again = await runIngest(deps(), tenant, await queue(csv));
+      expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: again.runId } })).summary).toMatchObject({ mode: "full", superseded: 2, coveredRange: { from: "2026-07-01", to: "2026-07-20" } }); // its spend and its KPI
+      const gone = await owner.$queryRawUnsafe<Array<{ by: string | null }>>(`SELECT superseded_by_run_id::text AS by FROM spend_fact WHERE workspace_id = $1::uuid AND period_date = '2026-07-10' AND superseded_at IS NOT NULL`, ws);
+      expect(gone).toEqual([{ by: again.runId }]);
+      expect(await actual(env["brMeta"] as string, "2026-07-01", "2026-07-31")).toBe("130");
+      expect(await actual(env["brMeta"] as string, "2026-07-05", "2026-07-25")).toBe("30"); // the edge path reads spend_fact
+      expect(await month(env["brMeta"] as string, "2026-07-01")).toEqual([{ amount: "130.00", n: 2 }]);
+      expect(await live(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND period_date BETWEEN '2026-07-01' AND '2026-07-31'`, ws)).toBe(2);
+      expect(await live(`SELECT count(*) AS n FROM kpi_fact WHERE workspace_id = $1::uuid AND period_date BETWEEN '2026-07-01' AND '2026-07-31'`, ws)).toBe(2);
+
+      // The row comes back: the same fact is live again.
+      await store.write(file, lines(...jul), "text/csv");
+      const back = await runIngest(deps(), tenant, await queue(csv));
+      expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: back.runId } })).summary).toMatchObject({ superseded: 0 });
+      expect(await month(env["brMeta"] as string, "2026-07-01")).toEqual([{ amount: "175.00", n: 3 }]);
+      expect(await count(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND period_date BETWEEN '2026-07-01' AND '2026-07-31'`, ws)).toBe(3);
+    });
+  });
+
+  it("(d) an incremental source without a row_id column fails its run with what to map", async () => {
+    const bad = randomUUID();
+    await owner.dataSource.create({
+      data: { id: bad, workspaceId: ws, kind: "snowflake", name: "no row id", config: { kind: "snowflake", account: "a", username: "u", warehouse: "w", database: "d", schema: "s", view: "V", secretRef: "projects/p/secrets/s" }, mapping: { ...mapping, columns: { ...mapping.columns, MONTH: { role: "period_date" } } } },
+    });
+    const runId = await queue(bad);
+    await expect(runIngest({ ...deps(), connector: () => ({ kind: "snowflake", read: async function* () {} }) }, tenant, runId)).rejects.toMatchObject({ code: "VALIDATION", message: expect.stringMatching(/row_id/) });
+    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("failed");
+    expect(await count(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'ingest.run.failed'`, runId)).toBe(1);
+    expect(await count(`SELECT count(*) AS n FROM outbox WHERE topic = 'ingest.failed' AND payload->>'runId' = $1`, runId)).toBe(1);
   });
 });
 

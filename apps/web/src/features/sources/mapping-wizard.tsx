@@ -18,7 +18,7 @@ export interface Mapping {
 
 /** What a column maps to, as one select value: `role:amount`, `dim:country`, … */
 const choiceOf = (c: ColumnMapping | undefined): string => (!c ? "role:ignore" : "dimension" in c ? `dim:${c.dimension}` : `role:${c.role}`);
-const ROLES = ["period_date", "amount", "currency", "kpi", "match_key", "projection", "formula_version", "horizon_end", "ignore"] as const;
+const ROLES = ["period_date", "amount", "currency", "kpi", "match_key", "row_id", "projection", "formula_version", "horizon_end", "ignore"] as const;
 
 /**
  * MappingWizard (spec §18.5, §14): 1) pick a CSV (its header and first 20 rows are read here);

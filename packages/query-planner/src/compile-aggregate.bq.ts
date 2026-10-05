@@ -167,7 +167,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
     act AS (
       SELECT sf.envelope_id, SUM(sf.amount_reporting) AS actual
       FROM ${t("spend_fact")} sf JOIN sel ON sel.id = sf.envelope_id
-      WHERE sf.workspace_id = ${ws} AND sf.period_date BETWEEN ${pStart} AND ${pEnd}${demoFilter("sf.demo")}
+      WHERE sf.workspace_id = ${ws} AND sf.period_date BETWEEN ${pStart} AND ${pEnd} AND sf.superseded_at IS NULL${demoFilter("sf.demo")}
       GROUP BY sf.envelope_id
     )${
       withProjections
@@ -176,7 +176,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
       SELECT envelope_id, projected FROM (
         SELECT x.envelope_id, x.source_run_id, SUM(IF(x.period_date BETWEEN ${pStart} AND ${pEnd}, x.value_reporting, NULL)) AS projected, MAX(x.loaded_at) AS loaded_at
         FROM ${t("projection_fact")} x JOIN sel ON sel.id = x.envelope_id
-        WHERE x.workspace_id = ${ws} AND x.metric = 'spend'
+        WHERE x.workspace_id = ${ws} AND x.metric = 'spend' AND x.superseded_at IS NULL
         GROUP BY x.envelope_id, x.source_run_id
       )
       QUALIFY ROW_NUMBER() OVER (PARTITION BY envelope_id ORDER BY loaded_at DESC) = 1

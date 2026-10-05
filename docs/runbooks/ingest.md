@@ -12,15 +12,26 @@
 `POST /sources/:id/run` creates `ingest_run` with status `queued` and writes the outbox topic `ingest.requested`. The ingest worker, `handleIngestRequested` in `@budget/workers`, then does this:
 
 1. It claims the run (`queued` → `running`) in the same transaction as its `processed_event` row, so a redelivered message does nothing.
-2. It streams the source in 5,000-row batches.
+2. It streams the source in 5,000-row batches and upserts each fact on its natural key (ADR-071): the source's `row_id`, or its business key (date, tuple, match key, metric). The amount is not part of the key, so a restated row updates its fact.
 3. It writes rejected rows to `gs://<UPLOAD_BUCKET>/reports/<workspaceId>/<runId>.csv`.
-4. It matches facts to envelopes and finishes the run: `ok` with `summary`, plus one `ingest.run.finished` audit row and one `facts.loaded` outbox row.
+4. In a **full** run (`summary.mode = "full"`), it supersedes the source's facts dated inside `summary.coveredRange` that the run did not deliver. Closed periods are skipped unless the run restates them. Superseded facts stay in the table (`superseded_at`, `superseded_by_run_id`), but nothing counts them.
+5. It matches facts to envelopes and finishes the run: `ok` with `summary` (including `mode`, `superseded` and `coveredRange`), plus one `ingest.run.finished` audit row and one `facts.loaded` outbox row.
+
+Which runs are full and which are incremental:
+
+- CSV, Sheets and BigQuery without `updatedAtColumn`: every run is full.
+- Snowflake, and BigQuery with `updatedAtColumn`: incremental. Each run reads rows updated since the previous run started, minus one hour. These sources must map a **Row ID** column (`row_id`). Without one, the source can't be saved, and an older source fails its run with a message that says what to map.
+- An incremental source's first run, and its first run after ADR-071, are full. So is a **Full resync**: the button on the Sources page, or `POST /sources/:id/run` with `{ "fullResync": true }`.
 
 A run that fails ends as `failed`, with `summary.error`, one `ingest.run.failed` audit row and one `ingest.failed` outbox row.
 
 ## Operations
 
-- **A run stuck in `running`** means the worker died mid-run. Facts already upserted stay, and a re-run upserts the same rows (the row hash is stable). To recover:
+- **Re-running a source reconciles it (ADR-071).** Rows that are unchanged update their own facts. Restated amounts replace the old ones. In a full run, rows the source no longer has are superseded within the dates the run covers, and the Sources page shows "N facts superseded". A row that comes back in a later run is live again.
+  - Be careful with a rerun that rejects rows it used to accept (a missing FX rate, a retired value, a mapping change): those rows' facts are superseded too. Fix the cause and run again.
+- **Deleted upstream, still counted:** for an incremental source, use **Full resync**. An incremental run can't see deletes.
+- **What a run superseded:** `SELECT period_date, amount, envelope_id FROM spend_fact WHERE superseded_by_run_id = '<runId>'` as the owner role. Nothing is deleted, and a later run that delivers the rows again restores them.
+- **A run stuck in `running`** means the worker died mid-run. Facts already upserted stay, and a re-run upserts the same facts on their natural keys and reconciles the rest. To recover:
   1. Set the run to `failed`: `UPDATE ingest_run SET status = 'failed', finished_at = now(), summary = '{"error":"worker lost"}' WHERE id = …`. This is the owner role, a manual operation.
   2. Call `POST /sources/:id/run` again.
 - **Low match coverage:** use `GET /workspaces/:ws/unmatched-spend` for the tuples, then either create the missing envelope or call `POST /workspaces/:ws/unmatched-spend/map` with `{ dimensionValues, envelopeId }`.

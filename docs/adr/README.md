@@ -74,4 +74,5 @@ record with its status line; regenerate it when you add one.
 | [ADR-065](0065-hosting-on-dmus-gonzalo.md) | Hosting on the dmus-gonzalo project, signed in by IAP | Accepted (product owner, 2026-09-29) |
 | [ADR-066](0066-mcp-oauth.md) | The MCP server signs people in with OAuth, through the app's Google sign-in | Accepted (product owner, 2026-09-29: "make sure the MCP is live with OAuth") |
 | [ADR-067](0067-google-sign-in.md) | Budget OS signs people in with Google itself | Accepted (product owner, 2026-09-30) |
+| [ADR-071](0071-fact-identity-and-reconciliation.md) | Fact identity and reconciliation: natural keys, full vs incremental runs, soft supersession (supersedes spec §14 step 3) | Accepted |
 | [ADR-073](0073-ci-timing-budgets.md) | Timing budgets scale in CI | Accepted (W0-1, audit M-1) |

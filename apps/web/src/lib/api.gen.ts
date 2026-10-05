@@ -4989,6 +4989,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "row_id";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -5101,6 +5104,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "row_id";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -5198,6 +5204,9 @@ export interface operations {
                                         role: "match_key";
                                     } | {
                                         /** @enum {string} */
+                                        role: "row_id";
+                                    } | {
+                                        /** @enum {string} */
                                         role: "ignore";
                                     });
                                 };
@@ -5272,6 +5281,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "row_id";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -5341,6 +5353,9 @@ export interface operations {
                                 } | {
                                     /** @enum {string} */
                                     role: "match_key";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "row_id";
                                 } | {
                                     /** @enum {string} */
                                     role: "ignore";
@@ -5435,6 +5450,9 @@ export interface operations {
                                         role: "match_key";
                                     } | {
                                         /** @enum {string} */
+                                        role: "row_id";
+                                    } | {
+                                        /** @enum {string} */
                                         role: "ignore";
                                     });
                                 };
@@ -5513,6 +5531,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "row_id";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -5582,6 +5603,9 @@ export interface operations {
                                 } | {
                                     /** @enum {string} */
                                     role: "match_key";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "row_id";
                                 } | {
                                     /** @enum {string} */
                                     role: "ignore";
@@ -5809,6 +5833,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "row_id";
+                            } | {
+                                /** @enum {string} */
                                 role: "ignore";
                             });
                         };
@@ -5916,11 +5943,12 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     restatementOf?: string;
+                    fullResync?: boolean;
                 };
             };
         };
         responses: {
-            /** @description Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period */
+            /** @description Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period; fullResync runs an incremental source as a full extract once (ADR-071) */
             201: {
                 headers: {
                     [name: string]: unknown;

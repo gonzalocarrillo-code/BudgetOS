@@ -56,7 +56,7 @@ export function coverage(lastFactDate: string | null, formats: ReadonlyArray<str
 
 /** The workspace's latest spend fact and the date formats of the sources that loaded that date. */
 export async function dataAsOf(tx: Tx, workspaceId: string, today: string): Promise<DataAsOf> {
-  const [last] = await tx.$queryRaw<Array<{ d: string | null }>>`SELECT max(period_date)::text AS d FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+  const [last] = await tx.$queryRaw<Array<{ d: string | null }>>`SELECT max(period_date)::text AS d FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL`;
   const lastFactDate = last?.d ?? null;
   if (lastFactDate === null) return coverage(null, [], today);
   // Facts loaded by hand or without a source run count by day.
@@ -65,7 +65,7 @@ export async function dataAsOf(tx: Tx, workspaceId: string, today: string): Prom
     FROM spend_fact sf
     LEFT JOIN ingest_run r ON r.id = sf.source_run_id
     LEFT JOIN data_source ds ON ds.id = r.source_id
-    WHERE sf.workspace_id = ${workspaceId}::uuid AND sf.period_date = ${lastFactDate}::date`;
+    WHERE sf.workspace_id = ${workspaceId}::uuid AND sf.period_date = ${lastFactDate}::date AND sf.superseded_at IS NULL`;
   return coverage(lastFactDate, sources.map((s) => s.format), today);
 }
 
@@ -74,7 +74,7 @@ export async function projectionFreshness(tx: Tx, workspaceId: string): Promise<
   const [r] = await tx.$queryRaw<Array<{ at: Date; source: string | null }>>`
     SELECT x.loaded_at AS at, ds.name AS source
     FROM projection_fact x LEFT JOIN ingest_run r ON r.id = x.source_run_id LEFT JOIN data_source ds ON ds.id = r.source_id
-    WHERE x.workspace_id = ${workspaceId}::uuid
+    WHERE x.workspace_id = ${workspaceId}::uuid AND x.superseded_at IS NULL
     ORDER BY x.loaded_at DESC LIMIT 1`;
   return r ? { loadedAt: r.at.toISOString(), source: r.source } : null;
 }

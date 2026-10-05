@@ -2,7 +2,7 @@ import { Button, cn, StatusChip, Input } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Clock, Loader2, Play, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
@@ -25,6 +25,15 @@ const STATUS_ICON = { ok: CheckCircle2, failed: XCircle, queued: Clock, running:
 function RunStatus({ status }: { status: string }): ReactElement {
   return <StatusChip status={status} icon={STATUS_ICON[status as keyof typeof STATUS_ICON] ?? Clock} className={status === "running" ? "[&>svg]:animate-spin" : undefined} label={t(`sources.run.${status}` as MessageKey)} data-testid="run-status" />;
 }
+
+/** ADR-071: facts a run retired (a full extract no longer had them, or a row moved to another date). */
+const supersededOf = (r: Run) => {
+  const n = r.summary?.["superseded"];
+  return typeof n === "number" && n > 0 ? n : null;
+};
+
+/** ADR-071: a source read by its updated-at column only sees changed rows; a full resync sees deletes. */
+const isIncremental = (s: Source) => s.config["kind"] === "snowflake" || (s.config["kind"] === "bigquery" && typeof s.config["updatedAtColumn"] === "string");
 
 const coverageOf = (r: Run) => {
   const c = (r.summary?.["matchCoverage"] ?? (r.summary?.["coverage"] as Record<string, unknown> | undefined)?.["matchCoverage"]) as string | number | undefined;
@@ -88,7 +97,7 @@ function SourceRuns({ ws, source }: { ws: string; source: Source }): ReactElemen
   const client = useQueryClient();
   const { data: runs = [], isPending } = useQuery(runsQuery(ws, source.id));
   const run = useMutation({
-    mutationFn: async () => unwrap(api.POST("/api/v1/sources/{id}/run", { params: { path: { id: source.id }, header: { "X-Workspace-Id": ws } }, body: {} as never })),
+    mutationFn: async (fullResync: boolean) => unwrap(api.POST("/api/v1/sources/{id}/run", { params: { path: { id: source.id }, header: { "X-Workspace-Id": ws } }, body: (fullResync ? { fullResync: true } : {}) as never })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["runs", ws, source.id] }),
   });
   const busy = runs.some((r) => r.status === "queued" || r.status === "running");
@@ -98,14 +107,27 @@ function SourceRuns({ ws, source }: { ws: string; source: Source }): ReactElemen
       <div className="flex flex-col gap-3" data-testid="source-runs">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-xs text-muted-foreground">{mappingSummary(source.mapping)}</p>
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2">
+            {isIncremental(source) ? (
+              why ? (
+                <Button size="sm" variant="outline" disabled reason={why} data-testid="source-full-resync">
+                  <RefreshCw className="size-4" aria-hidden />
+                  {t("sources.fullResyncButton")}
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" title={t("sources.fullResyncHelp")} onClick={() => run.mutate(true)} data-testid="source-full-resync">
+                  <RefreshCw className="size-4" aria-hidden />
+                  {t("sources.fullResyncButton")}
+                </Button>
+              )
+            ) : null}
             {why ? (
               <Button size="sm" disabled reason={why} data-testid="source-run">
                 <Play className="size-4" aria-hidden />
                 {t("sources.runNowButton")}
               </Button>
             ) : (
-              <Button size="sm" onClick={() => run.mutate()} data-testid="source-run">
+              <Button size="sm" onClick={() => run.mutate(false)} data-testid="source-run">
                 <Play className="size-4" aria-hidden />
                 {t("sources.runNowButton")}
               </Button>
@@ -138,7 +160,14 @@ function SourceRuns({ ws, source }: { ws: string; source: Source }): ReactElemen
                     {r.status === "failed" && typeof r.summary?.["error"] === "string" ? <div className="mt-1 max-w-sm text-xs text-destructive">{r.summary["error"]}</div> : null}
                   </td>
                   <td className="py-2 pr-3 text-right">{r.rowsRead ?? "—"}</td>
-                  <td className="py-2 pr-3 text-right">{r.rowsAccepted ?? "—"}</td>
+                  <td className="py-2 pr-3 text-right">
+                    {r.rowsAccepted ?? "—"}
+                    {supersededOf(r) !== null ? (
+                      <div className="text-xs text-muted-foreground" data-testid="run-superseded">
+                        {t("sources.run.superseded", { n: supersededOf(r) ?? 0 })}
+                      </div>
+                    ) : null}
+                  </td>
                   <td className={cn("py-2 pr-3 text-right", r.rowsRejected ? "text-destructive" : "")} data-testid="run-rejected">
                     {r.rowsRejected ?? "—"}
                   </td>

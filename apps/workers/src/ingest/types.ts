@@ -17,7 +17,10 @@ export interface NormalizedFact {
   attributionModel?: string;
   formulaVersion?: string;
   horizonEnd?: string;
+  /** ADR-071: the fact's natural key (row id or business key, never the measure); see normalize.naturalKey. */
   rowHash: string;
+  /** The key comes from the source's row_id column (unique per row), not from the business key. */
+  byRowId?: true;
   /** §24.3: the tuple came from an external id or a match key (the match confirms it). */
   matchHint?: "external_id" | "match_key";
 }

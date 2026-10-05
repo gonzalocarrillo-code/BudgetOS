@@ -40,6 +40,7 @@ A GCP project with Datastream and a Cloud SQL private-IP connection. Until then,
 - **The metric library, per org** (`metric_definition`, plan §4.8). A metric is a numerator over a denominator, each `spend`, `budget` or `kpi:<fact metric>`, with a multiplier and a label. CPA is `spend / kpi:conversions`. Admins add or rename metrics with no deploy, so one org's CPA is another's tCPA.
 - **External IDs on dimension values** (`external_ids`, e.g. `meta_account_id`) and **match keys** with a parse pattern (§24.3), so facts match budgets by name when the client has no tuple columns.
 - **Rejected rows and unmatched spend** are reported per run, never guessed.
+- **Fact identity and reruns (ADR-071).** A fact is keyed by the source's `row_id` column or by its business key (date, tuple, match key, metric), never by its amount, so a restated row updates its fact. A full extract (CSV, Sheets, a warehouse table read whole) is authoritative for the dates it covers: facts it no longer has are superseded (kept, never counted). Incremental warehouse sources must map a `row_id` and have a "Full resync" to catch deletes.
 
 ### 2.2 The rule that makes it work
 

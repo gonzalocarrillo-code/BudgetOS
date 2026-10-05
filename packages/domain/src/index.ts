@@ -130,7 +130,9 @@ export {
   MetricSynonymTarget,
   UpdateMappingProfileInput,
   UpdateMappingSynonymInput,
+  isIncrementalSource,
   normTerm,
+  rowIdentityProblem,
 } from "./sources.js";
 
 export {
