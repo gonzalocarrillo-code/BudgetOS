@@ -33,3 +33,7 @@ If the tree looks stale:
 - `/query` runs on Postgres with the planner, unless the warehouse applies (below). The response's `engine` field says which engine answered: `postgres`, `warehouse` or `cache`.
 - Results are cached for 5 minutes. The key covers the workspace, its data version, the day and the scoped query. With `REDIS_URL` set the cache is Redis; without it, memory. `QUERY_CACHE=off` disables it (the load job does this).
 - With `BIGQUERY_DATASET=project.dataset` set, a grouped query goes to BigQuery when it spans more than 13 months or Postgres estimates more than 200k rows. The dataset must hold `envelope`, `envelope_version`, `envelope_dimension`, `dimension`, `dimension_value`, `spend_fact` and `projection_fact`, with the Postgres columns. Credentials come from Application Default Credentials. The variable is unset locally.
+
+## Safety: seed, reset and load guards (B-7, I-31)
+
+Seed, reset and load tooling refuse to run against non-local databases (remote Cloud SQL, production RDS) to prevent accidental data destruction. They check the `DATABASE_URL` hostname and reject any non-local host unless `ALLOW_REMOTE_DB=1` is set. Local hosts include `localhost`, `127.0.0.1`, `[::1]`, `db`, `postgres`, and any hostname ending with `.localhost`. Set `ALLOW_REMOTE_DB=1` only when you know what you are doing (e.g. seeding a staging environment from a remote client); scripts always warn before proceeding.

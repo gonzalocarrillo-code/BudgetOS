@@ -2,12 +2,15 @@
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { assertLocalDatabase } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { bulkCommit, gridQueries, indexAll, inlineEdits, lags, rebuildRollups, searches, TARGETS } from "./measure.js";
 import { scaleGolden } from "./scale.js";
 import { seedGolden } from "../seed/golden.js";
 import { cleanupGolden } from "../test-support/golden-cleanup.js";
 import { appDb, ownerDb, startHarness } from "../test-support/harness.js";
+
+assertLocalDatabase(process.env.DATABASE_URL);
 
 const env = (k: string, d: string) => process.env[k] ?? d;
 // The job measures computing a query, not serving it from the query cache (ADR-042).

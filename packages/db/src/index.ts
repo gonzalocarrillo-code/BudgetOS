@@ -1,3 +1,4 @@
+export { assertLocalDatabase } from "./env-guard.js";
 export type { AuditEventInput, KpiFactRow, OutboxInput, SpendFactRow } from "./facts.types.js";
 export {
   dimensionValuePaths,
