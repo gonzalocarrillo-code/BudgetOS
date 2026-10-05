@@ -65,7 +65,7 @@ export const SourceConfig = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("snowflake"),
-      account: z.string().min(1),
+      account: z.string().regex(/^[A-Za-z0-9_.-]+$/, "alphanumeric, underscore, period, hyphen"),
       username: z.string().min(1),
       warehouse: z.string().min(1),
       database: z.string().min(1),
@@ -78,7 +78,7 @@ export const SourceConfig = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("bigquery"),
-      projectId: z.string().min(1),
+      projectId: z.string().regex(/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/, "lowercase letter, alphanumeric or hyphen, ends with alphanumeric"),
       dataset: z.string().regex(/^[A-Za-z0-9_]+$/),
       table: z.string().regex(/^[A-Za-z0-9_]+$/),
       updatedAtColumn: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional(),

@@ -237,4 +237,28 @@ describe("CSV round trip and the end of a bulk request", () => {
     const drafts = await owner.envelopeVersion.findMany({ where: { envelopeId: { in: keys.map(id) } }, orderBy: { versionNo: "desc" }, distinct: ["envelopeId"] });
     expect(drafts.every((d) => d.status === "DRAFT")).toBe(true);
   });
+
+  it("CSV exports neutralise formula injection in envelope names (S-7)", async () => {
+    // Create an envelope with a dangerous name
+    const dangerousName = '=HYPERLINK("http://evil.example")';
+    const envelope = await as("planner", "POST", `/api/v1/workspaces/${golden.workspaceId}/envelopes`, {
+      name: dangerousName,
+      dimensionValues: { region: "LATAM" },
+      currency: "USD",
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
+      amount: "1000.00",
+    });
+    expect(envelope.status).toBe(201);
+    const envelopeId = (envelope.body as { id: string }).id;
+
+    // Export and verify the name is prefixed with apostrophe
+    const exported = await as("planner", "POST", `/api/v1/workspaces/${golden.workspaceId}/envelopes/csv-export`, {
+      selection: { envelopeIds: [envelopeId] },
+    });
+    expect(exported.status).toBe(201);
+    const csv = exported.text;
+    // The CSV should contain the name with apostrophe prefix to prevent formula execution
+    expect(csv).toContain(`'${dangerousName}`);
+  });
 });

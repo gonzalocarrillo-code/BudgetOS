@@ -237,6 +237,8 @@ export { ON_PLAN, PACE_BANDS, paceBand } from "./pace.js";
 export { ATTENTION_CATEGORIES, DataAsOfView, HEATMAP_SORTS, OverviewAttention, OverviewAttentionItem, OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewMargin, OverviewResponse, OverviewRuleAlerts } from "./overview.js";
 export type { PaceBandKey } from "./pace.js";
 export type { GroupSums } from "./rollup-measures.js";
+export { csvCell } from "./csv.js";
+
 export { BaselineKind, BaselineReport, BaselineReportQuery, BaselineRowsQuery, BaselineRowsResponse, BaselineTreeRow, BaselineScope, BaselineView, BaselinesResponse, CreateBaselineInput, EndEnvelopeInput, ReintroduceInput, UpdateBaselineInput } from "./baselines.js";
 export {
   BUDGET_IMPORT_COLUMNS,

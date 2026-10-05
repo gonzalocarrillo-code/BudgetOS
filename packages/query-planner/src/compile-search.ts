@@ -1,5 +1,5 @@
 import { DomainError, type ParsedSearch, type ScopeFilter } from "@budget/domain";
-import { SqlBuilder } from "./sql-builder.js";
+import { escapeLike, SqlBuilder } from "./sql-builder.js";
 
 /**
  * Search query over search_document (spec §12.3). Top `limitPerType` hits per entity type with a
@@ -88,7 +88,7 @@ export function compileSearch(parsed: ParsedSearch, ctx: SearchContext): Compile
         break;
       case "owner":
         conds.push(
-          `${q.op === "neq" ? "owner_id IS DISTINCT FROM" : "owner_id ="} ${q.value === "@me" ? `${b.p(ctx.userId)}::uuid` : `(SELECT id FROM app_user WHERE email ILIKE ${b.p(`${q.value}%`)}::text ORDER BY email LIMIT 1)`}`,
+          `${q.op === "neq" ? "owner_id IS DISTINCT FROM" : "owner_id ="} ${q.value === "@me" ? `${b.p(ctx.userId)}::uuid` : `(SELECT id FROM app_user WHERE email ILIKE ${b.p(`${escapeLike(q.value)}%`)}::text ESCAPE '\\' ORDER BY email LIMIT 1)`}`,
         );
         break;
       case "period":
@@ -150,7 +150,7 @@ export function compileSearch(parsed: ParsedSearch, ctx: SearchContext): Compile
   // 227k documents, 2.5 s).
   const corrected = () => `(SELECT plainto_tsquery('simple', string_agg(coalesce((SELECT st.term FROM search_term st WHERE st.workspace_id = ${b.p(ctx.workspaceId)}::uuid AND st.term % w ORDER BY similarity(st.term, w) DESC, st.term LIMIT 1), w), ' ')) FROM regexp_split_to_table(${trg}, '[^[:alnum:]]+') w WHERE w <> '')`;
   const hits = hasText
-    ? `exact AS (${perType(`(tsv @@ ${tsq} OR trigram LIKE ${b.p(`%${parsed.text.toLowerCase()}%`)}::text)`)}),
+    ? `exact AS (${perType(`(tsv @@ ${tsq} OR trigram LIKE ${b.p(`%${escapeLike(parsed.text.toLowerCase())}%`)}::text ESCAPE '\\')`)}),
     fix AS (SELECT ${corrected()} AS q WHERE NOT EXISTS (SELECT 1 FROM exact)),
     hits AS (
       SELECT * FROM exact

@@ -1,3 +1,5 @@
+import { csvCell } from "@budget/domain";
+
 /** RFC 4180 CSV: quoted fields, "" escapes, CRLF or LF. Small enough not to need a dependency. */
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -31,8 +33,6 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0] === ""));
 }
 
-const escape = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-
 export function toCsv(header: string[], rows: string[][]): string {
-  return [header, ...rows].map((r) => r.map(escape).join(",")).join("\r\n") + "\r\n";
+  return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
