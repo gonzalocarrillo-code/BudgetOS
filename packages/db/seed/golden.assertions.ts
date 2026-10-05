@@ -235,7 +235,7 @@ export const GOLDEN_ASSERTIONS: GoldenTotals = {
       "finance",
       "data_admin"
     ],
-    "steps": 18
+    "steps": 21
   },
   "manualEntry": {
     "batches": 1,

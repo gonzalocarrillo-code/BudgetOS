@@ -1,6 +1,6 @@
 # Runbook: deployment on dmus-gonzalo (ADR-065)
 
-Every push to `main` runs `.github/workflows/deploy.yml`: build the image, run `budgetos-migrate`, deploy `budgetos-app`, `budgetos-slack` and `budgetos-worker`. Actions → deploy → Run workflow redeploys by hand.
+Deploys happen only after `.github/workflows/ci.yml` succeeds on `main` (the `deploy` workflow triggers on that run's completion and checks `conclusion == success`); `.github/workflows/deploy.yml` then builds the image, runs `budgetos-migrate`, and deploys `budgetos-app`, `budgetos-slack` and `budgetos-worker`. Actions → deploy → Run workflow still redeploys by hand (`workflow_dispatch`), independent of CI state.
 
 | What | Where |
 |---|---|

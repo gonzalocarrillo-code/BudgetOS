@@ -36,7 +36,7 @@ docs/               plan, spec, adr/, runbooks/
 |---|---|
 | `pnpm install` | Node 22 (`.nvmrc`), pnpm 9 |
 | `pnpm dev` | docker compose (postgres:16, redis:7) + migrate + seed small golden + api + web |
-| `pnpm typecheck` · `pnpm lint` · `pnpm test` | must be green before every commit |
+| `pnpm typecheck` · `pnpm lint` · `pnpm test` | must be green before every commit; CI (`.github/workflows/ci.yml`) runs the full suite with Postgres, Redis and the GCS emulator on every push and PR, and `main` only deploys once that run is green |
 | `pnpm test:acceptance` | epic-level acceptance suites; run before marking an epic done |
 | `pnpm test:e2e` | Playwright against `pnpm dev` |
 | `pnpm bench` | grid / timeline / planner benchmarks vs `bench/baseline.json`; fails on > 10% regression |
@@ -100,7 +100,7 @@ docs/               plan, spec, adr/, runbooks/
 - [ ] Any new endpoint has a permission check and a row in the permission-matrix test
 - [ ] Works on `pnpm dev` with the small golden dataset; `pnpm bench` unchanged or improved where relevant
 - [ ] Runbook / README touched if operations change; ADR if a decision was made
-- [ ] All checks green locally
+- [ ] All checks green locally (CI runs the full suite again before the PR can merge)
 
 ## 7. PR template
 
