@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden, cleanupWorkspace } from "../../test-support/golden-cleanup.js";
 import { appDb as appDbClient, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
+import { perfBudgetMs } from "../../test-support/perf.js";
 
 /**
  * T-040 (spec §27, §22): Home, tours and workspace templates on the golden workspace. Done-when:
@@ -73,7 +74,7 @@ describe("workspace templates (T-040)", () => {
     expect(q.status, JSON.stringify(q.body).slice(0, 300)).toBe(201);
     expect((q.body["totals"] as Record<string, string>)["budget"]).toBe(demoBudget);
     expect(new Decimal((q.body["totals"] as Record<string, string>)["actual"] ?? 0).gt(0)).toBe(true);
-    expect(Date.now() - started).toBeLessThan(60_000);
+    expect(Date.now() - started).toBeLessThan(perfBudgetMs(60_000));
     const tours = await as("orgAdmin", "GET", "/tours?all=true", undefined, ws);
     expect((tours.body as unknown as Array<{ role: string; isDefault: boolean }>).map((t) => [t.role, t.isDefault]).sort()).toEqual(DEFAULT_TOURS.map((t) => [t.role, false]).sort());
     expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3 });

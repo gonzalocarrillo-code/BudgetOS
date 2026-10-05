@@ -3,6 +3,7 @@ import { SETTINGS } from "@budget/domain";
 import { handleSearchEvent, reindexWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
+import { perfBudgetMs } from "../../test-support/perf.js";
 
 /**
  * T-020 (spec §12): documents are built by the indexer from real outbox rows (fed as Pub/Sub
@@ -242,6 +243,6 @@ describe("suggest (Epic 0.4: a new dimension is a search qualifier at once)", ()
     const created = await call(orgAdmin, "POST", `/workspaces/${ws}/dimensions`, { key: "retailer", label: "Retailer", dataType: "ENUM", icon: "lucide:store", workspaceId: ws });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(await keys("ret")).toEqual(["retailer"]);
-    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(performance.now() - started).toBeLessThan(perfBudgetMs(10_000));
   });
 });

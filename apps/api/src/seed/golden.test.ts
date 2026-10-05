@@ -5,6 +5,7 @@ import { compileQuery, compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb as appDbClient, ownerDb } from "../test-support/harness.js";
+import { perfBudgetMs } from "../test-support/perf.js";
 import { seedGolden, type GoldenResult } from "./golden.js";
 import { cleanupGolden } from "../test-support/golden-cleanup.js";
 import { plannerOptions } from "../modules/targets/queries/planner-options.js";
@@ -89,7 +90,10 @@ describe("golden.assertions.ts", () => {
 describe("pnpm db:seed (T-006 done-when)", () => {
   it("seeds through the commands in under 60 seconds", () => {
     expect(golden.created).toBe(true);
-    expect(golden.elapsedMs).toBeLessThan(60_000);
+    // ADR-073: the 60 s budget is the developer-hardware SLA from ADR-007 (~13 s observed there).
+    // perfBudgetMs scales it for CI (PERF_BUDGET_SCALE=3 there); the 60 s product gate is
+    // unchanged locally and in `pnpm bench`.
+    expect(golden.elapsedMs).toBeLessThan(perfBudgetMs(60_000));
   });
 
   it("is idempotent: an existing golden workspace is left as is", async () => {
@@ -402,7 +406,7 @@ describe("search (T-020 seed rows; done-when: index lag < 5 s on the small golde
     const hit = (await find(`"${name}"`)).groups.find((g) => g.type === "envelope")?.hits as Array<{ id: string }> | undefined;
     const lagMs = performance.now() - started;
     expect(hit?.[0]?.id).toBe(id);
-    expect(lagMs).toBeLessThan(5_000);
+    expect(lagMs).toBeLessThan(perfBudgetMs(5_000));
   });
 });
 

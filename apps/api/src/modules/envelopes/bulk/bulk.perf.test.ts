@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { TenantContext } from "@budget/db";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { appDb as appDbClient, ownerDb, startHarness, testUser, type Harness } from "../../../test-support/harness.js";
+import { perfBudgetMs } from "../../../test-support/perf.js";
 import { seedDefaultPolicies } from "../../approvals/commands/policies.js";
 
 /**
@@ -93,7 +94,7 @@ it(`commits a ${ROWS}-row bulk edit in under 10 seconds`, async () => {
   expect(commit.status, JSON.stringify(commit.body)).toBe(201);
   expect(commit.body["versions"]).toBe(ROWS);
   process.stdout.write(`bulk perf: preview ${previewMs.toFixed(0)} ms, commit ${commitMs.toFixed(0)} ms for ${ROWS} rows\n`);
-  expect(commitMs).toBeLessThan(10_000);
+  expect(commitMs).toBeLessThan(perfBudgetMs(10_000));
 
   const [counts] = await owner.$queryRawUnsafe<Array<{ drafts: bigint; phasing: bigint; audits: bigint; outbox: bigint }>>(
     `SELECT (SELECT count(*) FROM envelope_version v JOIN envelope e ON e.id = v.envelope_id WHERE e.workspace_id = $1::uuid AND v.version_no = 2 AND v.status = 'PENDING') AS drafts,

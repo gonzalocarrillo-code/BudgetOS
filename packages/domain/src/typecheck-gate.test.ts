@@ -71,7 +71,7 @@ it("keeps the strict TypeScript gate", () => {
   expect(compilerOptions["exactOptionalPropertyTypes"]).toBe(true);
 });
 
-it("publishes only the lint-typecheck CI job", () => {
+it("publishes the lint-typecheck and test CI jobs (W0-1, audit M-1)", () => {
   const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
   const jobsBlock = ci.split(/^jobs:\s*$/m)[1];
   if (jobsBlock === undefined) {
@@ -81,7 +81,7 @@ it("publishes only the lint-typecheck CI job", () => {
     const name = match[1];
     return name === undefined ? [] : [name];
   });
-  expect(jobNames).toEqual(["lint-typecheck"]);
+  expect(jobNames).toEqual(["lint-typecheck", "test"]);
 });
 
 it("typechecks every workspace package", () => {
