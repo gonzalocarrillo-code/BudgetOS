@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { appDb as appDbClient, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
+import { perfBudgetMs } from "../../test-support/perf.js";
 
 /**
  * T-033 (Epic 1.11): the Overview in one call on the golden workspace. The heatmap's cells add up
@@ -117,8 +118,8 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     const gaps = (o.kpi?.rows ?? []).map((r) => r.vsTargetPct).filter((g): g is string => g !== null).map(Number);
     expect(gaps.length).toBeGreaterThan(0);
     expect([...gaps].sort((x, y) => y - x)).toEqual(gaps);
-    expect(o.elapsedMs).toBeLessThan(1500);
-    expect(elapsed).toBeLessThan(1500);
+    expect(o.elapsedMs).toBeLessThan(perfBudgetMs(1500));
+    expect(elapsed).toBeLessThan(perfBudgetMs(1500));
   });
 
   it("the heatmap has its margins from the planner, each cell's open alerts, and a server-side sort (HO-010)", async () => {
