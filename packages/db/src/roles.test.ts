@@ -60,7 +60,7 @@ function urlFor(role: string, password: string): string {
   return url.toString();
 }
 
-// S-9 (docs/STACK_AUDIT_2026-10-04.md): migration 20261010000000_role_placeholder_lock adds
+// S-9 (docs/STACK_AUDIT_2026-10-04.md): migration 20261010020000_role_placeholder_lock adds
 // app_role_state and app_lock_placeholder_logins(). Both this migration and bootstrap.ts's
 // behaviour are covered here.
 describe("role placeholder lock (S-9)", () => {

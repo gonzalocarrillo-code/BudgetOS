@@ -84,7 +84,7 @@ per-environment password:
    `APP_DB_PASSWORD`, `PUBLISHER_DB_PASSWORD`, `MCP_DB_PASSWORD` and `SUPERADMIN_EMAIL` are set
    (no DB connection) and exits non-zero naming whichever is missing — so a misconfigured deploy
    fails before `prisma migrate deploy` touches the database, not after.
-2. `prisma migrate deploy` runs, applying `20261010000000_role_placeholder_lock` on a fresh
+2. `prisma migrate deploy` runs, applying `20261010020000_role_placeholder_lock` on a fresh
    database: it adds `app_role_state` (one row per login role, `placeholder` defaults to `true`)
    and defines `app_lock_placeholder_logins()`, a `SECURITY DEFINER` function (owned by, and only
    executable by, the role migrations run as) that sets `NOLOGIN` on every role `app_role_state`
