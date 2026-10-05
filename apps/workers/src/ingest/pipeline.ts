@@ -1,4 +1,4 @@
-import { SourceConfig, SourceMapping, compileParsePattern } from "@budget/domain";
+import { SourceConfig, SourceMapping, compileParsePattern, csvCell } from "@budget/domain";
 import {
   audit,
   bumpDataVersion,
@@ -104,11 +104,6 @@ export class FxCache {
     return this.cache.get(key) ?? null;
   }
 }
-
-const csvCell = (v: unknown) => {
-  const s = v === null || v === undefined ? "" : String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
 
 /** Rejected rows as CSV: the source columns, then `_line` and `_reason`. */
 export function rejectReport(rejected: Array<{ line: number; row: RawRow; reason: string }>): string {

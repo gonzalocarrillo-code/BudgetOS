@@ -1,5 +1,5 @@
 import { DomainError, RelativeDate, isPredicate, type FilterGroupT, type Predicate } from "@budget/domain";
-import type { SqlBuilder } from "./sql-builder.js";
+import { escapeLike, type SqlBuilder } from "./sql-builder.js";
 
 export interface CompileCtx {
   workspaceId: string;
@@ -69,9 +69,9 @@ function compileDimension(key: string, p: Predicate, b: SqlBuilder): string {
     case "nin":
       return notInSet(` AND dv.code = ANY(${b.p(list(p).map(String))}::text[])`);
     case "contains":
-      return inSet(` AND dv.label ILIKE ${b.p("%" + String(p.value) + "%")}::text`);
+      return inSet(` AND dv.label ILIKE ${b.p("%" + escapeLike(String(p.value)) + "%")}::text ESCAPE '\\'`);
     case "starts_with":
-      return inSet(` AND dv.label ILIKE ${b.p(String(p.value) + "%")}::text`);
+      return inSet(` AND dv.label ILIKE ${b.p(escapeLike(String(p.value)) + "%")}::text ESCAPE '\\'`);
     case "is_empty":
       return notInSet("");
     case "not_empty":
@@ -151,8 +151,8 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
     case "currency":
       return compileScalar(`e.currency::text`, p, b, "text");
     case "name":
-      if (p.op === "contains") return `e.name ILIKE ${b.p("%" + String(p.value) + "%")}::text`;
-      if (p.op === "starts_with") return `e.name ILIKE ${b.p(String(p.value) + "%")}::text`;
+      if (p.op === "contains") return `e.name ILIKE ${b.p("%" + escapeLike(String(p.value)) + "%")}::text ESCAPE '\\'`;
+      if (p.op === "starts_with") return `e.name ILIKE ${b.p(escapeLike(String(p.value)) + "%")}::text ESCAPE '\\'`;
       return compileScalar("e.name", p, b, "text");
     case "tag": {
       if (p.op !== "eq" && p.op !== "in") throw invalid(`op ${p.op} not valid for tag`, p);

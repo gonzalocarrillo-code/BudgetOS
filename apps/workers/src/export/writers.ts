@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { csvCell } from "@budget/domain";
 import type { ExportTable } from "./table.js";
 
 /**
@@ -17,8 +18,6 @@ export interface ExportMeta {
 }
 
 const BOM = "\u{FEFF}";
-const FORMULA = /^[=+\-@\t\r]/;
-const quote = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
 export function toCsv(t: ExportTable): Buffer {
   const line = (cells: Array<string | null>, header = false) =>
@@ -26,7 +25,12 @@ export function toCsv(t: ExportTable): Buffer {
       .map((v, i) => {
         if (v === null) return "";
         const kind = t.columns[i]?.kind ?? "text";
-        return quote(!header && kind === "text" && FORMULA.test(v) ? `'${v}` : v);
+        // Use csvCell for text columns (includes formula injection prevention), plain quoting for numeric
+        if (!header && kind === "text") {
+          return csvCell(v);
+        }
+        // For headers and numeric columns, just quote if needed
+        return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
       })
       .join(",");
   const lines = [line(t.columns.map((c) => c.label), true), ...t.rows.map((r) => line(r)), line(t.totals)];
