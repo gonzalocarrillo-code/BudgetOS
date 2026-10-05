@@ -12,7 +12,7 @@ record with its status line; regenerate it when you add one.
 | [ADR-005](0005-auth-and-tenancy.md) | API authentication and tenant resolution | Accepted |
 | [ADR-006](0006-planner-bench.md) | planner bench warm-up and calibration | Accepted, 2026-09-23 |
 | [ADR-007](0007-golden-seed.md) | Golden seed generator location and clock | Accepted |
-| [ADR-008](0008-bulk-previews-redis.md) | Bulk edit previews in Redis, set-based commit | Accepted |
+| [ADR-008](0008-bulk-previews-redis.md) | Bulk edit previews in Redis, set-based commit | Superseded by ADR-0072 |
 | [ADR-009](0009-targets-and-kpi-rollups.md) | Targets, the metric library and KPI roll-ups | Accepted |
 | [ADR-010](0010-outbox-publisher-role.md) | Outbox publisher role and exactly-once consumers | Accepted |
 | [ADR-011](0011-ingestion-and-gcs-emulator.md) | Ingestion pipeline, object store and GCS emulator | Accepted |
@@ -75,4 +75,5 @@ record with its status line; regenerate it when you add one.
 | [ADR-066](0066-mcp-oauth.md) | The MCP server signs people in with OAuth, through the app's Google sign-in | Accepted (product owner, 2026-09-29: "make sure the MCP is live with OAuth") |
 | [ADR-067](0067-google-sign-in.md) | Budget OS signs people in with Google itself | Accepted (product owner, 2026-09-30) |
 | [ADR-071](0071-fact-identity-and-reconciliation.md) | Fact identity and reconciliation: natural keys, full vs incremental runs, soft supersession (supersedes spec §14 step 3) | Accepted |
+| [ADR-0072](0072-previews-in-postgres.md) | Bulk-edit and budget-import previews move to Postgres | Accepted (W1-5, audit I-5, decision D-2) |
 | [ADR-073](0073-ci-timing-budgets.md) | Timing budgets scale in CI | Accepted (W0-1, audit M-1) |

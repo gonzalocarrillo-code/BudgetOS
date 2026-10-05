@@ -14,7 +14,9 @@
   - `tokens.json` in that folder has a one-year token for every persona: admin, orgAdmin, planner, budgetOwner, approver, finance1, finance2.
   - The dev server signs in as `orgAdmin`, the org-wide admin (every workspace, the org registry and roles). `LOCAL_PERSONA=admin pnpm dev:local` signs in as the workspace admin instead, or any other persona. Sign out, then paste another persona's token to act as them.
 - **Closing a period** works locally (`CLOSURE_SINK=memory`). The frozen rows live only in that API process.
-- **Needs:** Environment variables from `.env.example` at the repo root; Postgres and Redis (see `packages/db/.env` for connection strings and `REDIS_URL` for the cache); Node 22.
+- **Needs:** Environment variables from `.env.example` at the repo root; Postgres (see `packages/db/.env` for connection strings); Node 22. Redis is optional (ADR-0072): bulk-edit and
+  budget-import previews live in Postgres; `REDIS_URL`, if set, still backs the `/query` result
+  cache (below).
 - **Stop:** Ctrl-C (or stop the "local" preview). The data is kept.
 - **The Playwright stack** (`pnpm test:e2e`, `e2e:stack`) is separate: fresh workspace, new key, other ports.
 

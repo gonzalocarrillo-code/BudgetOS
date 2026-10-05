@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR-0072](0072-previews-in-postgres.md) (the "Redis in every deployed environment"
+part of the decision below; the set-based commit and phasing decisions still stand).
 
 ## Context
 

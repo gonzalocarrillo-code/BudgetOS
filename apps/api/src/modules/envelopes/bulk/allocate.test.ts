@@ -1,8 +1,11 @@
+import type { Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { describe, expect, it } from "vitest";
 import { allocate, largestRemainder, rephase } from "./allocate.js";
 import { MemoryPreviewStore } from "./preview-store.js";
 import { parseCsv, toCsv } from "./csv.js";
+
+const fakeTx = {} as unknown as Tx;
 
 const d = (v: string | number) => new Decimal(v);
 const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.plus(x), d(0)).toFixed(2);
@@ -93,9 +96,9 @@ describe("MemoryPreviewStore", () => {
   it("expires after the TTL", async () => {
     let now = 0;
     const s = new MemoryPreviewStore(() => now);
-    await s.put("p", "v", 60);
-    expect(await s.get("p")).toBe("v");
+    await s.put(fakeTx, "p", "test", "v", 60);
+    expect(await s.get(fakeTx, "p")).toBe("v");
     now = 60_000;
-    expect(await s.get("p")).toBeNull();
+    expect(await s.get(fakeTx, "p")).toBeNull();
   });
 });

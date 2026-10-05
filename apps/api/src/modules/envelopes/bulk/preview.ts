@@ -12,7 +12,7 @@ import { allocate, type AllocContext } from "./allocate.js";
 import { capViolations } from "./caps.js";
 import { PREVIEW_TTL_SECONDS, type PreviewStore } from "./preview-store.js";
 
-/** What commit needs from a preview; stored as JSON under `bulk:<previewId>`. */
+/** What commit needs from a preview; stored as JSON in the `PreviewStore` under `previewId`. */
 export interface StoredPreview {
   previewId: string;
   workspaceId: string;
@@ -159,23 +159,20 @@ export async function buildPreview(prisma: PrismaClient, auth: AuthContext, raw:
         rows: changed.map((h) => ({ envelopeId: h.id, headVersionId: h.headVersionId, before: h.headAmount, after: (after.get(h.id) as Decimal).toFixed(2), currency: h.currency })),
         expiresAt,
       };
+      if (changed.length) await store.put(tx, previewId, "bulk-edit", JSON.stringify(stored), PREVIEW_TTL_SECONDS);
       return {
-        stored,
-        preview: {
-          previewId,
-          rows,
-          // Totals in the workspace reporting currency, so a mixed-currency selection still adds up.
-          totalsBefore: beforeRep.toFixed(2),
-          totalsAfter: afterRepTotal.toFixed(2),
-          capViolations: violations,
-          policyPreview: policy ? { name: policy.name, chain: policy.chain.map((s) => s.role) } : null,
-          skipped,
-          expiresAt,
-        } satisfies BulkPreview,
-      };
+        previewId,
+        rows,
+        // Totals in the workspace reporting currency, so a mixed-currency selection still adds up.
+        totalsBefore: beforeRep.toFixed(2),
+        totalsAfter: afterRepTotal.toFixed(2),
+        capViolations: violations,
+        policyPreview: policy ? { name: policy.name, chain: policy.chain.map((s) => s.role) } : null,
+        skipped,
+        expiresAt,
+      } satisfies BulkPreview;
     },
     { timeoutMs: 60_000 },
   );
-  if (preview.stored.rows.length) await store.put(preview.stored.previewId, JSON.stringify(preview.stored), PREVIEW_TTL_SECONDS);
-  return preview.preview;
+  return preview;
 }

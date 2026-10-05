@@ -29,16 +29,19 @@ export interface BulkCommitResult {
 export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPreviewId: string, store: PreviewStore): Promise<BulkCommitResult> {
   const previewId = parseId(rawPreviewId);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const raw = await store.get(previewId);
-  if (raw === null) throw new DomainError("NOT_FOUND", "Preview not found or expired; preview again");
-  const p = JSON.parse(raw) as StoredPreview;
-  if (p.workspaceId !== workspaceId) throw new DomainError("NOT_FOUND", "Preview not found or expired; preview again");
-  if (p.createdBy !== auth.user.id) throw new DomainError("FORBIDDEN", "Only the author of a preview can commit it");
 
   const result = await withTenant(
     prisma,
     auth.ctx,
     async (tx) => {
+      // Consumed atomically (DELETE … RETURNING) inside this transaction: a second, concurrent
+      // commit of the same preview can never also pass this check (W1-5 ADR-0072).
+      const raw = await store.take(tx, previewId);
+      if (raw === null) throw new DomainError("NOT_FOUND", "Preview not found or expired; preview again");
+      const p = JSON.parse(raw) as StoredPreview;
+      if (p.workspaceId !== workspaceId) throw new DomainError("NOT_FOUND", "Preview not found or expired; preview again");
+      if (p.createdBy !== auth.user.id) throw new DomainError("FORBIDDEN", "Only the author of a preview can commit it");
+
       const ids = p.rows.map((r) => r.envelopeId);
       await lockEnvelopes(tx, ids);
       const heads = new Map((await loadBulkHeads(tx, ids)).map((h) => [h.id, h]));
@@ -166,6 +169,5 @@ export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPre
     },
     { timeoutMs: 60_000 },
   );
-  await store.delete(previewId);
   return result;
 }

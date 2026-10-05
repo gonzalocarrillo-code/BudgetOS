@@ -966,3 +966,20 @@ model BudgetBaselineRow {
   @@index([workspaceId, envelopeId])
   @@map("budget_baseline_row")
 }
+
+/// W1-5 (ADR-0072): a bulk-edit or budget-import preview staged between preview and commit, so any
+/// API instance can commit a preview another instance built. `take` (SQL `DELETE … RETURNING`)
+/// consumes it atomically; expired rows are swept opportunistically on the next `put` of their
+/// workspace. Never read outside its own request's tenant transaction.
+model BulkPreview {
+  id          String   @id
+  workspaceId String   @map("workspace_id") @db.Uuid
+  authorId    String   @map("author_id") @db.Uuid
+  kind        String
+  payload     Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+
+  @@index([workspaceId, expiresAt])
+  @@map("bulk_preview")
+}

@@ -100,6 +100,7 @@ export { linkMySlackUser, setMyName, setMySlackSettings, workspaceSetup } from "
 export type { DemoSummary, PurgeSummary } from "./demo.js";
 export { baselineTree, captureBaselineRows, comparedRows, snapshotIntegrity, subtreeIds } from "./baselines.js";
 export { FACT_TABLES, deleteFactMonth, factMonthTotals, factMonthsBefore, lastFactDate } from "./retention.js";
+export { deleteExpiredPreviews, deletePreview, getPreview, putPreview, takePreview } from "./previews.js";
 export { importEnvelopesById, importEnvelopesByTuple, liveChildrenApproved } from "./budget-import.js";
 export type { ImportEnvelope } from "./budget-import.js";
 export type { FactTable, MonthTotals } from "./retention.js";

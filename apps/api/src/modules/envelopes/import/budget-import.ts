@@ -73,10 +73,18 @@ interface Stored {
 export async function previewBudgetImport(prisma: PrismaClient, auth: AuthContext, raw: unknown, store: PreviewStore): Promise<BudgetImportPreview> {
   const input = parseInput(BudgetImportInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const plan = await withTenant(prisma, auth.ctx, (tx) => buildImportPlan(tx, auth, workspaceId, input.csv, input.templateId), TX);
   const previewId = newId();
-  const stored: Stored = { kind: "budget-import", workspaceId, userId: auth.user.id, csv: input.csv, ...(input.templateId ? { templateId: input.templateId } : {}) };
-  await store.put(previewId, JSON.stringify(stored), PREVIEW_TTL_SECONDS);
+  const plan = await withTenant(
+    prisma,
+    auth.ctx,
+    async (tx) => {
+      const plan = await buildImportPlan(tx, auth, workspaceId, input.csv, input.templateId);
+      const stored: Stored = { kind: "budget-import", workspaceId, userId: auth.user.id, csv: input.csv, ...(input.templateId ? { templateId: input.templateId } : {}) };
+      await store.put(tx, previewId, "budget-import", JSON.stringify(stored), PREVIEW_TTL_SECONDS);
+      return plan;
+    },
+    TX,
+  );
   return previewOf(previewId, plan);
 }
 
@@ -88,12 +96,15 @@ export async function previewBudgetImport(prisma: PrismaClient, auth: AuthContex
 export async function commitBudgetImport(prisma: PrismaClient, auth: AuthContext, raw: unknown, store: PreviewStore) {
   const input = parseInput(BudgetImportCommitInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const stored = JSON.parse((await store.get(input.previewId)) ?? "null") as Stored | null;
-  if (!stored || stored.kind !== "budget-import" || stored.workspaceId !== workspaceId || stored.userId !== auth.user.id) throw new DomainError("NOT_FOUND", "Import preview not found or expired; preview the file again");
   const result = await withTenant(
     prisma,
     auth.ctx,
     async (tx) => {
+      // Consumed atomically (DELETE … RETURNING) inside this transaction: a second, concurrent
+      // commit of the same preview can never also pass this check (W1-5 ADR-0072).
+      const rawStored = await store.take(tx, input.previewId);
+      const stored = JSON.parse(rawStored ?? "null") as Stored | null;
+      if (!stored || stored.kind !== "budget-import" || stored.workspaceId !== workspaceId || stored.userId !== auth.user.id) throw new DomainError("NOT_FOUND", "Import preview not found or expired; preview the file again");
       // I-16: serialize commits for this workspace so two concurrent commits cannot both read "not
       // created yet" and both insert the same tuple. The loser waits here, then rebuilds the plan
       // against what the winner just wrote, so its own commit sees the row as unchanged and 409s.
@@ -105,7 +116,6 @@ export async function commitBudgetImport(prisma: PrismaClient, auth: AuthContext
     },
     TX,
   );
-  await store.delete(input.previewId);
   return result;
 }
 
