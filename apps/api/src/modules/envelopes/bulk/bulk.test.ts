@@ -258,8 +258,10 @@ describe("CSV round trip and the end of a bulk request", () => {
     });
     expect(exported.status).toBe(201);
     const csv = exported.text;
-    // The CSV should contain the name with apostrophe prefix to prevent formula execution
-    expect(csv).toContain(`'${dangerousName}`);
+    // The cell is prefixed with an apostrophe and, because the name holds quotes, RFC 4180-quoted
+    // with the inner quotes doubled: "'=HYPERLINK(""http://evil.example"")".
+    expect(csv).toContain(`"'${dangerousName.replace(/"/g, '""')}"`);
+    expect(csv).not.toContain(`,${dangerousName}`);
   });
 
   it("CSV amount column with negative number round-trips unchanged (plain numbers not prefixed)", () => {
