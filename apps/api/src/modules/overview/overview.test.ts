@@ -3,7 +3,7 @@ import { LIVE_LEAVES, TOP_LEVEL, elapsedFraction } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
-import { appDb as appDbClient, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
+import { appDb as appDbClient, ownerDb, startHarness, testUser, type Harness } from "../../test-support/harness.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
 
 /**
@@ -234,5 +234,80 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     } finally {
       await owner.$executeRaw`DELETE FROM projection_fact WHERE workspace_id = ${ws}::uuid AND formula_version = 'ho-012-test'`;
     }
+  });
+});
+
+describe("GET /workspaces/:ws/overview — no heatmap axes (T-3)", () => {
+  // A workspace with live leaves but no country|market|region or platform|channel dimension: `heat`
+  // is null. `assigned`/`totals` must still cover every live leaf, not only the "over pace" subset.
+  const orgId = randomUUID();
+  const ws = randomUUID();
+  const owner_ = testUser("t3-noaxes", randomUUID());
+
+  async function leaf(name: string, budget: string, spend: string): Promise<string> {
+    const id = randomUUID();
+    const v = randomUUID();
+    await owner.$executeRawUnsafe(
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+       VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $4::uuid, now())`,
+      id,
+      ws,
+      name,
+      owner_.id,
+    );
+    await owner.$executeRawUnsafe(
+      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
+      v,
+      id,
+      budget,
+      owner_.id,
+    );
+    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+    await owner.$executeRawUnsafe(
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-09-15', 'USD', $3::numeric, $3::numeric, 'fixture', $4::uuid, $5)`,
+      ws,
+      id,
+      spend,
+      randomUUID(),
+      randomUUID(),
+    );
+    return id;
+  }
+
+  beforeAll(async () => {
+    await owner.organization.create({ data: { id: orgId, name: "t3-no-axes" } });
+    await owner.workspace.create({ data: { id: ws, orgId, slug: `t3-${ws}`, name: "T-3 no axes", reportingCurrency: "USD" } });
+    await owner.user.create({ data: { id: owner_.id, orgId, email: owner_.email, name: owner_.email, googleSub: `g-${owner_.sub}` } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: owner_.id, role: "BUDGET_OWNER", createdBy: owner_.id } });
+    // Two top-level leaves, no dimensions at all: one well over pace, one well under. Over-pace alone
+    // (1500.00) must not stand in for the workspace's live-leaf total (1500.00 + 800.00 = 2300.00).
+    await leaf("Over", "1500.00", "1400.00");
+    await leaf("Under", "800.00", "300.00");
+  }, 60_000);
+
+  afterAll(async () => {
+    await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, ws);
+    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
+    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
+    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+    await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+    await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
+    await owner.user.deleteMany({ where: { id: owner_.id } });
+    await owner.workspace.deleteMany({ where: { id: ws } });
+    await owner.organization.deleteMany({ where: { id: orgId } });
+  });
+
+  it("assigned/totals cover every live leaf, not only the over-pace subset, when the workspace has no row/col axes", async () => {
+    const token = await h.mint(owner_);
+    const res = await h.call("GET", `/api/v1/workspaces/${ws}/overview`, token, { headers: { "x-workspace-id": ws } });
+    expect(res.status, JSON.stringify(res.body).slice(0, 500)).toBe(200);
+    const o = res.body as { heatmap: unknown; totals: Record<string, string>; headline: Record<string, string | null> | null };
+    expect(o.heatmap).toBeNull(); // no country/platform-family axes: no heatmap
+    const allLeaves = new Decimal("1500.00").plus("800.00");
+    expect(new Decimal(o.totals["budget"] ?? 0).toFixed(2)).toBe(allLeaves.toFixed(2));
+    expect(o.headline).not.toBeNull();
+    expect(new Decimal(o.headline?.["assigned"] ?? 0).toFixed(2)).toBe(allLeaves.toFixed(2));
+    expect(o.headline?.["unassigned"]).toBe("0.00"); // both leaves are also the top-level budgets
+    expect(o.headline?.["assignedPct"]).toBe(new Decimal(o.headline?.["assigned"] ?? 0).div(o.headline?.["budget"] ?? 1).toDecimalPlaces(4).toString());
   });
 });
