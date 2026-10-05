@@ -518,7 +518,7 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
 // W2-4 (audit S-4): audit_event's INSERT policy was `WITH CHECK (true)`, so any session — including
 // budget_mcp, which holds INSERT on audit_event only (ADR-019) — could write an audit row into
 // another workspace's trail, or with workspace_id NULL claiming any org. These tests cover the
-// replacement policy (migration 20261010000000_audit_event_org_scoped_insert).
+// replacement policy (migration 20261010030000_audit_event_org_scoped_insert).
 describe("audit_event insert policy is bound to the tenant (W2-4, audit S-4)", () => {
   it("a workspace session cannot insert an audit row for another workspace", async () => {
     const session = ctx({ orgId: orgA, workspaceId: wsA1 });
