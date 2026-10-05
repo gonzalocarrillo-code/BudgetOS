@@ -68,9 +68,9 @@ describe("workspace templates (T-040)", () => {
     expect(templatesThere.find((t) => t.isDefault)?.name).toBe("Default");
     expect(await owner.approvalPolicy.count({ where: { workspaceId: ws } })).toBe(DEFAULT_POLICIES.length);
     expect(await owner.savedView.count({ where: { workspaceId: ws, visibility: "shared" } })).toBe(1);
-    // T-5: a fresh demo workspace holds only demo budgets, so the Explorer and this done-when both
-    // read them with includeDemo (demoStatus below confirms hasRealBudgets is still false).
-    const query = async () => as("orgAdmin", "POST", `/workspaces/${ws}/query`, { workspaceId: ws, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: LIVE_LEAVES }, measures: ["budget", "actual"], limit: 1, includeDemo: true }, ws);
+    // T-5: a fresh demo workspace holds only demo budgets (no real ones yet, demoStatus below
+    // confirms hasRealBudgets is false), so /query includes them with no includeDemo needed.
+    const query = async () => as("orgAdmin", "POST", `/workspaces/${ws}/query`, { workspaceId: ws, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: LIVE_LEAVES }, measures: ["budget", "actual"], limit: 1 }, ws);
     const q = await query();
     expect(q.status, JSON.stringify(q.body).slice(0, 300)).toBe(201);
     expect((q.body["totals"] as Record<string, string>)["budget"]).toBe(demoBudget);

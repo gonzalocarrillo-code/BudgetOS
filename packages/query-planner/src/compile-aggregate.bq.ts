@@ -139,14 +139,24 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
     )`,
     )
     .join("");
-  // T-5: demo envelopes and demo facts are excluded unless the caller opts in (same default as
-  // the Postgres dialect). projection_fact has no `demo` column (the demo dataset never writes
-  // projections), so proj below is left unfiltered.
+  // T-5: demo envelopes and demo facts are excluded once the workspace has a real budget (same
+  // rule as the Postgres dialect, compile-query.ts) — a pure-demo workspace shows them with no
+  // caller plumbing needed; `includeDemo` forces them in unconditionally. `demo_mode` computes
+  // "still pure demo" once per statement. projection_fact has no `demo` column (the demo dataset
+  // never writes projections), so proj below is left unfiltered.
   const includeDemo = q.includeDemo === true;
+  const pureDemo = "(SELECT pure FROM demo_mode)";
+  const demoModeCte = includeDemo
+    ? ""
+    : `demo_mode AS (
+      SELECT NOT EXISTS (SELECT 1 FROM ${t("envelope")} r WHERE r.workspace_id = ${ws} AND NOT r.demo AND r.status <> 'ARCHIVED') AS pure
+    ),
+    `;
+  const demoFilter = (column: string) => (includeDemo ? "" : ` AND (NOT ${column} OR ${pureDemo})`);
   const ctes = `
-    sel AS (
+    ${demoModeCte}sel AS (
       SELECT e.id, e.status, e.start_date, e.end_date FROM ${t("envelope")} e
-      WHERE e.workspace_id = ${ws} AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${includeDemo ? "" : " AND NOT e.demo"} AND (${where})
+      WHERE e.workspace_id = ${ws} AND e.start_date <= ${pEnd} AND e.end_date >= ${pStart}${demoFilter("e.demo")} AND (${where})
     ),
     bud AS (
       SELECT v.envelope_id, v.amount_reporting AS budget
@@ -157,7 +167,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
     act AS (
       SELECT sf.envelope_id, SUM(sf.amount_reporting) AS actual
       FROM ${t("spend_fact")} sf JOIN sel ON sel.id = sf.envelope_id
-      WHERE sf.workspace_id = ${ws} AND sf.period_date BETWEEN ${pStart} AND ${pEnd}${includeDemo ? "" : " AND NOT sf.demo"}
+      WHERE sf.workspace_id = ${ws} AND sf.period_date BETWEEN ${pStart} AND ${pEnd}${demoFilter("sf.demo")}
       GROUP BY sf.envelope_id
     )${
       withProjections

@@ -128,18 +128,22 @@ describe("routing helpers", () => {
 describe("demo exclusion (T-5)", () => {
   const demoOrgId = randomUUID();
   const demoWs = randomUUID();
+  const pureWs = randomUUID();
   const demoUser = testUser("engine-demo", randomUUID());
-  const demoAuth = (): AuthContext => ({
-    ctx: { workspaceId: demoWs, orgId: demoOrgId, userId: demoUser.id, isOrgAdmin: false, actorType: "user", requestId: `engine-demo-${randomUUID()}` },
+  const authFor = (workspaceId: string): AuthContext => ({
+    ctx: { workspaceId, orgId: demoOrgId, userId: demoUser.id, isOrgAdmin: false, actorType: "user", requestId: `engine-demo-${randomUUID()}` },
     user: { id: demoUser.id, orgId: demoOrgId, email: demoUser.email, name: demoUser.sub },
     isOrgAdmin: false,
     roles: ["PLANNER"],
     assignments: [{ role: "PLANNER", scope: {} }],
   });
+  const demoAuth = () => authFor(demoWs);
+  const pureAuth = () => authFor(pureWs);
 
   beforeAll(async () => {
     await owner.organization.create({ data: { id: demoOrgId, name: "engine-demo" } });
     await owner.workspace.create({ data: { id: demoWs, orgId: demoOrgId, slug: `engine-demo-${demoWs}`, name: "Engine Demo", reportingCurrency: "USD" } });
+    await owner.workspace.create({ data: { id: pureWs, orgId: demoOrgId, slug: `engine-demo-pure-${pureWs}`, name: "Engine Demo Pure", reportingCurrency: "USD" } });
     await owner.user.create({ data: { id: demoUser.id, orgId: demoOrgId, email: demoUser.email, name: demoUser.sub, googleSub: `g-${demoUser.sub}` } });
 
     const real = randomUUID();
@@ -167,13 +171,30 @@ describe("demo exclusion (T-5)", () => {
       randomUUID(),
       randomUUID(),
     );
+
+    // A second, pure-demo workspace (the Slack sandbox / a fresh onboarding workspace): no real
+    // budget at all. Demo rows must show up here with no includeDemo plumbing from the caller.
+    const pureDemoEnv = randomUUID();
+    const pureDemoV = randomUUID();
+    await owner.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Demo', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), true)`, pureDemoEnv, pureWs, demoUser.id);
+    await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 500, 500, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', true)`, pureDemoV, pureDemoEnv, demoUser.id);
+    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, pureDemoEnv, pureDemoV);
+    await owner.$executeRawUnsafe(
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 50, 50, 'fixture', $3::uuid, $4, true)`,
+      pureWs,
+      pureDemoEnv,
+      randomUUID(),
+      randomUUID(),
+    );
   });
 
   afterAll(async () => {
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, demoWs);
-    await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, demoWs);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, demoWs);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, demoWs);
+    for (const w of [demoWs, pureWs]) {
+      await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, w);
+      await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, w);
+      await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, w);
+      await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, w);
+    }
     await owner.user.deleteMany({ where: { orgId: demoOrgId } });
     await owner.workspace.deleteMany({ where: { orgId: demoOrgId } });
     await owner.organization.delete({ where: { id: demoOrgId } });
@@ -190,5 +211,13 @@ describe("demo exclusion (T-5)", () => {
     expect(withDemo.totals["budget"]).toBe("1500.00");
     expect(withDemo.totals["actual"]).toBe("150.00");
     expect(withDemo.rows.map((r) => r.path.join("/")).sort()).toEqual(["Demo", "Real"]);
+  });
+
+  it("/query on a pure-demo workspace (no real budget yet) includes the demo rows automatically, with no includeDemo needed", async () => {
+    const period = { kind: "range", start: "2026-01-01", end: "2026-12-31" };
+    const res = await runQuery(app, pureAuth(), { workspaceId: pureWs, period, groupBy: [], measures: ["budget", "actual"] }, now, { cache: null, warehouse: null });
+    expect(res.totals["budget"]).toBe("500.00");
+    expect(res.totals["actual"]).toBe("50.00");
+    expect(res.rows.map((r) => r.path.join("/"))).toEqual(["Demo"]);
   });
 });

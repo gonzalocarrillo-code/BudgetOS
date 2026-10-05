@@ -36,8 +36,6 @@ export interface ExplorerQuery {
   asOf?: string | undefined;
   /** Phase E (H-006): a snapshot every row is compared with (the change measures need it). */
   compareTo?: string | undefined;
-  /** T-5: demo budgets are excluded unless the workspace is pure demo (no real budgets yet). */
-  includeDemo?: boolean | undefined;
   /** tree: follow parent links instead of a hierarchy template (ADR-050). */
   structure?: boolean | undefined;
   /** tree: the hierarchy template (its id for the roll-up cache, its path for the levels). */
@@ -118,7 +116,7 @@ export class ExplorerRowSource implements RowSource {
     let cursor: string | null = null;
     let last: QueryResponse | undefined;
     do {
-      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : { unallocated: true }), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), ...(this.q.includeDemo ? { includeDemo: true } : {}), ...(cursor ? { cursor } : {}) };
+      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : { unallocated: true }), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), ...(cursor ? { cursor } : {}) };
       last = (await unwrap(api.POST("/api/v1/workspaces/{ws}/query", { params: { path: { ws: this.q.ws } }, body: body as never }))) as QueryResponse;
       rows.push(...last.rows);
       cursor = last.nextCursor;

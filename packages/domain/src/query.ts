@@ -51,9 +51,10 @@ export const QueryRequest = z.object({
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(1000).default(200),
   /**
-   * T-5 (audit): demo envelopes and demo facts (spec §27) are excluded by default, so a workspace
-   * with real budgets never mixes demo money into its totals. Home's demo banner query and the
-   * Explorer, while a workspace holds only demo data, opt in explicitly.
+   * T-5 (audit): demo envelopes and demo facts (spec §27) are excluded once the workspace has a
+   * real (non-demo, live) budget, so it never mixes demo money into its totals; a pure-demo
+   * workspace (onboarding, before the first real budget) shows them automatically, with no caller
+   * plumbing needed. `true` forces them in unconditionally regardless of real budgets.
    */
   includeDemo: z.boolean().default(false),
 });
