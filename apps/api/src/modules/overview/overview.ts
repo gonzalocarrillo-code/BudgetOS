@@ -122,10 +122,12 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   if (params.compareTo !== undefined && snapshot === null) throw new DomainError("NOT_FOUND", "Snapshot not found", { compareTo: params.compareTo });
   const compareCells = params.compareTo !== undefined ? { compareTo: { baselineId: params.compareTo } } : {};
 
-  const [heat, rowTotals, colTotals, over, under, noSpend, kpiOff, kpi, kpiTargets, headTotals, alerts, queue, sources, report] = await Promise.all([
+  const [heat, rowTotals, colTotals, liveTotals, over, under, noSpend, kpiOff, kpi, kpiTargets, headTotals, alerts, queue, sources, report] = await Promise.all([
     dims.rows && dims.cols ? q({ groupBy: [rowKey, colKey], measures: [...HEAT, ...(params.compareTo ? ["budget_baseline", "budget_change_abs"] : [])], ...compareCells, sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
     dims.rows && dims.cols ? q({ groupBy: [rowKey], measures: HEAT, sort: [{ key: sortKey, dir: "desc" }], limit: 50 }) : null,
     dims.rows && dims.cols ? q({ groupBy: [colKey], measures: HEAT, sort: [{ key: "budget", dir: "desc" }], limit: 50 }) : null,
+    // No row/col axes, so no heatmap (T-3): the same live-leaf totals it would have had, ungrouped.
+    !(dims.rows && dims.cols) ? q({ measures: HEAT, limit: 1 }) : null,
     // Needs attention (ADR-064): ahead of plan and past the on-plan band, largest first …
     q({ filter: leavesAnd(measure("pace_index", "gte", ON_PLAN.to), measure("ahead_of_plan_abs", "gt", 0)), measures: ATT, sort: [{ key: "ahead_of_plan_abs", dir: "desc" }], limit: ATTENTION }),
     // … behind it with some spend …
@@ -188,7 +190,8 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   const attention = attentionOf({ over, under, noSpend, kpiOff }, alertListOf);
   const byRule = await rulesOf(alerts, rules, place, rowKey, labels.rows, (scope) => q({ filter: scope, measures: ["budget"], limit: 1 }));
   const headRow = headTotals?.totals ?? null;
-  const assigned = (heat?.totals ?? over.totals)["budget"] ?? null;
+  const liveTotalsOf = heat ?? liveTotals;
+  const assigned = liveTotalsOf?.totals["budget"] ?? null;
   const remaining = headRow?.["remaining"] ?? null;
   const daysLeft = range.daysLeft;
   return {
@@ -219,7 +222,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
       snapshot && report
         ? { id: snapshot.id, name: snapshot.name, kind: snapshot.kind, asOf: snapshot.asOf, explicit: params.compareTo !== undefined, changeAbs: report.change.abs, changePct: report.change.pct, counts: { increased: report.counts.increased, decreased: report.counts.decreased, new: report.counts.new, ended: report.counts.ended } }
         : null,
-    totals: { ...(heat?.totals ?? over.totals) },
+    totals: { ...(liveTotalsOf?.totals ?? over.totals) },
     heatmap:
       dims.rows && dims.cols
         ? {
