@@ -128,7 +128,7 @@ describe("sources", () => {
   });
 
   it("an incremental source must map a row_id; a full resync is queued as a full run (ADR-071)", async () => {
-    const config = { kind: "bigquery", projectId: "p", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" };
+    const config = { kind: "bigquery", projectId: "budget-test", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" };
     const bad = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "warehouse", config, mapping });
     expect(bad.status).toBe(422);
     expect(String(bad.body["message"])).toMatch(/row_id/);

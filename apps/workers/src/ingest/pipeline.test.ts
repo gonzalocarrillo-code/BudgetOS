@@ -273,7 +273,7 @@ describe("fact identity and reconciliation (ADR-071)", () => {
     const whMapping = { kind: "spend", columns: { ID: { role: "row_id" }, COUNTRY: { dimension: "country" }, PLATFORM: { dimension: "platform", transform: "lower" }, DAY: { role: "period_date" }, SPEND: { role: "amount" }, CCY: { role: "currency" }, UPDATED_AT: { role: "ignore" } } };
 
     beforeAll(async () => {
-      await owner.dataSource.create({ data: { id: bq, workspaceId: ws, kind: "bigquery", name: "warehouse", config: { kind: "bigquery", projectId: "p", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" }, mapping: whMapping } });
+      await owner.dataSource.create({ data: { id: bq, workspaceId: ws, kind: "bigquery", name: "warehouse", config: { kind: "bigquery", projectId: "budget-test", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" }, mapping: whMapping } });
     });
 
     it("(a) a re-delivered row with a changed amount updates its one fact; spend_month keeps one fact with the new amount", async () => {
