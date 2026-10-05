@@ -52,8 +52,19 @@ export function cookie(header: string | string[] | undefined, name: string): str
 
 const setCookie = (name: string, value: string, maxAge: number) => `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 
-/** Only a path inside the app, never another site. */
-export const safeNext = (next: string | undefined) => (next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+/** Only a path inside the app, never another site. Rejects absolute URLs, backslash-based redirects, and encoded variants. */
+export const safeNext = (next: string | undefined): string => {
+  if (!next || !next.startsWith("/")) return "/";
+  let url: URL;
+  try {
+    url = new URL(next, "https://budget.invalid");
+  } catch {
+    return "/";
+  }
+  if (url.origin !== "https://budget.invalid" || !url.pathname.startsWith("/")) return "/";
+  if (next.includes("\\") || /%5c/i.test(next)) return "/";
+  return url.pathname + url.search + url.hash;
+};
 
 /** Step 1: to Google, with a state bound to a cookie of this browser (login CSRF). */
 export async function loginRedirect(config: GoogleLoginConfig, next: string | undefined): Promise<{ location: string; setCookie: string }> {

@@ -52,8 +52,17 @@ describe("Google login", () => {
   });
 
   it("never sends the person to another site after signing in", () => {
+    // Cases that must redirect to "/" (blocked redirects)
     expect(safeNext("https://evil.example")).toBe("/");
     expect(safeNext("//evil.example")).toBe("/");
-    expect(safeNext("/w/abc")).toBe("/w/abc");
+    expect(safeNext(String.raw`/\evil.example`)).toBe("/"); // forward slash + backslash
+    expect(safeNext("/%5Cevil.example")).toBe("/"); // percent-encoded backslash
+    expect(safeNext(String.raw`/\/evil.example`)).toBe("/"); // forward slash + backslash + forward slash
+    expect(safeNext("javascript:alert(1)")).toBe("/");
+
+    // Cases that must be returned unchanged (safe redirects)
+    expect(safeNext("/")).toBe("/");
+    expect(safeNext("/w/abc/budgets?x=1#frag")).toBe("/w/abc/budgets?x=1#frag");
+    expect(safeNext("/org")).toBe("/org");
   });
 });
