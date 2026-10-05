@@ -60,6 +60,9 @@ jobs:
       MCP_DATABASE_URL: postgresql://budget_mcp:replace-in-secret-manager@127.0.0.1:5432/budget
       GCS_EMULATOR_HOST: http://127.0.0.1:4443
       REDIS_URL: redis://127.0.0.1:6379
+      # ADR-071: GitHub runners are ~2x slower than the laptop baseline; the 60 s product gate
+      # (T-006 done-when) still applies locally and in `pnpm bench`.
+      SEED_TIME_BUDGET_MS: "180000"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
