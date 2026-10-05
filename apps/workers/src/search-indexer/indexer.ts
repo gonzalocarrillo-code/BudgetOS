@@ -1,4 +1,4 @@
-import { SETTINGS } from "@budget/domain";
+import { SETTINGS, parseOutboxPayload } from "@budget/domain";
 import { deleteSearchDocuments, loadBulkChange, searchDocumentIds, upsertSearchDocuments, withTenant, type TenantContext, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce, type OutboxEvent } from "../consumer.js";
@@ -113,15 +113,28 @@ export async function indexEntities(tx: Tx, ctx: IndexContext, targets: Targets)
 
 const systemCtx = (workspaceId: string, orgId: string, requestId: string): TenantContext => ({ workspaceId, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId });
 
+/** I-7: naming.changed(kind=display) re-indexes every envelope inside this transaction;
+ * withTenant()'s 15s default aborts a workspace with many envelopes. Match the roll-up worker's
+ * 300s budget for the same reason (see rollup.ts ROLLUP_TIMEOUT). */
+const SEARCH_TIMEOUT = { timeoutMs: 300_000 };
+
 /** Push handler: one outbox event → the documents it touched, once. */
 export async function handleSearchEvent(prisma: PrismaClient, body: unknown, today = new Date().toISOString().slice(0, 10)) {
   const event: OutboxEvent = decodePush(body);
   let counts = { upserted: 0, deleted: 0 };
-  const outcome = await handleOnce(prisma, SEARCH_CONSUMER, event, async (tx) => {
-    const payload = (event.payload ?? {}) as Record<string, unknown>;
-    const targets = await targetsFor(tx, event.topic, payload);
-    counts = await indexEntities(tx, { workspaceId: event.workspaceId, orgId: event.orgId, today }, targets);
-  });
+  const outcome = await handleOnce(
+    prisma,
+    SEARCH_CONSUMER,
+    event,
+    async (tx) => {
+      // I-29: a malformed payload fails the handler (attempts/backoff in local-runner.ts) instead of
+      // reaching Prisma as `undefined`.
+      const payload = parseOutboxPayload(event.topic, event.payload);
+      const targets = await targetsFor(tx, event.topic, payload);
+      counts = await indexEntities(tx, { workspaceId: event.workspaceId, orgId: event.orgId, today }, targets);
+    },
+    SEARCH_TIMEOUT,
+  );
   return { outcome, ...counts };
 }
 

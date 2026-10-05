@@ -159,6 +159,23 @@ export { CreateSavedViewInput, ListSavedViewsQuery, OVERVIEW_BLOCKS, OVERVIEW_SE
 export type { OverviewBlock } from "./views.js";
 export { OrgSlackSettings, OrgSlackTestInput, SLACK_ACTIONS, SlackActionValue, SlackSettings, SlackSeverity, SlackTestInput, SlackUserSettings, UpdateOrgSlackInput, UpdateSlackSettingsInput, parseSlackAmount, shortRequestId } from "./slack.js";
 export { OUTBOX_TOPICS, topicsFor } from "./outbox-topics.js";
+export {
+  AlertEventPayload,
+  ApprovalEventPayload,
+  BudgetChangedPayload,
+  ExperimentChangedPayload,
+  FactsLoadedPayload,
+  NamingChangedPayload,
+  OUTBOX_PAYLOAD_SCHEMAS,
+  PeriodClosurePayload,
+  RegistryChangedPayload,
+  SlackTestPayload,
+  TagChangedPayload,
+  TargetChangedPayload,
+  ThreadChangedPayload,
+  WorkspaceCreatedPayload,
+  parseOutboxPayload,
+} from "./outbox-payloads.js";
 export { parseRequestRef, parseSlackCommand } from "./slack-command.js";
 export type { DecisionVerb, RequestRef, SlackCommand } from "./slack-command.js";
 export type { OutboxConsumer, OutboxTopic } from "./outbox-topics.js";

@@ -1,3 +1,4 @@
+import { parseOutboxPayload } from "@budget/domain";
 import { insertNotification, subscribers, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -45,7 +46,9 @@ export async function handleInApp(prisma: PrismaClient, body: unknown): Promise<
   const event: OutboxEvent = decodePush(body);
   const notified: string[] = [];
   const outcome = await handleOnce(prisma, IN_APP_CONSUMER, event, async (tx) => {
-    const raw = (event.payload ?? {}) as Record<string, unknown>;
+    // I-29: the open shape every topic validates against; thread.changed is re-parsed below against
+    // ThreadChanged's stricter, required-field shape, which this handler's destructuring relies on.
+    const raw = parseOutboxPayload(event.topic, event.payload);
     let kinds = new Map<string, string>();
     let payload: Record<string, unknown> = { outboxId: event.outboxId };
     if (event.topic === "thread.changed") {
