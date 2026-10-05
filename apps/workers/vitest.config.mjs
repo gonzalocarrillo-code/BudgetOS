@@ -9,8 +9,10 @@ import root from "../../vitest.config.mjs";
  * W0-1: unlike apps/api (which caps at 3 workers for the same reason), these suites race when
  * vitest's default file-level parallelism runs them concurrently against the same outbox-consumer
  * dedupe state (observed: rollup/notify tests flip "applied" to "duplicate" under concurrency, and
- * a spend_fact partition lookup fails intermittently). Files already run sequentially within one
- * file, so run files sequentially too rather than rework the worker suites' shared state.
+ * a spend_fact partition lookup fails intermittently). `fileParallelism: false` alone still starts
+ * a fresh thread-pool worker per file, which wasn't enough on a GitHub runner; `pool: "forks"` with
+ * `singleFork: true` runs every file in one process, one at a time (verified: 14/14 files green
+ * where the default pool had 5 failing).
  */
 export default mergeConfig(
   root,
@@ -19,6 +21,8 @@ export default mergeConfig(
       testTimeout: 20_000,
       hookTimeout: 30_000,
       fileParallelism: false,
+      pool: "forks",
+      poolOptions: { forks: { singleFork: true } },
     },
   }),
 );
