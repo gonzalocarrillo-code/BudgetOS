@@ -109,11 +109,13 @@ resource "google_storage_bucket" "uploads" {
   }
 
   # New: with versioning on, a replaced/deleted object's old version would otherwise be kept
-  # forever. Purge non-current versions after 30 days.
+  # forever. Purge non-current versions 30 days after they became non-current — `age` counts from
+  # object creation, not from when a version stopped being current, so it is the wrong condition
+  # here; `days_since_noncurrent_time` is the one that means what this rule says.
   lifecycle_rule {
     condition {
-      age        = var.noncurrent_version_lifecycle_days
-      with_state = "ARCHIVED"
+      days_since_noncurrent_time = var.noncurrent_version_lifecycle_days
+      with_state                 = "ARCHIVED"
     }
     action {
       type = "Delete"

@@ -68,24 +68,27 @@ import {
 }
 
 # --- BigQuery replica dataset and curated views (spec §20, plan §6.2; D-001) --------------------
-# Not deployed to dmus-gonzalo yet — only the unrelated budgetos_closures dataset exists there
-# today (ADR-065, ADR-018). Declared here because it has no unmet prerequisite (no VPC, no private
-# IP, nothing to fabricate): applying it would genuinely create budget_os_prod and its views. A
-# project owner decides when to turn this on; until then `terraform plan` will show it as a create,
-# which is accurate.
-module "bigquery" {
-  source     = "../../modules/bigquery"
-  project_id = var.project_id
-  env        = "prod"
-}
+# NOT instantiated. Not deployed to dmus-gonzalo yet — only the unrelated budgetos_closures dataset
+# exists there today (ADR-065, ADR-018) — and the first apply of this root module must be adoption
+# of the hand-created Cloud SQL instance/database/bucket plus their hardening, nothing else: mixing
+# in a genuine create (budget_os_prod and its views) would make that first plan harder to review and
+# risk it being applied by accident alongside the adoption. It has no unmet prerequisite (no VPC, no
+# private IP, nothing to fabricate), so uncomment when D-001 is scheduled:
+#
+# module "bigquery" {
+#   source     = "../../modules/bigquery"
+#   project_id = var.project_id
+#   env        = "prod"
+# }
 
 # --- Datastream CDC replica (spec §20; plan §6.2) ------------------------------------------------
-# NOT instantiated. Unlike bigquery above, this module cannot be filled in with live values: it
-# requires a VPC the Cloud SQL instance peers into, a private IP on the instance, and a replication
-# role/secret, none of which exist in dmus-gonzalo (the instance is public-IP only today — see
-# infra/modules/cloudsql/README.md "Private IP"). Inventing placeholder network values here would
-# describe infrastructure that is not real and risk an owner applying it by accident. Once the
-# private-IP migration lands (tracked as a follow-up, not part of W0-2), uncomment and fill in:
+# NOT instantiated, for a second, stronger reason than bigquery above: this module cannot be filled
+# in with live values at all. It requires a VPC the Cloud SQL instance peers into, a private IP on
+# the instance, and a replication role/secret, none of which exist in dmus-gonzalo (the instance is
+# public-IP only today — see infra/modules/cloudsql/README.md "Private IP"). Inventing placeholder
+# network values here would describe infrastructure that is not real and risk an owner applying it
+# by accident. Once the private-IP migration lands (tracked as a follow-up, not part of W0-2),
+# uncomment and fill in:
 #
 # module "datastream" {
 #   source                       = "../../modules/datastream"
