@@ -28,9 +28,9 @@ export function Headline({ ws, o, shows, periodLabel }: { ws: string; o: Overvie
   if (shows("headline.budget"))
     tiles.push(
       <StatTile key="budget" label={t("overview.tile.budget", { period: periodLabel })} value={compact(h.budget)} exact={exact(h.budget)} unit={c} testId="tile-budget">
-        {h.assignedPct !== null && h.assignedPct !== undefined ? <PaceBar size="sm" spent={num(h.assignedPct)} elapsed={null} band="low" label={t("overview.tile.assigned", { assigned: formatMoneyCompact(h.assigned ?? "0", c), unassigned: formatMoneyCompact(h.unassigned ?? "0", c) })} /> : null}
+        {h.assignedPct !== null && h.assignedPct !== undefined ? <PaceBar size="sm" spent={num(h.assignedPct)} elapsed={null} band="low" label={t("overview.tile.assigned", { assigned: compact(h.assigned), unassigned: compact(h.unassigned) })} /> : null}
         <span className="text-xs text-muted-foreground" data-testid="tile-budget-assigned">
-          {h.unassigned && Number(h.unassigned) > 0 ? t("overview.tile.assigned", { assigned: formatMoneyCompact(h.assigned ?? "0", c), unassigned: formatMoneyCompact(h.unassigned, c) }) : t("overview.tile.assignedAll")}
+          {h.unassigned && Number(h.unassigned) > 0 ? t("overview.tile.assigned", { assigned: compact(h.assigned), unassigned: compact(h.unassigned) }) : t("overview.tile.assignedAll")}
         </span>
         {o.compare ? (
           <span className="text-xs text-muted-foreground" data-testid="tile-since">

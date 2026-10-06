@@ -1,4 +1,4 @@
-import { DomainError, QueryRequest, factsPrunedBefore, readScopeFilter, readsPrunedFacts, resolvePeriod, type FilterGroupT, type QueryResponse } from "@budget/domain";
+import { DomainError, QueryRequest, factsPrunedBefore, readScopeFilter, readsPrunedFacts, resolvePeriod, todayIso, type FilterGroupT, type QueryResponse } from "@budget/domain";
 import { envelopePaths, envelopesByTuple, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
 import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { HEAVY_MONTHS, HEAVY_ROWS, QUERY_CACHE_TTL_SECONDS, cacheKey, engineFromEnv, maxPlanRows, monthsSpanned, type QueryEngine } from "./engine.js";
@@ -44,7 +44,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
     if (q.compareTo && "baselineId" in q.compareTo && (await tx.budgetBaseline.count({ where: { id: q.compareTo.baselineId, workspaceId: q.workspaceId } })) === 0) {
       throw new DomainError("NOT_FOUND", "Snapshot not found", { baselineId: q.compareTo.baselineId });
     }
-    const today = now.toISOString().slice(0, 10);
+    const today = todayIso(now);
     const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
     const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period)), ...(internal.elapsedThrough === undefined ? {} : { elapsedThrough: internal.elapsedThrough }) };
     const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);

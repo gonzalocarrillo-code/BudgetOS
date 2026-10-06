@@ -4,6 +4,7 @@ import { Button, cn, PACE_TINT, PaceBar, PaceLegend, Popover, PopoverContent, Po
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { Link } from "@tanstack/react-router";
 import { useRef, useState, type KeyboardEvent, type ReactElement } from "react";
+import { moneyOrDash } from "../../lib/money.js";
 import { Card } from "../../components/page.js";
 import { cellFilter, type CellRef } from "./cell-editor.js";
 
@@ -188,7 +189,7 @@ function Grid({ ws, h, currency, period, compareName, onEdit, rows, cols, label 
                         onFocus={() => setFocus([ri, ci])}
                         onKeyDown={(e) => move(e, ri, ci)}
                         className={cn("relative flex w-full min-w-24 flex-col rounded-md px-2 py-1.5 text-left outline-none ring-offset-1 hover:ring-2 hover:ring-primary focus-visible:ring-2 focus-visible:ring-ring", tint(x.pace_index))}
-                        aria-label={t("overview.cellLabel", { row: label("rows", r), col: label("cols", c), spent: pct(x.spend_to_date_pct), budget: formatMoney(x.budget ?? "0", currency), actual: formatMoney(x.actual ?? "0", currency) })}
+                        aria-label={t("overview.cellLabel", { row: label("rows", r), col: label("cols", c), spent: pct(x.spend_to_date_pct), budget: moneyOrDash(x.budget, currency), actual: moneyOrDash(x.actual, currency) })}
                         data-testid="heatmap-cell"
                         data-band={paceBand(x.pace_index) ?? "none"}
                       >
@@ -238,7 +239,7 @@ function Margin({ m, currency, strong = false }: { m: OverviewMargin | undefined
   return (
     <span className="inline-flex flex-col items-end whitespace-nowrap text-xs text-muted-foreground">
       <span className={cn("text-sm text-foreground", strong ? "font-bold" : "font-semibold")}>
-        {pct(m.spend_to_date_pct)} · {formatMoneyCompact(m.budget ?? "0", currency)}
+        {pct(m.spend_to_date_pct)} · {moneyOrDash(m.budget, currency, true)}
       </span>
       <span>{t("overview.paceTitle", { pace: pace(m.pace_index) })}</span>
     </span>
@@ -258,8 +259,8 @@ function CellPopover({ ws, cell, cellRef, currency, period, compareName, onEdit,
   const [open, setOpen] = useState(false);
   const band = paceBand(cell.pace_index);
   const rows: Array<[string, string]> = [
-    [t("overview.cell.budgets"), formatMoney(cell.budget ?? "0", currency)],
-    [t("overview.cell.spent"), `${formatMoney(cell.actual ?? "0", currency)} · ${pct(cell.spend_to_date_pct)}`],
+    [t("overview.cell.budgets"), moneyOrDash(cell.budget, currency)],
+    [t("overview.cell.spent"), `${moneyOrDash(cell.actual, currency)} · ${pct(cell.spend_to_date_pct)}`],
     [t("overview.cell.pace"), `${pace(cell.pace_index)}${band ? ` · ${t(`home.band.${band}` as MessageKey)}` : ""}`],
     [t("overview.cell.ahead"), aheadLine(cell.ahead_of_plan_abs, currency)],
     [t("overview.cell.alerts"), String(cell.alerts)],
@@ -329,7 +330,7 @@ function PhoneList({ h, currency, elapsed, rows, label }: HeatmapProps & { rows:
               </div>
               <PaceBar size="sm" spent={num(x?.spend_to_date_pct)} elapsed={elapsed} band={paceBand(x?.pace_index)} pace={num(x?.pace_index)} />
               <span className="tabular text-xs text-muted-foreground">
-                {x ? `${formatMoneyCompact(x.budget ?? "0", currency)} · ${t("overview.paceTitle", { pace: pace(x.pace_index) })}` : "—"}
+                {x ? `${moneyOrDash(x.budget, currency, true)} · ${t("overview.paceTitle", { pace: pace(x.pace_index) })}` : "—"}
               </span>
             </li>
           );

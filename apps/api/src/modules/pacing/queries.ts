@@ -1,4 +1,4 @@
-import { DomainError, FilterGroup, ListAlertsQuery, OPEN_ALERT_STATUSES, PeriodSpec, QueryRequest, canInScope, readScopeFilter, resolvePeriod, type FilterGroupT } from "@budget/domain";
+import { DomainError, FilterGroup, ListAlertsQuery, OPEN_ALERT_STATUSES, PeriodSpec, QueryRequest, canInScope, readScopeFilter, resolvePeriod, todayIso, type FilterGroupT } from "@budget/domain";
 import { descendantIds, plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -10,7 +10,7 @@ import { alertView } from "./rules.js";
 
 type Row = Record<string, unknown>;
 const WIDE = { start: "0001-01-01", end: "9999-12-31" };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayIso;
 
 /** A `filter` query parameter: a FilterGroup as JSON (URL-encoded), validated at the boundary. */
 export function parseFilterParam(raw: string | undefined): FilterGroupT | undefined {

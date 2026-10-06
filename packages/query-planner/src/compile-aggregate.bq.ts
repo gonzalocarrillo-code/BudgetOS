@@ -162,7 +162,7 @@ function base(q: QueryRequest, period: { start: string; end: string }, today: st
       SELECT v.envelope_id, v.amount_reporting AS budget
       FROM ${t("envelope_version")} v JOIN sel ON sel.id = v.envelope_id
       WHERE v.amount_type = 'BUDGET' AND v.status IN ('APPROVED', 'SUPERSEDED') AND v.approved_at <= CURRENT_TIMESTAMP()
-      QUALIFY ROW_NUMBER() OVER (PARTITION BY v.envelope_id ORDER BY v.approved_at DESC) = 1
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY v.envelope_id ORDER BY v.approved_at DESC, v.version_no DESC) = 1
     ),
     act AS (
       SELECT sf.envelope_id, SUM(sf.amount_reporting) AS actual

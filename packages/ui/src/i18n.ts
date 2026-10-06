@@ -4,6 +4,7 @@
  */
 const en = {
   "app.name": "BudgetOS",
+  "common.noValue": "—",
   "shell.workspace": "Workspace",
   "shell.search.placeholder": "Search budgets, targets, alerts… (e.g. country:BR status:pending)",
   "shell.search.submit": "Search",

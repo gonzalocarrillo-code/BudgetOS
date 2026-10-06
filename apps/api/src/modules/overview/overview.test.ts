@@ -156,8 +156,8 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(o.headline["unassigned"]).toBe(new Decimal(o.headline["budget"] ?? 0).minus(o.headline["assigned"] ?? 0).toFixed(2));
     expect(o.headline["assignedPct"]).toBe(new Decimal(o.headline["assigned"] ?? 0).div(o.headline["budget"] ?? 1).toDecimalPlaces(4).toString());
     const today = new Date().toISOString().slice(0, 10);
-    expect(o.period.daysLeft).toBe(Math.round((Date.parse(`${o.period.end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000) + 1);
-    expect(o.headline["runRateNeeded"]).toBe(new Decimal(o.headline["remaining"] ?? 0).div(o.period.daysLeft).toDecimalPlaces(2).toFixed(2));
+    expect(o.period.daysLeft).toBe(Math.max(0, Math.round((Date.parse(`${o.period.end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000)));
+    expect(o.headline["runRateNeeded"]).toBe(o.period.daysLeft === 0 ? null : new Decimal(o.headline["remaining"] ?? 0).div(o.period.daysLeft).toDecimalPlaces(2).toFixed(2));
     // The golden's FY2026 plan snapshot is the default comparison.
     expect(o.compare).toMatchObject({ name: "FY2026 plan", explicit: false });
     const asked = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?compareTo=${o.compare?.id ?? ""}`);

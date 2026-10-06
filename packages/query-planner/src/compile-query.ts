@@ -131,7 +131,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   const defs = opts.metrics ?? metricRegistry;
   const budgetOf = (alias: string) => `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = ${alias}.id AND v.amount_type = 'BUDGET'
            AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${asOf}
-           ORDER BY v.approved_at DESC LIMIT 1)`;
+           ORDER BY v.approved_at DESC, v.version_no DESC LIMIT 1)`;
   const budgetSql = budgetOf("e");
   // The share of an envelope's days that fall in the period (its budget's share, below).
   const shareOf = (alias: string) => `(LEAST(${alias}.end_date, ${pEnd}) - GREATEST(${alias}.start_date, ${pStart}) + 1)::numeric / NULLIF(${alias}.end_date - ${alias}.start_date + 1, 0)`;
@@ -148,7 +148,7 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         ? `(SELECT br.amount_reporting FROM budget_baseline_row br WHERE br.baseline_id = ${b.p(compare.baselineId)}::uuid AND br.workspace_id = ${ws}::uuid AND br.envelope_id = ${alias}.id)`
         : `(SELECT v.amount_reporting FROM envelope_version v WHERE v.envelope_id = ${alias}.id AND v.amount_type = 'BUDGET'
            AND v.status IN ('APPROVED','SUPERSEDED') AND v.approved_at <= ${b.p(compare.asOf)}::timestamptz
-           ORDER BY v.approved_at DESC LIMIT 1)`;
+           ORDER BY v.approved_at DESC, v.version_no DESC LIMIT 1)`;
   const baselineSql = baselineOf("e");
   // Only a comparing query carries the change columns (the check above refuses them otherwise).
   const compareCols =
