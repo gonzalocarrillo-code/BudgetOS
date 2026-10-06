@@ -58,7 +58,7 @@ without anyone touching it again.
    if the workspace already has live, campaign-tagged demo facts, the call is a no-op and nothing is
    audited. This is how the production Sandbox (seeded before this change) picks up campaign-level
    data without the owner running anything by hand against it.
-6. **`Experiment` gets a `demo` boolean** (migration `20261020030000_experiment_demo_flag`), matching
+6. **`Experiment` gets a `demo` boolean** (migration `20261020050000_experiment_demo_flag`), matching
    `Envelope`/`EnvelopeVersion`/`Target`/`TargetVersion`, so `purgeDemoData` can find and delete it
    and the reseed endpoint can tell its own demo experiment already exists.
 7. **Purge deletes the campaign dimension's values too, but only when nothing else uses them**: since

@@ -163,12 +163,17 @@ describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)
 
     const [experiment] = await asOrgAdmin(
       prisma,
-      (tx) => tx.$queryRaw<Array<{ status: string; demo: boolean; test_scope_filter: unknown }>>`SELECT status, demo, test_scope_filter FROM experiment WHERE workspace_id = ${workspaceId}::uuid`,
+      (tx) =>
+        tx.$queryRaw<Array<{ status: string; demo: boolean; test_scope_filter: unknown; test_scope_kind: string; control_scope_kind: string }>>`
+          SELECT status, demo, test_scope_filter, test_scope_kind, control_scope_kind FROM experiment WHERE workspace_id = ${workspaceId}::uuid`,
       orgId,
     );
     expect(experiment?.status).toBe("RUNNING");
     expect(experiment?.demo).toBe(true);
     expect(JSON.stringify(experiment?.test_scope_filter)).toContain("campaign");
+    // EX-2 (ADR-086): a fact scope reads real campaign-vs-campaign numbers from day one.
+    expect(experiment?.test_scope_kind).toBe("fact");
+    expect(experiment?.control_scope_kind).toBe("fact");
 
     const campaignFacts = await asOrgAdmin(
       prisma,
@@ -205,6 +210,7 @@ describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)
     const parentId = randomUUID();
     const envelopeId = randomUUID();
     const versionId = randomUUID();
+    const oldExperimentId = randomUUID();
     const today = "2026-01-10";
 
     await prisma.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 'ex3-reseed-test')`;
@@ -229,6 +235,10 @@ describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)
         await tx.$executeRaw`SELECT ensure_fact_partitions('2026-01-01'::date, 1)`;
         await tx.$executeRaw`INSERT INTO spend_fact (workspace_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, natural_key, demo, envelope_id, match_method)
           VALUES (${workspaceId}::uuid, ${JSON.stringify(tuple)}::jsonb, '2026-01-01', 'USD', '1500.00', '1500.00', 'demo', ${randomUUID()}::uuid, 'old-monthly-1', 'old-monthly-1', true, ${envelopeId}::uuid, 'tuple')`;
+        // A pre-EX-2 demo experiment: envelope-scoped (the default), so its campaign filter scoped
+        // nothing. reseedCampaignDemoData must switch it to a fact scope in place, not duplicate it.
+        await tx.$executeRaw`INSERT INTO experiment (id, workspace_id, name, hypothesis, kind, test_scope_filter, control_scope_filter, primary_metric_key, success_criterion, start_date, end_date, status, owner_id, demo)
+          VALUES (${oldExperimentId}::uuid, ${workspaceId}::uuid, 'Old demo experiment', 'pre-EX-2 hypothesis', 'CUSTOM', '{"logic":"and","children":[]}'::jsonb, NULL, 'cpa', '{"comparator":"lte","vs":"absolute","value":"10"}'::jsonb, '2026-01-01', '2026-01-10', 'RUNNING', ${createdBy}::uuid, true)`;
       },
       orgId,
     );
@@ -241,6 +251,18 @@ describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)
     expect(result.campaigns).toBeGreaterThanOrEqual(2);
     expect(result.facts).toBeGreaterThan(0);
     expect(result.supersededFacts).toBe(1); // the old monthly row, never deleted
+    expect(result.experiments).toBe(1); // the pre-existing experiment, switched in place
+
+    const experimentCount = await asOrgAdmin(prisma, (tx) => tx.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM experiment WHERE workspace_id = ${workspaceId}::uuid`, orgId);
+    expect(experimentCount).toEqual([{ n: 1n }]); // no duplicate experiment
+    const [scopeKinds] = await asOrgAdmin(
+      prisma,
+      (tx) => tx.$queryRaw<Array<{ id: string; test_scope_kind: string; control_scope_kind: string }>>`SELECT id::text AS id, test_scope_kind, control_scope_kind FROM experiment WHERE workspace_id = ${workspaceId}::uuid`,
+      orgId,
+    );
+    expect(scopeKinds?.id).toBe(oldExperimentId);
+    expect(scopeKinds?.test_scope_kind).toBe("fact");
+    expect(scopeKinds?.control_scope_kind).toBe("fact");
 
     const live = await asOrgAdmin(
       prisma,

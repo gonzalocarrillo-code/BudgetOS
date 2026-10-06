@@ -471,8 +471,15 @@ export async function reseedCampaignDemoData(
 
   let experiments = 0;
   const expLeaf = campaignLeaves.find((l) => (campaignsByLeaf.get(l.id)?.length ?? 0) >= 2);
-  const hasDemoExperiment = (await tx.experiment.count({ where: { workspaceId: ctx.workspaceId, demo: true } })) > 0;
-  if (expLeaf && !hasDemoExperiment) {
+  const existingDemoExperiment = await tx.experiment.findFirst({ where: { workspaceId: ctx.workspaceId, demo: true }, select: { id: true, testScopeKind: true, controlScopeKind: true } });
+  if (existingDemoExperiment) {
+    // Pre-EX-2 demo experiment: its campaign filter scoped nothing (envelope scope by default).
+    // Switch it to EX-2's fact scope (ADR-086) so it shows real campaign-vs-campaign data.
+    if (existingDemoExperiment.testScopeKind !== "fact" || existingDemoExperiment.controlScopeKind !== "fact") {
+      await tx.experiment.update({ where: { id: existingDemoExperiment.id }, data: { testScopeKind: "fact", controlScopeKind: "fact" } });
+      experiments += 1;
+    }
+  } else if (expLeaf) {
     experiments += await seedDemoExperiment(tx, ctx, expLeaf, campaignsByLeaf.get(expLeaf.id) as DemoCampaign[], newId);
   }
 
