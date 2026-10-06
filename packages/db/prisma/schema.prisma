@@ -632,6 +632,10 @@ model ExportJob {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   startedAt   DateTime? @map("started_at") @db.Timestamptz
   completedAt DateTime? @map("completed_at") @db.Timestamptz
+  /// W3-4 (audit I-9): set when the job is claimed and refreshed after the object is written; a
+  /// `running` job whose lease expired is stuck (the worker died) and the sweeper fails it.
+  leaseUntil  DateTime? @map("lease_until") @db.Timestamptz
+  heartbeatAt DateTime? @map("heartbeat_at") @db.Timestamptz
 
   @@index([workspaceId, createdBy, createdAt])
   @@map("export_job")
@@ -746,12 +750,17 @@ model IngestRun {
   startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz
   finishedAt     DateTime? @map("finished_at") @db.Timestamptz
   status         String    @default("running") // queued | running | ok | failed
+  /// W3-4 (audit I-9): set when the run is claimed (queued → running) and refreshed after each
+  /// 5,000-row flush; a `running` run whose lease expired is stuck (the worker died) and the
+  /// sweeper fails it, converges its partial facts, and re-queues it once.
+  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz
+  heartbeatAt    DateTime? @map("heartbeat_at") @db.Timestamptz
   rowsRead       Int       @default(0) @map("rows_read")
   rowsAccepted   Int       @default(0) @map("rows_accepted")
   rowsRejected   Int       @default(0) @map("rows_rejected")
   errorReportUri String?   @map("error_report_uri")
   formulaVersion String?   @map("formula_version")
-  summary        Json      @default("{}") // matchCoverage, matched / unmatched rows, reject reasons, error (spec §24.3)
+  summary        Json      @default("{}") // matchCoverage, matched / unmatched rows, reject reasons, error (spec §24.3), requeuedFrom (W3-4)
 
   @@index([sourceId, startedAt])
   @@map("ingest_run")
