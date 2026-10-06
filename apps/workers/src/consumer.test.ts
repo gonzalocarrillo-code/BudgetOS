@@ -26,6 +26,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await owner.$executeRawUnsafe(`DELETE FROM processed_event WHERE consumer = 'freeze-test'`);
   await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, [live, frozen]);
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
+  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
+  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
+  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
+  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.deleteMany({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

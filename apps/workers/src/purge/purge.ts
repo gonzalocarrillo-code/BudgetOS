@@ -18,14 +18,30 @@ const VIA_PARENT: Array<[table: string, sql: string]> = [
   ["comment", "DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)"],
   ["approval_decision", "DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)"],
   ["envelope_phasing", "DELETE FROM envelope_phasing WHERE version_id IN (SELECT v.id FROM envelope_version v JOIN envelope e ON e.id = v.envelope_id WHERE e.workspace_id = $1::uuid)"],
+  // W3-11 (audit I-32): envelope.current_version_id / draft_version_id and envelope.parent_id are
+  // now FKs to envelope_version(id) and envelope(id) respectively. Each statement here runs in its
+  // own transaction (see `run` below), so — unlike the DEFERRABLE INITIALLY DEFERRED on those FKs,
+  // which only helps within a single transaction — the pointers must be cleared in a transaction of
+  // their own before the rows they point at are deleted in a later one. parent_id is self-referencing
+  // within one DELETE statement too: nulling it for every envelope in the workspace first means no
+  // row is still pointed at by a sibling by the time the final DELETE FROM envelope runs, regardless
+  // of the order Postgres deletes rows within that statement.
+  ["envelope (clear version pointers)", "UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid"],
+  ["envelope (clear parent_id)", "UPDATE envelope SET parent_id = NULL WHERE workspace_id = $1::uuid"],
   ["envelope_version", "DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)"],
   ["envelope_dimension", "DELETE FROM envelope_dimension WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)"],
   ["closure_envelope", "DELETE FROM closure_envelope WHERE closure_id IN (SELECT id FROM period_closure WHERE workspace_id = $1::uuid)"],
+  // Same reasoning as envelope's version pointers, for target.current_version_id / draft_version_id
+  // -> target_version(id).
+  ["target (clear version pointers)", "UPDATE target SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid"],
   ["target_version", "DELETE FROM target_version WHERE target_id IN (SELECT id FROM target WHERE workspace_id = $1::uuid)"],
   ["rule_state", "DELETE FROM rule_state WHERE rule_id IN (SELECT id FROM pacing_rule WHERE workspace_id = $1::uuid)"],
   ["ingest_run", "DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)"],
   ["tour_completion", "DELETE FROM tour_completion WHERE tour_id IN (SELECT id FROM tour WHERE workspace_id = $1::uuid)"],
   ["value_constraint", "DELETE FROM value_constraint WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)"],
+  // dimension_value.parent_value_id / merged_into_id are self-referencing (same single-DELETE-
+  // statement reasoning as envelope.parent_id above).
+  ["dimension_value (clear self-refs)", "UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)"],
   ["dimension_value", "DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)"],
 ];
 
@@ -84,7 +100,8 @@ export async function purgeWorkspace(prisma: PrismaClient, ws: { workspaceId: st
     counts[table] = await withTenant(prisma, ctx, (tx) => tx.$executeRawUnsafe(sql, ws.workspaceId), { timeoutMs: 300_000 });
   };
   for (const [table, sql] of VIA_PARENT) await run(table, sql);
-  // envelope's self reference is ON DELETE SET NULL; its other children are gone above.
+  // envelope.parent_id and dimension_value's self-refs are already NULL (cleared above, W3-11);
+  // envelope's other children are gone above too.
   for (const table of OWN) await run(table, `DELETE FROM ${table} WHERE workspace_id = $1::uuid`);
   await withTenant(prisma, { ...ctx, isOrgAdmin: true }, async (tx) => {
     await tx.workspace.update({ where: { id: ws.workspaceId }, data: { purgedAt: now } });

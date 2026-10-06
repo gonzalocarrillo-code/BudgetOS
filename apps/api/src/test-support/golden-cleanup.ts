@@ -18,6 +18,9 @@ export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): 
   if (!orgId) return;
   for (const sql of [
     `DELETE FROM metric_definition WHERE org_id = $1::uuid`,
+    // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing
+    // FKs now; a hierarchy (e.g. region > country) needs both nulled before the bulk delete.
+    `UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`,
     `DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`,
     `DELETE FROM dimension WHERE org_id = $1::uuid`,
     `DELETE FROM role_assignment WHERE principal_id IN (SELECT id FROM app_user WHERE org_id = $1::uuid)`,
@@ -89,5 +92,11 @@ export async function cleanupWorkspace(owner: PrismaClient, ws: string): Promise
   ]) {
     await owner.$executeRawUnsafe(sql, ws);
   }
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id). audit_event is
+  // append-only (audit_event_immutable trigger); disabled here for cleanup only, the same way
+  // migration 20261010030000's one-time backfill does.
+  await owner.$executeRawUnsafe(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
+  await owner.$executeRawUnsafe(`DELETE FROM audit_event WHERE workspace_id = $1::uuid`, ws);
+  await owner.$executeRawUnsafe(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
   await owner.$executeRawUnsafe(`DELETE FROM workspace WHERE id = $1::uuid`, ws);
 }

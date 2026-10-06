@@ -202,6 +202,22 @@ async function purgePass(): Promise<void> {
   if (orgs.length) await purgeDueWorkspaces(app, orgs);
 }
 
+// W3-11 (audit I-37): keeps month partitions of spend_fact, kpi_fact, projection_fact and
+// audit_event six months ahead, once a day, as a backstop to migrate-time and the pacing/ingest
+// calls that already extend them — if those ever stalled, a write past the furthest existing
+// partition would fail with "no partition of relation found for row" (the DEFAULT partitions this
+// item also adds mean that never happens, but writes outside the default are unindexed by month, so
+// the proactive pass still matters). Runs as `app` (budget_app), which already holds EXECUTE on the
+// SECURITY DEFINER ensure_fact_partitions (migration 20260924080000; W3-11 confirmed the grant still
+// stands) — no new grant needed.
+let lastPartitionPass = 0;
+async function partitionPass(): Promise<void> {
+  if (Date.now() - lastPartitionPass < 86_400_000) return;
+  lastPartitionPass = Date.now();
+  await app.$executeRaw`SELECT ensure_fact_partitions(CURRENT_DATE, 6)`;
+  log.info("partition pass finished");
+}
+
 // D-002: fact and raw-file retention, once a day, only with FACT_RETENTION_ENABLED=true (and facts
 // only with a BigQuery replica, BIGQUERY_DATASET). Off by default: nothing is deleted locally.
 let lastRetention = 0;
@@ -278,6 +294,8 @@ async function main(): Promise<void> {
     await pacingPass().catch((err: unknown) => log.error({ err }, "pacing pass failed"));
     if (isStopping()) break;
     await integrityPass().catch((err: unknown) => log.error({ err }, "local integrity pass failed"));
+    if (isStopping()) break;
+    await partitionPass().catch((err: unknown) => log.error({ err }, "partition pass failed"));
     if (isStopping()) break;
     await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
     if (isStopping()) break;

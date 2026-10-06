@@ -139,9 +139,25 @@ it must always run exactly one. See `docs/runbooks/deploy.md` "Alerts" and
 ## Other periodic passes
 
 The same loop also runs, on their own schedules, independent of outbox rows: workspace purge (every
-minute, ADR-052), fact/raw-file retention (daily, `FACT_RETENTION_ENABLED`, see
-`docs/runbooks/retention.md`), snapshot integrity (weekly, `SNAPSHOT_INTEGRITY=off` disables),
-search re-index (workspaces with an empty index on startup, every workspace daily, see
-`docs/runbooks/search.md`) and pacing (`PACING_EVERY_MS`, see `docs/runbooks/pacing.md`). None of
-these touch the outbox retry columns above; they have no row to fail or dead-letter — a failure
-there is caught and logged, and the pass is simply tried again on its own next scheduled tick.
+minute, ADR-052), partition maintenance (daily, W3-11, see below), fact/raw-file retention (daily,
+`FACT_RETENTION_ENABLED`, see `docs/runbooks/retention.md`), snapshot integrity (weekly,
+`SNAPSHOT_INTEGRITY=off` disables), search re-index (workspaces with an empty index on startup,
+every workspace daily, see `docs/runbooks/search.md`) and pacing (`PACING_EVERY_MS`, see
+`docs/runbooks/pacing.md`). None of these touch the outbox retry columns above; they have no row to
+fail or dead-letter — a failure there is caught and logged, and the pass is simply tried again on
+its own next scheduled tick.
+
+## Partition maintenance (W3-11, audit I-37)
+
+Once a day, the loop calls `ensure_fact_partitions(CURRENT_DATE, 6)` as `budget_app` (the function
+is `SECURITY DEFINER`, owned by the migration role; `budget_app` holds `EXECUTE` on it since
+migration `20260924080000`) to keep `spend_fact`, `kpi_fact`, `projection_fact` and `audit_event`
+partitioned six months ahead. This is a backstop, not the primary mechanism — migrate-time
+(`SELECT ensure_fact_partitions(current_date, 6)` in `0002_platform`), the ingest pipeline and the
+pacing evaluator already extend partitions as they go. Each of the four tables also has a `DEFAULT`
+partition (`spend_fact_default` etc., migration `20261012000000_schema_invariants`) with no
+privileges for `budget_app` or `PUBLIC`, same as every month partition (`rls.org-admin.test.ts`
+checks this for partitions old and new): a write for a date outside every explicit month partition
+lands in the default instead of failing with "no partition of relation found for row", but stays
+there — unindexed by month — until the next partition pass or migrate run creates the explicit one
+and future writes for that month go there instead.

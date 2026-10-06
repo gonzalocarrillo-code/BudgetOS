@@ -67,6 +67,11 @@ afterAll(async () => {
   for (const sql of [
     `DELETE FROM spend_fact WHERE workspace_id = ANY($1::uuid[])`,
     `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = ANY($1::uuid[]))`,
+    // W3-11 (audit I-32): mapping_synonym.workspace_id is a FK now; the mapping wizard can learn
+    // synonyms during ingest. data_source.mapping_profile_id (pre-existing FK) needs clearing too.
+    `DELETE FROM mapping_synonym WHERE workspace_id = ANY($1::uuid[])`,
+    `UPDATE data_source SET mapping_profile_id = NULL WHERE workspace_id = ANY($1::uuid[])`,
+    `DELETE FROM mapping_profile WHERE workspace_id = ANY($1::uuid[])`,
     `DELETE FROM data_source WHERE workspace_id = ANY($1::uuid[])`,
     `DELETE FROM envelope WHERE workspace_id = ANY($1::uuid[])`,
     `DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`,
@@ -77,6 +82,10 @@ afterAll(async () => {
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [dataAdmin.id, planner.id, orgAdmin.id] } } });
   await owner.user.deleteMany({ where: { orgId } });
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
+  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
+  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
+  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

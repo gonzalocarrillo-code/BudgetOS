@@ -300,6 +300,12 @@ afterAll(async () => {
   await owner.$executeRaw`DELETE FROM outbox WHERE workspace_id = ANY(${ws}::uuid[])`;
   await owner.$executeRaw`DELETE FROM dimension_value WHERE dimension_id = ANY(${[...orgDims.values(), ...wsDims.values()]}::uuid[])`;
   await owner.$executeRaw`DELETE FROM dimension WHERE org_id = ANY(${orgs}::uuid[])`;
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id). audit_event is
+  // append-only (audit_event_immutable trigger); disabled here for cleanup only, the same way
+  // migration 20261010030000's one-time backfill does.
+  await owner.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+  await owner.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ANY(${ws}::uuid[])`;
+  await owner.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
   await owner.$executeRaw`DELETE FROM workspace WHERE org_id = ANY(${orgs}::uuid[])`;
   await owner.$executeRaw`DELETE FROM organization WHERE id = ANY(${orgs}::uuid[])`;
   await owner.$disconnect();

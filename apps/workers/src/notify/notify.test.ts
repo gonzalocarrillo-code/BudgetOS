@@ -110,6 +110,13 @@ afterAll(async () => {
     await owner.$executeRawUnsafe(sql, ws);
   }
   await owner.user.deleteMany({ where: { orgId } });
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
+  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
+  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
+  // org_id (for most rows) and workspace_id (belt and braces, in case a row was ever written
+  // without the session's app.org_id set, so it never got the migration's DEFAULT backfill).
+  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid OR workspace_id = $2::uuid", orgId, ws);
+  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

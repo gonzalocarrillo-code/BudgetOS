@@ -90,6 +90,8 @@ afterAll(async () => {
   await owner.$executeRawUnsafe(`DELETE FROM approval_request WHERE workspace_id = ANY($1::uuid[])`, wss);
   await owner.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = ANY($1::uuid[]))`, wss);
   await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = ANY($1::uuid[])`, wss);
+  // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
+  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ANY($1::uuid[]))`, orgs);
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ANY($1::uuid[]))`, orgs);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = ANY($1::uuid[])`, orgs);
   await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, wss);
@@ -97,6 +99,10 @@ afterAll(async () => {
   await owner.$executeRawUnsafe(`DELETE FROM app_group WHERE org_id = ANY($1::uuid[])`, orgs);
   await owner.roleAssignment.deleteMany({ where: { OR: [{ workspaceId: { in: wss } }, { principalId: users.ORG_ADMIN.id }] } });
   await owner.user.deleteMany({ where: { orgId: { in: orgs } } });
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
+  await owner.$executeRawUnsafe(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
+  await owner.$executeRawUnsafe(`DELETE FROM audit_event WHERE org_id = ANY($1::uuid[])`, orgs);
+  await owner.$executeRawUnsafe(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
   await owner.workspace.deleteMany({ where: { id: { in: wss } } });
   await owner.organization.deleteMany({ where: { id: { in: orgs } } });
   await Promise.all([owner.$disconnect(), appDb.$disconnect()]);
