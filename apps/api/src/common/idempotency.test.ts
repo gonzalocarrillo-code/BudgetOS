@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { withTenant, type TenantContext } from "@budget/db";
+import { asOrgAdmin, withTenant, type TenantContext, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests, idempotencySweep } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../test-support/harness.js";
@@ -32,8 +32,11 @@ async function call(user: TestUser, method: "GET" | "POST" | "PATCH", url: strin
 }
 const envelopeBody = (name: string, ownerId: string = planner.id) => ({ name, dimensionValues: { region: "br" }, startDate: "2026-01-01", endDate: "2026-12-31", currency: "USD", amount: "500.00", ownerId });
 const create = (user: TestUser, body: unknown, key?: string) => call(user, "POST", `/workspaces/${ws}/envelopes`, body, key);
-const countByName = async (name: string) => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM envelope WHERE workspace_id = $1::uuid AND name = $2`, ws, name))[0]?.n);
-const keyRows = async (key: string) => owner.$queryRawUnsafe<Array<{ actor_id: string | null; status: number | null; completed: boolean }>>(`SELECT actor_id::text, status, completed_at IS NOT NULL AS completed FROM idempotency_key WHERE key = $1`, key);
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read/write below (all scoped to this org's
+// workspaces) needs the same org-admin tenant context real writes get from withTenant.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
+const countByName = async (name: string) => Number((await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM envelope WHERE workspace_id = $1::uuid AND name = $2`, ws, name)))[0]?.n);
+const keyRows = async (key: string) => admin((tx) => tx.$queryRawUnsafe<Array<{ actor_id: string | null; status: number | null; completed: boolean }>>(`SELECT actor_id::text, status, completed_at IS NOT NULL AS completed FROM idempotency_key WHERE key = $1`, key));
 const ctx = (over: Partial<TenantContext>): TenantContext => ({ workspaceId: ws, orgId, userId: planner.id, isOrgAdmin: false, actorType: "user", requestId: `w32-${randomUUID()}`, ...over });
 
 let userEmailCalls = 0;
@@ -48,12 +51,14 @@ const fakeSlack: SlackApi = {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "w32" } });
-  await owner.workspace.createMany({
-    data: [
-      { id: ws, orgId, slug: `w32-${ws}`, name: "W3-2", reportingCurrency: "USD", fiscalYearStartMonth: 1 },
-      { id: otherWs, orgId, slug: `w32-${otherWs}`, name: "W3-2 other", reportingCurrency: "USD", fiscalYearStartMonth: 1 },
-    ],
-  });
+  await admin((tx) =>
+    tx.workspace.createMany({
+      data: [
+        { id: ws, orgId, slug: `w32-${ws}`, name: "W3-2", reportingCurrency: "USD", fiscalYearStartMonth: 1 },
+        { id: otherWs, orgId, slug: `w32-${otherWs}`, name: "W3-2 other", reportingCurrency: "USD", fiscalYearStartMonth: 1 },
+      ],
+    }),
+  );
   await owner.user.createMany({ data: [planner, planner2, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -64,8 +69,10 @@ beforeAll(async () => {
     ],
   });
   const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
-  await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'br', 'Brazil')`, randomUUID(), region);
+  await admin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+    await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'br', 'Brazil')`, randomUUID(), region);
+  });
   process.env["SLACK_SIGNING_SECRET"] = SECRET;
   setSlackApi(fakeSlack);
   h = await startHarness();
@@ -77,11 +84,15 @@ afterAll(async () => {
   // idempotency_key.workspace_id is ON DELETE CASCADE, so it needs no explicit cleanup here.
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, [ws, otherWs]);
-  await owner.$executeRawUnsafe(`DELETE FROM idempotency_key WHERE org_id = $1::uuid OR slack_team_id = $2`, orgId, TEAM);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, [ws, otherWs], orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
+  await admin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM idempotency_key WHERE org_id = $1::uuid OR slack_team_id = $2`, orgId, TEAM);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -198,7 +209,9 @@ describe("Idempotency-Key", () => {
     const stale = randomUUID();
     expect((await create(planner, envelopeBody(`Fresh ${fresh}`), fresh)).status).toBe(201);
     expect((await create(planner, envelopeBody(`Stale ${stale}`), stale)).status).toBe(201);
-    await owner.$executeRawUnsafe(`UPDATE idempotency_key SET created_at = now() - interval '25 hours' WHERE key = $1`, stale);
+    // WITH CHECK on idempotency_key requires actor_id = app_user_id() exactly (no org-admin
+    // escape hatch, unlike USING) — withTenant as the row's own actor (planner) rather than admin().
+    await withTenant(owner, ctx({}), (tx) => tx.$executeRawUnsafe(`UPDATE idempotency_key SET created_at = now() - interval '25 hours' WHERE key = $1`, stale));
     const removed = await idempotencySweep(app, [orgId]);
     expect(removed).toBeGreaterThanOrEqual(1);
     expect(await keyRows(stale)).toEqual([]);
@@ -209,7 +222,7 @@ describe("Idempotency-Key", () => {
     const key = randomUUID();
     const body = envelopeBody(`Expired ${key}`);
     expect((await create(planner, body, key)).status).toBe(201);
-    await owner.$executeRawUnsafe(`UPDATE idempotency_key SET created_at = now() - interval '25 hours' WHERE key = $1`, key);
+    await withTenant(owner, ctx({}), (tx) => tx.$executeRawUnsafe(`UPDATE idempotency_key SET created_at = now() - interval '25 hours' WHERE key = $1`, key));
     const again = await create(planner, body, key);
     expect(again.status).toBe(201);
     expect(again.headers["idempotent-replayed"]).toBeUndefined();
