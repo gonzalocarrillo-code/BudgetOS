@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { ensurePartitions, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 import { audit, outbox } from "./sql.js";
-import { withTenant, type TenantContext } from "./tenant.js";
+import { asOrgAdmin, withTenant, type TenantContext } from "./tenant.js";
 import { dropFactPartitionsForTests } from "./test-support/partitions.js";
 
 /**
@@ -53,21 +53,34 @@ beforeAll(async () => {
   const fresh = candidates.filter((m) => !taken.has(`spend_fact_${suffix(m)}`)).sort(() => Math.random() - 0.5);
   if (fresh.length < WRITERS * ATTEMPTS) throw new Error("No unused test months left in this database");
   months = fresh.slice(0, WRITERS * ATTEMPTS);
-  await owner.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 'W3-10 partitions')`;
-  await owner.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`w3-10-${workspaceId}`}, 'W3-10', 'USD')`;
+  // W0-6: the owner has no BYPASSRLS; fixtures run in the org-admin context real writes get.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 'W3-10 partitions')`;
+      await tx.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`w3-10-${workspaceId}`}, 'W3-10', 'USD')`;
+    },
+    orgId,
+  );
 }, 60_000);
 
 afterAll(async () => {
   // The test months' facts go with their partitions; then the FK-safe order of tenant.isolation.test.ts.
   await dropFactPartitionsForTests(owner, months.map(suffix));
-  await owner.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
-  await owner.$executeRaw`DELETE FROM kpi_fact WHERE workspace_id = ${workspaceId}::uuid`;
-  await owner.$executeRaw`DELETE FROM outbox WHERE workspace_id = ${workspaceId}::uuid`;
-  await owner.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
-  await owner.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ${workspaceId}::uuid`;
-  await owner.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
-  await owner.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
-  await owner.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+      await tx.$executeRaw`DELETE FROM kpi_fact WHERE workspace_id = ${workspaceId}::uuid`;
+      await tx.$executeRaw`DELETE FROM outbox WHERE workspace_id = ${workspaceId}::uuid`;
+      await tx.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+      await tx.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ${workspaceId}::uuid`;
+      await tx.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
+      await tx.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+      await tx.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
+    },
+    orgId,
+  );
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 }, 120_000);
 
@@ -140,6 +153,6 @@ it("4 writers × 5 attempts, each creating a new month's partitions inside its w
     );
     expect(Number(created[0]?.n), month).toBe(PARENTS.length);
   }
-  const facts = await owner.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+  const facts = await asOrgAdmin(owner, (tx) => tx.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`, orgId);
   expect(Number(facts[0]?.n)).toBe(WRITERS * ATTEMPTS);
 }, 120_000);
