@@ -77,6 +77,15 @@ export function signOut(): void {
   clearToken();
 }
 
+/**
+ * ADR-067 addendum (W5-3, audit S-11): ends every session of this account, not only this one —
+ * session mode only (IAP and the dev token have no server-side session store to revoke).
+ */
+export function signOutEverywhere(): void {
+  if (!SESSION) return;
+  fetch("/auth/logout-all", { method: "POST", credentials: "include" }).finally(() => window.location.assign("/"));
+}
+
 export function onTokenChange(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

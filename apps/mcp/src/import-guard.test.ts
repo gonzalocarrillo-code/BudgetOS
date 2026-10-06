@@ -49,7 +49,11 @@ function reachable(entries: string[]): { files: Set<string>; forbidden: string[]
   return { files, forbidden };
 }
 
-const DB_ALLOWED = new Set(["withTenant", "audit"]);
+// W5-3 (audit S-12): main.ts wires McpOAuth's own token endpoint (/oauth/token, apps/mcp/src/http.ts)
+// to its three budget_mcp-side RPCs — consumeOauthCode (single-use check), issueRefreshToken and
+// consumeRefreshToken (rotation + reuse detection). None of these touch business data: they are the
+// MCP server's own OAuth plumbing, same footing as audit (the one other write budget_mcp can make).
+const DB_ALLOWED = new Set(["withTenant", "audit", "consumeOauthCode", "issueRefreshToken", "consumeRefreshToken"]);
 
 describe("read-only MCP imports (T-025 CI guard)", () => {
   it("nothing reachable from apps/mcp/src is a commands/ module", () => {

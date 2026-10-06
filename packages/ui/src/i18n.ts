@@ -9,6 +9,7 @@ const en = {
   "shell.search.placeholder": "Search budgets, targets, alerts… (e.g. country:BR status:pending)",
   "shell.search.submit": "Search",
   "shell.signOut": "Sign out",
+  "shell.signOutAll": "Sign out everywhere",
   "shell.loading": "Loading…",
   "shell.navigation": "Main navigation",
   "shell.admin": "Admin",

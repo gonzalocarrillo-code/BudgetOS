@@ -51,6 +51,42 @@ describe("Google login", () => {
     await expect(verifySession("x".repeat(48), "not.a.session")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
   });
 
+  it("creates a server-side session (jti) only for a provisioned account (S-11)", async () => {
+    const live = new Map<string, boolean>();
+    const sink = {
+      findUser: async (identity: { email: string }) => (identity.email === "provisioned@gmail.com" ? { id: "user-1", orgId: "org-1" } : null),
+      createSession: async (input: { jti: string }) => {
+        live.set(input.jti, true);
+      },
+    };
+    const isLive = async (jti: string) => live.get(jti) === true;
+
+    // Provisioned: the session carries a jti, and it is live until revoked.
+    const s1 = await start();
+    const r1 = await loginCallback(config, { code: "c", state: s1.state }, s1.cookieHeader, google(await sign({ email: "provisioned@gmail.com", email_verified: true, nonce: s1.nonce })), jwks, sink);
+    const token1 = cookie(r1.setCookies[0], SESSION_COOKIE) ?? "";
+    const identity1 = await verifySession(config.sessionKey, token1, isLive);
+    expect(identity1.jti).toBeTypeOf("string");
+    live.set(identity1.jti ?? "", false); // simulate a revoke (logout / logout-all)
+    await expect(verifySession(config.sessionKey, token1, isLive)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+
+    // Not provisioned: no jti at all, so there is nothing for isLive to refuse — /auth/me still works.
+    const s2 = await start();
+    const r2 = await loginCallback(config, { code: "c", state: s2.state }, s2.cookieHeader, google(await sign({ email: "nobody@gmail.com", email_verified: true, nonce: s2.nonce })), jwks, sink);
+    const token2 = cookie(r2.setCookies[0], SESSION_COOKIE) ?? "";
+    const identity2 = await verifySession(config.sessionKey, token2, isLive);
+    expect(identity2.jti).toBeUndefined();
+    expect(identity2.email).toBe("nobody@gmail.com");
+  });
+
+  it("the session cookie is __Host- prefixed (Path=/, Secure, no Domain)", async () => {
+    const s = await start();
+    const r = await loginCallback(config, { code: "c", state: s.state }, s.cookieHeader, google(await sign({ email: "a@b.c", email_verified: true, nonce: s.nonce })), jwks);
+    expect(r.setCookies[0]).toMatch(/^__Host-budgetos_session=/);
+    expect(r.setCookies[0]).toMatch(/Path=\//);
+    expect(r.setCookies[0]).not.toMatch(/Domain=/i);
+  });
+
   it("never sends the person to another site after signing in", () => {
     // Cases that must redirect to "/" (blocked redirects)
     expect(safeNext("https://evil.example")).toBe("/");

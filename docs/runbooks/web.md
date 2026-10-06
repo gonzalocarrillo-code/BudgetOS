@@ -34,3 +34,12 @@ The API serves the CSP (`apps/api/src/configure-app.ts`'s `CSP_DIRECTIVES`), not
 - **A new image/asset host**: add it to `imgSrc`. Uploaded SVG icons and asset previews already use `data:`/`blob:`, covered.
 - **A new API/websocket host the SPA calls directly**: add it to `connectSrc`. Everything today goes through the same origin (`'self'`).
 - Check the browser console after any such change; a CSP violation there does not fail `pnpm dev` or `pnpm test`.
+
+## Sessions (ADR-067 addendum, W5-3, audit S-11)
+
+In `AUTH_MODE=session`, the session cookie (`__Host-budgetos_session`) is now revocable server-side, not just a stateless 7-day JWT.
+
+- **Sign out** (`POST /auth/logout`) revokes that one session. **Sign out everywhere** (`POST /auth/logout-all`, next to it in the user menu, `shell.signOutAll`) revokes every live session of that account. Either way, the effect is immediate in the database; a request already in flight on another device is refused the next time `JwtVerifier` checks — within 60 seconds in the worst case (the per-process positive cache described below), not instantly on every single request.
+- **Checking whether a session is still live costs one indexed lookup** (`app_session_live`), cached positively per API process for 60 seconds, so a request from a session that was live a moment ago doesn't re-check on every call; a revoked session is never cached as live.
+- **A Google account nobody has added yet** gets a session with no `jti` at all (nothing to revoke for an account with no access regardless), so it never shows up in `auth_session` and `/auth/logout-all` has nothing to do for it. If a "not added yet" person still seems to stay signed in after you'd expect, that is this — it is not a session-store bug.
+- **Debugging a "stuck" session**: `SELECT * FROM auth_session WHERE user_id = '<id>' ORDER BY created_at DESC` (as the `budget` owner role; `budget_app` only sees its own caller's rows under RLS). `revoked_at IS NULL AND expires_at > now()` is "live".

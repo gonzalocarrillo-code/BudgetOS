@@ -22,7 +22,12 @@ describe("read-only MCP (T-025 guard)", () => {
     const mcpWrites = grants.filter((g) => g.grantee === "budget_mcp" && g.privilege_type !== "SELECT").map((g) => `${g.privilege_type} ${g.table_name}`);
     expect(mcpWrites).toEqual(["INSERT audit_event"]);
     const reads = (who: string) => new Set(grants.filter((g) => g.grantee === who && g.privilege_type === "SELECT").map((g) => g.table_name));
-    const missing = [...reads("budget_app")].filter((t) => !["_prisma_migrations", "outbox", "processed_event"].includes(t) && !reads("budget_mcp").has(t));
+    // auth_session (W5-3, audit S-11): a session row is security data, not business data the
+    // read-only reporting server should ever see; budget_app's SELECT (for a future self-service
+    // "your sessions" view, gated by RLS to the caller's own rows) does not imply budget_mcp needs
+    // it too. oauth_code/oauth_refresh never grant budget_app anything at all (every access goes
+    // through a SECURITY DEFINER function), so they never reach this list.
+    const missing = [...reads("budget_app")].filter((t) => !["_prisma_migrations", "outbox", "processed_event", "auth_session"].includes(t) && !reads("budget_mcp").has(t));
     expect(missing, "a new table needs GRANT SELECT … TO budget_mcp (ADR-019)").toEqual([]);
     expect(reads("budget_mcp").has("outbox")).toBe(false);
   });

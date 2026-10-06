@@ -40,7 +40,7 @@ import { useCallback, useEffect, useState, type ReactElement, type ReactNode } f
 import { GlobalSearch, useSearchHotkeys } from "../features/search/global-search.js";
 import { TourLauncher } from "../features/home/tour-launcher.js";
 import { NotificationBell } from "../features/home/notifications.js";
-import { signOut } from "../lib/auth.js";
+import { SESSION, signOut, signOutEverywhere } from "../lib/auth.js";
 import { api, unwrap } from "../lib/api.js";
 import { registryQuery, type Me } from "../lib/queries.js";
 import { setThemeChoice, useTheme, type ThemeChoice } from "../lib/theme.js";
@@ -515,6 +515,12 @@ function UserMenu({ ws, me, roles }: { ws: string; me: Me; roles: string[] }): R
             <LogOut className="size-4 text-muted-foreground" aria-hidden />
             {t("shell.signOut")}
           </button>
+          {SESSION && (
+            <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent" onClick={() => signOutEverywhere()} data-testid="sign-out-all">
+              <LogOut className="size-4 text-muted-foreground" aria-hidden />
+              {t("shell.signOutAll")}
+            </button>
+          )}
         </div>
       </PopoverContent>
     </Popover>
