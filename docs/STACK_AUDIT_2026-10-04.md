@@ -357,13 +357,13 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | I-3 | High | W1-4 | open |
 | I-4 | High | W3-1 | done (#159) |
 | I-5 | High | W0-4/W1-5 | done (#142, #173) |
-| I-6 | High | W3-2 | open |
+| I-6 | High | W3-2 | done (#178) |
 | I-7 | High | W1-2 | done (#144) |
 | I-8 | Medium | W3-7 | done (#175) |
-| I-9 | High | W3-4 | open |
+| I-9 | High | W3-4 | done (#179) |
 | I-10 | High | D-3 | open |
 | I-11 | High | D-3 | open |
-| I-12 | High | W3-4 | open |
+| I-12 | High | W3-4 | done (#179) |
 | I-13 | Medium | W3-7 | done (#175) |
 | I-14 | Medium | W3-8 | open |
 | I-15 | Medium | W3-2 | done (#160 lock order, #170 error filter) |
@@ -373,7 +373,7 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | I-19 | Medium | W3-3 | open |
 | I-20 | Medium | W3-2 | open |
 | I-21 | Medium | W3-6 | done (#164) |
-| I-22 | Medium | — | open |
+| I-22 | Medium | — | open (unmerge not built; merge rewrite documented) |
 | I-23 | Medium | W3-6 | done (#164) |
 | I-24 | Medium | W3-9 | done (#156) |
 | I-25 | Medium | W3-9 | done (#156) |
@@ -381,7 +381,7 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | I-27 | Low | W3-3 | open |
 | I-28 | Low | W3-3 | open |
 | I-29 | Low | W1-2 | done (#144) |
-| I-30 | Low | W1-1 | open |
+| I-30 | Low | W1-1 | done (#152 overlap, #169 FX per date) |
 | I-31 | Info | W0-3 | open |
 | I-32 | Medium | W3-11 | open (#174 pending) |
 | I-33 | Medium | W3-3/W3-2 | open |
@@ -398,7 +398,7 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | M-4 | Medium | W5-5 | done (#177) |
 | M-5 | Medium | W5-2 | done (#155) |
 | M-6 | Medium | W2-8 | done (#161) |
-| M-7 | Medium | W1-2/W5-8 | partly (#144, #170 readiness; alerting W5-8 open) |
+| M-7 | Medium | W1-2/W5-8 | done (#144, #170, #181 alerting; Terraform apply pending) |
 | M-8 | Medium | W5-6 | open |
 | M-9 | Medium | W5-6 | open |
 | M-10 | Low | W5-6 | open |
