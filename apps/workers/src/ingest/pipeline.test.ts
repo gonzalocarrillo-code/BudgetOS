@@ -29,6 +29,7 @@ const orgId = randomUUID();
 const ws = randomUUID();
 const userId = randomUUID();
 const FX = "XPT"; // ISO 4217 platinum: no other suite uses it
+const FX2 = "XAG"; // ISO 4217 silver: a second, later-dated rate for the W4-1 projection-currency tests
 const sourceId = randomUUID();
 const uri = `gs://t017-uploads/uploads/${ws}/spend.csv`;
 const env: Record<string, string> = {};
@@ -96,6 +97,7 @@ beforeAll(async () => {
     for (const code of codes) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), dims[key], code);
   }
   await owner.fxRate.create({ data: { id: randomUUID(), base: FX, quote: "USD", rate: "2", asOfDate: new Date("2026-01-01"), source: "t017" } });
+  await owner.fxRate.create({ data: { id: randomUUID(), base: FX2, quote: "USD", rate: "0.2", asOfDate: new Date("2026-06-01"), source: "t017" } });
   env["br"] = await envelope("BR", { country: "BR" });
   env["brMeta"] = await envelope("BR meta", { country: "BR", platform: "meta" }, "APPROVED", env["br"]);
   env["mxMeta"] = await envelope("MX meta", { country: "MX", platform: "meta" });
@@ -111,6 +113,7 @@ afterAll(async () => {
     `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
     `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`,
+    `DELETE FROM projection_fact WHERE workspace_id = $1::uuid`,
     `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)`,
     `DELETE FROM data_source WHERE workspace_id = $1::uuid`,
     `DELETE FROM period_closure WHERE workspace_id = $1::uuid`,
@@ -123,6 +126,7 @@ afterAll(async () => {
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
   await owner.fxRate.deleteMany({ where: { base: FX } });
+  await owner.fxRate.deleteMany({ where: { base: FX2 } });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
@@ -365,6 +369,96 @@ describe("fact identity and reconciliation (ADR-071)", () => {
     expect(run.status).toBe("failed");
     expect(await count(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'ingest.run.failed'`, runId)).toBe(1);
     expect(await count(`SELECT count(*) AS n FROM outbox WHERE topic = 'ingest.failed' AND payload->>'runId' = $1`, runId)).toBe(1);
+  });
+});
+
+/**
+ * W4-1 (audit T-4): projection facts carry currency and are FX-converted like spend facts, with the
+ * same FxCache (same period_date, ROUND_HALF_UP 2dp). A money projection ("spend") with no mapped
+ * currency falls back to the workspace's reporting currency instead of being rejected.
+ */
+describe("projection currency and FX conversion (W4-1, audit T-4)", () => {
+  const proj = randomUUID();
+  const file = `gs://t017-uploads/uploads/${ws}/projections.csv`;
+  const projMapping = {
+    kind: "projection",
+    columns: {
+      COUNTRY: { dimension: "country" },
+      PLATFORM: { dimension: "platform", transform: "lower" },
+      DAY: { role: "period_date" },
+      VALUE: { role: "projection", metric: "spend" },
+      CCY: { role: "currency" },
+      FV: { role: "formula_version" },
+      HE: { role: "horizon_end" },
+    },
+  };
+  const lines = (...rs: string[]) => ["COUNTRY,PLATFORM,DAY,VALUE,CCY,FV,HE", ...rs].join("\n");
+  const queue = async (source: string): Promise<string> => {
+    const id = randomUUID();
+    await owner.ingestRun.create({ data: { id, sourceId: source, status: "queued" } });
+    return id;
+  };
+
+  beforeAll(async () => {
+    await owner.dataSource.create({ data: { id: proj, workspaceId: ws, kind: "csv", name: "Projections", config: { kind: "csv", uri: file }, mapping: projMapping } });
+  });
+
+  it("converts a non-reporting-currency row at the fact's date, rejects a row with no FX rate, and leaves a same-currency row with fx_rate_id NULL", async () => {
+    await store.write(
+      file,
+      lines(
+        `BR,meta,2026-08-01,100.00,${FX2},v1,2026-12-31`, // FX2→USD rate 0.2 as of 2026-06-01 → 20.00
+        `BR,meta,2025-11-01,10.00,${FX2},v1,2026-12-31`, // before any FX2 rate exists → rejected
+        `BR,meta,2026-08-03,20.00,USD,v1,2026-12-31`, // already reporting currency
+      ),
+      "text/csv",
+    );
+    const result = await runIngest(deps(), tenant, await queue(proj));
+    expect(result).toMatchObject({ rowsRead: 3, rowsAccepted: 2, rowsRejected: 1 });
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: result.runId } })).summary).toMatchObject({ projectionCurrency: "column" });
+    const report = String(store.objects.get(result.errorReportUri ?? "")?.body ?? "");
+    expect(report).toContain(`no FX rate ${FX2}→USD on 2025-11-01`);
+
+    const rows = await owner.$queryRawUnsafe<Array<{ period_date: string; currency: string; value: string; reporting: string; fx_rate_id: string | null }>>(
+      `SELECT period_date::text, currency, value::text, value_reporting::text AS reporting, fx_rate_id::text FROM projection_fact WHERE source_run_id = $1::uuid ORDER BY period_date`,
+      result.runId,
+    );
+    expect(rows).toEqual([
+      { period_date: "2026-08-01", currency: FX2, value: "100.0000", reporting: "20.0000", fx_rate_id: expect.any(String) },
+      { period_date: "2026-08-03", currency: "USD", value: "20.0000", reporting: "20.0000", fx_rate_id: null },
+    ]);
+  });
+
+  it("falls back to the workspace's reporting currency when the mapping has no currency source, and keeps a non-money metric's currency NULL", async () => {
+    const noCcy = randomUUID();
+    const noCcyFile = `gs://t017-uploads/uploads/${ws}/projections-no-ccy.csv`;
+    await owner.dataSource.create({
+      data: { id: noCcy, workspaceId: ws, kind: "csv", name: "Projections no currency", config: { kind: "csv", uri: noCcyFile }, mapping: { ...projMapping, columns: { ...projMapping.columns, CCY: { role: "ignore" } } } },
+    });
+    await store.write(noCcyFile, ["COUNTRY,PLATFORM,DAY,VALUE,CCY,FV,HE", "BR,meta,2026-08-05,30.00,x,v1,2026-12-31"].join("\n"), "text/csv");
+    const result = await runIngest(deps(), tenant, await queue(noCcy));
+    expect(result).toMatchObject({ rowsRead: 1, rowsAccepted: 1, rowsRejected: 0 });
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: result.runId } })).summary).toMatchObject({ projectionCurrency: "workspace_fallback" });
+    const [row] = await owner.$queryRawUnsafe<Array<{ currency: string; reporting: string; fx_rate_id: string | null }>>(
+      `SELECT currency, value_reporting::text AS reporting, fx_rate_id::text FROM projection_fact WHERE source_run_id = $1::uuid`,
+      result.runId,
+    );
+    expect(row).toEqual({ currency: "USD", reporting: "30.0000", fx_rate_id: null });
+
+    // A non-money metric (no "spend") never carries a currency, mapped or not.
+    const ratio = randomUUID();
+    const ratioFile = `gs://t017-uploads/uploads/${ws}/projections-ratio.csv`;
+    await owner.dataSource.create({
+      data: { id: ratio, workspaceId: ws, kind: "csv", name: "Projections ratio", config: { kind: "csv", uri: ratioFile }, mapping: { ...projMapping, columns: { ...projMapping.columns, VALUE: { role: "projection", metric: "roas" } } } },
+    });
+    await store.write(ratioFile, ["COUNTRY,PLATFORM,DAY,VALUE,CCY,FV,HE", "BR,meta,2026-08-06,4.5,USD,v1,2026-12-31"].join("\n"), "text/csv");
+    const ratioResult = await runIngest(deps(), tenant, await queue(ratio));
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: ratioResult.runId } })).summary).not.toHaveProperty("projectionCurrency");
+    const [ratioRow] = await owner.$queryRawUnsafe<Array<{ currency: string | null; reporting: string | null; fx_rate_id: string | null }>>(
+      `SELECT currency, value_reporting::text AS reporting, fx_rate_id::text FROM projection_fact WHERE source_run_id = $1::uuid`,
+      ratioResult.runId,
+    );
+    expect(ratioRow).toEqual({ currency: null, reporting: null, fx_rate_id: null });
   });
 });
 

@@ -22,7 +22,8 @@ export const RoleColumn = z.discriminatedUnion("role", [
   z.object({ role: z.literal("amount"), currency: Currency.optional() }).strict(),
   z.object({ role: z.literal("currency") }).strict(),
   z.object({ role: z.literal("kpi"), metric: FactMetric, attributionModel: z.string().max(40).optional() }).strict(),
-  z.object({ role: z.literal("projection"), metric: FactMetric.default("spend") }).strict(),
+  /** Projection. For metric `spend` the currency comes from here, or from a `currency` column, else the workspace's reporting currency (W4-1). */
+  z.object({ role: z.literal("projection"), metric: FactMetric.default("spend"), currency: Currency.optional() }).strict(),
   z.object({ role: z.literal("formula_version") }).strict(),
   z.object({ role: z.literal("horizon_end") }).strict(),
   /** T-036 (§24.3): compared with envelope.match_key, or parsed with the source's parse_pattern. */

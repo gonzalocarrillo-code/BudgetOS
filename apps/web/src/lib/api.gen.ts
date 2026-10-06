@@ -4994,6 +4994,7 @@ export interface operations {
                                 role: "projection";
                                 /** @default spend */
                                 metric?: string;
+                                currency?: string;
                             } | {
                                 /** @enum {string} */
                                 role: "formula_version";
@@ -5109,6 +5110,7 @@ export interface operations {
                                 role: "projection";
                                 /** @default spend */
                                 metric?: string;
+                                currency?: string;
                             } | {
                                 /** @enum {string} */
                                 role: "formula_version";
@@ -5209,6 +5211,7 @@ export interface operations {
                                         role: "projection";
                                         /** @default spend */
                                         metric: string;
+                                        currency?: string;
                                     } | {
                                         /** @enum {string} */
                                         role: "formula_version";
@@ -5286,6 +5289,7 @@ export interface operations {
                                 role: "projection";
                                 /** @default spend */
                                 metric?: string;
+                                currency?: string;
                             } | {
                                 /** @enum {string} */
                                 role: "formula_version";
@@ -5360,6 +5364,7 @@ export interface operations {
                                     role: "projection";
                                     /** @default spend */
                                     metric: string;
+                                    currency?: string;
                                 } | {
                                     /** @enum {string} */
                                     role: "formula_version";
@@ -5455,6 +5460,7 @@ export interface operations {
                                         role: "projection";
                                         /** @default spend */
                                         metric: string;
+                                        currency?: string;
                                     } | {
                                         /** @enum {string} */
                                         role: "formula_version";
@@ -5536,6 +5542,7 @@ export interface operations {
                                 role: "projection";
                                 /** @default spend */
                                 metric?: string;
+                                currency?: string;
                             } | {
                                 /** @enum {string} */
                                 role: "formula_version";
@@ -5610,6 +5617,7 @@ export interface operations {
                                     role: "projection";
                                     /** @default spend */
                                     metric: string;
+                                    currency?: string;
                                 } | {
                                     /** @enum {string} */
                                     role: "formula_version";
@@ -5838,6 +5846,7 @@ export interface operations {
                                 role: "projection";
                                 /** @default spend */
                                 metric?: string;
+                                currency?: string;
                             } | {
                                 /** @enum {string} */
                                 role: "formula_version";

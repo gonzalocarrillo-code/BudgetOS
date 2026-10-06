@@ -25,6 +25,10 @@ Which runs are full and which are incremental:
 
 A run that fails ends as `failed`, with `summary.error`, one `ingest.run.failed` audit row and one `ingest.failed` outbox row.
 
+## Projection currency (W4-1, ADR-071 addendum, audit T-4)
+
+A money projection (the `projection` role mapped with `metric: "spend"`, the default) is FX-converted exactly like a spend fact: the mapping's `currency` role column if one is mapped, else an inline `currency` on the projection role, else the workspace's reporting currency, looked up with the same `FxCache` at the fact's own `period_date` (`ROUND_HALF_UP`, 2dp). `projection_fact` carries the result's `currency` and, when converted, `fx_rate_id`; a row with no FX rate for that currency and date is rejected with the same reason a spend row gets (`no FX rate <ccy>→<reporting> on <date>`), never silently left unconverted. A non-money projection metric (anything but `spend`) keeps `currency` and `fx_rate_id` NULL. Which source the run used is recorded once in `summary.projectionCurrency`: `"column"`, `"constant"` or `"workspace_fallback"` (omitted for a mapping with no money projection). Existing rows, written before this change with the raw value copied straight into `value_reporting`, were backfilled to the workspace's reporting currency with `fx_rate_id` NULL (migration `20261012000000_projection_fact_currency`).
+
 ## Operations
 
 - **Re-running a source reconciles it (ADR-071).** Rows that are unchanged update their own facts. Restated amounts replace the old ones. In a full run, rows the source no longer has are superseded within the dates the run covers, and the Sources page shows "N facts superseded". A row that comes back in a later run is live again.
