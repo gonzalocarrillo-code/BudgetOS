@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { parseEnv, WorkerEnv } from "@budget/domain";
 import { PrismaClient } from "@prisma/client";
 import { objectStoreFromEnv } from "../ingest/object-store.js";
 import { log } from "../log.js";
@@ -7,7 +8,8 @@ import { handleExportRequested } from "./export.js";
 
 /** Cloud Run service `export-worker` (spec §19): push subscriber for export.requested. */
 function main(): void {
-  const url = process.env["APP_DATABASE_URL"];
+  const env = parseEnv(WorkerEnv, process.env);
+  const url = env.APP_DATABASE_URL;
   if (!url) throw new Error("APP_DATABASE_URL is required");
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   const store = objectStoreFromEnv();

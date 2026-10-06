@@ -254,3 +254,5 @@ export {
   editDistance,
   nearestCode,
 } from "./budget-import.js";
+
+export { ApiEnv, McpEnv, WorkerEnv, parseEnv } from "./env.js";

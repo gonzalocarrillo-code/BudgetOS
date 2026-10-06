@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { parseEnv, WorkerEnv } from "@budget/domain";
 import { PrismaClient } from "@prisma/client";
 import { log } from "../log.js";
 import { servePush } from "../push-server.js";
@@ -10,7 +11,8 @@ import { handleRollupEvent, rebuildWorkspace } from "./rollup.js";
  * period.restated (ADR-044). `tsx src/rollup/main.ts rebuild --workspace <id> --org <id>` rebuilds one workspace.
  */
 async function main(): Promise<void> {
-  const url = process.env["APP_DATABASE_URL"];
+  const env = parseEnv(WorkerEnv, process.env);
+  const url = env.APP_DATABASE_URL;
   if (!url) throw new Error("APP_DATABASE_URL is required");
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   const args = process.argv.slice(2);
