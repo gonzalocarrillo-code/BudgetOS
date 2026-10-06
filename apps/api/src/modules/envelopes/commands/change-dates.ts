@@ -221,12 +221,8 @@ export async function changeDatesIn(tx: Tx, auth: AuthContext, workspaceId: stri
     return { envelopeId, applied: true, requestId: null, autoApproved: false, lines: view(plan).lines };
   }
 
-  // W3-5: each line's parent and row version as of the request, so the approval can tell it moved or changed meanwhile.
-  const heads = new Map((await tx.envelope.findMany({ where: { id: { in: dates.map((d) => d.envelopeId) } }, select: { id: true, parentId: true, rowVersion: true } })).map((e) => [e.id, e]));
-  const requested: BulkDatesLine[] = dates.map((d) => {
-    const e = heads.get(d.envelopeId);
-    return e ? { ...d, parentId: e.parentId, rowVersion: e.rowVersion } : d;
-  });
+  // W3-5: each line's parent and dates as planned, so the approval can tell it was moved or re-dated meanwhile.
+  const requested: BulkDatesLine[] = plan.lines.map((l) => ({ envelopeId: l.envelopeId, startDate: l.to.startDate, endDate: l.to.endDate, parentId: l.env.parentId, from: l.from }));
   const routed = await routeStructural(tx, auth, {
     kind: "dates",
     workspaceId,

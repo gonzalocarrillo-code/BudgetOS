@@ -215,11 +215,11 @@ export interface BulkDatesLine {
   startDate: string;
   endDate: string;
   /**
-   * W3-5: the budget's parent and row version when the change was requested, so the approval can
-   * tell it moved or changed meanwhile. Absent on requests made before W3-5.
+   * W3-5: the budget's parent and its dates when the change was requested, so the approval can
+   * tell it was moved or re-dated meanwhile. Absent on requests made before W3-5.
    */
   parentId?: string | null;
-  rowVersion?: number;
+  from?: { startDate: string; endDate: string };
 }
 
 /**

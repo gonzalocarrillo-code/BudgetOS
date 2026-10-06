@@ -112,7 +112,8 @@ export async function writeDraftVersion(tx: Tx, auth: AuthContext, env: LockedEn
   }
   await tx.envelope.update({
     where: { id: env.id },
-    data: { draftVersionId: version.id, status: env.status === "APPROVED" ? "APPROVED" : "DRAFT", rowVersion: { increment: 1 } },
+    // A held budget (W3-5: a line of an open structural request) stays PENDING through a draft edit.
+    data: { draftVersionId: version.id, status: env.status === "APPROVED" || env.status === "PENDING" ? env.status : "DRAFT", rowVersion: { increment: 1 } },
   });
   return version;
 }

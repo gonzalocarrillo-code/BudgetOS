@@ -9,13 +9,13 @@ import { lockEnvelopes, type BulkDatesLine, type Tx } from "@budget/db";
  * a child outside its budget, or that undo a change made meanwhile.
  */
 
-export type StaleReason = "missing" | "moved" | "changed" | "archived" | "locked" | "ended" | "outside_parent" | "child_outside";
+export type StaleReason = "missing" | "moved" | "redated" | "archived" | "locked" | "ended" | "outside_parent" | "child_outside";
 
 /** Why the request went back, in words, for the blocking thread. */
 export const STALE_REASON_TEXT: Record<StaleReason, string> = {
   missing: "it no longer exists",
   moved: "it was moved under another budget",
-  changed: "it was edited",
+  redated: "its dates were changed",
   archived: "it was archived",
   locked: "its period was closed",
   ended: "it has ended",
@@ -44,7 +44,7 @@ export async function revalidateDates(tx: Tx, lines: BulkDatesLine[]): Promise<v
   await lockEnvelopes(tx, ids);
   const byId = new Map(lines.map((l) => [l.envelopeId, l]));
   const rows = new Map(
-    (await tx.envelope.findMany({ where: { id: { in: ids } }, select: { id: true, parentId: true, status: true, rowVersion: true, endedAt: true } })).map((e) => [e.id, e]),
+    (await tx.envelope.findMany({ where: { id: { in: ids } }, select: { id: true, parentId: true, status: true, startDate: true, endDate: true, endedAt: true } })).map((e) => [e.id, e]),
   );
   const otherParents = [...new Set([...rows.values()].map((e) => e.parentId).filter((p): p is string => p !== null && !byId.has(p)))];
   const parents = new Map(
@@ -54,9 +54,13 @@ export async function revalidateDates(tx: Tx, lines: BulkDatesLine[]): Promise<v
   for (const l of lines) {
     const e = rows.get(l.envelopeId);
     if (e === undefined) throw new StaleRequestError(l.envelopeId, "missing");
-    // Requests made before W3-5 carry neither; their range checks below still run.
+    // Only what the dates rule depends on: a rename, an owner change or a draft amount edit while
+    // the request waits does not send it back. Requests made before W3-5 carry neither field;
+    // their range checks below still run.
     if (l.parentId !== undefined && e.parentId !== l.parentId) throw new StaleRequestError(l.envelopeId, "moved", { parentId: e.parentId, requestedParentId: l.parentId });
-    if (l.rowVersion !== undefined && e.rowVersion !== l.rowVersion) throw new StaleRequestError(l.envelopeId, "changed");
+    if (l.from !== undefined && (iso(e.startDate) !== l.from.startDate || iso(e.endDate) !== l.from.endDate)) {
+      throw new StaleRequestError(l.envelopeId, "redated", { startDate: iso(e.startDate), endDate: iso(e.endDate), plannedFrom: l.from });
+    }
     if (e.status === "ARCHIVED") throw new StaleRequestError(l.envelopeId, "archived");
     if (e.status === "LOCKED") throw new StaleRequestError(l.envelopeId, "locked");
     if (e.endedAt !== null) throw new StaleRequestError(l.envelopeId, "ended");

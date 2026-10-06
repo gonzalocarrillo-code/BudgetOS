@@ -255,8 +255,8 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
     await owner.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-09-30', row_version = row_version + 1 WHERE id = $1::uuid`, childId);
     const res = await approve(requestId);
     expect(res.status, JSON.stringify(res.body)).toBe(409);
-    expect(res.body["details"]).toMatchObject({ envelopeId: childId, reason: "changed" });
-    await expectSentBack(requestId, "changed");
+    expect(res.body["details"]).toMatchObject({ envelopeId: childId, reason: "redated" });
+    await expectSentBack(requestId, "redated");
     expect(await env(childId)).toMatchObject({ status: "DRAFT", endDate: "2026-09-30" });
     expect(await env(id(parentKey))).toMatchObject({ status: "APPROVED", endDate: parent.endDate, currentVersionId: parent.currentVersionId });
     for (const k of kids(parentKey)) expect((await env(k)).status).toBe("APPROVED");
@@ -287,6 +287,15 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
     const requestId = await request(id(parentKey), endDate, true);
     const lines = [id(parentKey), ...kids(parentKey), childId];
     for (const l of lines) expect((await env(l)).status).toBe("PENDING");
+
+    // A rename and a draft amount edit while the dates wait change nothing the dates rule reads:
+    // the request is not sent back, and the edited budget stays held.
+    const renamed = await as("admin", "PATCH", `/api/v1/envelopes/${id(parentKey)}`, { rowVersion: (await env(id(parentKey))).rowVersion, name: "GB meta awareness (renamed while waiting)" });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    const draft = await env(childId);
+    const edited = await as("admin", "PATCH", `/api/v1/envelopes/${childId}/draft`, { amount: "950.00", basedOnVersionId: draft.draftVersionId });
+    expect(edited.status, JSON.stringify(edited.body)).toBeLessThan(300);
+    expect((await env(childId)).status).toBe("PENDING");
 
     const [mark] = await owner.$queryRawUnsafe<Array<{ id: bigint }>>(`SELECT coalesce(max(id), 0) AS id FROM outbox`);
     const xRequestId = `dates-approve-${randomUUID()}`;
