@@ -8,7 +8,12 @@ import { CLOSURE_SINK, RecordingClosureSink } from "./sink.js";
  * draft with 423. Also: every write and approval step on it is 423, the closure writes each
  * template's rows (period and months) to the sink, restating needs admin + reason and gives every
  * envelope its prior status back unless another closed closure still covers it, and the next
- * close of a period writes `_r1`, never over the first table.
+ * close of a period writes a new table named by its closure id, never over the first table.
+ *
+ * W3-1 (audit I-4, ADR-018 addendum): the close is two transactions with the sink in between. A
+ * sink failure leaves a `failed` closure and unlocked envelopes; a concurrent close is 409; while
+ * the sink writes, other writes in the workspace go through, restate is 409, and a stale `closing`
+ * closure can be abandoned.
  */
 
 const owner = ownerDb();
@@ -43,6 +48,21 @@ const head = async (key: string) => {
   return e.draftVersionId ?? e.currentVersionId;
 };
 const close = (periodKey: string, user: TestUser = finance) => call(user, "POST", `/workspaces/${ws}/closures`, { periodKey });
+const auditsOf = async (closureId: string) =>
+  (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid`, closureId)).map((a) => a.action).sort();
+const topicsOf = async (closureId: string) =>
+  (await owner.$queryRawUnsafe<Array<{ topic: string }>>(`SELECT topic FROM outbox WHERE workspace_id = $1::uuid AND payload->>'closureId' = $2`, ws, closureId)).map((o) => o.topic).sort();
+/** Resolves to "timeout" when `p` has not settled within `ms`. */
+function within<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), ms)));
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+function gate() {
+  let release = () => {};
+  const wait = new Promise<void>((resolve) => (release = resolve));
+  return { wait, release: () => release() };
+}
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t024" } });
@@ -139,8 +159,9 @@ describe("closures (T-024)", () => {
   });
 
   it("writes every template's rows for the period and each month; the report is the stored summary", async () => {
-    const table = `budget_vs_actual_${ws.replace(/-/g, "_")}_2026_q1`;
+    const table = `closure_${q1.replace(/-/g, "")}`;
     const rows = sink.tables.get(table) ?? [];
+    expect(rows.length).toBeGreaterThan(0);
     const total = rows.filter((r) => r.grain === "total").map((r) => [r.node_path, r.budget, r.actual, r.leaf_count]);
     expect(total).toEqual([
       // The pending envelope has no approved budget yet (the planner's rule): its budget is null.
@@ -156,10 +177,10 @@ describe("closures (T-024)", () => {
     const report = await call(finance, "GET", `/closures/${q1}/report`);
     expect(report.status).toBe(200);
     expect(report.body["summary"]).toMatchObject({ lockedEnvelopes: 2, rows: rows.length, totals: { budget: "600.00", actual: "140.50", variance: "-459.50" }, months: [{ month: "2026-01-01", actual: "100.00" }, { month: "2026-02-01", actual: "40.50" }, { month: "2026-03-01", actual: "0.00" }] });
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid`, q1);
-    expect(audits.map((a) => a.action)).toEqual(["closure.created"]);
-    const [closed] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'period.closed'`, ws);
-    expect(Number(closed?.n)).toBe(1);
+    // Two transactions (W3-1): `closure.started` + `period.closing` before the sink, then exactly one
+    // `closure.created` + `period.closed` once the rows are written.
+    expect(await auditsOf(q1)).toEqual(["closure.created", "closure.started"]);
+    expect(await topicsOf(q1)).toEqual(["period.closed", "period.closing"]);
   });
 
   it("refuses a second close, an unfinished period and a non-finance caller", async () => {
@@ -185,17 +206,115 @@ describe("closures (T-024)", () => {
     expect((await call(admin, "POST", `/closures/${q1}/restate`, { reason: "twice" })).status).toBe(409);
   });
 
-  it("after a restatement edits work again, and the next close of the period writes _r1", async () => {
+  it("after a restatement edits work again, and the next close of the period writes a new table named by its closure", async () => {
     expect((await call(planner, "PATCH", `/envelopes/${env["latam"]?.id ?? ""}/draft`, { amount: "650.00", basedOnVersionId: await head("latam") })).status).toBe(200);
     const res = await close("2026-Q1");
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body["table"]).toBe(`closures.budget_vs_actual_${ws.replace(/-/g, "_")}_2026_q1_r1`);
-    expect(sink.tables.has(`budget_vs_actual_${ws.replace(/-/g, "_")}_2026_q1`)).toBe(true);
+    expect(res.body["table"]).toBe(`closures.closure_${String(res.body["id"]).replace(/-/g, "")}`);
+    expect(sink.tables.has(`closure_${q1.replace(/-/g, "")}`)).toBe(true);
     const list = await call(finance, "GET", `/workspaces/${ws}/closures`);
     expect((list.body as unknown as Array<{ period: { key: string }; status: string }>).map((c) => [c.period.key, c.status])).toEqual([
       ["2026-Q1", "closed"],
       ["2026-02", "restated"],
       ["2026-Q1", "restated"],
     ]);
+  });
+});
+
+describe("two-phase close (W3-1, audit I-4)", () => {
+  it("a sink failure after the table was created leaves a failed closure with its error, unlocks the envelopes, and the next close succeeds with a new table", async () => {
+    const before = await status("apac");
+    const original = sink.write;
+    let partial = "";
+    sink.write = async (table) => {
+      partial = table;
+      sink.tables.set(table, []); // createTable went through, then the insert failed
+      throw new Error("insertAll: quota exceeded");
+    };
+    let res: Res;
+    try {
+      res = await close("2025-Q4");
+    } finally {
+      sink.write = original;
+    }
+    expect(res.status, JSON.stringify(res.body)).toBe(503);
+    expect(res.body).toMatchObject({ code: "UNAVAILABLE" });
+    const failed = await owner.periodClosure.findFirstOrThrow({ where: { workspaceId: ws, bqTable: partial } });
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toContain("quota exceeded");
+    expect(await status("apac")).toBe(before);
+    expect(await auditsOf(failed.id)).toEqual(["closure.failed", "closure.started"]);
+    expect(await topicsOf(failed.id)).toEqual(["period.closing", "period.closure_failed"]);
+
+    const again = await close("2025-Q4");
+    expect(again.status, JSON.stringify(again.body)).toBe(201);
+    expect(again.body["table"]).not.toBe(`closures.${partial}`);
+    expect(again.body["table"]).toBe(`closures.closure_${String(again.body["id"]).replace(/-/g, "")}`);
+    expect(sink.tables.get(String(again.body["table"]).slice("closures.".length))?.length).toBeGreaterThan(0);
+    expect(await status("apac")).toBe("LOCKED");
+    const list = (await call(finance, "GET", `/workspaces/${ws}/closures`)).body as unknown as Array<{ id: string; status: string; error: string | null }>;
+    expect(list.find((c) => c.id === failed.id)).toMatchObject({ status: "failed", error: expect.stringContaining("quota exceeded") });
+
+    // Reopen the quarter for the next test.
+    expect((await call(admin, "POST", `/closures/${String(again.body["id"])}/restate`, { reason: "reopen for W3-1" })).status).toBe(201);
+    expect(await status("apac")).toBe(before);
+  });
+
+  it("while the sink writes: a concurrent close is 409, other writes go through, restate and an early abandon are 409; a stale close is abandoned and its envelopes unlocked", { timeout: 120_000 }, async () => {
+    const before = await status("apac");
+    const period = await owner.fiscalPeriod.findFirstOrThrow({ where: { workspaceId: ws, key: "2025-Q4" } });
+    const g = gate();
+    const original = sink.write;
+    sink.write = async (table, rows, opts) => {
+      await g.wait;
+      return original.call(sink, table, rows, opts);
+    };
+    try {
+      const attempts = [close("2025-Q4"), close("2025-Q4")];
+      // (b) one attempt is refused while the other waits on the sink.
+      // Generous bounds: before W3-1 both waits were unbounded (the gate never opens), so CI load cannot fake a pass.
+      const first = await within(Promise.race(attempts.map((p, i) => p.then((r) => ({ i, r })))), 30_000);
+      expect(first).not.toBe("timeout");
+      if (first === "timeout") return;
+      expect(first.r.status, JSON.stringify(first.r.body)).toBe(409);
+      const winner = attempts[1 - first.i] as Promise<Res>;
+      const open = await owner.periodClosure.findMany({ where: { workspaceId: ws, periodId: period.id, status: { in: ["closing", "closed"] } } });
+      expect(open.map((c) => c.status)).toEqual(["closing"]);
+      const closing = open[0]?.id ?? "";
+      expect(await status("apac")).toBe("LOCKED");
+
+      // (f) the workspace row is not held during sink.write: another write in the workspace completes.
+      const created = await within(
+        call(planner, "POST", `/workspaces/${ws}/envelopes`, { name: "APAC 2027", dimensionValues: { region: "apac" }, startDate: "2027-01-01", endDate: "2027-12-31", currency: "USD", amount: "10.00", ownerId: planner.id }),
+        30_000,
+      );
+      expect(created === "timeout" ? "timeout" : created.status).toBe(201);
+
+      // (c) a closing closure cannot be restated; a fresh one cannot be abandoned.
+      const restate = await call(admin, "POST", `/closures/${closing}/restate`, { reason: "too early" });
+      expect(restate.status).toBe(409);
+      expect(String(restate.body["message"])).toMatch(/in progress/);
+      expect((await call(finance, "POST", `/closures/${closing}/abandon`, {})).status).toBe(409);
+
+      // (d) after 15 minutes it is stale: abandon fails it and gives the envelopes back.
+      await owner.periodClosure.update({ where: { id: closing }, data: { closedAt: new Date(Date.now() - 20 * 60_000) } });
+      expect((await call(planner, "POST", `/closures/${closing}/abandon`, {})).status).toBe(403);
+      const abandoned = await call(finance, "POST", `/closures/${closing}/abandon`, {});
+      expect(abandoned.status, JSON.stringify(abandoned.body)).toBe(201);
+      expect(abandoned.body).toMatchObject({ id: closing, status: "failed", error: expect.stringContaining("Abandoned") });
+      expect(await status("apac")).toBe(before);
+      expect(await auditsOf(closing)).toEqual(["closure.abandoned", "closure.started"]);
+      expect(await topicsOf(closing)).toEqual(["period.closing", "period.closure_failed"]);
+
+      // The abandoned attempt finishes writing; it does not resurrect the closure.
+      g.release();
+      const late = await winner;
+      expect(late.status, JSON.stringify(late.body)).toBe(409);
+      expect((await owner.periodClosure.findUniqueOrThrow({ where: { id: closing } })).status).toBe("failed");
+      expect(await status("apac")).toBe(before);
+    } finally {
+      g.release();
+      sink.write = original;
+    }
   });
 });

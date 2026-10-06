@@ -1,3 +1,4 @@
+import { CLOSURE_STALE_MINUTES } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
 import { Button, cn, StatusChip as SharedStatusChip, Input } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
@@ -80,7 +81,7 @@ function ClosuresPage(): ReactElement {
               </table>
             )}
           </Card>
-          {selected ? <Report ws={ws} closure={selected} canRestate={can(perms, isOrgAdmin, "closure.restate")} onChanged={refresh} /> : null}
+          {selected ? <Report ws={ws} closure={selected} canRestate={can(perms, isOrgAdmin, "closure.restate")} canClose={can(perms, isOrgAdmin, "closure.close")} onChanged={refresh} /> : null}
         </div>
         <Card title={t("closures.close")} tour="closures-close">
           <CloseForm ws={ws} canClose={can(perms, isOrgAdmin, "closure.close")} onClosed={async (id) => (await refresh(), set({ select: id }))} />
@@ -90,9 +91,45 @@ function ClosuresPage(): ReactElement {
   );
 }
 
+// W3-1: `closing` while the report is written, `failed` when that failed or was abandoned.
+const STATUS_CHIP = {
+  closing: ["RUNNING", "closures.status.closing"],
+  closed: ["CLOSED", "closures.status.closed"],
+  failed: ["FAILED", "closures.status.failed"],
+  restated: ["RESTATED", "closures.status.restated"],
+} as const;
+
 function ClosureStatus({ status }: { status: string }): ReactElement {
-  const closed = status === "closed";
-  return <SharedStatusChip status={closed ? "CLOSED" : "RESTATED"} label={t(closed ? "closures.status.closed" : "closures.status.restated")} data-testid="closure-status" />;
+  const [chip, label] = STATUS_CHIP[status as keyof typeof STATUS_CHIP] ?? STATUS_CHIP.restated;
+  return <SharedStatusChip status={chip} label={t(label)} data-testid="closure-status" />;
+}
+
+/** A stale `closing` closure (its process died between the two steps) can be abandoned: it fails and its budgets unlock. */
+function AbandonClose({ ws, closure, canClose, onChanged }: { ws: string; closure: Closure; canClose: boolean; onChanged: () => Promise<void> }): ReactElement {
+  const abandon = useMutation({
+    meta: { success: t("toast.closureAbandoned") },
+    mutationFn: async () => unwrap(api.POST("/api/v1/closures/{id}/abandon", { params: { path: { id: closure.id }, header: { "X-Workspace-Id": ws } } })),
+    onSuccess: onChanged,
+  });
+  const stale = Date.now() - new Date(closure.closedAt).getTime() >= CLOSURE_STALE_MINUTES * 60_000;
+  const why = !canClose ? t("closures.noClose") : !stale ? t("closures.abandonNotStale", { minutes: CLOSURE_STALE_MINUTES }) : abandon.isPending ? t("shell.loading") : null;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm" data-testid="closure-closing">
+      <p>{t("closures.closing")}</p>
+      {abandon.error ? <p role="alert" className="text-destructive">{abandon.error.message}</p> : null}
+      <div className="flex justify-end">
+        {why ? (
+          <Button variant="outline" size="sm" disabled reason={why} data-testid="closure-abandon">
+            {t("closures.abandon")}
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => abandon.mutate()} data-testid="closure-abandon">
+            {t("closures.abandon")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function CloseForm({ ws, canClose, onClosed }: { ws: string; canClose: boolean; onClosed: (id: string) => Promise<void> }): ReactElement {
@@ -143,7 +180,7 @@ function CloseForm({ ws, canClose, onClosed }: { ws: string; canClose: boolean; 
   );
 }
 
-function Report({ ws, closure, canRestate, onChanged }: { ws: string; closure: Closure; canRestate: boolean; onChanged: () => Promise<void> }): ReactElement {
+function Report({ ws, closure, canRestate, canClose, onChanged }: { ws: string; closure: Closure; canRestate: boolean; canClose: boolean; onChanged: () => Promise<void> }): ReactElement {
   const { data, isPending } = useQuery(closureReportQuery(ws, closure.id));
   const [reason, setReason] = useState("");
   const restate = useMutation({
@@ -157,10 +194,24 @@ function Report({ ws, closure, canRestate, onChanged }: { ws: string; closure: C
   const s = data?.summary;
   const cur = s?.currency ?? "USD";
   const money = (v: string | null | undefined) => (v === null || v === undefined ? "—" : formatMoney(v, cur));
-  const why = !canRestate ? t("closures.noRestate") : closure.status !== "closed" ? t("closures.alreadyRestated") : reason.trim().length < 3 ? t("closures.needReason") : restate.isPending ? t("shell.loading") : null;
+  const why = !canRestate
+    ? t("closures.noRestate")
+    : closure.status === "closing"
+      ? t("closures.inProgress")
+      : closure.status === "failed"
+        ? t("closures.failedNoRestate")
+        : closure.status !== "closed"
+          ? t("closures.alreadyRestated")
+          : reason.trim().length < 3 ? t("closures.needReason") : restate.isPending ? t("shell.loading") : null;
   return (
     <Card title={t("closures.report", { period: closure.period.key })}>
       <div className="flex flex-col gap-4" data-testid="closure-report">
+        {closure.status === "failed" ? (
+          <p role="alert" className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm" data-testid="closure-error">
+            {t("closures.failed", { error: closure.error ?? "" })}
+          </p>
+        ) : null}
+        {closure.status === "closing" ? <AbandonClose ws={ws} closure={closure} canClose={canClose} onChanged={onChanged} /> : null}
         {isPending || !s ? (
           <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
         ) : (

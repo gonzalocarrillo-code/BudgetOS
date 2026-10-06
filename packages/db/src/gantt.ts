@@ -88,12 +88,15 @@ export interface GanttKeyDateRow {
   kind: "closure";
 }
 
-/** Period closures within [from, to], on or before `asOf`: a vertical key date at the day of the close. */
+/**
+ * Period closures within [from, to], on or before `asOf`: a vertical key date at the day of the close.
+ * Only closes that happened (closed, or restated since); a `closing` or `failed` attempt is no key date.
+ */
 export async function ganttKeyDates(tx: Tx, workspaceId: string, from: string, to: string, asOf: Date): Promise<GanttKeyDateRow[]> {
   return tx.$queryRaw<GanttKeyDateRow[]>`
     SELECT (c.closed_at AT TIME ZONE 'UTC')::date::text AS at, fp.key AS label, 'closure'::text AS kind
     FROM period_closure c JOIN fiscal_period fp ON fp.id = c.period_id
-    WHERE c.workspace_id = ${workspaceId}::uuid AND c.closed_at <= ${asOf}
+    WHERE c.workspace_id = ${workspaceId}::uuid AND c.closed_at <= ${asOf} AND c.status IN ('closed', 'restated')
       AND (c.closed_at AT TIME ZONE 'UTC')::date BETWEEN ${from}::date AND ${to}::date
     ORDER BY c.closed_at`;
 }

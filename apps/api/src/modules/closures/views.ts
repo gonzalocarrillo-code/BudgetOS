@@ -13,5 +13,6 @@ export function closureView(c: PeriodClosure, p: FiscalPeriod, lockedEnvelopes: 
     closedAt: c.closedAt.toISOString(),
     table: `closures.${c.bqTable}`,
     lockedEnvelopes,
+    error: c.error ?? null,
   };
 }

@@ -42,9 +42,11 @@ export async function targetsFor(tx: Tx, topic: string, payload: Record<string, 
       // T-036: a display template renames every envelope, and search shows display names (RLS keeps it to this workspace).
       if (payload["kind"] === "display") add(t, "envelope", (await tx.envelope.findMany({ select: { id: true } })).map((e) => e.id));
       break;
+    case "period.closing":
     case "period.closed":
+    case "period.closure_failed":
     case "period.restated": {
-      // Closing and restating change the status of every envelope the closure locked.
+      // Closing (it locks when it starts, W3-1), a failed close and restating change the status of every envelope the closure locked.
       const closureId = strs(payload["closureId"])[0];
       if (closureId) add(t, "envelope", (await tx.closureEnvelope.findMany({ where: { closureId }, select: { envelopeId: true } })).map((c) => c.envelopeId));
       break;

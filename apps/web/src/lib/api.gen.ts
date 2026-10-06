@@ -1776,6 +1776,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/closures/{id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["abandonClosure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/closures/{id}/report": {
         parameters: {
             query?: never;
@@ -8345,12 +8361,36 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Closures, newest first (restated ones included) */
+            /** @description Closures, newest first (restated, failed and in-progress ones included) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        workspaceId: string;
+                        period: {
+                            /** Format: uuid */
+                            id: string;
+                            key: string;
+                            kind: string;
+                            start: string;
+                            end: string;
+                        };
+                        /** @enum {string} */
+                        status: "closing" | "closed" | "failed" | "restated";
+                        /** Format: uuid */
+                        closedBy: string;
+                        /** Format: date-time */
+                        closedAt: string;
+                        table: string;
+                        lockedEnvelopes: number;
+                        error: string | null;
+                    }[];
+                };
             };
         };
     };
@@ -8373,7 +8413,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Closed: overlapping envelopes are LOCKED and the rows are in the closure table */
+            /** @description Closed: overlapping envelopes are LOCKED and the rows are in the closure table closures.closure_<id> */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -8393,24 +8433,25 @@ export interface operations {
                             end: string;
                         };
                         /** @enum {string} */
-                        status: "closed" | "restated";
+                        status: "closing" | "closed" | "failed" | "restated";
                         /** Format: uuid */
                         closedBy: string;
                         /** Format: date-time */
                         closedAt: string;
                         table: string;
                         lockedEnvelopes: number;
+                        error: string | null;
                     };
                 };
             };
-            /** @description The period is already closed, or has not ended */
+            /** @description The period is already closed, is being closed, or has not ended */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description No closure sink (BigQuery) in this environment */
+            /** @description No closure sink (BigQuery) in this environment, or the sink failed: the closure is then `failed` and its envelopes unlocked */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -8440,6 +8481,66 @@ export interface operations {
         responses: {
             /** @description Restated; envelopes no other closed closure covers get their prior status back */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already restated, failed, or still closing */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    abandonClosure: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A stale closing closure (15 minutes or more) is now failed and its envelopes unlocked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        workspaceId: string;
+                        period: {
+                            /** Format: uuid */
+                            id: string;
+                            key: string;
+                            kind: string;
+                            start: string;
+                            end: string;
+                        };
+                        /** @enum {string} */
+                        status: "closing" | "closed" | "failed" | "restated";
+                        /** Format: uuid */
+                        closedBy: string;
+                        /** Format: date-time */
+                        closedAt: string;
+                        table: string;
+                        lockedEnvelopes: number;
+                        error: string | null;
+                    };
+                };
+            };
+            /** @description Not closing, or still within 15 minutes of its start */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

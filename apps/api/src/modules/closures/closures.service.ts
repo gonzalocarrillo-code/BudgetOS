@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import type { AuthContext } from "../../common/tenant.js";
+import { abandonClosure } from "./commands/abandon.js";
 import { closePeriod } from "./commands/close-period.js";
 import { restateClosure } from "./commands/restate.js";
 import { closureReport, listClosures } from "./queries/closures.js";
@@ -21,6 +22,9 @@ export class ClosuresService {
   }
   restate(auth: AuthContext, id: string, body: unknown) {
     return restateClosure(this.prisma, auth, id, body);
+  }
+  abandon(auth: AuthContext, id: string) {
+    return abandonClosure(this.prisma, auth, id);
   }
   report(auth: AuthContext, id: string) {
     return closureReport(this.prisma, auth, id);

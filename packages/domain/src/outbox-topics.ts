@@ -32,6 +32,8 @@ export const OUTBOX_TOPICS = {
   "notifications.read": [],
   "period.changed": [],
   "period.closed": ["rollup"],
+  "period.closing": ["rollup"],
+  "period.closure_failed": ["rollup"],
   "period.restated": ["rollup"],
   "policy.changed": [],
   "registry.changed": ["rollup"],

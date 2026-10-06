@@ -6,8 +6,8 @@ import { handleRollupEvent, rebuildWorkspace } from "./rollup.js";
 
 /**
  * Cloud Run service `rollup-worker` (spec §19): push subscriber for budget.changed, facts.loaded,
- * registry.changed, naming.changed, and the status-only approval.changed, period.closed and
- * period.restated (ADR-044). `tsx src/rollup/main.ts rebuild --workspace <id> --org <id>` rebuilds one workspace.
+ * registry.changed, naming.changed, and the status-only approval.changed, period.closing, period.closed,
+ * period.closure_failed and period.restated (ADR-044, W3-1). `tsx src/rollup/main.ts rebuild --workspace <id> --org <id>` rebuilds one workspace.
  */
 async function main(): Promise<void> {
   const url = process.env["APP_DATABASE_URL"];
