@@ -2755,6 +2755,7 @@
                                                     "is_leaf",
                                                     "is_ended",
                                                     "parent_id",
+                                                    "id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -3315,6 +3316,7 @@
                                                     "is_leaf",
                                                     "is_ended",
                                                     "parent_id",
+                                                    "id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -10314,6 +10316,7 @@
                                             "is_leaf",
                                             "is_ended",
                                             "parent_id",
+                                            "id",
                                             "experiment"
                                           ]
                                         }
@@ -10652,6 +10655,14 @@
                   "includeDemo": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "elapsedThrough": {
+                    "type": "string",
+                    "enum": [
+                      "today",
+                      "data"
+                    ],
+                    "default": "data"
                   }
                 },
                 "required": [
@@ -11970,6 +11981,7 @@
                                                     "is_leaf",
                                                     "is_ended",
                                                     "parent_id",
+                                                    "id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -13330,6 +13342,7 @@
                                                     "is_leaf",
                                                     "is_ended",
                                                     "parent_id",
+                                                    "id",
                                                     "experiment"
                                                   ]
                                                 }
@@ -16618,6 +16631,7 @@
                                                 "is_leaf",
                                                 "is_ended",
                                                 "parent_id",
+                                                "id",
                                                 "experiment"
                                               ]
                                             }
@@ -16956,6 +16970,14 @@
                       "includeDemo": {
                         "type": "boolean",
                         "default": false
+                      },
+                      "elapsedThrough": {
+                        "type": "string",
+                        "enum": [
+                          "today",
+                          "data"
+                        ],
+                        "default": "data"
                       }
                     },
                     "required": [

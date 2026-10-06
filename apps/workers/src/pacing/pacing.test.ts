@@ -47,9 +47,14 @@ async function envelope(name: string, budget: string, spend: string): Promise<st
     userId,
   );
   await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+  // T-9 (audit, ADR-062 addendum): pacing rules now count elapsed time to the data's own coverage by
+  // default. This fixture's streak/lifecycle assertions are about the alert machinery, not about
+  // data freshness, so the fact is dated at the end of the year — always "today or later" for every
+  // evaluation day this file uses — which keeps `dataAsOf`'s `through` capped at today, exactly the
+  // old default, the way a live, up-to-date feed would.
   await owner.$executeRawUnsafe(
     `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-     VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-03-01', 'USD', $3::numeric, $3::numeric, 'fixture', $4::uuid, $5)`,
+     VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-12-31', 'USD', $3::numeric, $3::numeric, 'fixture', $4::uuid, $5)`,
     ws,
     id,
     spend,

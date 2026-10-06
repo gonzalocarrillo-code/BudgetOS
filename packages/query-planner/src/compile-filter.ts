@@ -186,6 +186,12 @@ function compileAttr(p: Predicate, b: SqlBuilder, ctx: CompileCtx): string {
       if (p.op === "eq") return `e.parent_id = ${b.p(String(p.value))}::uuid`;
       if (p.op === "in") return `e.parent_id = ANY(${b.p(list(p).map(String))}::uuid[])`;
       throw invalid(`op ${p.op} not valid for parent_id`, p);
+    case "id":
+      // T-8: callers that already resolved envelope ids (e.g. a search hit) filter by them directly
+      // instead of re-deriving numbers from another source.
+      if (p.op === "eq") return `e.id = ${b.p(String(p.value))}::uuid`;
+      if (p.op === "in") return `e.id = ANY(${b.p(list(p).map(String))}::uuid[])`;
+      throw invalid(`op ${p.op} not valid for id`, p);
     case "experiment": {
       // Linked to an experiment (spec §25): by status, by id, or by id and role (`<id>:TEST`).
       if (p.op !== "eq" && p.op !== "in") throw invalid(`op ${p.op} not valid for experiment`, p);

@@ -1,7 +1,6 @@
 import { DomainError, QueryRequest, can, canInScope, type FilterGroupT } from "@budget/domain";
 import { envelopePaths, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
-import { Decimal } from "decimal.js";
 import { authorize } from "../../../common/auth/authenticate.js";
 import { headline } from "../../../common/headline.js";
 import { envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
@@ -28,6 +27,46 @@ async function findBudgets(prisma: PrismaClient, auth: AuthContext, q: string, l
   const res = await search(prisma, auth, { q, types: "envelope", limit: String(limit) });
   const groups = res.groups as Array<{ type: string; hits: Hit[] }>;
   return groups.find((g) => g.type === "envelope")?.hits ?? [];
+}
+
+export interface BudgetNumbers {
+  budget: string | null;
+  actual: string | null;
+  spentPct: string | null;
+  paceIndex: string | null;
+}
+
+/**
+ * T-8 (audit): budget/actual/pace for a set of envelope ids, one `id in […]` query through the one
+ * query path (the same measures as Budgets and Home), for `/budget search` and `/budget list <text>`
+ * instead of the search index's numeric facets — those refresh only on outbox events and were
+ * recomputing `% spent` as a float. An id the caller cannot read, or outside the current fiscal
+ * year's envelopes, is simply missing from the result.
+ */
+export async function numbersForIds(prisma: PrismaClient, auth: AuthContext, workspaceId: string, ids: string[]): Promise<Map<string, BudgetNumbers>> {
+  if (ids.length === 0) return new Map();
+  authorize(auth, "envelope.read"); // POST /workspaces/:ws/query
+  const q = QueryRequest.parse({
+    workspaceId,
+    filter: { logic: "and", children: [{ field: { kind: "attr", key: "id" }, op: "in", value: ids }] },
+    period: { kind: "relative", preset: "current_year" },
+    measures: [...MEASURES],
+    limit: ids.length,
+  });
+  const res = await runQuery(prisma, auth, q);
+  const out = new Map<string, BudgetNumbers>();
+  // Ungrouped (no groupBy): every row's envelopeId is set.
+  for (const r of res.rows) if (r.envelopeId !== null) out.set(r.envelopeId, { budget: r.measures["budget"] ?? null, actual: r.measures["actual"] ?? null, spentPct: r.measures["spend_to_date_pct"] ?? null, paceIndex: r.measures["pace_index"] ?? null });
+  return out;
+}
+
+/** The card rows for a set of search hits, in the hits' own (relevance) order. */
+async function rowsFor(prisma: PrismaClient, auth: AuthContext, workspaceId: string, hits: Hit[]): Promise<Array<{ id: string; label: string; path: string | null; budget: string | null; spentPct: string | null; paceIndex: string | null }>> {
+  const numbers = await numbersForIds(prisma, auth, workspaceId, hits.map((h) => h.id));
+  return hits.map((h) => {
+    const n = numbers.get(h.id) ?? null;
+    return { id: h.id, label: h.title, path: h.path, budget: n?.budget ?? null, spentPct: n?.spentPct ?? null, paceIndex: n?.paceIndex ?? null };
+  });
 }
 
 /** Live budgets named exactly this (name or display name, any case) that the caller may read, with their paths. */
@@ -116,13 +155,10 @@ export async function listReply(prisma: PrismaClient, auth: AuthContext, workspa
   const reporting = await withTenant(prisma, auth.ctx, async (tx) => (await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { reportingCurrency: true } })).reportingCurrency);
   if (text !== "") {
     const hits = await findBudgets(prisma, auth, text, 10);
-    const rows = hits.map((h) => {
-      const f = h.facets ?? {};
-      const budget = typeof f["budget"] === "number" || typeof f["budget"] === "string" ? String(f["budget"]) : null;
-      const actual = typeof f["actual"] === "number" || typeof f["actual"] === "string" ? String(f["actual"]) : null;
-      const spent = budget && actual && !new Decimal(budget).isZero() ? new Decimal(actual).div(budget).toString() : null;
-      return { id: h.id, label: h.title, path: h.path, budget, spentPct: spent, paceIndex: f["pace_index"] === null || f["pace_index"] === undefined ? null : String(f["pace_index"]) };
-    });
+    // T-8 (audit): the search index's numeric facets are for ranking only and refresh on a lag; the
+    // card's numbers come from the one query path — the same measures as Budgets and Home — by
+    // resolving the hit ids first, then one `id in […]` query, same as `/budget <name>`'s card.
+    const rows = await rowsFor(prisma, auth, workspaceId, hits);
     return { response_type: "ephemeral", ...budgetList({ baseUrl: appUrl(), workspaceId, title: `Budgets matching “${text}”`, currency: reporting, rows, more: hits.length === 10, footer }) };
   }
   authorize(auth, "envelope.read"); // POST /workspaces/:ws/query
