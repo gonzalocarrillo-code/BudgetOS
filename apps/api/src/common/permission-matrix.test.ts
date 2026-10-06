@@ -213,6 +213,7 @@ const ROUTES: RouteCase[] = [
   { method: "PATCH", path: "/api/v1/org/people/{id}", permission: "org.admin", url: () => `/api/v1/org/people/${rid}`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/demo-data", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/demo-data` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/demo-data/purge", permission: "user.manage", url: () => `/api/v1/workspaces/${wsA}/demo-data/purge`, body: {} },
+  { method: "POST", path: "/api/v1/workspaces/{ws}/demo-data/campaigns", permission: "org.admin", url: () => `/api/v1/workspaces/${wsA}/demo-data/campaigns`, body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/overview", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/overview` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/timeline", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/timeline` },
   { method: "GET", path: "/api/v1/workspaces/{ws}/pacing", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/pacing` },

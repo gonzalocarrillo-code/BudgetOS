@@ -28,6 +28,7 @@ import {
   MarkNotificationsReadInput,
   NotificationsResponse,
   DeleteWorkspaceInput,
+  AddCampaignDemoDataResponse,
   DemoDataResponse,
   PurgeDemoInput,
   OrgPeopleResponse,
@@ -529,6 +530,9 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/demo-data/purge": {
         post: { operationId: "purgeDemoData", parameters: [workspaceParam], requestBody: json(PurgeDemoInput), responses: { "201": { description: "Every demo-only row deleted in one transaction; a real fact matched onto a demo envelope is detached, not deleted, and re-matches on its next load; the template's configuration stays" }, "409": { description: "A real (non-demo) target is attached to a demo envelope; move or delete it first" } } },
+      },
+      "/api/v1/workspaces/{ws}/demo-data/campaigns": {
+        post: { operationId: "addCampaignDemoData", parameters: [workspaceParam], responses: { "201": { description: "EX-3, org admins only: campaign-level demo facts and one demo experiment added (idempotent — a second call is a no-op); supersedes the old monthly demo facts of the same leaves", ...json(AddCampaignDemoDataResponse) } } },
       },
       "/api/v1/workspaces/{ws}/experiments": {
         get: { operationId: "listExperiments", parameters: [workspaceParam, { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated statuses (PLANNED,RUNNING,EVALUATING,CONCLUDED,ABANDONED)" }], responses: { "200": { description: "Experiments, newest first, with their linked envelopes" } } },

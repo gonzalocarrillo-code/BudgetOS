@@ -99,9 +99,9 @@ export { activeNamingTemplates, dimensionLabels, fiscalLabel, recomputeNames } f
 export { DEFAULT_TOURS } from "../seed/defaults.tours.js";
 export type { DefaultTourSeed } from "../seed/defaults.tours.js";
 export { DEFAULT_TEMPLATE_KEY, defaultAgencyTemplate, ensureDefaultTemplate, ensureDefaultTours } from "./templates.js";
-export { demoPeriod, purgeDemoData, seedDemoData } from "./demo.js";
+export { campaignFactsForLeaves, campaignsForLeaf, demoPeriod, purgeDemoData, reseedCampaignDemoData, seedDemoData } from "./demo.js";
 export { linkMySlackUser, setMyName, setMySlackSettings, workspaceSetup } from "./people.js";
-export type { DemoSummary, PurgeSummary } from "./demo.js";
+export type { CampaignFactsResult, CampaignLeafInput, DemoCampaign, DemoSummary, PurgeSummary, ReseedCampaignsSummary } from "./demo.js";
 export { baselineTree, captureBaselineRows, comparedRows, snapshotIntegrity, subtreeIds } from "./baselines.js";
 export { FACT_TABLES, deleteFactMonth, factMonthTotals, factMonthsBefore, lastFactDate } from "./retention.js";
 export { deleteExpiredPreviews, deletePreview, getPreview, putPreview, takePreview } from "./previews.js";

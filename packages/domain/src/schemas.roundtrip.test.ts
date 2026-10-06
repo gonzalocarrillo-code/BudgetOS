@@ -407,7 +407,8 @@ const samples: Record<string, readonly unknown[]> = {
   MarkNotificationsReadInput: [{}, { ids: ["01927a00-0000-7000-8000-0000000000a1"] }],
   CompleteTourInput: [{ version: 2, dismissed: false }, { version: 3, dismissed: true }],
   CreateWorkspaceInput: [{ name: "Acme LATAM", templateId: "01927a00-0000-7000-8000-0000000000c1", withDemoData: true, reportingCurrency: "USD", fiscalYearStartMonth: 1 }],
-  DemoDataResponse: [{ envelopes: 0, targets: 0, hasRealBudgets: true, hidden: false }, { envelopes: 4, targets: 1, hasRealBudgets: true, hidden: true }],
+  DemoDataResponse: [{ envelopes: 0, targets: 0, hasRealBudgets: true, hidden: false, hasCampaignData: false }, { envelopes: 4, targets: 1, hasRealBudgets: true, hidden: true, hasCampaignData: true }],
+  AddCampaignDemoDataResponse: [{ alreadyPresent: true, campaigns: 0, facts: 0, supersededFacts: 0, experiments: 0 }, { alreadyPresent: false, campaigns: 12, facts: 540, supersededFacts: 6, experiments: 1 }],
   TemplateSavedView: [{ name: "By country", screen: "budgets", definition: { view: "pivot", groupBy: ["country"] } }],
   HomeScope: [{ label: "LATAM", filter: { logic: "and", children: [] }, envelopeId: "01927a00-0000-7000-8000-0000000000a1", budget: "1000.00", actual: "400.00", projected: null, paceIndex: "0.8000", spentPct: "0.4000" }],
   HomeResponse: [
