@@ -1,5 +1,5 @@
 import { DomainError } from "@budget/domain";
-import { audit, bumpDataVersion, lockParentCap, outbox, type TenantContext, type Tx } from "@budget/db";
+import { audit, lockParentCap, outbox, type TenantContext, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { clock } from "../../../common/clock.js";
 
@@ -51,5 +51,4 @@ export async function approveVersion(tx: Tx, ctx: TenantContext, versionId: stri
     requestId: ctx.requestId,
   });
   await outbox(tx, { workspaceId: env.workspaceId, topic: "budget.changed", payload: { envelopeId: env.id, versionId: v.id, kind: "approved" } });
-  await bumpDataVersion(tx, env.workspaceId);
 }

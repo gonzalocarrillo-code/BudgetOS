@@ -1,5 +1,5 @@
 import { BudgetImportCommitInput, BudgetImportInput, BudgetImportTemplateQuery, DomainError, newId, resolvePeriod, type BudgetImportPreview } from "@budget/domain";
-import { audit, auditMany, bumpDataVersion, lockWorkspaceImport, outbox, recomputeNames, withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { audit, auditMany, lockWorkspaceImport, outbox, recomputeNames, withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -161,6 +161,5 @@ async function write(tx: Tx, auth: AuthContext, workspaceId: string, plan: Impor
   const summary = { created: leaves, parents: plan.nodes.length - leaves, changed: changed.length, total: total.toFixed(2), ...routed };
   await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "budgets.imported", entityType: "workspace", entityId: workspaceId, after: summary, reason: rationale, requestId: auth.ctx.requestId });
   await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "import", createdIds, changedIds: changed, bulkChangeId: routed.bulkChangeId, requestId: routed.requestId } });
-  await bumpDataVersion(tx, workspaceId);
   return { ...summary, createdIds, changedIds: changed };
 }

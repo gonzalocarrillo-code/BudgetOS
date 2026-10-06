@@ -1,7 +1,7 @@
 import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
 import { QueryRequest } from "@budget/domain";
-import { outbox, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
+import { outbox, readDataVersion, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
 import { compileQuery } from "@budget/query-planner";
 import { Storage } from "@google-cloud/storage";
 import { PrismaClient } from "@prisma/client";
@@ -193,7 +193,7 @@ describe("runIngest (spec §14)", () => {
         throw new Error("connector crashed");
       },
     };
-    const before = (await owner.workspace.findUniqueOrThrow({ where: { id: ws }, select: { settings: true } })).settings as { dataVersion?: number };
+    const before = await readDataVersion(owner, ws);
     await expect(runIngest({ ...deps(), connector: () => crashing, batchSize: 2 }, tenant, runId)).rejects.toThrow(/connector crashed/);
 
     const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } });
@@ -204,8 +204,7 @@ describe("runIngest (spec §14)", () => {
     expect(matched).toEqual([{ envelope_id: env["brMeta"] }]);
     const [outboxRow] = await owner.$queryRawUnsafe<Array<{ payload: { envelopeIds: string[] } }>>(`SELECT payload FROM outbox WHERE topic = 'facts.loaded' AND payload->>'runId' = $1 ORDER BY outbox.id DESC LIMIT 1`, runId);
     expect(outboxRow?.payload.envelopeIds).toEqual([env["brMeta"]]);
-    const after = (await owner.workspace.findUniqueOrThrow({ where: { id: ws }, select: { settings: true } })).settings as { dataVersion?: number };
-    expect(after.dataVersion ?? 0).toBeGreaterThan(before.dataVersion ?? 0);
+    expect(await readDataVersion(owner, ws)).toBeGreaterThan(before);
     // Later tests in this file assert absolute fact counts for the whole workspace; keep this
     // test's own facts from leaking into those.
     await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE source_run_id = $1::uuid`, runId);

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, expect, it } from "vitest";
-import { audit, bumpDataVersion, outbox, type Tx } from "./sql.js";
+import { audit, outbox, readDataVersion, type Tx } from "./sql.js";
 import { withTenant, type TenantContext } from "./tenant.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -134,7 +134,7 @@ it("drops SET LOCAL settings when the transaction commits", async () => {
   }
 });
 
-it("writes audit, outbox, and a bumped data version in one tenant transaction", async () => {
+it("writes audit and outbox in one tenant transaction; the outbox row moves the data version at commit (ADR-0082)", async () => {
   const orgId = randomUUID();
   const workspaceId = randomUUID();
   const entityId = randomUUID();
@@ -171,11 +171,11 @@ it("writes audit, outbox, and a bumped data version in one tenant transaction", 
         topic: "budget.changed",
         payload: { entityId, kind: "created" },
       });
-      const first = await bumpDataVersion(tx, workspaceId);
-      const second = await bumpDataVersion(tx, workspaceId);
-      return [first, second];
+      // Deferred to COMMIT: the transaction holds no data-version lock while it runs.
+      return [await readDataVersion(tx, workspaceId)];
     });
-    expect(versions).toEqual([1, 2]);
+    versions.push(await readDataVersion(prisma, workspaceId));
+    expect(versions).toEqual([0, 1]);
 
     const auditRows = await prisma.$queryRaw<Array<{ n: number }>>`
       SELECT count(*)::int AS n FROM audit_event WHERE entity_type = 'envelope' AND entity_id = ${entityId}::uuid AND action = 'envelope.version.created'`;

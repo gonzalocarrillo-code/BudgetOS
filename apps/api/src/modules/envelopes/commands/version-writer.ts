@@ -1,5 +1,5 @@
 import { DomainError, newId, type Action } from "@budget/domain";
-import { audit, bumpDataVersion, lockEnvelope, outbox, structuralRequestHolding, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { audit, lockEnvelope, outbox, structuralRequestHolding, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Prisma } from "@prisma/client";
 import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
@@ -118,7 +118,7 @@ export async function writeDraftVersion(tx: Tx, auth: AuthContext, env: LockedEn
   return version;
 }
 
-/** Exactly one audit_event and one outbox row per write path, plus the cache data version. */
+/** Exactly one audit_event and one outbox row per write path (the outbox row moves the cache data version at commit, ADR-0082). */
 export async function recordEnvelopeChange(
   tx: Tx,
   auth: AuthContext,
@@ -137,5 +137,4 @@ export async function recordEnvelopeChange(
     requestId: auth.ctx.requestId,
   });
   await outbox(tx, { workspaceId: args.workspaceId, topic: "budget.changed", payload: { envelopeId: args.envelopeId, kind: args.kind, ...args.after } });
-  await bumpDataVersion(tx, args.workspaceId);
 }

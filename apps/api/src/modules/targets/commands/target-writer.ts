@@ -1,5 +1,5 @@
 import { DomainError, newId, type Action } from "@budget/domain";
-import { audit, bumpDataVersion, lockTarget, outbox, type LockedTargetRow, type TenantContext, type Tx } from "@budget/db";
+import { audit, lockTarget, outbox, type LockedTargetRow, type TenantContext, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { TargetVersion } from "@prisma/client";
 import { assertInScope } from "../../../common/scope.guard.js";
@@ -91,7 +91,6 @@ export async function recordTargetChange(
     requestId: ctx.requestId,
   });
   await outbox(tx, { workspaceId: args.workspaceId, topic: "target.changed", payload: { targetId: args.targetId, kind: args.kind, ...args.after } });
-  await bumpDataVersion(tx, args.workspaceId);
 }
 
 

@@ -13,7 +13,7 @@ import {
   type TimelineBar,
   type TimelineResponse,
 } from "@budget/domain";
-import { ganttKeyDates, ganttMarkers, ganttTargets, plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
+import { ganttKeyDates, ganttMarkers, ganttTargets, plannerOptions, readDataVersion, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf, sanitize, type CompileOptions } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import LZString from "lz-string";
@@ -92,7 +92,9 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
   const today = now.toISOString().slice(0, 10);
 
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
+    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
+    // Read before the data (ADR-0082): the answer is at least as new as the version it carries.
+    const dataVersion = await readDataVersion(tx, workspaceId);
     const fy = ws.fiscalYearStartMonth;
     const spec = resolvePeriod(parsePeriodParam(q.period), today, fy, await fiscalCalendar(tx, workspaceId));
     const period = { start: q.from ?? spec.start, end: q.to ?? spec.end };
@@ -274,7 +276,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
         periods: fiscalPeriods(period.start, period.end, fy, q.zoom),
         keyDates: await ganttKeyDates(tx, workspaceId, period.start, period.end, asOf),
       },
-      dataVersion: String((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0),
+      dataVersion: String(dataVersion),
       dataAsOf: now.toISOString(),
       ...(q.asOf ? { asOf: q.asOf } : {}),
     };

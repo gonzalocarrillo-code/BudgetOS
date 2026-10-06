@@ -1,5 +1,5 @@
 import { DomainError, can, type Role } from "@budget/domain";
-import { audit, bumpDataVersion, outbox, withTenant, type TenantContext, type Tx } from "@budget/db";
+import { audit, outbox, withTenant, type TenantContext, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 
@@ -92,5 +92,4 @@ export async function recordChange(
       ...args.after,
     },
   });
-  await bumpDataVersion(tx, args.workspaceId);
 }

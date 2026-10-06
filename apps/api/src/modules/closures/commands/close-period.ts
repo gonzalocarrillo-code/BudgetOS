@@ -1,5 +1,5 @@
 import { CloseInput, DomainError, factsPrunedBefore, fiscalPeriodKind, newId, readsPrunedFacts, resolvePeriod } from "@budget/domain";
-import { audit, bumpDataVersion, lockClosure, lockPeriodEnvelopes, outbox, withTenant, type Tx } from "@budget/db";
+import { audit, lockClosure, lockPeriodEnvelopes, outbox, withTenant, type Tx } from "@budget/db";
 import { templateNodes } from "@budget/workers";
 import { Decimal } from "decimal.js";
 import type { FiscalPeriod, Prisma, PrismaClient } from "@prisma/client";
@@ -15,7 +15,7 @@ import { failClosure } from "./fail-closure.js";
  * 1. Lock the live envelopes that overlap the period (versions untouched), snapshot the registry
  *    versions, compute every hierarchy template's nodes with the planner for the period and for
  *    each of its months, store the variance summary on a `closing` closure, audit
- *    `closure.started`, outbox `period.closing`, bump the data version, commit.
+ *    `closure.started`, outbox `period.closing` (which moves the data version at commit, ADR-0082), commit.
  * 2. Write the rows to `closures.closure_<closure id>` outside any transaction.
  * 3. Flip the closure to `closed` with audit `closure.created` and outbox `period.closed`; or, when
  *    the sink failed, to `failed` with its envelopes unlocked (`fail-closure.ts`), and rethrow.
@@ -237,8 +237,6 @@ async function startClose(prisma: PrismaClient, auth: AuthContext, workspaceId: 
         await tx.periodClosure.update({ where: { id: closure.id }, data: { varianceSummary: summary as Prisma.InputJsonObject } });
         await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "closure.started", entityType: "period_closure", entityId: closure.id, after: { status: "closing", periodKey: period.key, table, lockedEnvelopes: locked.length, rows: rows.length }, requestId: auth.ctx.requestId });
         await outbox(tx, { workspaceId, topic: "period.closing", payload: { closureId: closure.id, periodId: period.id, periodKey: period.key, table, lockedEnvelopes: locked.length } });
-        // Last statement: the workspace row is locked only until this commit (audit I-4, I-14).
-        await bumpDataVersion(tx, workspaceId);
         return { closureId: closure.id, periodId: period.id, periodKey: period.key, table, rows, lockedEnvelopes: locked.length };
       },
       { timeoutMs: 300_000 },

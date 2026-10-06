@@ -1,6 +1,6 @@
 import { DomainError, TreeRequest, elapsedFraction, groupRatios, readScopeFilter, resolvePeriod, type QueryRow, type TreeResponse } from "@budget/domain";
 import { Decimal } from "decimal.js";
-import { withTenant, fiscalCalendar } from "@budget/db";
+import { readDataVersion, withTenant, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileTree } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -33,8 +33,8 @@ export async function treeQuery(prisma: PrismaClient, auth: AuthContext, raw: un
   const q = parseInput(TreeRequest, raw);
   if (q.workspaceId !== requireWorkspace(auth.ctx.workspaceId)) throw new DomainError("VALIDATION", "tree.workspaceId must be the caller's workspace");
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: q.workspaceId }, select: { fiscalYearStartMonth: true, settings: true } });
-    const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
+    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: q.workspaceId }, select: { fiscalYearStartMonth: true } });
+    const dataVersion = await readDataVersion(tx, q.workspaceId);
     if (!auth.isOrgAdmin && readScopeFilter(auth.assignments, "envelope.read") !== null) return unavailable("scoped", dataVersion, now, started);
     const template = await tx.hierarchyTemplate.findFirst({ where: { id: q.templateId, workspaceId: q.workspaceId }, select: { path: true } });
     if (!template) throw new DomainError("NOT_FOUND", "hierarchy template not found", { templateId: q.templateId });

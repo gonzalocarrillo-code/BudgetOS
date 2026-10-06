@@ -1,5 +1,5 @@
 import { DomainError, newId } from "@budget/domain";
-import { audit, auditMany, bumpDataVersion, insertBulkChange, insertBulkVersions, loadBulkHeads, lockEnvelopes, outbox, setDraftPointers, supersedeDrafts, withTenant, type BulkVersionRow } from "@budget/db";
+import { audit, auditMany, insertBulkChange, insertBulkVersions, loadBulkHeads, lockEnvelopes, outbox, setDraftPointers, supersedeDrafts, withTenant, type BulkVersionRow } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseId, requireWorkspace } from "../../../common/parse-input.js";
@@ -164,7 +164,6 @@ export async function commitBulk(prisma: PrismaClient, auth: AuthContext, rawPre
         // Auto-approve per policy (plan §9.3), parents first so their caps are in place for children.
         await finalizeBulk(tx, auth.ctx, bulkChangeId, null, `auto-approved by policy ${policy.name} v${policy.version}`);
       }
-      await bumpDataVersion(tx, workspaceId);
       return { bulkChangeId, requestId, autoApproved: policy.chain.length === 0, policy: { name: policy.name, version: policy.version }, versions: versionIds.length };
     },
     { timeoutMs: 60_000 },

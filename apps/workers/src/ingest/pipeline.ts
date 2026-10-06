@@ -1,7 +1,6 @@
 import { DomainError, SourceConfig, SourceMapping, compileParsePattern, csvCell, isIncrementalSource, rowIdentityProblem } from "@budget/domain";
 import {
   audit,
-  bumpDataVersion,
   closedPeriods,
   ensurePartitions,
   insertProjectionFacts,
@@ -338,7 +337,6 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
         });
         await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "ingest.run.finished", entityType: "ingest_run", entityId: runId, after: { sourceId: setup.source.id, rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, matchCoverage, mode, superseded, coveredRange: covered }, requestId: ctx.requestId });
         await outbox(tx, { workspaceId: tenant.workspaceId, topic: "facts.loaded", payload: { runId, sourceId: setup.source.id, envelopeIds } });
-        await bumpDataVersion(tx, tenant.workspaceId);
         log.info({ runId, sourceId: setup.source.id, workspaceId: tenant.workspaceId, requestId: ctx.requestId, rowsRead, rowsRejected: rejected.length, matchCoverage, mode, superseded }, "ingest run finished");
         return { runId, status: "ok" as const, rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, coverage: { ...coverage, matchCoverage }, envelopeIds };
       },
@@ -389,7 +387,6 @@ export async function failIngestRun(tx: Tx, args: FailIngestRunArgs): Promise<bo
   const envelopeIds = [...new Set([...matched, ...(await runEnvelopes(tx, args.workspaceId, args.runId))])].sort();
   if (envelopeIds.length > 0) {
     await outbox(tx, { workspaceId: args.workspaceId, topic: "facts.loaded", payload: { runId: args.runId, sourceId: args.sourceId, envelopeIds } });
-    await bumpDataVersion(tx, args.workspaceId);
   }
   return true;
 }

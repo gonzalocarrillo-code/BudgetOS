@@ -1,5 +1,5 @@
 import { ChangeDatesInput, DomainError, rephase, type DateChangeLine, type DateChangePreview } from "@budget/domain";
-import { applyDates, audit, bumpDataVersion, lockEnvelope, lockEnvelopes, outbox, withTenant, type BulkDatesLine, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { applyDates, audit, lockEnvelope, lockEnvelopes, outbox, withTenant, type BulkDatesLine, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -217,7 +217,6 @@ export async function changeDatesIn(tx: Tx, auth: AuthContext, workspaceId: stri
     await applyDates(tx, dates);
     await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "envelope.dates_changed", entityType: "envelope", entityId: envelopeId, before: { dates: before }, after: { dates }, ...(input.rationale ? { reason: input.rationale } : {}), requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "dates", envelopeId, envelopeIds: dates.map((d) => d.envelopeId), dates } });
-    await bumpDataVersion(tx, workspaceId);
     return { envelopeId, applied: true, requestId: null, autoApproved: false, lines: view(plan).lines };
   }
 
@@ -251,6 +250,5 @@ export async function changeDatesIn(tx: Tx, auth: AuthContext, workspaceId: stri
     requestId: auth.ctx.requestId,
   });
   await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "dates", envelopeId, envelopeIds: dates.map((d) => d.envelopeId), bulkChangeId: routed.bulkChangeId, requestId: routed.requestId } });
-  await bumpDataVersion(tx, workspaceId);
   return { envelopeId, applied: routed.autoApproved, requestId: routed.requestId, autoApproved: routed.autoApproved, lines: view(plan).lines };
 }

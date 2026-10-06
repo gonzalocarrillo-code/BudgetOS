@@ -134,7 +134,6 @@ export async function pruneWorkspaceFacts(
         // factsPrunedBefore only moves forward: the month after the newest month pruned.
         await tx.$executeRaw`UPDATE workspace SET settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{factsPrunedBefore}', to_jsonb(GREATEST(coalesce(settings->>'factsPrunedBefore', ''), ${before}::text)))
           WHERE id = ${ws.workspaceId}::uuid`;
-        await tx.$executeRaw`UPDATE workspace SET settings = jsonb_set(settings, '{dataVersion}', to_jsonb(coalesce((settings->>'dataVersion')::int, 0) + 1)) WHERE id = ${ws.workspaceId}::uuid`;
         await record(tx, ctx, "facts.pruned", { month, deleted: counts, replicaTotals: copy });
         return { aborted: false as const, counts };
       },

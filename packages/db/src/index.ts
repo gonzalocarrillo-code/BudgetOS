@@ -11,7 +11,7 @@ export {
 export type { DimensionValuePathRow, DimensionValueStateRow, UpsertDimensionValueInput } from "./registry.js";
 export { DEFAULT_DIMENSIONS, DEFAULT_HIERARCHY } from "../seed/defaults.registry.js";
 export type { RegistryDimensionSeed, RegistryValueSeed } from "../seed/defaults.registry.js";
-export { audit, bumpDataVersion, outbox } from "./sql.js";
+export { audit, outbox, readDataVersion } from "./sql.js";
 export { createSession, revokeAllSessions, revokeSession, sessionLive } from "./auth-session.js";
 export type { CreateSessionInput } from "./auth-session.js";
 export { consumeOauthCode, consumeRefreshToken, issueOauthCode, issueRefreshToken } from "./oauth-store.js";

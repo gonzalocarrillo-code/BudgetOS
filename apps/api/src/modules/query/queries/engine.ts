@@ -8,8 +8,8 @@ import { isPredicate, type FilterGroupT, type QueryRequest } from "@budget/domai
  *
  * - **Cache:** Redis (in memory without REDIS_URL), 5 minutes, keyed by workspace, data version and
  *   the scoped query (the caller's read scope is part of its filter). Only queries whose filter
- *   reads dimensions, status and is_leaf are kept: tags, threads and mentions change without a
- *   data-version bump.
+ *   reads dimensions, status and is_leaf are kept. The data version moves with every committed
+ *   outbox row of the workspace (ADR-0082).
  * - **Warehouse:** with BIGQUERY_DATASET set, the grouped shapes the BigQuery dialect supports run there when
  *   the period spans more than 13 months or Postgres estimates more than 200k rows.
  */
@@ -109,7 +109,9 @@ export function cacheKey(q: QueryRequest, dataVersion: number, today: string, el
   if (!cacheSafe(q.filter ?? { logic: "and", children: [] })) return null;
   // `today` is part of the answer (pace, relative periods), and so is the day time gone is counted to (ADR-062).
   const day = elapsedThrough === undefined || elapsedThrough >= today ? today : `${today}~${elapsedThrough}`;
-  return `q:${q.workspaceId}:${dataVersion}:${day}:${createHash("sha256").update(JSON.stringify(q)).digest("hex")}`;
+  // `q2`: the version comes from workspace_data_version since W3-8 (ADR-0082), a different counter
+  // from the old workspace.settings.dataVersion; old and new keys never meet while both run.
+  return `q2:${q.workspaceId}:${dataVersion}:${day}:${createHash("sha256").update(JSON.stringify(q)).digest("hex")}`;
 }
 
 /** Months the period spans, counting partial months. */
