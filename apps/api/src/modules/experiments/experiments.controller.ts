@@ -1,15 +1,17 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { concludeExperiment, createExperiment, linkEnvelope, transitionExperiment, updateExperiment } from "./commands/experiments.js";
-import { ConcludeExperimentDto, CreateExperimentDto, LinkEnvelopeDto, ListExperimentsQueryDto, UpdateExperimentDto } from "./dto.js";
-import { getExperiment, listExperiments } from "./queries/experiments.js";
+import { concludeExperiment, createExperiment, deleteExperiment, linkEnvelope, transitionExperiment, updateExperiment } from "./commands/experiments.js";
+import { ConcludeExperimentDto, CreateExperimentDto, ExperimentScopeValuesQueryDto, LinkEnvelopeDto, ListExperimentsQueryDto, UpdateExperimentDto } from "./dto.js";
+import { getExperiment, listExperiments, listScopeValues } from "./queries/experiments.js";
 
 /**
  * Experiments (spec §25, §17 `experiments`). Reads need envelope.read; writes need
  * envelope.edit_draft (a test is a budget change in the making), and linking also checks the
- * envelope's scope. Entity routes take the workspace from X-Workspace-Id.
+ * envelope's scope. Entity routes take the workspace from X-Workspace-Id. EX-2: DELETE is permanent
+ * and, beyond envelope.edit_draft, needs the experiment's owner or a workspace admin (checked in the
+ * command); scope-values lists a fact dimension's values (campaigns) with spend in a window.
  */
 @Controller()
 export class ExperimentsController {
@@ -27,6 +29,12 @@ export class ExperimentsController {
     return createExperiment(this.prisma, auth, body);
   }
 
+  @Get("workspaces/:ws/experiments/scope-values")
+  @Permission("envelope.read")
+  scopeValues(@Tenant() auth: AuthContext, @Query() query: ExperimentScopeValuesQueryDto) {
+    return listScopeValues(this.prisma, auth, query);
+  }
+
   @Get("experiments/:id")
   @Permission("envelope.read")
   get(@Tenant() auth: AuthContext, @Param("id") id: string) {
@@ -37,6 +45,12 @@ export class ExperimentsController {
   @Permission("envelope.edit_draft")
   update(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateExperimentDto) {
     return updateExperiment(this.prisma, auth, id, body);
+  }
+
+  @Delete("experiments/:id")
+  @Permission("envelope.edit_draft")
+  remove(@Tenant() auth: AuthContext, @Param("id") id: string) {
+    return deleteExperiment(this.prisma, auth, id);
   }
 
   @Post("experiments/:id/link")

@@ -911,6 +911,9 @@ model Experiment {
   kind          ExperimentKind
   testFilter    Json                 @map("test_scope_filter") // FilterGroup
   controlFilter Json?                @map("control_scope_filter") // FilterGroup | null
+  /// EX-2 (ADR-086): 'envelope' | 'fact' — what testFilter / controlFilter are evaluated on (CHECK in 20261020020000).
+  testScopeKind    String           @default("envelope") @map("test_scope_kind")
+  controlScopeKind String           @default("envelope") @map("control_scope_kind")
   primaryMetric String               @map("primary_metric_key")
   criterion     Json                 @map("success_criterion") // { comparator: 'lte'|'gte', value?: string, vs: 'control'|'absolute', minDays?: number }
   startDate     DateTime             @map("start_date") @db.Date

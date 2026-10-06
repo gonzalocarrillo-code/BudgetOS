@@ -14867,6 +14867,22 @@
                   "ownerId": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "testScopeKind": {
+                    "type": "string",
+                    "enum": [
+                      "envelope",
+                      "fact"
+                    ],
+                    "default": "envelope"
+                  },
+                  "controlScopeKind": {
+                    "type": "string",
+                    "enum": [
+                      "envelope",
+                      "fact"
+                    ],
+                    "default": "envelope"
                   }
                 },
                 "required": [
@@ -14915,96 +14931,304 @@
         ],
         "responses": {
           "200": {
-            "description": "{ experiment, readout }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met",
+            "description": "{ experiment, readout, sides }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met; `sides` (EX-2) is each side's facts per day to today (a day without facts is hasData false with null values) and its totals over the days with data",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "test": {
+                    "experiment": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "readout": {
                       "type": "object",
                       "properties": {
-                        "budget": {
-                          "type": "string",
+                        "test": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "actual": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "metric": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "leafCount": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "budget",
+                            "actual",
+                            "metric",
+                            "leafCount"
+                          ]
+                        },
+                        "control": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "actual": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "metric": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "leafCount": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "budget",
+                            "actual",
+                            "metric",
+                            "leafCount"
+                          ],
                           "nullable": true
                         },
-                        "actual": {
-                          "type": "string",
+                        "delta": {
+                          "type": "object",
+                          "properties": {
+                            "abs": {
+                              "type": "string"
+                            },
+                            "pct": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "abs",
+                            "pct"
+                          ],
                           "nullable": true
                         },
-                        "metric": {
-                          "type": "string",
+                        "criterionMet": {
+                          "type": "boolean",
                           "nullable": true
                         },
-                        "leafCount": {
+                        "daysRunning": {
                           "type": "integer"
                         }
                       },
                       "required": [
-                        "budget",
-                        "actual",
-                        "metric",
-                        "leafCount"
+                        "test",
+                        "control",
+                        "delta",
+                        "criterionMet",
+                        "daysRunning"
                       ]
                     },
-                    "control": {
+                    "sides": {
                       "type": "object",
                       "properties": {
-                        "budget": {
-                          "type": "string",
-                          "nullable": true
+                        "test": {
+                          "type": "object",
+                          "properties": {
+                            "scopeKind": {
+                              "type": "string",
+                              "enum": [
+                                "envelope",
+                                "fact"
+                              ]
+                            },
+                            "totals": {
+                              "type": "object",
+                              "properties": {
+                                "spend": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "kpis": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "metrics": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "daysWithData": {
+                                  "type": "integer"
+                                },
+                                "daysInWindow": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "spend",
+                                "kpis",
+                                "metrics",
+                                "daysWithData",
+                                "daysInWindow"
+                              ]
+                            },
+                            "days": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "string"
+                                  },
+                                  "hasData": {
+                                    "type": "boolean"
+                                  },
+                                  "spend": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "kpis": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "nullable": true
+                                    }
+                                  },
+                                  "metrics": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "nullable": true
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "date",
+                                  "hasData",
+                                  "spend",
+                                  "kpis",
+                                  "metrics"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "scopeKind",
+                            "totals",
+                            "days"
+                          ]
                         },
-                        "actual": {
-                          "type": "string",
+                        "control": {
+                          "type": "object",
+                          "properties": {
+                            "scopeKind": {
+                              "type": "string",
+                              "enum": [
+                                "envelope",
+                                "fact"
+                              ]
+                            },
+                            "totals": {
+                              "type": "object",
+                              "properties": {
+                                "spend": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "kpis": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "metrics": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                },
+                                "daysWithData": {
+                                  "type": "integer"
+                                },
+                                "daysInWindow": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "spend",
+                                "kpis",
+                                "metrics",
+                                "daysWithData",
+                                "daysInWindow"
+                              ]
+                            },
+                            "days": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "string"
+                                  },
+                                  "hasData": {
+                                    "type": "boolean"
+                                  },
+                                  "spend": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "kpis": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "nullable": true
+                                    }
+                                  },
+                                  "metrics": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string",
+                                      "nullable": true
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "date",
+                                  "hasData",
+                                  "spend",
+                                  "kpis",
+                                  "metrics"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "scopeKind",
+                            "totals",
+                            "days"
+                          ],
                           "nullable": true
-                        },
-                        "metric": {
-                          "type": "string",
-                          "nullable": true
-                        },
-                        "leafCount": {
-                          "type": "integer"
                         }
                       },
                       "required": [
-                        "budget",
-                        "actual",
-                        "metric",
-                        "leafCount"
-                      ],
-                      "nullable": true
-                    },
-                    "delta": {
-                      "type": "object",
-                      "properties": {
-                        "abs": {
-                          "type": "string"
-                        },
-                        "pct": {
-                          "type": "string",
-                          "nullable": true
-                        }
-                      },
-                      "required": [
-                        "abs",
-                        "pct"
-                      ],
-                      "nullable": true
-                    },
-                    "criterionMet": {
-                      "type": "boolean",
-                      "nullable": true
-                    },
-                    "daysRunning": {
-                      "type": "integer"
+                        "test",
+                        "control"
+                      ]
                     }
                   },
                   "required": [
-                    "test",
-                    "control",
-                    "delta",
-                    "criterionMet",
-                    "daysRunning"
+                    "experiment",
+                    "readout",
+                    "sides"
                   ]
                 }
               }
@@ -15115,6 +15339,20 @@
                   "ownerId": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "testScopeKind": {
+                    "type": "string",
+                    "enum": [
+                      "envelope",
+                      "fact"
+                    ]
+                  },
+                  "controlScopeKind": {
+                    "type": "string",
+                    "enum": [
+                      "envelope",
+                      "fact"
+                    ]
                   }
                 }
               }
@@ -15123,7 +15361,133 @@
         },
         "responses": {
           "200": {
-            "description": "Updated (not once concluded or abandoned)"
+            "description": "Updated. Dates are editable in every status (a concluded experiment's move also posts a system comment on its linked budgets); nothing else once concluded or abandoned (409)"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteExperiment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permanently deleted with its envelope links (irreversible); the audit trail is kept"
+          },
+          "403": {
+            "description": "Not the experiment's owner nor a workspace admin"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/experiments/scope-values": {
+      "get": {
+        "operationId": "listExperimentScopeValues",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Fact dimension key (default campaign)"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "includeDemo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dimension's values found in spend facts in the window, largest spend first (the campaign picker)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "spend": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "days": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "label",
+                      "spend",
+                      "days"
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

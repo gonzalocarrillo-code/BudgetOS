@@ -1546,10 +1546,26 @@ export interface paths {
         get: operations["getExperiment"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["deleteExperiment"];
         options?: never;
         head?: never;
         patch: operations["updateExperiment"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/experiments/scope-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listExperimentScopeValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/experiments/{id}/link": {
@@ -7939,6 +7955,16 @@ export interface operations {
                     endDate: string;
                     /** Format: uuid */
                     ownerId?: string;
+                    /**
+                     * @default envelope
+                     * @enum {string}
+                     */
+                    testScopeKind?: "envelope" | "fact";
+                    /**
+                     * @default envelope
+                     * @enum {string}
+                     */
+                    controlScopeKind?: "envelope" | "fact";
                 };
             };
         };
@@ -7965,33 +7991,123 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description { experiment, readout }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met */
+            /** @description { experiment, readout, sides }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met; `sides` (EX-2) is each side's facts per day to today (a day without facts is hasData false with null values) and its totals over the days with data */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        test: {
-                            budget: string | null;
-                            actual: string | null;
-                            metric: string | null;
-                            leafCount: number;
+                        experiment: {
+                            [key: string]: unknown;
                         };
-                        control: {
-                            budget: string | null;
-                            actual: string | null;
-                            metric: string | null;
-                            leafCount: number;
-                        } | null;
-                        delta: {
-                            abs: string;
-                            pct: string | null;
-                        } | null;
-                        criterionMet: boolean | null;
-                        daysRunning: number;
+                        readout: {
+                            test: {
+                                budget: string | null;
+                                actual: string | null;
+                                metric: string | null;
+                                leafCount: number;
+                            };
+                            control: {
+                                budget: string | null;
+                                actual: string | null;
+                                metric: string | null;
+                                leafCount: number;
+                            } | null;
+                            delta: {
+                                abs: string;
+                                pct: string | null;
+                            } | null;
+                            criterionMet: boolean | null;
+                            daysRunning: number;
+                        };
+                        sides: {
+                            test: {
+                                /** @enum {string} */
+                                scopeKind: "envelope" | "fact";
+                                totals: {
+                                    spend: string | null;
+                                    kpis: {
+                                        [key: string]: string | null;
+                                    };
+                                    metrics: {
+                                        [key: string]: string | null;
+                                    };
+                                    daysWithData: number;
+                                    daysInWindow: number;
+                                };
+                                days: {
+                                    date: string;
+                                    hasData: boolean;
+                                    spend: string | null;
+                                    kpis: {
+                                        [key: string]: string | null;
+                                    };
+                                    metrics: {
+                                        [key: string]: string | null;
+                                    };
+                                }[];
+                            };
+                            control: {
+                                /** @enum {string} */
+                                scopeKind: "envelope" | "fact";
+                                totals: {
+                                    spend: string | null;
+                                    kpis: {
+                                        [key: string]: string | null;
+                                    };
+                                    metrics: {
+                                        [key: string]: string | null;
+                                    };
+                                    daysWithData: number;
+                                    daysInWindow: number;
+                                };
+                                days: {
+                                    date: string;
+                                    hasData: boolean;
+                                    spend: string | null;
+                                    kpis: {
+                                        [key: string]: string | null;
+                                    };
+                                    metrics: {
+                                        [key: string]: string | null;
+                                    };
+                                }[];
+                            } | null;
+                        };
                     };
                 };
+            };
+        };
+    };
+    deleteExperiment: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Permanently deleted with its envelope links (irreversible); the audit trail is kept */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the experiment's owner nor a workspace admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -8030,16 +8146,53 @@ export interface operations {
                     endDate?: string;
                     /** Format: uuid */
                     ownerId?: string;
+                    /** @enum {string} */
+                    testScopeKind?: "envelope" | "fact";
+                    /** @enum {string} */
+                    controlScopeKind?: "envelope" | "fact";
                 };
             };
         };
         responses: {
-            /** @description Updated (not once concluded or abandoned) */
+            /** @description Updated. Dates are editable in every status (a concluded experiment's move also posts a system comment on its linked budgets); nothing else once concluded or abandoned (409) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listExperimentScopeValues: {
+        parameters: {
+            query: {
+                /** @description Fact dimension key (default campaign) */
+                key?: string;
+                start: string;
+                end: string;
+                includeDemo?: "true" | "false";
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dimension's values found in spend facts in the window, largest spend first (the campaign picker) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: string;
+                        label: string | null;
+                        spend: string | null;
+                        days: number;
+                    }[];
+                };
             };
         };
     };

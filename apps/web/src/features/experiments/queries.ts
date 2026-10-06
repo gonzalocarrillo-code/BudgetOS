@@ -1,4 +1,4 @@
-import { ExperimentReadout, FilterGroup, SuccessCriterion } from "@budget/domain";
+import { ExperimentReadout, ExperimentScopeValue, ExperimentSides, FilterGroup, SuccessCriterion } from "@budget/domain";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, unwrap } from "../../lib/api.js";
@@ -20,6 +20,8 @@ export const Experiment = z
     criterion: SuccessCriterion,
     startDate: z.string(),
     endDate: z.string(),
+    testScopeKind: z.enum(["envelope", "fact"]).default("envelope"),
+    controlScopeKind: z.enum(["envelope", "fact"]).default("envelope"),
     status: z.enum(STATUSES),
     ownerId: z.string().uuid(),
     decision: z.string().nullable(),
@@ -40,7 +42,7 @@ export const experimentsQuery = (ws: string, status: string | undefined) =>
 export const experimentQuery = (ws: string, id: string) =>
   queryOptions({
     queryKey: ["experiment", ws, id],
-    queryFn: async () => z.object({ experiment: Experiment, readout: ExperimentReadout }).parse(await unwrap(api.GET("/api/v1/experiments/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } }))),
+    queryFn: async () => z.object({ experiment: Experiment, readout: ExperimentReadout, sides: ExperimentSides }).parse(await unwrap(api.GET("/api/v1/experiments/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } }))),
   });
 
 export const Metric = z.object({ key: z.string(), label: z.string(), direction: z.string().optional() }).passthrough();
@@ -49,4 +51,13 @@ export const metricsQuery = (ws: string) =>
     queryKey: ["metrics", ws],
     queryFn: async () => z.array(Metric).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/metrics", { params: { path: { ws } } }))),
     staleTime: 5 * 60_000,
+  });
+
+/** EX-2: the campaigns found in spend facts in a window, largest spend first (the campaign picker). */
+export const scopeValuesQuery = (ws: string, start: string, end: string, key = "campaign") =>
+  queryOptions({
+    queryKey: ["experiment-scope-values", ws, key, start, end],
+    enabled: /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end,
+    queryFn: async () => z.array(ExperimentScopeValue).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/experiments/scope-values", { params: { path: { ws }, query: { key, start, end } } }))),
+    staleTime: 60_000,
   });
