@@ -9,6 +9,6 @@ import { t } from "@budget/ui/i18n";
  * @param compact - If true, use formatMoneyCompact instead of formatMoney
  */
 export function moneyOrDash(value: string | null | undefined, currency: string, compact = false): string {
-  if (value === null || value === undefined) return t("noValue");
+  if (value === null || value === undefined) return t("common.noValue");
   return compact ? formatMoneyCompact(value, currency) : formatMoney(value, currency);
 }
