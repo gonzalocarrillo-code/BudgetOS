@@ -323,8 +323,8 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | S-8 | Medium | W2-6 | open |
 | S-9 | Low | W2-7 | done (#149) |
 | S-10 | Low | W2-8 | done (#161) |
-| S-11 | Medium | W5-3 | open |
-| S-12 | Medium | W5-3 | open |
+| S-11 | Medium | W5-3 | open (#166 pending) |
+| S-12 | Medium | W5-3 | open (#166 pending) |
 | S-13 | Medium (infra) | W5-4 | open |
 | S-14 | Low | W5-7 | done (#165) |
 | S-15 | Low | W5-7 | done (#165) |
@@ -338,15 +338,15 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | T-1 | Critical | W1-1 | open |
 | T-2 | Critical (companion to T-1) | W1-1 | open |
 | T-3 | High | W1-3 | open |
-| T-4 | High (impact depends on the feed) | W4-1 | open |
+| T-4 | High (impact depends on the feed) | W4-1 | done (#169) |
 | T-5 | High | W1-4 | open |
-| T-6 | Medium | W4-3 | open |
-| T-7 | Medium | W4-3 | open |
-| T-8 | Medium | W4-2 | open |
-| T-9 | Medium | W4-2 | open |
-| T-10 | Medium | W4-2 | open |
-| T-11 | Medium | W4-2 | open |
-| T-12 | Medium | D-1 | open |
+| T-6 | Medium | W4-3 | done (#172) |
+| T-7 | Medium | W4-3 | done (#172) |
+| T-8 | Medium | W4-2 | done (#171) |
+| T-9 | Medium | W4-2 | done (#171) |
+| T-10 | Medium | W4-2 | done (#171) |
+| T-11 | Medium | W4-2 | done (#171) |
+| T-12 | Medium | D-1 | done (#167, basis labelled) |
 | T-13 | Low | W4-4 | done (#153) |
 | T-14 | Low | W4-4 | done (#153) |
 | T-15 | Low | W4-4 | deferred (#153) |
@@ -356,17 +356,17 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | I-2 | Critical | W1-2 | done (#144) |
 | I-3 | High | W1-4 | open |
 | I-4 | High | W3-1 | done (#159) |
-| I-5 | High | W0-4/W1-5 | open |
+| I-5 | High | W0-4/W1-5 | done (#142, #173) |
 | I-6 | High | W3-2 | open |
 | I-7 | High | W1-2 | done (#144) |
-| I-8 | Medium | W3-7 | open |
+| I-8 | Medium | W3-7 | done (#175) |
 | I-9 | High | W3-4 | open |
 | I-10 | High | D-3 | open |
 | I-11 | High | D-3 | open |
 | I-12 | High | W3-4 | open |
-| I-13 | Medium | W3-7 | open |
+| I-13 | Medium | W3-7 | done (#175) |
 | I-14 | Medium | W3-8 | open |
-| I-15 | Medium | W3-2 | partly (#160 lock order; error filter W5-1 open) |
+| I-15 | Medium | W3-2 | done (#160 lock order, #170 error filter) |
 | I-16 | Medium | W3-6 | done (#164) |
 | I-17 | Medium | W3-5 | done (#159/#160) |
 | I-18 | Medium | W3-3 | open |
@@ -375,30 +375,30 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | I-21 | Medium | W3-6 | done (#164) |
 | I-22 | Medium | — | open |
 | I-23 | Medium | W3-6 | done (#164) |
-| I-24 | Medium | W3-9 | open |
-| I-25 | Medium | W3-9 | open |
-| I-26 | Low | W3-9 | open |
+| I-24 | Medium | W3-9 | done (#156) |
+| I-25 | Medium | W3-9 | done (#156) |
+| I-26 | Low | W3-9 | done (#156) |
 | I-27 | Low | W3-3 | open |
 | I-28 | Low | W3-3 | open |
 | I-29 | Low | W1-2 | done (#144) |
 | I-30 | Low | W1-1 | open |
 | I-31 | Info | W0-3 | open |
-| I-32 | Medium | W3-11 | open |
+| I-32 | Medium | W3-11 | open (#174 pending) |
 | I-33 | Medium | W3-3/W3-2 | open |
-| I-34 | Medium | W3-11 | open |
-| I-35 | Medium | W3-11 | open |
+| I-34 | Medium | W3-11 | open (#174 pending) |
+| I-35 | Medium | W3-11 | open (#174 pending) |
 | I-36 | Medium | W3-8 | open |
-| I-37 | Medium | W3-11 | open |
-| I-38 | Low | W3-11 | open |
+| I-37 | Medium | W3-11 | open (#174 pending) |
+| I-38 | Low | W3-11 | open (#174 pending) |
 | I-39 | Low | W0-1 follow-up | open |
 | I-40 | Info | — | open |
 | M-1 | Critical | W0-1 | open |
 | M-2 | High | W0-2 | open |
-| M-3 | High | W5-1 | open |
+| M-3 | High | W5-1 | done (#170) |
 | M-4 | Medium | W5-5 | open |
 | M-5 | Medium | W5-2 | done (#155) |
 | M-6 | Medium | W2-8 | done (#161) |
-| M-7 | Medium | W1-2/W5-8 | partly (#144 SIGTERM; alerting W5-8 open) |
+| M-7 | Medium | W1-2/W5-8 | partly (#144, #170 readiness; alerting W5-8 open) |
 | M-8 | Medium | W5-6 | open |
 | M-9 | Medium | W5-6 | open |
 | M-10 | Low | W5-6 | open |
