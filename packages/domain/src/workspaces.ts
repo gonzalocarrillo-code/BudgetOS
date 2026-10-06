@@ -47,14 +47,22 @@ export const OrgPerson = z.object({
   isActive: z.boolean(),
   signedIn: z.boolean(),
   superadmin: z.boolean(),
+  /** S-14 (ADR-075): the Slack user id this person is pinned to, or null if never linked. */
+  slackUserId: z.string().nullable(),
   workspaces: z.array(z.object({ workspaceId: z.string().uuid(), name: z.string(), roles: z.array(z.string()) })),
 });
 export type OrgPerson = z.infer<typeof OrgPerson>;
 export const OrgPeopleResponse = z.object({ people: z.array(OrgPerson) });
 export type OrgPeopleResponse = z.infer<typeof OrgPeopleResponse>;
 
-/** PATCH /org/people/:id — deactivate or reactivate someone; a superadmin cannot deactivate themselves. */
-export const UpdateOrgPersonInput = z.object({ isActive: z.boolean() });
+/**
+ * PATCH /org/people/:id — deactivate or reactivate someone (a superadmin cannot deactivate
+ * themselves), or clear their pinned Slack identity (S-14, ADR-075) so they can relink a replaced
+ * Slack account. At least one of the two.
+ */
+export const UpdateOrgPersonInput = z
+  .object({ isActive: z.boolean().optional(), slackUserId: z.null().optional() })
+  .refine((v) => v.isActive !== undefined || v.slackUserId !== undefined, { message: "Provide isActive or slackUserId" });
 export type UpdateOrgPersonInput = z.infer<typeof UpdateOrgPersonInput>;
 
 /**

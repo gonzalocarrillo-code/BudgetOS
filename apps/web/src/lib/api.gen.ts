@@ -7536,6 +7536,7 @@ export interface operations {
                             isActive: boolean;
                             signedIn: boolean;
                             superadmin: boolean;
+                            slackUserId: string | null;
                             workspaces: {
                                 /** Format: uuid */
                                 workspaceId: string;
@@ -7560,7 +7561,8 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    isActive: boolean;
+                    isActive?: boolean;
+                    slackUserId?: unknown;
                 };
             };
         };

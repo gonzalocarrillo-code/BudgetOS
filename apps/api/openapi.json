@@ -14136,6 +14136,10 @@
                           "superadmin": {
                             "type": "boolean"
                           },
+                          "slackUserId": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "workspaces": {
                             "type": "array",
                             "items": {
@@ -14170,6 +14174,7 @@
                           "isActive",
                           "signedIn",
                           "superadmin",
+                          "slackUserId",
                           "workspaces"
                         ]
                       }
@@ -14207,11 +14212,9 @@
                 "properties": {
                   "isActive": {
                     "type": "boolean"
-                  }
-                },
-                "required": [
-                  "isActive"
-                ]
+                  },
+                  "slackUserId": {}
+                }
               }
             }
           }

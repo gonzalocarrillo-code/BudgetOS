@@ -84,7 +84,7 @@ async function answer(prisma: PrismaClient, deps: SlackDeps, body: Record<string
   const email = await api.userEmail(userId);
   if (!email) return reply("Your Slack profile has no email BudgetOS can match.");
   // S-010: the workspace whose channel this is, else the person's choice, else their only one.
-  const chosen = await chooseWorkspace(prisma, deps, { teamId, email, channelId: body["channel_id"], channelName: body["channel_name"] });
+  const chosen = await chooseWorkspace(prisma, deps, { teamId, email, slackUserId: userId, channelId: body["channel_id"], channelName: body["channel_name"] });
   if (chosen === null) return reply("No BudgetOS workspace linked to this Slack workspace gives you access. An admin links one in Admin › Slack.");
   const auth = chosen.auth;
   const ws = chosen.workspace.id;

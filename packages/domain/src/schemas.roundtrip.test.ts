@@ -147,10 +147,10 @@ const samples: Record<string, readonly unknown[]> = {
   UpdateWorkspaceStatusInput: [{ status: "ARCHIVED", reason: "Client ended" }, { status: "ACTIVE" }],
   DeleteWorkspaceInput: [{ confirmName: "Acme LATAM", reason: "Contract over" }],
   AddMemberInput: [{ email: "ana@acme.test", name: "Ana", role: "PLANNER", scope: {} }, { email: "bo@acme.test", name: "Bo", scope: {} }],
-  UpdateOrgPersonInput: [{ isActive: false }],
+  UpdateOrgPersonInput: [{ isActive: false }, { slackUserId: null }],
   OrgWorkspace: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Acme", slug: "acme", currency: "USD", fiscalYearStartMonth: 1, status: "ACTIVE", archivedAt: null, deletedAt: null, purgeAfter: null, createdAt: "2026-09-28T00:00:00.000Z", members: 3, budgets: 12, lastActivityAt: null, admins: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Ana", email: "ana@acme.test" }] }],
   OrgWorkspacesResponse: [{ workspaces: [] }],
-  OrgPerson: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Ana", email: "ana@acme.test", isActive: true, signedIn: true, superadmin: false, workspaces: [{ workspaceId: "01927a00-0000-7000-8000-0000000000a1", name: "Acme", roles: ["PLANNER"] }] }],
+  OrgPerson: [{ id: "01927a00-0000-7000-8000-0000000000a1", name: "Ana", email: "ana@acme.test", isActive: true, signedIn: true, superadmin: false, slackUserId: null, workspaces: [{ workspaceId: "01927a00-0000-7000-8000-0000000000a1", name: "Acme", roles: ["PLANNER"] }] }],
   OrgPeopleResponse: [{ people: [] }],
   PeopleResponse: [{ users: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf1", email: "ana@acme.test", name: "Ana", isActive: true, signedIn: false, orgAdmin: false, roles: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf2", role: "PLANNER", scope: {} }] }], groups: [{ id: "01a0e0da-e7e9-7f9a-9212-1c166382caf3", name: "LATAM leads", googleGroup: "latam@acme.test", memberCount: 4, roles: [] }] }],
   PolicyConditions: [
