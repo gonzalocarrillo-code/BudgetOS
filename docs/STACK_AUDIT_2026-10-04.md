@@ -193,9 +193,19 @@ Zero hits for `idempoten` in `apps/api/src` outside doc comments; Redis is wired
 - **I-30 · Low · Incremental `since` has no overlap window**; FX lookup takes the latest rate of any age.
 - **I-31 · Info · Seed, reset and load tooling have no production guard**; the seed is additive (would pollute, not destroy); `load/main.ts` runs `ALTER ROLE budget_app SET statement_timeout` cluster-wide.
 
-### 3.3 Schema constraints
+### 3.3 Schema constraints (Reported, schema pass delivered 2026-10-05)
 
-_(The schema-constraint consolidation pass had not reported when this document was written; its concrete findings — missing partial uniques, nullable columns, check constraints — are folded into I-18, I-19 and plan item W3-3. The section will be completed when the pass reports.)_
+`prisma validate` passes; schema.prisma and the SQL migrations carry no column drift; no migration was edited after landing; no `DROP TABLE/COLUMN` or `TRUNCATE` exists. What the database does *not* enforce:
+
+- **I-32 · Medium · No foreign keys on `workspace_id` anywhere** (`0001_tables:173–532`; only `workspace.org_id` has one), nor on `envelope.current_version_id/draft_version_id`, `envelope_dimension.dimension_id/value_id`, `target.envelope_id`, `alert.rule_id/envelope_id`, `period_closure.period_id`, `ingest_run.source_id`, `dimension_value.parent_value_id/merged_into_id`, or any `created_by/owner_id/actor_id → app_user`. Purge order is the only thing preventing orphans. `envelope.parent_id ON DELETE SET NULL` (`0001_tables:646`) silently reparents children to the root on a hard delete; should be `RESTRICT`.
+- **I-33 · Medium · Missing partial uniques the code assumes**: one `APPROVED` version per envelope; one open approval request per entity; one decision per approver per step (`approval_decision` has only an index, `0001_tables:610`); no idempotency-key table at all. (Plan: W3-3 and W3-2.)
+- **I-34 · Medium · Missing CHECKs**: `end_date >= start_date` on `envelope`, `fiscal_period`, `target` (experiments and manual entry have it); `currency ~ '^[A-Z]{3}$'`; text status enums on `period_closure`, `ingest_run`, `target`, `thread`, `saved_view.visibility`, `approval_decision.decision`, `role_assignment.principal_type`, `envelope_lineage.kind` (only `export_job` has one).
+- **I-35 · Medium · `outbox.workspace_id` nullable** (`0002_platform:97`) although a NULL row can never be published (ADR-010); array columns `dimension_value.aliases`, `dimension.allowed_parents`, `hierarchy_template.path`, `value_constraint.allowed_value_codes` nullable with `{}` defaults.
+- **I-36 · Medium · `workspace.settings->>'dataVersion'` lives in jsonb**: bumped with `jsonb_set` but overwritten wholesale by read-modify-write paths (`slack.service.ts:58`, `retention.ts:103`), which can clobber a concurrent bump. (Plan: W3-8 moves it to its own row.)
+- **I-37 · Medium · No DEFAULT partitions on the fact and audit tables**; partitions are created only by `ensure_fact_partitions` at migrate time (+6 months) and from the pacing/ingest paths. If those stall long enough, every write fails with "no partition of relation".
+- **I-38 · Low · Hot-path indexes missing**: `notification (user_id, read_at)`, `subscription (entity_type, entity_id)`, partial indexes for `comment`/`pacing_rule` `WHERE deleted_at IS NULL`, `approval_decision (request_id, decided_by)`.
+- **I-39 · Low · Five partial unique indexes exist only in SQL** (allocation, alert, closure, naming template, tour) and are invisible to Prisma; CI has no `prisma migrate diff` drift gate.
+- **I-40 · Info · Data backfills in migrations** (`20261008000000_short_country_labels` updates labels and writes audit/outbox rows as the owner, bypassing RLS) are idempotent but run inside the deploy; acceptable, worth a rule.
 
 ### 3.4 Done well (integrity)
 Every API command (52 files audited) pairs audit and outbox in one `withTenant` transaction via shared helpers; versions are only ever `UPDATE`d on lifecycle fields, never amount or phasing; `writeDraftVersion` supersedes, never deletes; preview-then-commit everywhere many rows change, with author/workspace binding, TTL and in-transaction re-check; id-ordered `FOR UPDATE` on envelopes, parent-cap check under the parent lock with a DB trigger backstop; partial unique indexes where "one open row" matters (closure, allocation, alert, naming template); approvals lock the request before reading state, so double-advance and approve-after-withdraw are impossible; outbox claim is `FOR UPDATE SKIP LOCKED` with publish-then-mark and `processed_event` dedupe tied to a visible outbox row by RLS; roll-ups serialised per workspace by advisory lock; retention is off by default, compares to the cent, stops at the first mismatch; purge covers all 54 tenant tables in FK-safe order and keeps `audit_event` plus a tombstone; no migration was ever modified after landing (`git log --diff-filter=M` is empty); no `console.*`, no empty catches, no unawaited writes.
@@ -299,18 +309,18 @@ Each line is roughly one PR.
 
 ## 8. Status
 
-Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work item (accepted as-is or informational).
+Updated by the orchestrator as fix PRs merge (see `docs/STACK_HARDENING_PLAN.md`). Last sync: 2026-10-06. `—` = no work item (accepted as-is or informational).
 
 | ID | Severity | Plan item | Status |
 |---|---|---|---|
-| S-1 | High (impact Suspected) | W2-5 | open |
+| S-1 | High (impact Suspected) | W2-5 | done (#147) |
 | S-2 | Medium | W2-3 | open |
 | S-3 | Medium | W2-3 | open |
-| S-4 | Medium | W2-4 | open |
-| S-5 | Medium | W2-1 | open |
+| S-4 | Medium | W2-4 | done (#151) |
+| S-5 | Medium | W2-1 | done (#146) |
 | S-6 | Medium | W2-2 | open |
-| S-7 | Medium | W2-5 | open |
-| S-8 | Medium | W2-6 | open |
+| S-7 | Medium | W2-5 | done (#147) |
+| S-8 | Medium | W2-6 | done (#148, #150) |
 | S-9 | Low | W2-7 | open |
 | S-10 | Low | W2-8 | open |
 | S-11 | Medium | W5-3 | open |
@@ -320,16 +330,16 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | S-15 | Low | W5-7 | open |
 | S-16 | Low | W2-2 | open |
 | S-17 | Low | W2-2 | open |
-| S-18 | Low | W2-5 | open |
-| S-19 | Low | W2-5 | open |
+| S-18 | Low | W2-5 | done (#147) |
+| S-19 | Low | W2-5 | done (#147) |
 | S-20 | Low | W2-2 | open |
 | S-21 | Info | W2-3 | open |
 | S-22 | Info | — | open |
-| T-1 | Critical | W1-1 | open |
-| T-2 | Critical (companion to T-1) | W1-1 | open |
-| T-3 | High | W1-3 | open |
+| T-1 | Critical | W1-1 | done (#152) |
+| T-2 | Critical (companion to T-1) | W1-1 | done (#152) |
+| T-3 | High | W1-3 | done (#141) |
 | T-4 | High (impact depends on the feed) | W4-1 | open |
-| T-5 | High | W1-4 | open |
+| T-5 | High | W1-4 | done (#145) |
 | T-6 | Medium | W4-3 | open |
 | T-7 | Medium | W4-3 | open |
 | T-8 | Medium | W4-2 | open |
@@ -344,7 +354,7 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | T-17 | Low | W4-4 | open |
 | I-1 | Critical | W1-2 | open |
 | I-2 | Critical | W1-2 | open |
-| I-3 | High | W1-4 | open |
+| I-3 | High | W1-4 | done (#145) |
 | I-4 | High | W3-1 | open |
 | I-5 | High | W0-4/W1-5 | open |
 | I-6 | High | W3-2 | open |
@@ -371,10 +381,19 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | I-27 | Low | W3-3 | open |
 | I-28 | Low | W3-3 | open |
 | I-29 | Low | W1-2 | open |
-| I-30 | Low | W1-1 | open |
-| I-31 | Info | W0-3 | open |
-| M-1 | Critical | W0-1 | open |
-| M-2 | High | W0-2 | open |
+| I-30 | Low | W1-1 | partly (#152: overlap window; FX age open) |
+| I-31 | Info | W0-3 | done (#139) |
+| I-32 | Medium | W3-11 | open |
+| I-33 | Medium | W3-3/W3-2 | open |
+| I-34 | Medium | W3-11 | open |
+| I-35 | Medium | W3-11 | open |
+| I-36 | Medium | W3-8 | open |
+| I-37 | Medium | W3-11 | open |
+| I-38 | Low | W3-11 | open |
+| I-39 | Low | W0-1 follow-up | open |
+| I-40 | Info | — | open |
+| M-1 | Critical | W0-1 | done (#143) |
+| M-2 | High | W0-2 | done (#140 runbook) |
 | M-3 | High | W5-1 | open |
 | M-4 | Medium | W5-5 | open |
 | M-5 | Medium | W5-2 | open |
@@ -386,13 +405,13 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | M-11 | Low | W5-9 | open |
 | M-12 | Low | — | open |
 | M-13 | Low | W5-5 | open |
-| B-1 | Critical | W0-2 | open |
+| B-1 | Critical | W0-2 | done in code (#140); apply pending |
 | B-2 | High | W1-2 | open |
 | B-3 | High | W1-4 | open |
-| B-4 | Medium | W5-8 | open |
+| B-4 | Medium | W5-8 | done in code (#140) |
 | B-5 | Medium | W3-9 | open |
 | B-6 | Medium | W3-7 | open |
-| B-7 | Medium | W0-3 | open |
+| B-7 | Medium | W0-3 | done (#139) |
 | B-8 | Low | D-2 | open |
 | B-9 | Info | W1-2 | open |
 | B-10 | Done well | — | open |
