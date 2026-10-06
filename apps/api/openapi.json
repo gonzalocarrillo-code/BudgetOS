@@ -6195,7 +6195,7 @@
                           },
                           "account": {
                             "type": "string",
-                            "minLength": 1
+                            "pattern": "^[A-Za-z0-9_.-]+$"
                           },
                           "username": {
                             "type": "string",
@@ -6272,7 +6272,7 @@
                           },
                           "projectId": {
                             "type": "string",
-                            "minLength": 1
+                            "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
                           },
                           "dataset": {
                             "type": "string",
@@ -6606,7 +6606,7 @@
                           },
                           "account": {
                             "type": "string",
-                            "minLength": 1
+                            "pattern": "^[A-Za-z0-9_.-]+$"
                           },
                           "username": {
                             "type": "string",
@@ -6683,7 +6683,7 @@
                           },
                           "projectId": {
                             "type": "string",
-                            "minLength": 1
+                            "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
                           },
                           "dataset": {
                             "type": "string",
