@@ -76,6 +76,10 @@ describe("budget import (D-007, D-008)", () => {
     expect(preview.parents.find((p) => p.name === "AMER US meta")?.amount).toBe("6000.00");
     const before = await owner.envelope.count({ where: { workspaceId: ws } });
 
+    // Record audit/outbox counts before commit to make the test order-independent
+    const auditsBefore = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws);
+    const outBefore = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws);
+
     const commit = await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/commit`, { previewId: preview.previewId, rationale: "FY2027 AMER plan" });
     expect(commit.status, JSON.stringify(commit.body)).toBe(201);
     const done = commit.body as { requestId: string | null; autoApproved: boolean; created: number; parents: number; changed: number };
@@ -93,9 +97,11 @@ describe("budget import (D-007, D-008)", () => {
       const e = await owner.envelope.findUniqueOrThrow({ where: { id: c.id } });
       expect((await owner.envelopeVersion.findUniqueOrThrow({ where: { id: e.currentVersionId as string } })).amount.toFixed(2)).toBe(c.amount);
     }
-    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws);
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws);
-    expect([Number(audits[0]?.n), Number(out[0]?.n)]).toEqual([1, 1]);
+
+    // Verify audit and outbox row were created by checking the delta
+    const auditsAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws);
+    const outAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws);
+    expect([Number(auditsAfter[0]?.n) - Number(auditsBefore[0]?.n), Number(outAfter[0]?.n) - Number(outBefore[0]?.n)]).toEqual([1, 1]);
 
     // The same file again: every line is the budget as it is now.
     const again = (await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/preview`, { csv: file, templateId })).body as unknown as Preview;
