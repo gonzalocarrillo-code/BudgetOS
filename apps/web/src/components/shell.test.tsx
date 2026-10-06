@@ -11,9 +11,10 @@ import { Shell } from "./shell.js";
 // search / tour / notification features. None of those are what this test is about (the
 // workspace switcher, sign-out and the search hotkey are): they are stubbed so the test drives
 // only Shell's own state, per AGENTS.md ("mock the typed client, not fetch").
-const { navigateMock, signOutMock, setThemeChoiceMock } = vi.hoisted(() => ({
+const { navigateMock, signOutMock, signOutEverywhereMock, setThemeChoiceMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   signOutMock: vi.fn(),
+  signOutEverywhereMock: vi.fn(),
   setThemeChoiceMock: vi.fn(),
 }));
 
@@ -35,7 +36,13 @@ vi.mock("@tanstack/react-router", () => ({
   useRouterState: <T,>({ select }: { select: (state: { location: { pathname: string } }) => T }) => select({ location: { pathname: "/w/ws-1" } }),
 }));
 
-vi.mock("../lib/auth.js", () => ({ signOut: (...a: unknown[]) => signOutMock(...a) }));
+// SESSION gates the "Sign out everywhere" item (ADR-067 addendum, W5-3): true here so that item
+// renders and is exercised below, the same as a real AUTH_MODE=session build.
+vi.mock("../lib/auth.js", () => ({
+  SESSION: true,
+  signOut: (...a: unknown[]) => signOutMock(...a),
+  signOutEverywhere: (...a: unknown[]) => signOutEverywhereMock(...a),
+}));
 
 vi.mock("../lib/theme.js", () => ({
   useTheme: () => ({ choice: "light" as const, resolved: "light" as const }),
@@ -115,6 +122,21 @@ describe("Shell", () => {
     await user.click(signOutButton);
 
     expect(signOutMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("signs out everywhere through the auth helper from the user menu (session mode, W5-3)", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(
+      <Shell me={ME} ws="ws-1">
+        <div data-testid="page-content" />
+      </Shell>,
+    );
+
+    await user.click(screen.getByTestId("profile-button"));
+    const signOutAllButton = await screen.findByTestId("sign-out-all");
+    await user.click(signOutAllButton);
+
+    expect(signOutEverywhereMock).toHaveBeenCalledTimes(1);
   });
 
   it("opens the search palette on the '/' hotkey", async () => {
