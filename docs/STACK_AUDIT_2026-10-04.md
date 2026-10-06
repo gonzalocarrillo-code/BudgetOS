@@ -323,8 +323,8 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | S-8 | Medium | W2-6 | open |
 | S-9 | Low | W2-7 | done (#149) |
 | S-10 | Low | W2-8 | done (#161) |
-| S-11 | Medium | W5-3 | open (#166 pending) |
-| S-12 | Medium | W5-3 | open (#166 pending) |
+| S-11 | Medium | W5-3 | done (#166) |
+| S-12 | Medium | W5-3 | done (#166) |
 | S-13 | Medium (infra) | W5-4 | open |
 | S-14 | Low | W5-7 | done (#165) |
 | S-15 | Low | W5-7 | done (#165) |
@@ -395,7 +395,7 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | M-1 | Critical | W0-1 | open |
 | M-2 | High | W0-2 | open |
 | M-3 | High | W5-1 | done (#170) |
-| M-4 | Medium | W5-5 | open |
+| M-4 | Medium | W5-5 | done (#177) |
 | M-5 | Medium | W5-2 | done (#155) |
 | M-6 | Medium | W2-8 | done (#161) |
 | M-7 | Medium | W1-2/W5-8 | partly (#144, #170 readiness; alerting W5-8 open) |
@@ -404,7 +404,7 @@ Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work ite
 | M-10 | Low | W5-6 | open |
 | M-11 | Low | W5-9 | done (#162) |
 | M-12 | Low | — | open |
-| M-13 | Low | W5-5 | open |
+| M-13 | Low | W5-5 | partly (#177 docs; port pin open) |
 | B-1 | Critical | W0-2 | open |
 | B-2 | High | W1-2 | done (#144) |
 | B-3 | High | W1-4 | open |
