@@ -49,6 +49,18 @@ describe("GET/POST /auth/logout (S-6)", () => {
   });
 });
 
+describe("GET/POST /auth/logout-all (S-11)", () => {
+  it("no GET (405), and POST clears the cookie even with no database wired (no session to revoke)", async () => {
+    app = await start();
+    const fastify = app.getHttpAdapter().getInstance();
+    const get = await fastify.inject({ method: "GET", url: "/auth/logout-all" });
+    expect(get.statusCode).toBe(405);
+    const post = await fastify.inject({ method: "POST", url: "/auth/logout-all", headers: { "sec-fetch-site": "same-origin" } });
+    expect(post.statusCode).toBe(302);
+    expect(String(post.headers["set-cookie"])).toContain("budgetos_session=;");
+  });
+});
+
 describe("rate limiting on /auth/* (S-6)", () => {
   it("answers 429 after 20 requests to /auth/login within a minute", async () => {
     app = await start();

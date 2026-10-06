@@ -1,8 +1,33 @@
 import { gunzipSync } from "node:zlib";
+import { sessionLive } from "@budget/db";
 import { DomainError } from "@budget/domain";
 import { SESSION_COOKIE, cookie, verifySession } from "./google-login.js";
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { PrismaClient } from "@prisma/client";
 import { createLocalJWKSet, createRemoteJWKSet, errors, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
+
+/**
+ * S-11: a per-process, positive-results-only cache for app_session_live, so a revoked session is
+ * refused within this TTL and a live one costs one indexed lookup per request at most once per
+ * window. TTL is injectable (0 under test — see jwt-verifier's constructor) so a revoke's effect is
+ * observable immediately in tests instead of waiting out a real clock.
+ */
+class LiveSessionCache {
+  private hits = new Map<string, number>();
+  constructor(private ttlMs: number) {}
+  isLive(jti: string, now: number): boolean {
+    const until = this.hits.get(jti);
+    return until !== undefined && until > now;
+  }
+  remember(jti: string, now: number): void {
+    if (this.ttlMs <= 0) return;
+    this.hits.set(jti, now + this.ttlMs);
+  }
+  setTtlMs(ttlMs: number): void {
+    this.ttlMs = ttlMs;
+    this.hits = new Map();
+  }
+}
 
 /** Google's public keys for Identity Platform (securetoken) ID tokens. */
 const IDENTITY_PLATFORM_JWKS = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -62,12 +87,35 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthCon
 export class JwtVerifier {
   private readonly config: AuthConfig;
   private readonly jwks: Parameters<typeof jwtVerify>[1] & ((...args: never[]) => unknown);
+  private readonly liveCache: LiveSessionCache;
 
-  constructor() {
+  /**
+   * `prisma` is optional so the many call sites that build a JwtVerifier for iap/identity-platform
+   * modes (and tests) keep working unchanged; it is only ever read in session mode. `@Optional()`
+   * is a single, ordinary class-token dependency (PrismaClient, provided globally by
+   * CommonModule), so Nest's own DI resolves it with no special handling needed.
+   */
+  constructor(@Inject(PrismaClient) @Optional() private readonly prisma?: PrismaClient) {
     this.config = authConfigFromEnv();
     // session mode checks its own HS256 cookie and never reads a key set.
     this.jwks = this.config.mode === "identity-platform" ? createRemoteJWKSet(new URL(this.config.jwksUrl)) : fetchedJwks(this.config.jwksUrl);
+    this.liveCache = new LiveSessionCache(60_000);
   }
+
+  /** Test seam (S-11): override the session-liveness cache TTL (0 = always re-check app_session_live). */
+  setSessionLiveCacheTtlMs(ttlMs: number): void {
+    this.liveCache.setTtlMs(ttlMs);
+  }
+
+  /** app_session_live, cached (S-11): a jti this process recently saw live is trusted for the cache's TTL. */
+  private readonly isLive = async (jti: string): Promise<boolean> => {
+    const now = Date.now();
+    if (this.liveCache.isLive(jti, now)) return true;
+    if (!this.prisma) return true; // no database wired (should not happen in session mode outside tests): fail open to the old, pre-store behavior rather than locking everyone out.
+    const live = await sessionLive(this.prisma, jti);
+    if (live) this.liveCache.remember(jti, now);
+    return live;
+  };
 
   /** The credential of a request: the IAP assertion behind IAP, else the bearer token. */
   credential(headers: Record<string, string | string[] | undefined>): string | undefined {
@@ -94,7 +142,7 @@ export class JwtVerifier {
     const match = /^Bearer\s+(\S+)$/i.exec(authorization ?? "");
     const token = match?.[1];
     if (token === undefined) throw new DomainError("UNAUTHENTICATED", "Missing bearer token");
-    if (this.config.mode === "session") return verifySession(this.config.sessionKey ?? "", token);
+    if (this.config.mode === "session") return verifySession(this.config.sessionKey ?? "", token, this.isLive);
     let payload: JWTPayload;
     try {
       ({ payload } = await jwtVerify(token, this.jwks, {

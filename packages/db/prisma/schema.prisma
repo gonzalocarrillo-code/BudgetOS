@@ -59,6 +59,7 @@ model User {
   /// by app_link_my_slack_user. A partial unique index (org_id, slack_user_id) in the migration
   /// (not representable here) keeps one Slack account from pinning to two app users of an org.
   slackUserId String? @map("slack_user_id")
+  sessions    AuthSession[]
 
   @@map("app_user")
 }
@@ -985,4 +986,47 @@ model BulkPreview {
 
   @@index([workspaceId, expiresAt])
   @@map("bulk_preview")
+}
+
+// ---------- Session and MCP refresh-token store (W5-3, audit S-11/S-12) ----------
+/// One row per issued session JWT `jti` (migration 20261011000000). Written only through
+/// app_create_session/app_revoke_session/app_revoke_all_sessions; budget_app's own SELECT/UPDATE
+/// grant (RLS: own rows only) is for a future self-service "your sessions" view.
+model AuthSession {
+  jti        String    @id
+  userId     String    @map("user_id") @db.Uuid
+  user       User      @relation(fields: [userId], references: [id])
+  orgId      String    @map("org_id") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  userAgent  String?   @map("user_agent")
+
+  @@index([userId])
+  @@map("auth_session")
+}
+
+/// A single-use MCP authorization code (ADR-066 addendum): the code itself is still a signed JWT;
+/// this row (keyed by a hash of it) is what makes replay within its 5-minute TTL impossible.
+model OauthCode {
+  codeHash  String    @id @map("code_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+
+  @@map("oauth_code")
+}
+
+/// One row per issued MCP refresh token `jti` (ADR-066 addendum). No FK to app_user: the row only
+/// groups a rotation chain by (userId, clientId) for reuse-detection revocation.
+model OauthRefresh {
+  jti             String    @id
+  clientId        String    @map("client_id")
+  userId          String    @map("user_id") @db.Uuid
+  chainStartedAt  DateTime  @map("chain_started_at") @db.Timestamptz
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz
+  usedAt          DateTime? @map("used_at") @db.Timestamptz
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz
+
+  @@index([userId, clientId])
+  @@map("oauth_refresh")
 }

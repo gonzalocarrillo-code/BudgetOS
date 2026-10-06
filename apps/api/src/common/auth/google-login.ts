@@ -8,10 +8,12 @@ import type { VerifiedIdentity } from "./jwt-verifier.js";
  * The app then decides who gets in, by its own users and roles, as for every other sign-in.
  *
  * GET /auth/login?next= → Google (OpenID Connect, code flow) → GET /auth/callback → a session
- * cookie → back to `next`. GET /auth/logout clears it. The session is an HS256 JWT signed with
- * SESSION_KEY (Secret Manager), HttpOnly, Secure, SameSite=Lax, for 7 days.
+ * cookie → back to `next`. POST /auth/logout clears it (and revokes it server-side); POST
+ * /auth/logout-all revokes every session of the user. The session is an HS256 JWT signed with
+ * SESSION_KEY (Secret Manager), HttpOnly, Secure, SameSite=Lax, `__Host-` prefixed, for 7 days
+ * (ADR-067 addendum, audit S-11).
  */
-export const SESSION_COOKIE = "budgetos_session";
+export const SESSION_COOKIE = "__Host-budgetos_session";
 const STATE_COOKIE = "budgetos_oauth";
 const ISSUER = "budget-os";
 const AUDIENCE = "budget-os-web";
@@ -26,6 +28,18 @@ export interface GoogleLoginConfig {
   sessionKey: string;
   /** The app's public origin; the callback is `${baseUrl}/auth/callback`. */
   baseUrl: string;
+}
+
+/**
+ * The session store (S-11), optional: when given to loginCallback, a provisioned account's
+ * session gets a `jti` and a server-side row, so it can be revoked. An account nobody added yet
+ * (findUser returns null) still gets a plain session JWT with no `jti` — unchanged from before
+ * this store existed — since there is nothing to revoke for an account with no access regardless,
+ * and /auth/me (the "not added yet" page) must keep answering from the JWT alone, no database.
+ */
+export interface SessionSink {
+  findUser(identity: VerifiedIdentity): Promise<{ id: string; orgId: string } | null>;
+  createSession(input: { jti: string; userId: string; orgId: string; expiresAt: Date; userAgent: string | null }): Promise<void>;
 }
 
 export function googleLoginFromEnv(env: NodeJS.ProcessEnv = process.env): GoogleLoginConfig | null {
@@ -82,7 +96,15 @@ export async function loginRedirect(config: GoogleLoginConfig, next: string | un
 }
 
 /** Step 2: Google's code for an ID token, checked, then a session cookie. */
-export async function loginCallback(config: GoogleLoginConfig, query: { code?: string; state?: string; error?: string }, cookieHeader: string | string[] | undefined, fetchImpl: typeof fetch = fetch, jwks: Parameters<typeof jwtVerify>[1] = GOOGLE_JWKS): Promise<{ location: string; setCookies: string[] }> {
+export async function loginCallback(
+  config: GoogleLoginConfig,
+  query: { code?: string; state?: string; error?: string },
+  cookieHeader: string | string[] | undefined,
+  fetchImpl: typeof fetch = fetch,
+  jwks: Parameters<typeof jwtVerify>[1] = GOOGLE_JWKS,
+  sink?: SessionSink,
+  userAgent: string | null = null,
+): Promise<{ location: string; setCookies: string[] }> {
   if (query.error || !query.code || !query.state) throw new DomainError("UNAUTHENTICATED", query.error ? `Google sign-in: ${query.error}` : "Missing code or state");
   let state: { nonce?: unknown; next?: unknown; typ?: unknown };
   try {
@@ -103,21 +125,38 @@ export async function loginCallback(config: GoogleLoginConfig, query: { code?: s
   const email = typeof payload["email"] === "string" ? payload["email"].toLowerCase() : null;
   if (!email || payload["email_verified"] !== true || !payload.sub) throw new DomainError("UNAUTHENTICATED", "Your Google account has no verified email");
   const name = typeof payload["name"] === "string" ? payload["name"] : email;
-  const session = await new SignJWT({ typ: "session", email, googleSub: payload.sub, name }).setProtectedHeader({ alg: "HS256" }).setIssuer(ISSUER).setAudience(AUDIENCE).setSubject(`accounts.google.com:${payload.sub}`).setIssuedAt().setExpirationTime(`${SESSION_TTL_S}s`).sign(keyOf(config.sessionKey));
+  const googleSub = String(payload.sub);
+  let jti: string | null = null;
+  if (sink) {
+    const user = await sink.findUser({ sub: `accounts.google.com:${googleSub}`, email, emailVerified: true, googleSub });
+    if (user) {
+      jti = randomBytes(18).toString("base64url");
+      await sink.createSession({ jti, userId: user.id, orgId: user.orgId, expiresAt: new Date(Date.now() + SESSION_TTL_S * 1000), userAgent });
+    }
+  }
+  const session = await new SignJWT({ typ: "session", email, googleSub, name, ...(jti ? { jti } : {}) }).setProtectedHeader({ alg: "HS256" }).setIssuer(ISSUER).setAudience(AUDIENCE).setSubject(`accounts.google.com:${googleSub}`).setIssuedAt().setExpirationTime(`${SESSION_TTL_S}s`).sign(keyOf(config.sessionKey));
   return { location: safeNext(typeof state.next === "string" ? state.next : undefined), setCookies: [setCookie(SESSION_COOKIE, session, SESSION_TTL_S), setCookie(STATE_COOKIE, "", 0)] };
 }
 
 export const logoutCookie = () => setCookie(SESSION_COOKIE, "", 0);
 
-/** The API's verifier in session mode: the session cookie, as the identity authenticate() expects. */
-export async function verifySession(sessionKey: string, token: string): Promise<VerifiedIdentity> {
+/**
+ * The API's verifier in session mode: the session cookie, as the identity authenticate() expects.
+ * `isLive`, when given, is awaited for a session that carries a `jti` (S-11): a revoked session is
+ * refused the same as an expired or forged one. A session with no `jti` (an account nobody added
+ * yet — see SessionSink) is never checked, since there is no row to check against.
+ */
+export async function verifySession(sessionKey: string, token: string, isLive?: (jti: string) => Promise<boolean>): Promise<VerifiedIdentity & { jti?: string }> {
   try {
     const { payload } = await jwtVerify(token, keyOf(sessionKey), { issuer: ISSUER, audience: AUDIENCE, algorithms: ["HS256"] });
     if (payload["typ"] !== "session") throw new Error("not a session");
     const email = String(payload["email"] ?? "").toLowerCase();
     const googleSub = String(payload["googleSub"] ?? "");
     if (!email || !googleSub) throw new Error("incomplete session");
-    return { sub: `accounts.google.com:${googleSub}`, email, emailVerified: true, googleSub };
+    const jti = typeof payload["jti"] === "string" ? payload["jti"] : null;
+    if (jti && isLive && !(await isLive(jti))) throw new Error("session revoked");
+    const identity: VerifiedIdentity & { jti?: string } = { sub: `accounts.google.com:${googleSub}`, email, emailVerified: true, googleSub };
+    return jti ? { ...identity, jti } : identity;
   } catch (error) {
     throw new DomainError("UNAUTHENTICATED", "Session expired: sign in again", { reason: error instanceof errors.JOSEError ? error.code : "ERR_SESSION" });
   }
