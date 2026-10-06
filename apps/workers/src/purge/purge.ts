@@ -63,6 +63,7 @@ const OWN = [
   "subscription",
   "bulk_change",
   "slack_message",
+  "slack_delivery",
   "fiscal_period",
   "naming_template",
   "hierarchy_template",
