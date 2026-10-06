@@ -546,9 +546,13 @@ function isZodType(value: unknown): value is z.ZodType {
 }
 
 it("round-trips every zod schema", () => {
+  // W5-2: Env schemas (ApiEnv, WorkerEnv, McpEnv) are configuration, not data models;
+  // they don't round-trip through the API and have no place here.
+  const envSchemaExceptions = new Set(["ApiEnv", "McpEnv", "WorkerEnv"]);
   const exported = Object.entries(domain)
     .filter((entry): entry is [string, z.ZodType] => isZodType(entry[1]))
     .map(([name]) => name)
+    .filter((name) => !envSchemaExceptions.has(name))
     .sort();
   expect(exported).toEqual(Object.keys(samples).sort());
   for (const name of exported) {
