@@ -7,6 +7,21 @@ import { owner } from "./db.js";
  * the golden seed, which goes through commands, arrives with T-006.
  */
 
+/**
+ * W0-6: the owner has no BYPASSRLS, so `workspace`, `dimension`, `dimension_value` and
+ * `metric_definition` (an exact `app.org_id` match, no `app_is_org_admin()` fallback for some of
+ * them) and every generic `tenant_isolation` table (`envelope`, `spend_fact`, `tag`, `thread`,
+ * `alert`, `approval_request`, `role_assignment`, `target`, …) need the org-admin tenant context
+ * real writes get from `withTenant`. `db.ts`'s `owner` pool is `max: 1` — always the same physical
+ * connection — so a session-level `set_config` (the third argument `false`, not transaction-local)
+ * here persists for every later `owner.query()` call these fixtures or a test file itself makes,
+ * including after `cleanupOrg`. Called at the top of every exported function below (cheap,
+ * idempotent) so call order never matters.
+ */
+async function asOrgAdmin(orgId: string): Promise<void> {
+  await owner.query(`SELECT set_config('app.is_org_admin', 'true', false), set_config('app.org_id', $1::text, false)`, [orgId]);
+}
+
 export interface FixtureOrg {
   orgId: string;
   users: { u1: string; u2: string };
@@ -63,6 +78,7 @@ export async function createOrg(): Promise<FixtureOrg> {
   const u1 = randomUUID();
   const u2 = randomUUID();
   await owner.query(`INSERT INTO organization (id, name) VALUES ($1, 'planner-fixture')`, [orgId]);
+  await asOrgAdmin(orgId);
   for (const u of [u1, u2]) {
     await owner.query(
       `INSERT INTO app_user (id, org_id, email, name) VALUES ($1, $2, $3, 'Planner Fixture')`,
@@ -106,6 +122,7 @@ export async function createOrg(): Promise<FixtureOrg> {
 
 export async function createWorkspace(org: FixtureOrg): Promise<string> {
   const id = randomUUID();
+  await asOrgAdmin(org.orgId);
   await owner.query(
     `INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES ($1, $2, $3, 'Planner fixture', 'USD')`,
     [id, org.orgId, `planner-${id}`],
@@ -119,6 +136,7 @@ export async function insertEnvelope(
   spec: EnvelopeSpec,
 ): Promise<InsertedEnvelope> {
   const id = randomUUID();
+  await asOrgAdmin(org.orgId);
   const dims: Record<string, string> = {};
   if (spec.geo) dims["geo"] = spec.geo;
   if (spec.platform) dims["platform"] = spec.platform;
@@ -221,6 +239,7 @@ export interface NamedFixture {
  * | E5  | —     | meta     | APPROVED | 800          | 800    | 900       | 0           |
  */
 export async function seedNamedFixture(org: FixtureOrg): Promise<NamedFixture> {
+  await asOrgAdmin(org.orgId);
   const ws = await createWorkspace(org);
   const { u1, u2 } = org.users;
   const oldRun = randomUUID();
@@ -402,6 +421,7 @@ export async function seedNamedFixture(org: FixtureOrg): Promise<NamedFixture> {
 }
 
 export async function cleanupOrg(org: FixtureOrg): Promise<void> {
+  await asOrgAdmin(org.orgId);
   const ws = `(SELECT id FROM workspace WHERE org_id = $1)`;
   const env = `(SELECT id FROM envelope WHERE workspace_id IN ${ws})`;
   // W3-11 (audit I-32): target/envelope current_version_id and draft_version_id are FKs to

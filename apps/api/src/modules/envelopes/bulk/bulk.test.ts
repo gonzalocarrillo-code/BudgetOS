@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../../seed/golden.js";
@@ -27,6 +27,9 @@ async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId, ...(requestId ? { "x-request-id": requestId } : {}) }, ...(body === undefined ? {} : { body }) });
 }
 const id = (key: string) => golden.envelopeIds.get(key) as string;
+// W0-6: the owner has no BYPASSRLS; every owner.* read below needs the same org-admin tenant
+// context real reads get from withTenant, scoped to the golden workspace's org.
+const asAdmin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 const leafKeys = (prefix: string) => plan.filter((e) => e.level === 4 && e.key.startsWith(prefix)).map((e) => e.key);
 const round3 = (key: string) => new Decimal(byKey.get(key)?.versions[2]?.amount ?? 0);
 const preview = (ids: string[], operation: Json, persona = "planner") =>
@@ -54,7 +57,7 @@ describe("preview → commit → one approval request for all rows", () => {
   it("preview writes nothing; commit writes a draft per row, one bulk_change, one request, one audit per row + summary + request, one outbox row for the change and one for the request", async () => {
     const keys = leafKeys("LATAM/BR/meta/awareness").concat(leafKeys("LATAM/BR/meta/consideration"));
     const ids = keys.map(id);
-    const versionsBefore = await owner.envelopeVersion.count({ where: { envelopeId: { in: ids } } });
+    const versionsBefore = await asAdmin((tx) => tx.envelopeVersion.count({ where: { envelopeId: { in: ids } } }));
     const p = await preview(ids, { op: "pct", pct: 3 }); // within the parents' 5% headroom: no cap violation
     expect(p.status, JSON.stringify(p.body)).toBe(201);
     const rows = p.body["rows"] as Array<{ envelopeId: string; before: string; after: string; delta: string; path: string[] }>;
@@ -69,23 +72,23 @@ describe("preview → commit → one approval request for all rows", () => {
     expect(p.body["totalsAfter"]).toBe(sumAfter.toFixed(2));
     expect(p.body["capViolations"]).toEqual([]);
     expect(p.body["policyPreview"]).toEqual({ name: "Standard", chain: ["BUDGET_OWNER", "APPROVER"] });
-    expect(await owner.envelopeVersion.count({ where: { envelopeId: { in: ids } } })).toBe(versionsBefore);
+    expect(await asAdmin((tx) => tx.envelopeVersion.count({ where: { envelopeId: { in: ids } } }))).toBe(versionsBefore);
 
-    const maxOutbox = Number((await owner.$queryRawUnsafe<Array<{ m: bigint | null }>>(`SELECT max(id) AS m FROM outbox`))[0]?.m ?? 0);
+    const maxOutbox = Number((await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ m: bigint | null }>>(`SELECT max(id) AS m FROM outbox`)))[0]?.m ?? 0);
     const requestHeader = `bulk-commit-${randomUUID()}`;
     const c = await commit(String(p.body["previewId"]), "planner", requestHeader);
     expect(c.status, JSON.stringify(c.body)).toBe(201);
     expect(c.body).toMatchObject({ autoApproved: false, versions: 4, policy: { name: "Standard" } });
-    const drafts = await owner.envelopeVersion.findMany({ where: { envelopeId: { in: ids }, status: "PENDING" }, include: { phasing: true } });
+    const drafts = await asAdmin((tx) => tx.envelopeVersion.findMany({ where: { envelopeId: { in: ids }, status: "PENDING" }, include: { phasing: true } }));
     expect(drafts).toHaveLength(4);
     for (const d of drafts) {
       expect(d.phasing).toHaveLength(12); // the head's monthly shape, re-scaled
       expect(d.phasing.reduce((s, x) => s.plus(x.amount.toString()), new Decimal(0)).toFixed(2)).toBe(d.amount.toFixed(2));
     }
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(`SELECT action, count(*) AS n FROM audit_event WHERE request_id = $1 GROUP BY action`, requestHeader);
+    const audits = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(`SELECT action, count(*) AS n FROM audit_event WHERE request_id = $1 GROUP BY action`, requestHeader));
     expect(Object.fromEntries(audits.map((a) => [a.action, Number(a.n)]))).toEqual({ "envelope.version.created": 4, "bulk.committed": 1, "approval.requested": 1 });
     const requestId = String(c.body["requestId"]);
-    const outbox = await owner.$queryRawUnsafe<Array<{ topic: string; payload: { bulk?: boolean; versionIds?: string[]; requestId?: string; action?: string } }>>(`SELECT topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2 ORDER BY id`, golden.workspaceId, maxOutbox);
+    const outbox = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ topic: string; payload: { bulk?: boolean; versionIds?: string[]; requestId?: string; action?: string } }>>(`SELECT topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2 ORDER BY id`, golden.workspaceId, maxOutbox));
     expect(outbox.map((o) => o.topic).sort()).toEqual(["approval.changed", "budget.changed"]);
     const changed = outbox.find((o) => o.topic === "budget.changed");
     expect(changed).toMatchObject({ payload: { bulk: true } });
@@ -118,11 +121,11 @@ describe("preview → commit → one approval request for all rows", () => {
     const p = await preview(keys.map(id), { op: "add", amount: "100" });
     const env = await current(id(keys[0] as string));
     expect((await as("planner", "PATCH", `/api/v1/envelopes/${id(keys[0] as string)}/draft`, { amount: "1.00", basedOnVersionId: env.currentVersionId })).status).toBe(200);
-    const bulkBefore = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM bulk_change WHERE workspace_id = $1::uuid`, golden.workspaceId);
+    const bulkBefore = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM bulk_change WHERE workspace_id = $1::uuid`, golden.workspaceId));
     const c = await commit(String(p.body["previewId"]));
     expect(c.status).toBe(409);
     expect((c.body["details"] as { changed: string[] }).changed).toEqual([id(keys[0] as string)]);
-    const bulkAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM bulk_change WHERE workspace_id = $1::uuid`, golden.workspaceId);
+    const bulkAfter = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM bulk_change WHERE workspace_id = $1::uuid`, golden.workspaceId));
     expect(bulkAfter[0]?.n).toBe(bulkBefore[0]?.n);
   });
 });
@@ -222,7 +225,7 @@ describe("CSV round trip and the end of a bulk request", () => {
       expect(e.draftVersionId).toBeNull();
       expect(e.status).toBe("APPROVED");
     }
-    const rejected = await owner.envelopeVersion.count({ where: { envelopeId: { in: keys.slice(0, 2).map(id) }, status: "REJECTED" } });
+    const rejected = await asAdmin((tx) => tx.envelopeVersion.count({ where: { envelopeId: { in: keys.slice(0, 2).map(id) }, status: "REJECTED" } }));
     expect(rejected).toBe(2);
   });
 
@@ -232,9 +235,9 @@ describe("CSV round trip and the end of a bulk request", () => {
     const c = await commit(String(p.body["previewId"]));
     const requestId = String(c.body["requestId"]);
     expect((await approve(requestId, "budgetOwner", "request_changes", "split by retailer")).status).toBe(201);
-    const thread = await owner.thread.findFirstOrThrow({ where: { anchorType: "approval_request", anchorId: requestId } });
+    const thread = await asAdmin((tx) => tx.thread.findFirstOrThrow({ where: { anchorType: "approval_request", anchorId: requestId } }));
     expect(thread.isBlocking).toBe(true);
-    const drafts = await owner.envelopeVersion.findMany({ where: { envelopeId: { in: keys.map(id) } }, orderBy: { versionNo: "desc" }, distinct: ["envelopeId"] });
+    const drafts = await asAdmin((tx) => tx.envelopeVersion.findMany({ where: { envelopeId: { in: keys.map(id) } }, orderBy: { versionNo: "desc" }, distinct: ["envelopeId"] }));
     expect(drafts.every((d) => d.status === "DRAFT")).toBe(true);
   });
 

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { shortRequestId } from "@budget/domain";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { handleInApp, handleSlackEvent, type SlackClient } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -21,6 +22,10 @@ const owner = ownerDb();
 const app = appDb();
 let h: Harness;
 let golden: GoldenResult;
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace- or org-scoped
+// tables below needs the org-admin tenant context real writes get from withTenant. `golden.orgId`
+// is read lazily (golden is only set in beforeAll), so this closes over the variable, not a value.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 const slug = `slack-${randomUUID().slice(0, 8)}`;
 const SECRET = "test-signing-secret";
 const TEAM = "T0GOLDEN1";
@@ -106,7 +111,7 @@ describe("Slack settings", () => {
     const linked = await as("orgAdmin", "PATCH", "/org/integrations/slack", { link: true });
     expect(linked.status, JSON.stringify(linked.body)).toBe(200);
     expect(linked.body).toMatchObject({ teamId: TEAM, teamName: "Golden Slack" });
-    const [audited] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'slack.org_linked'`, golden.orgId);
+    const [audited] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'slack.org_linked'`, golden.orgId));
     expect(Number(audited?.n)).toBe(1);
     // A workspace that never touched Slack is linked through its org.
     expect((await as("planner", "GET", `/workspaces/${golden.workspaceId}/integrations/slack`)).body).toMatchObject({ connected: true, team: { id: TEAM, name: "Golden Slack" } });
@@ -124,7 +129,7 @@ describe("Slack settings", () => {
     expect(test.body).toMatchObject({ queued: true, channel: "#budget" });
     const orgTest = await as("orgAdmin", "POST", "/org/integrations/slack/test", { channel: "#general" });
     expect(orgTest.body).toMatchObject({ queued: true, channel: "#general" });
-    const [q] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'slack.test'`, golden.workspaceId);
+    const [q] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'slack.test'`, golden.workspaceId));
     expect(Number(q?.n)).toBe(2);
   });
 });
@@ -139,22 +144,22 @@ describe("Slack requests", () => {
   });
 
   it("acknowledges and snoozes an alert from its buttons, as the Slack user's account", async () => {
-    const [alert] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM alert WHERE workspace_id = $1::uuid AND status = 'OPEN' ORDER BY opened_at LIMIT 1`, golden.workspaceId);
+    const [alert] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM alert WHERE workspace_id = $1::uuid AND status = 'OPEN' ORDER BY opened_at LIMIT 1`, golden.workspaceId));
     expect(alert).toBeDefined();
     expect((await click("admin", "alert.acknowledge", alert!.id)).status).toBe(200);
-    const [row] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
+    const [row] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id));
     expect(row?.status).toBe("ACKNOWLEDGED");
-    const [a] = await owner.$queryRawUnsafe<Array<{ actor_id: string }>>(`SELECT actor_id::text FROM audit_event WHERE entity_id = $1::uuid AND action LIKE 'alert.%' ORDER BY occurred_at DESC LIMIT 1`, alert!.id);
+    const [a] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ actor_id: string }>>(`SELECT actor_id::text FROM audit_event WHERE entity_id = $1::uuid AND action LIKE 'alert.%' ORDER BY occurred_at DESC LIMIT 1`, alert!.id));
     expect(a?.actor_id).toBe(golden.users.admin);
     await click("admin", "alert.snooze", alert!.id);
-    const [snoozed] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
+    const [snoozed] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id));
     expect(snoozed?.status).toBe("SNOOZED");
 
     // Another Slack team, or a Slack user with no Budget OS account: nothing changes; they are told why.
     views.length = 0;
     await click("admin", "alert.resolve", alert!.id, "T0OTHER99");
     await click("stranger", "alert.resolve", alert!.id);
-    const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
+    const [still] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id));
     expect(still?.status).toBe("SNOOZED");
     expect(views.map((v) => JSON.stringify(v.view))).toEqual([expect.stringContaining("not linked"), expect.stringContaining("No active BudgetOS account")]);
   });
@@ -173,10 +178,10 @@ describe("Slack requests", () => {
     expect(inbox.rows.length, "an org admin may decide every open request").toBeGreaterThanOrEqual(2);
     const first = inbox.rows[0]!.id;
     await click("orgAdmin", "approval.approve", first);
-    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; decided_by: string }>>(`SELECT decision::text, channel::text, decided_by::text FROM approval_decision WHERE request_id = $1::uuid ORDER BY decided_at DESC LIMIT 1`, first);
+    const [d] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ decision: string; channel: string; decided_by: string }>>(`SELECT decision::text, channel::text, decided_by::text FROM approval_decision WHERE request_id = $1::uuid ORDER BY decided_at DESC LIMIT 1`, first));
     expect(d).toMatchObject({ decision: "approve", channel: "slack", decided_by: golden.users.orgAdmin });
     // The org admin holds no role of their own here: the audit row says they acted as a superadmin (ADR-052), as in the app.
-    const [trail] = await owner.$queryRawUnsafe<Array<{ actor_context: string | null }>>(`SELECT actor_context FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.approve'`, first);
+    const [trail] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ actor_context: string | null }>>(`SELECT actor_context FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.approve'`, first));
     expect(trail?.actor_context).toBe("superadmin");
 
     const next = (await as("orgAdmin", "GET", "/approvals?assignee=me&limit=10")).body as { rows: Array<{ id: string }> };
@@ -190,7 +195,7 @@ describe("Slack requests", () => {
       slack("interactions", { payload: JSON.stringify({ type: "view_submission", team: { id: TEAM }, user: { id: "U-orgAdmin" }, view: { callback_id: "approval.reject", private_metadata: views[0]?.view["private_metadata"], state: { values: { reason: { reason: { value: reason } } } } } }) });
     expect((await submit("")).body).toMatchObject({ response_action: "errors" });
     expect((await submit("Over the Q4 cap")).body).toEqual({});
-    const [r] = await owner.$queryRawUnsafe<Array<{ decision: string; comment: string }>>(`SELECT decision::text, comment FROM approval_decision WHERE request_id = $1::uuid ORDER BY decided_at DESC LIMIT 1`, other.id);
+    const [r] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ decision: string; comment: string }>>(`SELECT decision::text, comment FROM approval_decision WHERE request_id = $1::uuid ORDER BY decided_at DESC LIMIT 1`, other.id));
     expect(r).toMatchObject({ decision: "reject", comment: "Over the Q4 cap" });
   });
 
@@ -208,7 +213,7 @@ describe("Slack requests", () => {
 
   it("/budget search and /budget list <text> show the same numbers as the one query path (T-8, audit)", async () => {
     // T-014's split part: a live, distinctively-named budget with its own approved amount and spend.
-    const hit = await owner.envelope.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, status: "APPROVED", name: { contains: "Walmart" } }, select: { id: true } });
+    const hit = await asAdmin((tx) => tx.envelope.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, status: "APPROVED", name: { contains: "Walmart" } }, select: { id: true } }));
     const direct = (await as(
       "admin",
       "POST",
@@ -242,7 +247,7 @@ describe("Slack acts with the app's permissions (S-001)", () => {
     // A policy whose only step is PLANNER, for the budget owner's changes: eligible_approver() lets a
     // planner decide it, but a planner lacks approval.decide, so the app refuses them.
     const policyId = randomUUID();
-    await owner.approvalPolicy.create({ data: { id: policyId, workspaceId: golden.workspaceId, name: "Planner step (S-001 test)", priority: -1, conditions: { requester: { userIds: [golden.users.budgetOwner] } }, chain: [{ role: "PLANNER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true } });
+    await asAdmin((tx) => tx.approvalPolicy.create({ data: { id: policyId, workspaceId: golden.workspaceId, name: "Planner step (S-001 test)", priority: -1, conditions: { requester: { userIds: [golden.users.budgetOwner] } }, chain: [{ role: "PLANNER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true } }));
     let requestId: string | null = null;
     for (const envelopeId of [...golden.envelopeIds.values()].slice(20, 60)) {
       const env = (await as("budgetOwner", "GET", `/envelopes/${envelopeId}`)).body as { current?: { id: string; amount: string } | null; draft?: unknown; status?: string };
@@ -260,25 +265,25 @@ describe("Slack acts with the app's permissions (S-001)", () => {
     views.length = 0;
     await click("planner", "approval.approve", requestId);
     expect(JSON.stringify(views[0]?.view)).toContain("Missing permission approval.decide");
-    const [n] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    const [n] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM approval_decision WHERE request_id = $1::uuid`, requestId));
     expect(Number(n?.n)).toBe(0);
     expect((await as("planner", "POST", `/approvals/${requestId}/decisions`, { decision: "approve" })).status, "the app refuses the same person").toBe(403);
     await as("budgetOwner", "POST", `/approvals/${requestId}/withdraw`, {});
-    await owner.approvalPolicy.update({ where: { id: policyId }, data: { isActive: false } });
+    await asAdmin((tx) => tx.approvalPolicy.update({ where: { id: policyId }, data: { isActive: false } }));
   });
 
   it("someone with a role only in another workspace is refused here, and told so", async () => {
     const otherWs = randomUUID();
     const outsider = randomUUID();
-    await owner.workspace.create({ data: { id: otherWs, orgId: golden.orgId, slug: `${slug}-other`, name: "Other client", reportingCurrency: "USD" } });
+    await asAdmin((tx) => tx.workspace.create({ data: { id: otherWs, orgId: golden.orgId, slug: `${slug}-other`, name: "Other client", reportingCurrency: "USD" } }));
     await owner.user.create({ data: { id: outsider, orgId: golden.orgId, email: email("outsider"), name: "Outside Person", googleSub: `golden-${slug}-outsider` } });
     await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: otherWs, principalType: "user", principalId: outsider, role: "APPROVER", createdBy: golden.users.orgAdmin } });
-    const [alert] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM alert WHERE workspace_id = $1::uuid AND status = 'OPEN' ORDER BY opened_at LIMIT 1`, golden.workspaceId);
+    const [alert] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM alert WHERE workspace_id = $1::uuid AND status = 'OPEN' ORDER BY opened_at LIMIT 1`, golden.workspaceId));
     expect(alert).toBeDefined();
     views.length = 0;
     await click("outsider", "alert.resolve", alert!.id);
     expect(JSON.stringify(views[0]?.view)).toContain("No role in this workspace");
-    const [still] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id);
+    const [still] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alert!.id));
     expect(still?.status).toBe("OPEN");
     // R11-002: their own workspace is linked through the org, so /budget answers for it, and only it.
     const answer = JSON.stringify((await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-outsider" })).body);
@@ -316,7 +321,7 @@ describe("every approval request reaches Slack (S-003)", () => {
     const requestId = String(committed.body["requestId"]);
 
     // The outbox row the notify worker receives (as Pub/Sub, or the local runner, would deliver it).
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, requestId);
+    const [row] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, requestId));
     expect(row, "the request's approval.changed row").toBeDefined();
     const push = { message: { data: Buffer.from(JSON.stringify(row!.payload)).toString("base64"), attributes: { outboxId: row!.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: "approval.changed" }, messageId: `s003-${row!.id}` }, subscription: "notify-worker" };
     const posts: Array<{ channel: string; text: string; blocks: unknown[] }> = [];
@@ -326,7 +331,7 @@ describe("every approval request reaches Slack (S-003)", () => {
     expect(posts.map((p) => p.channel)).toEqual(["#budget"]);
     expect(posts[0]?.text).toMatch(/Approval requested/);
     expect(JSON.stringify(posts[0]?.blocks)).toContain('"action_id":"approval.approve"');
-    const [told] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM notification WHERE user_id = $1::uuid AND kind = 'approval_requested' AND payload->>'requestId' = $2`, golden.users.budgetOwner, requestId);
+    const [told] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM notification WHERE user_id = $1::uuid AND kind = 'approval_requested' AND payload->>'requestId' = $2`, golden.users.budgetOwner, requestId));
     expect(Number(told?.n), "the first step's approver (the budget owner)").toBe(1);
   });
 });
@@ -360,11 +365,11 @@ describe("Request changes from Slack (S-005)", () => {
       slack("interactions", { payload: JSON.stringify({ type: "view_submission", team: { id: TEAM }, user: { id: "U-orgAdmin" }, view: { callback_id: "approval.changes", private_metadata: views[0]?.view["private_metadata"], state: { values: { comment: { comment: { value: comment } } } } } }) });
     expect((await submit(" ")).body).toMatchObject({ response_action: "errors", errors: { comment: expect.stringContaining("Comment required") } });
     expect((await submit("Split it by month first")).body).toEqual({});
-    const [r] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId);
+    const [r] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId));
     expect(r?.status).toBe("CHANGES_REQUESTED");
-    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    const [d] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, requestId));
     expect(d).toEqual({ decision: "request_changes", channel: "slack", comment: "Split it by month first" });
-    const [thread] = await owner.$queryRawUnsafe<Array<{ is_blocking: boolean }>>(`SELECT is_blocking FROM thread WHERE anchor_meta->>'approvalRequestId' = $1`, requestId);
+    const [thread] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ is_blocking: boolean }>>(`SELECT is_blocking FROM thread WHERE anchor_meta->>'approvalRequestId' = $1`, requestId));
     expect(thread?.is_blocking).toBe(true);
   });
 });
@@ -392,7 +397,7 @@ describe("/budget approvals (S-006)", () => {
     const requestId = await openRequest();
     responses.length = 0;
     await clickOnList("orgAdmin", "approval.approve", requestId);
-    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string }>>(`SELECT decision::text, channel::text FROM approval_decision WHERE request_id = $1::uuid`, requestId);
+    const [d] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ decision: string; channel: string }>>(`SELECT decision::text, channel::text FROM approval_decision WHERE request_id = $1::uuid`, requestId));
     expect(d).toEqual({ decision: "approve", channel: "slack" });
     expect(responses).toHaveLength(1);
     expect(responses[0]?.url).toBe(RESPONSE_URL);
@@ -418,7 +423,7 @@ describe("/budget approvals (S-006)", () => {
     views.length = 0;
     failNextResponse = true;
     await clickOnList("orgAdmin", "approval.approve", requestId);
-    const [r] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId);
+    const [r] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, requestId));
     expect(r?.status).toBe("APPROVED");
     expect(JSON.stringify(views[0]?.view)).toContain("could not be updated");
   });
@@ -427,12 +432,12 @@ describe("/budget approvals (S-006)", () => {
 describe("/budget decisions by a request's id (S-007)", () => {
   const cmd = async (persona: string, text: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}` })).body;
   const said = (body: Record<string, unknown>) => JSON.stringify(body);
-  const status = async (id: string) => (await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, id))[0]?.status;
+  const status = async (id: string) => (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM approval_request WHERE id = $1::uuid`, id)))[0]?.status;
 
   it("approve #id decides as the person, with the comment, and says so", async () => {
     const id = await openRequest();
     expect(said(await cmd("orgAdmin", `approve ${shortRequestId(id)} fits the plan`))).toContain(":white_check_mark: Approved");
-    const [d] = await owner.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, id);
+    const [d] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ decision: string; channel: string; comment: string }>>(`SELECT decision::text, channel::text, comment FROM approval_decision WHERE request_id = $1::uuid`, id));
     expect(d).toEqual({ decision: "approve", channel: "slack", comment: "fits the plan" });
     expect(await status(id)).toBe("APPROVED");
   });
@@ -513,7 +518,7 @@ describe("/budget <name> and /budget list (S-009)", () => {
   const cmd = async (persona: string, text: string) => (await slack("commands", { text, team_id: TEAM, user_id: `U-${persona}` })).body;
 
   it("a budget's name gives its card: where it sits, its numbers, and a link", async () => {
-    const roots = (await owner.$queryRawUnsafe<Array<{ id: string; name: string }>>(`SELECT id::text, coalesce(display_name, name) AS name FROM envelope WHERE workspace_id = $1::uuid AND parent_id IS NULL AND status <> 'ARCHIVED' ORDER BY name`, golden.workspaceId));
+    const roots = (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; name: string }>>(`SELECT id::text, coalesce(display_name, name) AS name FROM envelope WHERE workspace_id = $1::uuid AND parent_id IS NULL AND status <> 'ARCHIVED' ORDER BY name`, golden.workspaceId)));
     const counts = new Map<string, number>();
     for (const r of roots) counts.set(r.name.toLowerCase(), (counts.get(r.name.toLowerCase()) ?? 0) + 1);
     const root = roots.find((r) => counts.get(r.name.toLowerCase()) === 1);
@@ -559,7 +564,7 @@ describe("which workspace /budget answers for (S-010)", () => {
   const said = (body: Record<string, unknown>) => JSON.stringify(body);
 
   beforeAll(async () => {
-    await owner.workspace.create({ data: { id: second, orgId: golden.orgId, slug: `${slug}-second`, name: "Second", reportingCurrency: "USD", settings: { slack: { teamId: TEAM, defaultChannel: "#second-budgets" } } } });
+    await asAdmin((tx) => tx.workspace.create({ data: { id: second, orgId: golden.orgId, slug: `${slug}-second`, name: "Second", reportingCurrency: "USD", settings: { slack: { teamId: TEAM, defaultChannel: "#second-budgets" } } } }));
     await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: second, principalType: "user", principalId: golden.users.planner, role: "PLANNER", createdBy: golden.users.orgAdmin } });
     // The golden workspace posts to #budget (the settings test linked it and set it).
     expect((await as("orgAdmin", "PATCH", "/org/integrations/slack", { link: true })).status).toBe(200);
@@ -579,9 +584,9 @@ describe("which workspace /budget answers for (S-010)", () => {
     expect(said(await cmd("planner", "workspace second"))).toContain("/budget answers for *Second* from now on");
     const [saved] = await owner.$queryRawUnsafe<Array<{ ws: string | null }>>(`SELECT settings->'slack'->>'defaultWorkspaceId' AS ws FROM app_user WHERE id = $1::uuid`, golden.users.planner);
     expect(saved?.ws).toBe(second);
-    const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'user.slack_settings_changed' AND workspace_id = $2::uuid`, golden.users.planner, second);
+    const [a] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'user.slack_settings_changed' AND workspace_id = $2::uuid`, golden.users.planner, second));
     expect(Number(a?.n)).toBe(1);
-    const [o] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'user.updated' AND payload->>'userId' = $2`, second, golden.users.planner);
+    const [o] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'user.updated' AND payload->>'userId' = $2`, second, golden.users.planner));
     expect(Number(o?.n)).toBe(1);
     expect(said(await cmd("planner", "alerts"))).toContain("workspace *Second*");
     expect(said(await cmd("planner", "workspace"))).toContain("/budget answers for *Second*, because you chose it.");
@@ -609,13 +614,15 @@ describe("sending a budget for approval from Slack (S-011)", () => {
   const take = () => spare.shift() ?? (() => { throw new Error("no spare budget"); })();
 
   beforeAll(async () => {
-    spare = await owner.$queryRawUnsafe<Array<{ id: string; name: string; amount: string; current: string }>>(
-      `SELECT e.id::text, e.name, v.amount::text AS amount, v.id::text AS current FROM envelope e JOIN envelope_version v ON v.id = e.current_version_id
+    spare = await asAdmin((tx) =>
+      tx.$queryRawUnsafe<Array<{ id: string; name: string; amount: string; current: string }>>(
+        `SELECT e.id::text, e.name, v.amount::text AS amount, v.id::text AS current FROM envelope e JOIN envelope_version v ON v.id = e.current_version_id
         WHERE e.workspace_id = $1::uuid AND e.status = 'APPROVED' AND e.draft_version_id IS NULL AND e.display_name IS NULL AND v.amount >= 5000
           AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id AND c.status <> 'ARCHIVED')
           AND (SELECT count(*) FROM envelope o WHERE o.workspace_id = e.workspace_id AND lower(o.name) = lower(e.name)) = 1
         ORDER BY e.name LIMIT 10`,
-      golden.workspaceId,
+        golden.workspaceId,
+      ),
     );
     spare = spare.filter((s) => !usedForRequests.has(s.id));
   });
@@ -640,12 +647,12 @@ describe("sending a budget for approval from Slack (S-011)", () => {
     const sent = await submit("planner", views[0]?.view, amount, "Q1 moves to Q2");
     expect(sent.body).toMatchObject({ response_action: "update" });
     expect(JSON.stringify(sent.body)).toMatch(/Sent for approval\* as #[0-9a-f]{8}/);
-    const [r] = await owner.$queryRawUnsafe<Array<{ id: string; status: string; requested_by: string }>>(`SELECT r.id::text, r.status::text, r.requested_by::text FROM approval_request r JOIN envelope_version v ON v.id = r.entity_id WHERE v.envelope_id = $1::uuid ORDER BY r.requested_at DESC LIMIT 1`, b.id);
+    const [r] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; status: string; requested_by: string }>>(`SELECT r.id::text, r.status::text, r.requested_by::text FROM approval_request r JOIN envelope_version v ON v.id = r.entity_id WHERE v.envelope_id = $1::uuid ORDER BY r.requested_at DESC LIMIT 1`, b.id));
     expect(r).toMatchObject({ status: "PENDING", requested_by: golden.users.planner });
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE occurred_at >= $3 AND ((entity_id = $1::uuid AND action = 'envelope.version.created') OR (entity_id = $2::uuid AND action = 'approval.requested')) ORDER BY occurred_at`, b.id, r!.id, since);
+    const audits = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE occurred_at >= $3 AND ((entity_id = $1::uuid AND action = 'envelope.version.created') OR (entity_id = $2::uuid AND action = 'approval.requested')) ORDER BY occurred_at`, b.id, r!.id, since));
     // One transaction, one timestamp: compared as a set.
     expect(audits.map((a) => a.action).sort()).toEqual(["approval.requested", "envelope.version.created"]);
-    const [changed] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, r!.id);
+    const [changed] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1`, r!.id));
     expect(changed).toBeDefined();
     const posts: Array<{ channel: string }> = [];
     const client: SlackClient = { postMessage: async (m) => (posts.push(m), { channel: m.channel.startsWith("#") ? "C0BUDGET1" : m.channel, ts: `${Date.now()}.1` }), updateMessage: async () => undefined, lookupUserByEmail: async (e) => `U-${e.split("@")[0]}`, openDm: async (u) => `D-${u}` };
@@ -664,7 +671,7 @@ describe("sending a budget for approval from Slack (S-011)", () => {
     const target = (Math.round(Number(b.amount) * 95) / 100).toFixed(2);
     const applied = await submit("admin", views[0]?.view, target, "Savings agreed in the QBR");
     expect(JSON.stringify(applied.body)).toContain("*Applied.*");
-    const [e] = await owner.$queryRawUnsafe<Array<{ amount: string }>>(`SELECT v.amount::text AS amount FROM envelope e JOIN envelope_version v ON v.id = e.current_version_id WHERE e.id = $1::uuid`, b.id);
+    const [e] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ amount: string }>>(`SELECT v.amount::text AS amount FROM envelope e JOIN envelope_version v ON v.id = e.current_version_id WHERE e.id = $1::uuid`, b.id));
     expect(e?.amount).toBe(target);
   });
 
@@ -727,7 +734,7 @@ describe("Slack identity is pinned to the app user (S-14)", () => {
     return { id, email: personEmail };
   }
   const pinnedSlackId = async (id: string) => (await owner.$queryRawUnsafe<Array<{ slack_user_id: string | null }>>(`SELECT slack_user_id FROM app_user WHERE id = $1::uuid`, id))[0]?.slack_user_id ?? null;
-  const linkCount = async (id: string, action: "person.slack_linked" | "person.slack_unlinked") => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = $2 AND workspace_id IS NULL`, id, action))[0]?.n ?? 0);
+  const linkCount = async (id: string, action: "person.slack_linked" | "person.slack_unlinked") => Number((await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = $2 AND workspace_id IS NULL`, id, action)))[0]?.n ?? 0);
 
   it("first contact links the Slack account to the app user, and audits it at the org level", async () => {
     const who = await freshPerson(`pin-first-${randomUUID().slice(0, 6)}`);

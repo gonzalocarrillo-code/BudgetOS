@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { can, eligibleApprover, type Role } from "@budget/domain";
-import { withTenant } from "@budget/db";
+import { asOrgAdmin, withTenant } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { SignJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -51,13 +51,20 @@ const call = (method: Method, url: string, token: string | null, opts: { headers
 
 beforeAll(async () => {
   await owner.organization.createMany({ data: [{ id: orgA, name: "t009-a" }, { id: orgB, name: "t009-b" }] });
-  await owner.workspace.createMany({
-    data: [
-      { id: wsA, orgId: orgA, slug: `a-${wsA}`, name: "T-009 A", reportingCurrency: "USD" },
-      { id: wsB, orgId: orgA, slug: `b-${wsB}`, name: "T-009 B", reportingCurrency: "USD" },
-      { id: wsC, orgId: orgB, slug: `c-${wsC}`, name: "T-009 C", reportingCurrency: "USD" },
-    ],
-  });
+  // W0-6: the owner has no BYPASSRLS; workspace needs the org-admin tenant context real writes
+  // get from withTenant, and `workspace`'s org match means one asOrgAdmin call per org.
+  await asOrgAdmin(
+    owner,
+    (tx) =>
+      tx.workspace.createMany({
+        data: [
+          { id: wsA, orgId: orgA, slug: `a-${wsA}`, name: "T-009 A", reportingCurrency: "USD" },
+          { id: wsB, orgId: orgA, slug: `b-${wsB}`, name: "T-009 B", reportingCurrency: "USD" },
+        ],
+      }),
+    orgA,
+  );
+  await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: wsC, orgId: orgB, slug: `c-${wsC}`, name: "T-009 C", reportingCurrency: "USD" } }), orgB);
   const orgAUsers = [...Object.values(users), outsider, inactive, grouped, approver2, scoped];
   await owner.user.createMany({
     data: [
@@ -86,17 +93,26 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await h?.close();
-  const wss = [wsA, wsB, wsC];
   const orgs = [orgA, orgB];
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, wss);
-  // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
-  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ANY($1::uuid[]))`, orgs);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ANY($1::uuid[]))`, orgs);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = ANY($1::uuid[])`, orgs);
-  await owner.$executeRawUnsafe(`DELETE FROM app_group_member WHERE group_id IN (SELECT id FROM app_group WHERE org_id = ANY($1::uuid[]))`, orgs);
-  await owner.$executeRawUnsafe(`DELETE FROM app_group WHERE org_id = ANY($1::uuid[])`, orgs);
+  // W0-6: the owner has no BYPASSRLS; deleteWorkspaceForTests takes one org per call, so wsA/wsB
+  // (orgA) and wsC (orgB) are two calls.
+  await deleteWorkspaceForTests(owner, [wsA, wsB], orgA);
+  await deleteWorkspaceForTests(owner, [wsC], orgB);
+  // app_group / app_group_member / dimension have no app_is_org_admin() fallback (an exact
+  // app.org_id match only), so one pass per org is needed.
+  await asOrgAdmin(owner, async (tx) => {
+    for (const org of orgs) {
+      await tx.$executeRaw`SELECT set_config('app.org_id', ${org}::text, true)`;
+      // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
+      await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, org);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, org);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, org);
+      await tx.$executeRawUnsafe(`DELETE FROM app_group_member WHERE group_id IN (SELECT id FROM app_group WHERE org_id = $1::uuid)`, org);
+      await tx.$executeRawUnsafe(`DELETE FROM app_group WHERE org_id = $1::uuid`, org);
+    }
+  });
   await owner.roleAssignment.deleteMany({ where: { principalId: users.ORG_ADMIN.id } });
   await owner.user.deleteMany({ where: { orgId: { in: orgs } } });
   await owner.organization.deleteMany({ where: { id: { in: orgs } } });
@@ -410,17 +426,29 @@ describe("workspace resolution and tenancy", () => {
 });
 
 async function auditCount(action: string, requestId: string): Promise<number> {
-  const rows = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(
-    `SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = $2 AND request_id = $3`,
-    wsA,
-    action,
-    requestId,
+  return asOrgAdmin(
+    owner,
+    async (tx) => {
+      const rows = await tx.$queryRawUnsafe<Array<{ n: bigint }>>(
+        `SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = $2 AND request_id = $3`,
+        wsA,
+        action,
+        requestId,
+      );
+      return Number(rows[0]?.n ?? 0);
+    },
+    orgA,
   );
-  return Number(rows[0]?.n ?? 0);
 }
 async function outboxCount(): Promise<number> {
-  const rows = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'access.changed'`, wsA);
-  return Number(rows[0]?.n ?? 0);
+  return asOrgAdmin(
+    owner,
+    async (tx) => {
+      const rows = await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'access.changed'`, wsA);
+      return Number(rows[0]?.n ?? 0);
+    },
+    orgA,
+  );
 }
 
 describe("role assignment", () => {
@@ -512,31 +540,43 @@ describe("dimension scopes", () => {
   it("a scoped role is enforced against the envelope's dimension values, via ancestry", async () => {
     const region = randomUUID();
     const [latam, br, emea, de] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
-    await owner.$executeRawUnsafe(
-      `INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`,
-      region,
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`,
+          region,
+          orgA,
+          users.ORG_ADMIN.id,
+        );
+        for (const [id, code, parent] of [[latam, "latam", null], [br, "br", latam], [emea, "emea", null], [de, "de", emea]] as const) {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, $3, $3, $4::uuid)`,
+            id,
+            region,
+            code,
+            parent,
+          );
+        }
+      },
       orgA,
-      users.ORG_ADMIN.id,
     );
-    for (const [id, code, parent] of [[latam, "latam", null], [br, "br", latam], [emea, "emea", null], [de, "de", emea]] as const) {
-      await owner.$executeRawUnsafe(
-        `INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, $3, $3, $4::uuid)`,
-        id,
-        region,
-        code,
-        parent,
-      );
-    }
     const envelope = async (value: string) => {
       const id = randomUUID();
-      await owner.$executeRawUnsafe(
-        `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, created_by, updated_at)
-         VALUES ($1::uuid, $2::uuid, $1::text, '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', $3::uuid, now())`,
-        id,
-        wsA,
-        users.ORG_ADMIN.id,
+      await asOrgAdmin(
+        owner,
+        async (tx) => {
+          await tx.$executeRawUnsafe(
+            `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, created_by, updated_at)
+             VALUES ($1::uuid, $2::uuid, $1::text, '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', $3::uuid, now())`,
+            id,
+            wsA,
+            users.ORG_ADMIN.id,
+          );
+          await tx.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, region, value);
+        },
+        orgA,
       );
-      await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, region, value);
       return id;
     };
     const inScope = await envelope(br);
@@ -576,18 +616,25 @@ describe("dimension scopes", () => {
 describe("separation of duties", () => {
   it("eligible_approver(): a requester cannot approve their own request; another approver can", async () => {
     const requestId = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by)
-       VALUES ($1::uuid, $2::uuid, 'envelope_version', $3::uuid, $4::uuid, 1, $5::jsonb, 'sod', $6::uuid)`,
-      requestId,
-      wsA,
-      randomUUID(),
-      randomUUID(),
-      JSON.stringify({ chain: [{ role: "APPROVER" }], blockSelfApproval: true }),
-      users.APPROVER.id,
+    await asOrgAdmin(
+      owner,
+      (tx) =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by)
+           VALUES ($1::uuid, $2::uuid, 'envelope_version', $3::uuid, $4::uuid, 1, $5::jsonb, 'sod', $6::uuid)`,
+          requestId,
+          wsA,
+          randomUUID(),
+          randomUUID(),
+          JSON.stringify({ chain: [{ role: "APPROVER" }], blockSelfApproval: true }),
+          users.APPROVER.id,
+        ),
+      orgA,
     );
+    // eligible_approver() is SECURITY INVOKER: it reads approval_request under the caller's own
+    // RLS, so the owner needs the same org-admin context to see the row it just inserted.
     const eligible = async (userId: string) =>
-      (await owner.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT eligible_approver($1::uuid, $2::uuid) AS ok`, requestId, userId))[0]?.ok;
+      asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT eligible_approver($1::uuid, $2::uuid) AS ok`, requestId, userId).then((rows) => rows[0]?.ok), orgA);
     expect(await eligible(users.APPROVER.id)).toBe(false);
     expect(await eligible(approver2.id)).toBe(true);
     expect(await eligible(users.FINANCE.id)).toBe(false); // wrong role for the step
@@ -596,12 +643,18 @@ describe("separation of duties", () => {
 
   it("an org admin may approve their own request (product decision 2026-09-28); others still may not", async () => {
     const requestId = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by)
-       VALUES ($1::uuid, $2::uuid, 'envelope_version', $3::uuid, $4::uuid, 1, $5::jsonb, 'own', $6::uuid)`,
-      requestId, wsA, randomUUID(), randomUUID(), JSON.stringify({ chain: [{ role: "FINANCE" }], blockSelfApproval: true }), users.ORG_ADMIN.id,
+    await asOrgAdmin(
+      owner,
+      (tx) =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by)
+           VALUES ($1::uuid, $2::uuid, 'envelope_version', $3::uuid, $4::uuid, 1, $5::jsonb, 'own', $6::uuid)`,
+          requestId, wsA, randomUUID(), randomUUID(), JSON.stringify({ chain: [{ role: "FINANCE" }], blockSelfApproval: true }), users.ORG_ADMIN.id,
+        ),
+      orgA,
     );
-    const eligible = async (userId: string) => (await owner.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT eligible_approver($1::uuid, $2::uuid) AS ok`, requestId, userId))[0]?.ok;
+    const eligible = async (userId: string) =>
+      asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT eligible_approver($1::uuid, $2::uuid) AS ok`, requestId, userId).then((rows) => rows[0]?.ok), orgA);
     expect(await eligible(users.ORG_ADMIN.id)).toBe(true);
     expect(await eligible(users.FINANCE.id)).toBe(true);
     expect(await eligible(users.APPROVER.id)).toBe(false);

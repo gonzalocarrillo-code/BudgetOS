@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -28,7 +28,10 @@ const id = (key: string) => golden.envelopeIds.get(key) as string;
 const leafKeys = (prefix: string) => plan.filter((e) => e.level === 4 && e.key.startsWith(prefix)).map((e) => e.key);
 const env = async (envelopeId: string) => (await as("planner", "GET", `/api/v1/envelopes/${envelopeId}`)).body as Body & { parentId: string | null; rowVersion: number; currentVersionId: string | null; dimensionValues: Record<string, string>; structure: { parent: { id: string } | null; children: Array<{ id: string; approved: string | null }>; siblings: Array<{ id: string }> } };
 const preview = (body: unknown, requestId?: string) => as("planner", "POST", "/api/v1/envelopes/structure/preview", body, requestId);
-const writes = async (requestId: string) => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1`, requestId))[0]?.n);
+// W0-6: the owner has no BYPASSRLS; every owner.* read below needs the same org-admin tenant
+// context real reads get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
+const writes = async (requestId: string) => Number((await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1`, requestId)))[0]?.n);
 
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
@@ -78,7 +81,7 @@ describe("structure preview: the real checks, nothing written", () => {
     expect(new Decimal(prev.childrenBefore).minus(prev.childrenAfter).equals(amount)).toBe(true);
     expect((await env(id(leaf))).parentId).toBe(before.parentId);
     expect(await writes(requestId)).toBe(0);
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf) } })).toBe(0);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf) } }))).toBe(0);
   });
 
   it("split: parts that do not sum are refused; parts that do are routed, and no part is created", async () => {
@@ -105,7 +108,7 @@ describe("structure preview: the real checks, nothing written", () => {
     const total = [a, b].map((k) => new Decimal(plan.find((e) => e.key === k)?.versions.at(-1)?.amount ?? 0)).reduce((s, v) => s.plus(v), new Decimal(0));
     expect(new Decimal(String(res.body["amount"])).gt(0)).toBe(true);
     expect(total.gt(0)).toBe(true);
-    expect(await owner.envelope.count({ where: { workspaceId: golden.workspaceId, name: "TikTok conversion (all)" } })).toBe(0);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: golden.workspaceId, name: "TikTok conversion (all)" } }))).toBe(0);
   });
 });
 
@@ -118,7 +121,7 @@ describe("add child: one action, through the policy", () => {
     expect(p.body, JSON.stringify(p.body)).toMatchObject({ ok: true, op: "add_child", parent: { id: id(parentKey) } });
     const cap = p.body["parent"] as { childrenBefore: string; childrenAfter: string };
     expect(new Decimal(cap.childrenAfter).minus(cap.childrenBefore).toFixed(2)).toBe(String(p.body["amount"]));
-    expect(await owner.envelope.count({ where: { workspaceId: golden.workspaceId, name: input.name } })).toBe(0);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: golden.workspaceId, name: input.name } }))).toBe(0);
 
     const requestId = `structui-${randomUUID()}`;
     const res = await as("planner", "POST", `/api/v1/envelopes/${id(parentKey)}/children`, input, requestId);
@@ -129,10 +132,10 @@ describe("add child: one action, through the policy", () => {
     expect(child.parentId).toBe(id(parentKey));
     expect(child.dimensionValues).toEqual({ ...parent.dimensionValues, audience: "lookalike" });
     expect(child["startDate"]).toBe(parent["startDate"]);
-    const audits = (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId)).map((a) => a.action);
+    const audits = (await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId))).map((a) => a.action);
     expect(audits[0]).toBe("envelope.created");
     expect(audits.length).toBeGreaterThanOrEqual(2); // and the submit (requested, or approved by policy)
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload::text LIKE $2`, golden.workspaceId, `%${String(res.body["envelopeId"])}%`);
+    const out = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload::text LIKE $2`, golden.workspaceId, `%${String(res.body["envelopeId"])}%`));
     expect(Number(out[0]?.n)).toBeGreaterThanOrEqual(2);
     expect((await env(id(parentKey))).structure.children.map((c) => c.id)).toContain(res.body["envelopeId"]);
   });

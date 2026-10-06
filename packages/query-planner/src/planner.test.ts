@@ -350,6 +350,11 @@ describe.sequential("T-007 query planner", () => {
     await client.connect();
     await sql(`SELECT ensure_fact_partitions('2026-01-01'::date, 18)`);
     await sql(`INSERT INTO organization (id, name) VALUES ($1::uuid, 'Planner Org')`, [orgId]);
+    // W0-6: the owner has no BYPASSRLS; workspace and every generic tenant_isolation table below
+    // (envelope, spend_fact, dimension, …) need the org-admin tenant context real writes get from
+    // withTenant. Session-level (set_config's third argument false, not transaction-local) because
+    // this one dedicated connection lives for the whole describe.sequential block.
+    await sql(`SELECT set_config('app.is_org_admin', 'true', false), set_config('app.org_id', $1::text, false)`, [orgId]);
     for (const [id, slug] of [
       [matrixWs, "matrix"],
       [pageWs, "pages"],
@@ -969,6 +974,8 @@ describe.sequential("T-007 query planner", () => {
 
     const otherClient = new Client({ connectionString: ownerUrl });
     await otherClient.connect();
+    // W0-6: a fresh connection has no session context; set it before this client's own writes.
+    await otherClient.query(`SELECT set_config('app.is_org_admin', 'true', false), set_config('app.org_id', $1::text, false)`, [orgId]);
     try {
       await otherClient.query("BEGIN");
       await otherClient.query(

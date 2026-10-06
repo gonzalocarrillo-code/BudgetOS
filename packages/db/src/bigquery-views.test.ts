@@ -103,6 +103,11 @@ describe("BigQuery curated views (infra/modules/bigquery)", () => {
     const [org, ws, user, parent, child, archived] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
     await inRolledBackTx(async (tx) => {
       await tx.$executeRawUnsafe(`INSERT INTO organization (id, name) VALUES ($1::uuid, 't023-bq')`, org);
+      // W0-6: the owner has no BYPASSRLS; workspace (unlike organization) has no owner_bootstrap
+      // policy, so this fixture needs the same org-admin tenant context real writes get from
+      // withTenant. Transaction-local (SET LOCAL via set_config's third arg), so it never outlives
+      // this rolled-back transaction.
+      await tx.$executeRawUnsafe(`SELECT set_config('app.is_org_admin', 'true', true), set_config('app.org_id', $1, true)`, org);
       await tx.$executeRawUnsafe(`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES ($1::uuid, $2::uuid, $3, 'T-023 BQ', 'USD')`, ws, org, `t023-bq-${ws}`);
       await tx.$executeRawUnsafe(`INSERT INTO app_user (id, org_id, email, name, google_sub) VALUES ($1::uuid, $2::uuid, $3, 't023', $3)`, user, org, `${user}@t023.test`);
       for (const [id, parentId, status] of [[parent, null, "APPROVED"], [child, parent, "APPROVED"], [archived, parent, "ARCHIVED"]] as const) {

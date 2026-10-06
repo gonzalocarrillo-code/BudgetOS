@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -30,7 +31,9 @@ const values = async (key: string) => new Map(((await dims()).find((d) => d.key 
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t031" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t031-${ws}`, name: "T-031", reportingCurrency: "USD" } });
+  // W0-6: workspace has no owner_bootstrap policy; it needs the org-admin tenant context real
+  // writes get from withTenant, with the real org id for its exact org_id match.
+  await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t031-${ws}`, name: "T-031", reportingCurrency: "USD" } }), orgId);
   await owner.user.createMany({ data: [admin, viewer].map((u) => ({ id: u.id, orgId, email: u.email, name: `Name ${u.sub}`, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -46,9 +49,20 @@ afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself, including envelope_dimension, which references dimension_value) in the same order
   // `purgeWorkspace` validates against production — before the org-level dimension cleanup below.
-  await deleteWorkspaceForTests(owner, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing
+      // FKs now; this suite's move/merge tests build real hierarchies, so both are nulled first.
+      await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+    },
+    orgId,
+  );
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await owner.$disconnect();
@@ -88,9 +102,9 @@ describe("registry admin (T-031)", () => {
     const after = await values("market_tier");
     expect(after.get("tier1_core")?.path).toBe("tier2.tier1_core");
     expect(after.get("tier1_core_a")?.path).toBe("tier2.tier1_core.tier1_core_a"); // the child moved too
-    const audit = await owner.$queryRawUnsafe<Array<{ action: string; before: unknown }>>(`SELECT action, before FROM audit_event WHERE request_id = $1`, requestId);
+    const audit = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ action: string; before: unknown }>>(`SELECT action, before FROM audit_event WHERE request_id = $1`, requestId), orgId);
     expect(audit).toEqual([{ action: "registry.value.updated", before: { parentValueId: before.get("tier1")?.id } }]);
-    const events = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'registry.changed' AND payload->>'kind' = 'value.updated'`, ws);
+    const events = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'registry.changed' AND payload->>'kind' = 'value.updated'`, ws), orgId);
     expect(Number(events[0]?.n)).toBeGreaterThanOrEqual(1);
 
     expect((await call(admin, "PATCH", `/values/${core?.id ?? ""}`, { parentCode: "tier1_core_a" })).status).toBe(422); // its own child
@@ -115,7 +129,7 @@ describe("registry admin (T-031)", () => {
     const requestId = rid();
     const u = await call(admin, "PATCH", `/hierarchy-templates/${id}`, { name: "Tier and cluster", path: ["market_tier", "store_cluster"], isDefault: true }, requestId);
     expect(u.body).toEqual({ id, name: "Tier and cluster", path: ["market_tier", "store_cluster"], isDefault: true });
-    const audit = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId);
+    const audit = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId), orgId);
     expect(audit.map((x) => x.action)).toEqual(["registry.template.updated"]);
     const list = (await call(viewer, "GET", `/workspaces/${ws}/hierarchy-templates`)).body as unknown as Array<{ id: string; isDefault: boolean }>;
     expect(list.filter((x) => x.isDefault).map((x) => x.id)).toEqual([id]); // one default

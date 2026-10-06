@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DomainError } from "@budget/domain";
-import { withTenant, type TenantContext } from "@budget/db";
+import { asOrgAdmin, withTenant, type TenantContext, type Tx } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { InMemoryAssetStore } from "./assets/asset-store.js";
@@ -62,6 +62,9 @@ const orgId = randomUUID();
 const workspaceId = randomUUID();
 const userId = randomUUID();
 const seedRequestId = `epic-0.4-seed-${orgId}`;
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace- or org-scoped
+// tables below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 
 const adminCtx: TenantContext = {
   workspaceId,
@@ -130,38 +133,46 @@ async function expectDomain(code: DomainError["code"], fn: () => Promise<unknown
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "epic-0.4" } });
-  await owner.workspace.create({
-    data: {
-      id: workspaceId,
-      orgId,
-      slug: `epic-04-${orgId.slice(0, 8)}`,
-      name: "Epic 0.4",
-      reportingCurrency: "USD",
-    },
-  });
+  // W0-6: workspace has no owner_bootstrap policy; it needs the org-admin tenant context real
+  // writes get from withTenant, with the real org id for its exact org_id match.
+  await asAdmin((tx) =>
+    tx.workspace.create({
+      data: {
+        id: workspaceId,
+        orgId,
+        slug: `epic-04-${orgId.slice(0, 8)}`,
+        name: "Epic 0.4",
+        reportingCurrency: "USD",
+      },
+    }),
+  );
   await seedDefaultRegistry(app, adminCtx, ["ORG_ADMIN"], store);
 }, 60_000);
 
 afterAll(async () => {
-  await owner.envelopeDimension.deleteMany({ where: { envelope: { workspaceId } } });
-  await owner.envelope.deleteMany({ where: { workspaceId } });
-  await owner.hierarchyTemplate.deleteMany({ where: { workspaceId } });
-  const dimensionIds = (await owner.dimension.findMany({ where: { orgId }, select: { id: true } })).map(
-    (dimension) => dimension.id,
-  );
-  if (dimensionIds.length > 0) {
-    await owner.valueConstraint.deleteMany({ where: { dimensionId: { in: dimensionIds } } });
-  }
-  // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
-  await owner.$executeRaw`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ${orgId}::uuid)`;
-  await owner.dimensionValue.deleteMany({ where: { dimension: { orgId } } });
-  await owner.dimension.deleteMany({ where: { orgId } });
-  await owner.$executeRaw`DELETE FROM outbox WHERE payload->>'orgId' = ${orgId}`;
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
-  await owner.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
-  await owner.$executeRaw`DELETE FROM audit_event WHERE org_id = ${orgId}::uuid`;
-  await owner.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
-  await owner.workspace.deleteMany({ where: { id: workspaceId } });
+  // W0-6: the owner has no BYPASSRLS; this cleanup needs the same org-admin tenant context real
+  // writes get from withTenant (asAdmin, defined above).
+  await asAdmin(async (tx) => {
+    await tx.envelopeDimension.deleteMany({ where: { envelope: { workspaceId } } });
+    await tx.envelope.deleteMany({ where: { workspaceId } });
+    await tx.hierarchyTemplate.deleteMany({ where: { workspaceId } });
+    const dimensionIds = (await tx.dimension.findMany({ where: { orgId }, select: { id: true } })).map(
+      (dimension) => dimension.id,
+    );
+    if (dimensionIds.length > 0) {
+      await tx.valueConstraint.deleteMany({ where: { dimensionId: { in: dimensionIds } } });
+    }
+    // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
+    await tx.$executeRaw`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ${orgId}::uuid)`;
+    await tx.dimensionValue.deleteMany({ where: { dimension: { orgId } } });
+    await tx.dimension.deleteMany({ where: { orgId } });
+    await tx.$executeRaw`DELETE FROM outbox WHERE payload->>'orgId' = ${orgId}`;
+    // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
+    await tx.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+    await tx.$executeRaw`DELETE FROM audit_event WHERE org_id = ${orgId}::uuid`;
+    await tx.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
+    await tx.workspace.deleteMany({ where: { id: workspaceId } });
+  });
   await owner.organization.deleteMany({ where: { id: orgId } });
   await app.$disconnect();
   await owner.$disconnect();
@@ -243,12 +254,16 @@ it("seeds the default registry, nested countries, and the default hierarchy", as
     },
   ]);
 
-  const seededAudits = await owner.$queryRaw<Array<{ n: number }>>`
+  const seededAudits = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM audit_event
-    WHERE request_id = ${seedRequestId} AND action = 'registry.dimension.created'`;
-  const seededOutbox = await owner.$queryRaw<Array<{ n: number }>>`
+    WHERE request_id = ${seedRequestId} AND action = 'registry.dimension.created'`,
+  );
+  const seededOutbox = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM outbox
-    WHERE topic = 'registry.changed' AND payload->>'requestId' = ${seedRequestId} AND payload->>'kind' = 'dimension.created'`;
+    WHERE topic = 'registry.changed' AND payload->>'requestId' = ${seedRequestId} AND payload->>'kind' = 'dimension.created'`,
+  );
   expect(Number(seededAudits[0]?.n)).toBe(defaultKeys.length);
   expect(Number(seededOutbox[0]?.n)).toBe(defaultKeys.length);
 });
@@ -322,12 +337,16 @@ it("creates a dimension, nested values, and another hierarchy template", async (
   const templates = await withTenant(app, ctx, (tx) => listHierarchyTemplates(tx, workspaceId));
   expect(templates.map((template) => template.name)).toEqual(["Country first", "Default", "Geo"]);
 
-  const audits = await owner.$queryRaw<Array<{ n: number }>>`
+  const audits = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM audit_event
-    WHERE request_id = ${requestId} AND entity_id = ${created.id}::uuid AND action = 'registry.dimension.created'`;
-  const outbox = await owner.$queryRaw<Array<{ n: number }>>`
+    WHERE request_id = ${requestId} AND entity_id = ${created.id}::uuid AND action = 'registry.dimension.created'`,
+  );
+  const outbox = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM outbox
-    WHERE topic = 'registry.changed' AND payload->>'requestId' = ${requestId} AND payload->>'kind' = 'dimension.created'`;
+    WHERE topic = 'registry.changed' AND payload->>'requestId' = ${requestId} AND payload->>'kind' = 'dimension.created'`,
+  );
   expect(Number(audits[0]?.n)).toBe(1);
   expect(Number(outbox[0]?.n)).toBe(1);
 });
@@ -592,16 +611,22 @@ it("merges values, rewrites envelope dimensions, and audits each envelope", asyn
     expect((error as DomainError).message).toContain("old_code");
   }
 
-  const envelopeAudits = await owner.$queryRaw<Array<{ n: number }>>`
+  const envelopeAudits = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM audit_event
-    WHERE request_id = ${requestId} AND action = 'envelope.dimension.rewritten' AND entity_id = ${envelopeId}::uuid`;
-  const registryAudits = await owner.$queryRaw<Array<{ n: number }>>`
+    WHERE request_id = ${requestId} AND action = 'envelope.dimension.rewritten' AND entity_id = ${envelopeId}::uuid`,
+  );
+  const registryAudits = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM audit_event
-    WHERE request_id = ${requestId} AND action = 'registry.value.merged'`;
-  const outbox = await owner.$queryRaw<Array<{ envelope_ids: string[] }>>`
+    WHERE request_id = ${requestId} AND action = 'registry.value.merged'`,
+  );
+  const outbox = await asAdmin(
+    (tx) => tx.$queryRaw<Array<{ envelope_ids: string[] }>>`
     SELECT payload->'envelopeIds' AS envelope_ids
     FROM outbox
-    WHERE topic = 'registry.changed' AND payload->>'requestId' = ${requestId} AND payload->>'kind' = 'value.merged'`;
+    WHERE topic = 'registry.changed' AND payload->>'requestId' = ${requestId} AND payload->>'kind' = 'value.merged'`,
+  );
   expect(Number(envelopeAudits[0]?.n)).toBe(1);
   expect(Number(registryAudits[0]?.n)).toBe(1);
   expect(outbox).toHaveLength(1);

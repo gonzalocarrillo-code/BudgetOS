@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
@@ -16,6 +17,9 @@ async function as(persona: string, method: "GET" | "PATCH", url: string, body?: 
   const token = await h.mint({ sub: `ip-${persona}`, email: `${persona.toLowerCase()}@${slug}.golden.test` }, { googleSub: `golden-${slug}-${persona}` });
   return h.call(method, `/api/v1${url}`, token, { headers: { "x-workspace-id": golden.workspaceId }, ...(body === undefined ? {} : { body }) });
 }
+// W0-6: the owner has no BYPASSRLS; every owner.* read below needs the same org-admin tenant
+// context real reads get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
@@ -29,9 +33,11 @@ afterAll(async () => {
 
 describe("edit a budget's granularities", () => {
   it("replaces the tuple (registry-checked), keeps envelope_dimension in step, audits it and rebuilds the roll-ups", async () => {
-    const [env] = await owner.$queryRawUnsafe<Array<{ id: string; dims: Record<string, string> }>>(
-      `SELECT id::text, dimension_values AS dims FROM envelope WHERE workspace_id = $1::uuid AND status = 'APPROVED' AND dimension_values ? 'platform' AND dimension_values ? 'objective' LIMIT 1`,
-      golden.workspaceId,
+    const [env] = await admin((tx) =>
+      tx.$queryRawUnsafe<Array<{ id: string; dims: Record<string, string> }>>(
+        `SELECT id::text, dimension_values AS dims FROM envelope WHERE workspace_id = $1::uuid AND status = 'APPROVED' AND dimension_values ? 'platform' AND dimension_values ? 'objective' LIMIT 1`,
+        golden.workspaceId,
+      ),
     );
     expect(env).toBeDefined();
     const before = (await as("admin", "GET", `/envelopes/${env!.id}`)).body as { rowVersion: number };
@@ -45,12 +51,14 @@ describe("edit a budget's granularities", () => {
     const after = (await as("admin", "GET", `/envelopes/${env!.id}`)).body as { dimensionValues: Record<string, string>; rowVersion: number };
     expect(after.dimensionValues).toEqual(rest);
     expect(after.rowVersion).toBe(before.rowVersion + 1);
-    const rows = await owner.$queryRawUnsafe<Array<{ key: string }>>(`SELECT d.key FROM envelope_dimension ed JOIN dimension d ON d.id = ed.dimension_id WHERE ed.envelope_id = $1::uuid ORDER BY 1`, env!.id);
+    const rows = await admin((tx) => tx.$queryRawUnsafe<Array<{ key: string }>>(`SELECT d.key FROM envelope_dimension ed JOIN dimension d ON d.id = ed.dimension_id WHERE ed.envelope_id = $1::uuid ORDER BY 1`, env!.id));
     expect(rows.map((r) => r.key)).toEqual(Object.keys(rest).sort());
 
-    const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'envelope.updated' AND after ? 'dimensionValues'`, env!.id);
+    const [a] = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'envelope.updated' AND after ? 'dimensionValues'`, env!.id));
     expect(Number(a?.n)).toBe(1);
-    const [o] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'envelopeId' = $2 AND payload->>'kind' = 'granularities'`, golden.workspaceId, env!.id);
+    const [o] = await admin((tx) =>
+      tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'envelopeId' = $2 AND payload->>'kind' = 'granularities'`, golden.workspaceId, env!.id),
+    );
     expect(Number(o?.n)).toBe(1);
   });
 });

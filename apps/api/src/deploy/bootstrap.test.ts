@@ -64,6 +64,12 @@ afterAll(async () => {
   for (const t of ["organization", "app_user", "role_assignment"]) {
     await admin.$executeRawUnsafe(`DROP POLICY IF EXISTS owner_bootstrap_test ON ${t}`);
   }
+  // W0-6: `admin` (DATABASE_URL) is itself non-superuser now. CREATEROLE gives it implicit ADMIN
+  // OPTION on a role it created (able to ALTER/DROP the role itself and GRANT/REVOKE its
+  // membership), but `DROP OWNED BY` needs the privileges OF that role, which only membership
+  // grants — so admin grants the throwaway role to itself first (harmless: the role owns nothing
+  // in practice, this just satisfies the permission check) and drops it right after.
+  await admin.$executeRawUnsafe(`GRANT ${roleName} TO CURRENT_USER`);
   await admin.$executeRawUnsafe(`DROP OWNED BY ${roleName}`);
   await admin.$executeRawUnsafe(`DROP ROLE IF EXISTS ${roleName}`);
   await admin.$disconnect();

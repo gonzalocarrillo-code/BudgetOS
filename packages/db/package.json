@@ -10,7 +10,7 @@
     "build": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "prisma": "prisma",
-    "typecheck": "DATABASE_URL=postgresql://budget:budget@localhost:5432/budget prisma generate && tsc --noEmit -p tsconfig.json",
+    "typecheck": "DATABASE_URL=postgresql://budget_owner:budget_owner@localhost:5432/budget prisma generate && tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root . --config ../../vitest.config.mjs",
     "tsx": "tsx"
   },

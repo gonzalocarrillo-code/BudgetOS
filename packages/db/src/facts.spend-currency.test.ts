@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, expect, it } from "vitest";
 import { ensurePartitions, spendThroughInCurrency } from "./facts.js";
-import { withTenant, type TenantContext } from "./tenant.js";
+import { asOrgAdmin, withTenant, type TenantContext } from "./tenant.js";
 
 /**
  * T-6: "spend through" in the budget's own currency must sum facts already in that currency
@@ -48,26 +48,38 @@ it("sums BRL facts natively and converts the USD fact at its own date's rate, un
 
   // Matched by `source` (stable across runs), not by the random ids below: a prior run that threw
   // before reaching its own cleanup must not leave a stale rate for this run to pick up.
+  // W0-6: the owner has no BYPASSRLS; workspace and spend_fact need the org-admin tenant context
+  // real writes get from withTenant (fx_rate is global reference data, no RLS).
   const cleanup = async () => {
-    await prisma.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+    await asOrgAdmin(
+      prisma,
+      async (tx) => {
+        await tx.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+        await tx.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+      },
+      orgId,
+    );
     await prisma.$executeRaw`DELETE FROM fx_rate WHERE source = 't006'`;
-    await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
     await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
   };
   await cleanup();
   await prisma.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 't006')`;
-  await prisma.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`t006-${workspaceId}`}, 'T006', 'USD')`;
+  await asOrgAdmin(prisma, (tx) => tx.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`t006-${workspaceId}`}, 'T006', 'USD')`, orgId);
   // The rate as of the USD fact's own date (2026-01-20): the latest BRL->USD rate on or before it.
   await prisma.$executeRaw`INSERT INTO fx_rate (id, base, quote, rate, as_of_date, source) VALUES (${rateEarly}::uuid, 'BRL', 'USD', 0.2000, '2026-01-01', 't006')`;
   // A later, different rate (what "today's" rate would be): must NOT affect the result.
   await prisma.$executeRaw`INSERT INTO fx_rate (id, base, quote, rate, as_of_date, source) VALUES (${rateLate}::uuid, 'BRL', 'USD', 0.3000, '2026-06-01', 't006')`;
-  await ensurePartitions(prisma, "2026-01-01", "2026-12-31");
-  await prisma.$executeRaw`
-    INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-    VALUES
-      (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-01-10', 'BRL', 100.00, 20.00, 'test', ${runId}::uuid, 't006-1'),
-      (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-02-10', 'BRL', 200.00, 40.00, 'test', ${runId}::uuid, 't006-2'),
-      (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-01-20', 'USD', 50.00, 50.00, 'test', ${runId}::uuid, 't006-3')`;
+  await ensurePartitions(prisma, "2026-01-01", "2026-12-31"); // SECURITY DEFINER DDL only; no tenant context needed
+  await asOrgAdmin(
+    prisma,
+    (tx) => tx.$executeRaw`
+      INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
+      VALUES
+        (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-01-10', 'BRL', 100.00, 20.00, 'test', ${runId}::uuid, 't006-1'),
+        (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-02-10', 'BRL', 200.00, 40.00, 'test', ${runId}::uuid, 't006-2'),
+        (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-01-20', 'USD', 50.00, 50.00, 'test', ${runId}::uuid, 't006-3')`,
+    orgId,
+  );
 
   try {
     const ctx: TenantContext = { workspaceId, orgId, userId: randomUUID(), isOrgAdmin: true, actorType: "user", requestId: "t006" };
@@ -105,17 +117,27 @@ it("throws rather than guessing when a remainder fact's date has no FX rate", as
   const envelopeId = randomUUID();
   const runId = randomUUID();
   const cleanup = async () => {
-    await prisma.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
-    await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+    await asOrgAdmin(
+      prisma,
+      async (tx) => {
+        await tx.$executeRaw`DELETE FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid`;
+        await tx.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+      },
+      orgId,
+    );
     await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
   };
   await cleanup();
   await prisma.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 't006b')`;
-  await prisma.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`t006b-${workspaceId}`}, 'T006b', 'USD')`;
-  await ensurePartitions(prisma, "2026-01-01", "2026-12-31");
-  await prisma.$executeRaw`
-    INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-    VALUES (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-01-20', 'USD', 50.00, 50.00, 'test', ${runId}::uuid, 't006b-1')`;
+  await asOrgAdmin(prisma, (tx) => tx.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`t006b-${workspaceId}`}, 'T006b', 'USD')`, orgId);
+  await ensurePartitions(prisma, "2026-01-01", "2026-12-31"); // SECURITY DEFINER DDL only; no tenant context needed
+  await asOrgAdmin(
+    prisma,
+    (tx) => tx.$executeRaw`
+      INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
+      VALUES (${workspaceId}::uuid, ${envelopeId}::uuid, '{}'::jsonb, '2026-01-20', 'USD', 50.00, 50.00, 'test', ${runId}::uuid, 't006b-1')`,
+    orgId,
+  );
   try {
     const ctx: TenantContext = { workspaceId, orgId, userId: randomUUID(), isOrgAdmin: true, actorType: "user", requestId: "t006b" };
     await expect(withTenant(prisma, ctx, (tx) => spendThroughInCurrency(tx, envelopeId, "2026-12-31", "BRL"))).rejects.toThrow(/No FX rate/);

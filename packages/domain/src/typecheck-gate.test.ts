@@ -39,13 +39,20 @@ it("pins the spec §2 scripts", () => {
   expect(isRecord(parsed) ? parsed["scripts"] : undefined).toEqual(expectedScripts);
 });
 
-it("copies the spec §2 compose file, plus the GCS emulator from ADR-011", () => {
+it("copies the spec §2 compose file, plus the GCS emulator from ADR-011 and the owner-role init script from W0-6", () => {
   const compose = readFileSync(join(root, "docker-compose.yml"), "utf8");
   expect(compose).toBe(`services:
   db:
     image: postgres:16
     environment: { POSTGRES_USER: budget, POSTGRES_PASSWORD: budget, POSTGRES_DB: budget }
     ports: ["5432:5432"]
+    # W0-6 (docs/STACK_AUDIT_2026-10-04.md S-2, S-3, S-21): runs once, automatically, the first
+    # time this container's data directory is created. Creates \`budget_owner\`, the non-superuser,
+    # NOBYPASSRLS role that migrations/seed/tests run as from here on, matching production's
+    # owner. An existing local volume does not re-run this — \`pnpm db:reset\` recreates it
+    # (docs/runbooks/local.md).
+    volumes:
+      - ./scripts/db-init.sql:/docker-entrypoint-initdb.d/01-db-init.sql:ro
     command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
   redis:
     image: redis:7

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { LIVE_LEAVES, TimelineResponse, effectiveTargetAt, type TimelineBar } from "@budget/domain";
+import { asOrgAdmin } from "@budget/db";
 import { Decimal } from "decimal.js";
 import LZString from "lz-string";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -79,7 +80,7 @@ describe("GET /workspaces/:ws/timeline (T-037)", () => {
     expect(t.calendar.periods.filter((p) => p.kind === "quarter").map((p) => p.id)).toEqual(["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"]);
     // The default template when no groupBy: its path.
     const def = await timeline("");
-    const template = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, isDefault: true } });
+    const template = await asOrgAdmin(owner, (tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, isDefault: true } }), golden.orgId);
     expect(Math.max(...envelopes(def).map((b) => b.level))).toBe(template.path.length);
   });
 
@@ -98,19 +99,31 @@ describe("GET /workspaces/:ws/timeline (T-037)", () => {
 
   it("targets are lanes under their envelope with the effective target per date; an asOf before a target's approval leaves it out", async () => {
     // A live leaf without its own CPA target inherits the country's (annual). Give it a Q4 override.
-    const [leaf] = await owner.$queryRawUnsafe<Array<{ id: string }>>(
-      `SELECT e.id::text FROM envelope e
-       WHERE e.workspace_id = $1::uuid AND e.status <> 'ARCHIVED' AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id)
-         AND NOT EXISTS (SELECT 1 FROM target t WHERE t.envelope_id = e.id) AND e.dimension_values ? 'audience'
-       ORDER BY e.name LIMIT 1`,
-      golden.workspaceId,
+    // W0-6: the owner has no BYPASSRLS; envelope/target/target_version need the org-admin tenant context.
+    const [leaf] = await asOrgAdmin(
+      owner,
+      (tx) =>
+        tx.$queryRawUnsafe<Array<{ id: string }>>(
+          `SELECT e.id::text FROM envelope e
+           WHERE e.workspace_id = $1::uuid AND e.status <> 'ARCHIVED' AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id)
+             AND NOT EXISTS (SELECT 1 FROM target t WHERE t.envelope_id = e.id) AND e.dimension_values ? 'audience'
+           ORDER BY e.name LIMIT 1`,
+          golden.workspaceId,
+        ),
+      golden.orgId,
     );
     expect(leaf).toBeDefined();
     const targetId = randomUUID();
     const versionId = randomUUID();
-    await owner.target.create({ data: { id: targetId, workspaceId: golden.workspaceId, scopeType: "envelope", envelopeId: leaf?.id as string, metricKey: "cpa", startDate: new Date("2026-10-01"), endDate: new Date("2026-12-31") } });
-    await owner.targetVersion.create({ data: { id: versionId, targetId, versionNo: 1, value: "9.5", comparator: "lte", status: "APPROVED", createdBy: golden.users.planner, approvedAt: new Date() } });
-    await owner.target.update({ where: { id: targetId }, data: { currentVersionId: versionId } });
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.target.create({ data: { id: targetId, workspaceId: golden.workspaceId, scopeType: "envelope", envelopeId: leaf?.id as string, metricKey: "cpa", startDate: new Date("2026-10-01"), endDate: new Date("2026-12-31") } });
+        await tx.targetVersion.create({ data: { id: versionId, targetId, versionNo: 1, value: "9.5", comparator: "lte", status: "APPROVED", createdBy: golden.users.planner, approvedAt: new Date() } });
+        await tx.target.update({ where: { id: targetId }, data: { currentVersionId: versionId } });
+      },
+      golden.orgId,
+    );
 
     const t = await timeline("groupBy=country");
     const env = t.bars.find((b) => b.kind === "envelope" && b.envelopeId === leaf?.id);
@@ -120,9 +133,14 @@ describe("GET /workspaces/:ws/timeline (T-037)", () => {
     const annual = lanes.find((b) => b.metric === "cpa" && b.inheritedFrom !== undefined);
     expect(q4).toMatchObject({ value: "9.5000", comparator: "lte", start: "2026-10-01", end: "2026-12-31", effective: [{ start: "2026-10-01", end: "2026-12-31" }] });
     // Inherited from an ancestor (the country envelope), not set on the leaf.
-    const ancestors = await owner.$queryRawUnsafe<Array<{ id: string }>>(
-      `WITH RECURSIVE up AS (SELECT id, parent_id FROM envelope WHERE id = $1::uuid UNION ALL SELECT p.id, p.parent_id FROM envelope p JOIN up ON p.id = up.parent_id) SELECT id::text FROM up WHERE id <> $1::uuid`,
-      leaf?.id,
+    const ancestors = await asOrgAdmin(
+      owner,
+      (tx) =>
+        tx.$queryRawUnsafe<Array<{ id: string }>>(
+          `WITH RECURSIVE up AS (SELECT id, parent_id FROM envelope WHERE id = $1::uuid UNION ALL SELECT p.id, p.parent_id FROM envelope p JOIN up ON p.id = up.parent_id) SELECT id::text FROM up WHERE id <> $1::uuid`,
+          leaf?.id,
+        ),
+      golden.orgId,
     );
     expect(ancestors.map((a) => a.id)).toContain(annual?.inheritedFrom);
     expect(annual?.effective).toEqual([{ start: annual?.start, end: "2026-09-30" }]);
@@ -150,9 +168,14 @@ describe("GET /workspaces/:ws/timeline (T-037)", () => {
     const kinds = new Set(envelopes(t).flatMap((b) => b.markers.map((m) => m.kind)));
     expect(kinds.has("alert") || kinds.has("comment") || kinds.has("approval") || kinds.has("version")).toBe(true);
     for (const m of envelopes(t).flatMap((b) => b.markers)) expect(m.at >= "2026-01-01" && m.at <= "2026-12-31").toBe(true);
-    const closures = await owner.$queryRawUnsafe<Array<{ key: string; at: string }>>(
-      `SELECT fp.key, (c.closed_at AT TIME ZONE 'UTC')::date::text AS at FROM period_closure c JOIN fiscal_period fp ON fp.id = c.period_id WHERE c.workspace_id = $1::uuid AND c.closed_at < '2027-01-01' ORDER BY c.closed_at`,
-      golden.workspaceId,
+    const closures = await asOrgAdmin(
+      owner,
+      (tx) =>
+        tx.$queryRawUnsafe<Array<{ key: string; at: string }>>(
+          `SELECT fp.key, (c.closed_at AT TIME ZONE 'UTC')::date::text AS at FROM period_closure c JOIN fiscal_period fp ON fp.id = c.period_id WHERE c.workspace_id = $1::uuid AND c.closed_at < '2027-01-01' ORDER BY c.closed_at`,
+          golden.workspaceId,
+        ),
+      golden.orgId,
     );
     expect(t.calendar.keyDates).toEqual(closures.map((c) => ({ at: c.at, label: c.key, kind: "closure" })));
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -24,6 +24,9 @@ async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId, ...(requestId ? { "x-request-id": requestId } : {}) }, ...(body === undefined ? {} : { body }) });
 }
 const id = (key: string) => golden.envelopeIds.get(key) as string;
+// W0-6: the owner has no BYPASSRLS; every owner.* call below needs the same org-admin tenant
+// context real reads/writes get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 const leafKeys = (prefix: string) => plan.filter((e) => e.level === 4 && e.key.startsWith(prefix)).map((e) => e.key);
 const approved = (key: string) => new Decimal(byKey.get(key)?.versions.at(-1)?.amount ?? 0);
 async function env(envelopeId: string) {
@@ -57,30 +60,32 @@ describe("move: cap re-validation (T-014 done-when)", () => {
     const after = await env(id(leaf));
     expect(after.parentId).toBe(before.parentId);
     expect(after.rowVersion).toBe(before.rowVersion);
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), kind: "move" } })).toBe(0);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), kind: "move" } }))).toBe(0);
   });
 
   it("allows it when the new parent allows over-allocation; lineage, audit and outbox are written", async () => {
     const leaf = leafKeys("LATAM/MX/meta/awareness")[1] as string;
     const target = "LATAM/MX/tiktok/awareness";
-    await owner.envelope.update({ where: { id: id(target) }, data: { allowOverAllocation: true } });
+    await admin((tx) => tx.envelope.update({ where: { id: id(target) }, data: { allowOverAllocation: true } }));
     const requestId = `move-${randomUUID()}`;
     const res = await as("planner", "POST", `/api/v1/envelopes/${id(leaf)}/move`, { parentId: id(target), rowVersion: (await env(id(leaf))).rowVersion, rationale: "re-org" }, requestId);
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect((await env(id(leaf))).parentId).toBe(id(target));
-    const lineage = await owner.envelopeLineage.findFirstOrThrow({ where: { fromEnvelopeId: id(leaf), kind: "move" } });
+    const lineage = await admin((tx) => tx.envelopeLineage.findFirstOrThrow({ where: { fromEnvelopeId: id(leaf), kind: "move" } }));
     expect(lineage.toEnvelopeId).toBe(id(target));
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId);
+    const audits = await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId));
     expect(audits.map((a) => a.action)).toEqual(["envelope.moved"]);
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'moved' AND payload->>'envelopeId' = $2`, golden.workspaceId, id(leaf));
+    const out = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'moved' AND payload->>'envelopeId' = $2`, golden.workspaceId, id(leaf)));
     expect(Number(out[0]?.n)).toBe(1);
   });
 
   it("refuses to move a real envelope under a demo one, and writes nothing (HF-1)", async () => {
     const demoParentId = randomUUID();
-    await owner.envelope.create({
-      data: { id: demoParentId, workspaceId: golden.workspaceId, name: "Demo parent", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.planner, demo: true },
-    });
+    await admin((tx) =>
+      tx.envelope.create({
+        data: { id: demoParentId, workspaceId: golden.workspaceId, name: "Demo parent", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.planner, demo: true },
+      }),
+    );
     const leaf = leafKeys("LATAM/AR/google_ads/conversion")[0] as string;
     const before = await env(id(leaf));
     const res = await move(id(leaf), demoParentId);
@@ -89,8 +94,8 @@ describe("move: cap re-validation (T-014 done-when)", () => {
     const after = await env(id(leaf));
     expect(after.parentId).toBe(before.parentId);
     expect(after.rowVersion).toBe(before.rowVersion);
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), toEnvelopeId: demoParentId } })).toBe(0);
-    await owner.envelope.delete({ where: { id: demoParentId } });
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), toEnvelopeId: demoParentId } }))).toBe(0);
+    await admin((tx) => tx.envelope.delete({ where: { id: demoParentId } }));
   });
 
   it("to the root and back: the original parent still has room for it", async () => {
@@ -100,7 +105,7 @@ describe("move: cap re-validation (T-014 done-when)", () => {
     expect((await env(id(leaf))).parentId).toBeNull();
     expect((await move(id(leaf), parent)).status).toBe(201);
     expect((await env(id(leaf))).parentId).toBe(parent);
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), kind: "move" } })).toBe(2);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), kind: "move" } }))).toBe(2);
   });
 
   it("refuses cycles, stale rowVersion, and moving under the same parent", async () => {
@@ -123,9 +128,9 @@ describe("move: cap re-validation (T-014 done-when)", () => {
     const moved = await move(id(leaf), null); // at the root there is no parent to over-allocate
     expect(moved.status).toBe(201);
     expect(moved.body["reroutedRequestId"]).toBe(submitted.body["requestId"]);
-    const r = await owner.approvalRequest.findUniqueOrThrow({ where: { id: String(submitted.body["requestId"]) } });
+    const r = await admin((tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: String(submitted.body["requestId"]) } }));
     expect(r.status).toBe("CHANGES_REQUESTED");
-    const comment = await owner.comment.findFirstOrThrow({ where: { thread: { anchorId: id(leaf), isBlocking: true } } });
+    const comment = await admin((tx) => tx.comment.findFirstOrThrow({ where: { thread: { anchorId: id(leaf), isBlocking: true } } }));
     expect(comment.bodyMd).toMatch(/^\[system\] .* was moved; the change now matches policy "Standard"/);
   });
 });
@@ -163,11 +168,11 @@ describe("split", () => {
       const p = await env(pid);
       expect(p).toMatchObject({ status: "APPROVED", parentId: e.parentId });
       expect(p.current?.amount).toBe(i === 0 ? a.toFixed(2) : total.minus(a).toFixed(2));
-      const phasing = await owner.envelopePhasing.findMany({ where: { versionId: p.currentVersionId as string } });
+      const phasing = await admin((tx) => tx.envelopePhasing.findMany({ where: { versionId: p.currentVersionId as string } }));
       expect(phasing).toHaveLength(12);
       expect(phasing.reduce((s, x) => s.plus(x.amount.toString()), new Decimal(0)).toFixed(2)).toBe(p.current?.amount);
     }
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), kind: "split" } })).toBe(2);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), kind: "split" } }))).toBe(2);
     // Archived envelopes are closed for edits.
     expect((await move(id(leaf), null)).status).toBe(409);
   });
@@ -194,9 +199,9 @@ describe("split", () => {
       expect(approvedSplit.body).toMatchObject({ autoApproved: false, policy: { name: "Minor adjustment" } });
       // S-003: the request has its own audit row and approval.changed row, as a single change's does.
       const splitRequest = String(approvedSplit.body["requestId"]);
-      const [announced] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1 AND payload->>'action' = 'approval.requested'`, splitRequest);
+      const [announced] = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1 AND payload->>'action' = 'approval.requested'`, splitRequest));
       expect(Number(announced?.n)).toBe(1);
-      const [audited] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.requested'`, splitRequest);
+      const [audited] = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.requested'`, splitRequest));
       expect(Number(audited?.n)).toBe(1);
       expect((await env(id(first))).status).toBe("PENDING");
       expect((await as("budgetOwner", "POST", `/api/v1/approvals/${String(approvedSplit.body["requestId"])}/decisions`, { decision: "approve" })).status).toBe(201);
@@ -232,7 +237,7 @@ describe("merge", () => {
     expect(target).toMatchObject({ status: "APPROVED", parentId: parent });
     expect(target.current?.amount).toBe(approved(a).plus(approved(b)).toFixed(2));
     for (const s of [a, b]) expect((await env(id(s))).status).toBe("ARCHIVED");
-    expect(await owner.envelopeLineage.count({ where: { toEnvelopeId: String(res.body["targetId"]), kind: "merge" } })).toBe(2);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { toEnvelopeId: String(res.body["targetId"]), kind: "merge" } }))).toBe(2);
   });
 
   it("refuses envelopes with different parents, and fewer than two", async () => {
@@ -256,7 +261,8 @@ describe("lock order (W3-5)", () => {
   async function inCycle(envelopeId: string): Promise<boolean> {
     let p: string | null = envelopeId;
     for (let i = 0; i < 64 && p !== null; i += 1) {
-      p = (await owner.envelope.findUniqueOrThrow({ where: { id: p }, select: { parentId: true } })).parentId;
+      const pid: string = p; // TS does not narrow a `let` captured by the closure below
+      p = (await admin((tx) => tx.envelope.findUniqueOrThrow({ where: { id: pid }, select: { parentId: true } }))).parentId;
       if (p === envelopeId) return true;
     }
     return false;
@@ -269,7 +275,7 @@ describe("lock order (W3-5)", () => {
       const e = await env(id(leaf));
       // Over the parent's cap (allowed there), so the request routes to Major / over-allocation and
       // the move to the root re-routes it: the move takes the request lock, the decision the envelope's.
-      await owner.envelope.update({ where: { id: e.parentId as string }, data: { allowOverAllocation: true } });
+      await admin((tx) => tx.envelope.update({ where: { id: e.parentId as string }, data: { allowOverAllocation: true } }));
       const draft = await as("planner", "PATCH", `/api/v1/envelopes/${id(leaf)}/draft`, { amount: approved(leaf).mul(2).toFixed(2), basedOnVersionId: e.currentVersionId });
       expect(draft.status, JSON.stringify(draft.body)).toBeLessThan(300);
       const submitted = await as("planner", "POST", `/api/v1/envelopes/${id(leaf)}/submit`, { versionId: draft.body["id"] });
@@ -293,7 +299,7 @@ describe("lock order (W3-5)", () => {
       ["LATAM/AR/meta/awareness", "LATAM/AR/meta/consideration"],
     ] as const;
     for (const [a, b] of pairs) {
-      await owner.envelope.updateMany({ where: { id: { in: [id(a), id(b)] } }, data: { allowOverAllocation: true } });
+      await admin((tx) => tx.envelope.updateMany({ where: { id: { in: [id(a), id(b)] } }, data: { allowOverAllocation: true } }));
       const [ra, rb] = await Promise.all([move(id(a), id(b)), move(id(b), id(a))]);
       noServerError([ra.status, rb.status]);
       expect([ra.status, rb.status].sort()).toEqual([201, 422]);
@@ -309,7 +315,7 @@ describe("lock order (W3-5)", () => {
       const z = `${country}/tiktok/awareness`;
       const w = leafKeys(x)[0] as string; // under x
       const y = leafKeys(z)[0] as string; // under z
-      await owner.envelope.updateMany({ where: { id: { in: [id(w), id(y)] } }, data: { allowOverAllocation: true } });
+      await admin((tx) => tx.envelope.updateMany({ where: { id: { in: [id(w), id(y)] } }, data: { allowOverAllocation: true } }));
       const [m1, m2] = await Promise.all([move(id(x), id(y)), move(id(z), id(w))]);
       noServerError([m1.status, m2.status]);
       expect([m1.status, m2.status].sort()).toEqual([201, 422]);

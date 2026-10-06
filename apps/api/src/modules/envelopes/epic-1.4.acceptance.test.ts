@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GOLDEN_ASSERTIONS, GOLDEN_ROUNDS, GOLDEN_SPLIT, goldenPlan, GOLDEN_HISTORY } from "@budget/db";
+import { asOrgAdmin, GOLDEN_ASSERTIONS, GOLDEN_ROUNDS, GOLDEN_SPLIT, goldenPlan, GOLDEN_HISTORY, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -40,6 +40,9 @@ async function timeline(envelopeId: string, query = ""): Promise<Row[]> {
   return out;
 }
 const id = (key: string) => golden.envelopeIds.get(key) as string;
+// W0-6: the owner has no BYPASSRLS; every owner.* read/write below needs the same org-admin
+// tenant context real calls get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
@@ -138,7 +141,9 @@ describe("Any envelope or roll-up shows a full timeline from audit data alone", 
     expect(created.title).toBe("Envelope created");
     // Every approval request of this leaf is on it, with its decisions.
     const requests = new Set(rows.filter((r) => r.refs.entityType === "approval_request").map((r) => r.refs.entityId));
-    const dbRequests = await owner.approvalRequest.count({ where: { entityId: { in: (await owner.envelopeVersion.findMany({ where: { envelopeId: id(leaf.key) }, select: { id: true } })).map((v) => v.id) } } });
+    const dbRequests = await admin(async (tx) =>
+      tx.approvalRequest.count({ where: { entityId: { in: (await tx.envelopeVersion.findMany({ where: { envelopeId: id(leaf.key) }, select: { id: true } })).map((v) => v.id) } } }),
+    );
     expect(requests.size).toBe(dbRequests);
   });
 
@@ -169,35 +174,39 @@ describe("Any envelope or roll-up shows a full timeline from audit data alone", 
     expect(decided.status).toBe(201);
     // Alerts, ingest and closures have no commands yet (T-018, T-017, T-024): fixture rows.
     const ws = golden.workspaceId;
-    // W3-11 (audit I-32): alert.rule_id is a FK to pacing_rule(id) now; give it a real row.
-    const rule = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO pacing_rule (id, workspace_id, name, metric, comparator, threshold, severity) VALUES ($1::uuid, $2::uuid, 'fixture rule', 'pace_index', 'gt', 1, 'high')`,
-      rule, ws,
-    );
-    await owner.$executeRawUnsafe(
-      `INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context, opened_at, resolved_at)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'high', 'RESOLVED', 1.4, 1.2, '{}'::jsonb, '2026-03-01T00:00:00Z', '2026-03-02T00:00:00Z')`,
-      randomUUID(), ws, rule, envelopeId,
-    );
-    const source = randomUUID();
-    const run = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO data_source (id, workspace_id, kind, name, config, mapping) VALUES ($1::uuid, $2::uuid, 'csv', 'fixture', '{}'::jsonb, '{}'::jsonb)`, source, ws);
-    // W3-11 (audit I-34): ingest_run.status is queued | running | ok | failed (pipeline.ts, worker.ts); 'succeeded' was never a real value.
-    await owner.$executeRawUnsafe(`INSERT INTO ingest_run (id, source_id, started_at, finished_at, status, rows_accepted) VALUES ($1::uuid, $2::uuid, '2026-03-03T00:00:00Z', '2026-03-03T00:05:00Z', 'ok', 1)`, run, source);
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-       VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-03-01', 'USD', 10, 10, 'csv', $3::uuid, $4)`,
-      ws, envelopeId, run, randomUUID(),
-    );
-    const period = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO fiscal_period (id, workspace_id, key, kind, start_date, end_date) VALUES ($1::uuid, $2::uuid, 'FY26', 'year', '2026-01-01', '2026-12-31')`, period, ws);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET period_id = $1::uuid WHERE id = $2::uuid`, period, envelopeId);
-    await owner.$executeRawUnsafe(
-      `INSERT INTO period_closure (id, workspace_id, period_id, status, closed_by, closed_at, registry_version, bq_table, variance_summary)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, 'closed', $4::uuid, '2026-03-04T00:00:00Z', '{}'::jsonb, 'fixture', '{}'::jsonb)`,
-      randomUUID(), ws, period, golden.users.admin,
-    );
+    // W0-6: the owner has no BYPASSRLS; these inserts need the same org-admin tenant context real
+    // writes get from withTenant, scoped to the golden workspace's org.
+    await admin(async (tx) => {
+      // W3-11 (audit I-32): alert.rule_id is a FK to pacing_rule(id) now; give it a real row.
+      const rule = randomUUID();
+      await tx.$executeRawUnsafe(
+        `INSERT INTO pacing_rule (id, workspace_id, name, metric, comparator, threshold, severity) VALUES ($1::uuid, $2::uuid, 'fixture rule', 'pace_index', 'gt', 1, 'high')`,
+        rule, ws,
+      );
+      await tx.$executeRawUnsafe(
+        `INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context, opened_at, resolved_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'high', 'RESOLVED', 1.4, 1.2, '{}'::jsonb, '2026-03-01T00:00:00Z', '2026-03-02T00:00:00Z')`,
+        randomUUID(), ws, rule, envelopeId,
+      );
+      const source = randomUUID();
+      const run = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO data_source (id, workspace_id, kind, name, config, mapping) VALUES ($1::uuid, $2::uuid, 'csv', 'fixture', '{}'::jsonb, '{}'::jsonb)`, source, ws);
+      // W3-11 (audit I-34): ingest_run.status is queued | running | ok | failed (pipeline.ts, worker.ts); 'succeeded' was never a real value.
+      await tx.$executeRawUnsafe(`INSERT INTO ingest_run (id, source_id, started_at, finished_at, status, rows_accepted) VALUES ($1::uuid, $2::uuid, '2026-03-03T00:00:00Z', '2026-03-03T00:05:00Z', 'ok', 1)`, run, source);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
+         VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-03-01', 'USD', 10, 10, 'csv', $3::uuid, $4)`,
+        ws, envelopeId, run, randomUUID(),
+      );
+      const period = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO fiscal_period (id, workspace_id, key, kind, start_date, end_date) VALUES ($1::uuid, $2::uuid, 'FY26', 'year', '2026-01-01', '2026-12-31')`, period, ws);
+      await tx.$executeRawUnsafe(`UPDATE envelope SET period_id = $1::uuid WHERE id = $2::uuid`, period, envelopeId);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO period_closure (id, workspace_id, period_id, status, closed_by, closed_at, registry_version, bq_table, variance_summary)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'closed', $4::uuid, '2026-03-04T00:00:00Z', '{}'::jsonb, 'fixture', '{}'::jsonb)`,
+        randomUUID(), ws, period, golden.users.admin,
+      );
+    });
 
     const rows = await timeline(envelopeId);
     const kinds = new Set(rows.map((r) => r.kind));

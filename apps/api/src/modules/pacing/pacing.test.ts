@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -28,44 +29,49 @@ let ruleId: string;
 async function call(user: TestUser, method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: unknown, requestId = rid()) {
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: { ...X, "x-request-id": requestId }, ...(body === undefined ? {} : { body }) });
 }
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace-scoped tables
+// below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 const actions = async (requestId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId)).map((r) => r.action);
+  (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId))).map((r) => r.action);
 const overPace = { name: "Over-pace", metric: "pace_index", comparator: "gt", threshold: "1.10", consecutiveDays: 3, severity: "warning" };
 
 async function envelope(name: string, dims: Record<string, string>, budget: string, spend: string): Promise<string> {
   const id = randomUUID();
   const v = randomUUID();
-  await owner.$executeRawUnsafe(
-    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
-     VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
-    id,
-    ws,
-    name,
-    JSON.stringify(dims),
-    orgAdmin.id,
-  );
-  await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`, v, id, budget, orgAdmin.id);
-  await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
-  await owner.$executeRawUnsafe(
-    `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, $3::jsonb, '2026-03-01', 'USD', $4::numeric, $4::numeric, 'fixture', $5::uuid, $6)`,
-    ws,
-    id,
-    JSON.stringify(dims),
-    spend,
-    randomUUID(),
-    randomUUID(),
-  );
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
+      id,
+      ws,
+      name,
+      JSON.stringify(dims),
+      orgAdmin.id,
+    );
+    await tx.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`, v, id, budget, orgAdmin.id);
+    await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+    await tx.$executeRawUnsafe(
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, $3::jsonb, '2026-03-01', 'USD', $4::numeric, $4::numeric, 'fixture', $5::uuid, $6)`,
+      ws,
+      id,
+      JSON.stringify(dims),
+      spend,
+      randomUUID(),
+      randomUUID(),
+    );
+  });
   return id;
 }
 async function alert(envelopeId: string, status = "OPEN"): Promise<string> {
   const id = randomUUID();
-  await owner.alert.create({ data: { id, workspaceId: ws, ruleId, envelopeId, severity: "warning", status: status as "OPEN", metricValue: "1.2", threshold: "1.1", context: {} } });
+  await asAdmin((tx) => tx.alert.create({ data: { id, workspaceId: ws, ruleId, envelopeId, severity: "warning", status: status as "OPEN", metricValue: "1.2", threshold: "1.1", context: {} } }));
   return id;
 }
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t018-api" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t018-${ws}`, name: "T-018", reportingCurrency: "USD" } });
+  await asAdmin((tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t018-${ws}`, name: "T-018", reportingCurrency: "USD" } }));
   await owner.user.createMany({ data: [budgetOwner, scopedOwner, planner, viewer, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.email, googleSub: `g-${u.sub}` })) });
   const latam = { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] };
   await owner.roleAssignment.createMany({
@@ -78,13 +84,17 @@ beforeAll(async () => {
     ],
   });
   const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
-  for (const code of ["latam", "emea"]) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+    for (const code of ["latam", "emea"]) await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
+  });
   env["latam"] = await envelope("LATAM", { region: "latam" }, "1000.00", "700.00");
   env["emea"] = await envelope("EMEA", { region: "emea" }, "1000.00", "100.00");
-  for (const [code, id] of [["latam", env["latam"]], ["emea", env["emea"]]] as const) {
-    await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) SELECT $1::uuid, $2::uuid, id FROM dimension_value WHERE dimension_id = $2::uuid AND code = $3`, id, region, code);
-  }
+  await asAdmin(async (tx) => {
+    for (const [code, id] of [["latam", env["latam"]], ["emea", env["emea"]]] as const) {
+      await tx.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) SELECT $1::uuid, $2::uuid, id FROM dimension_value WHERE dimension_id = $2::uuid AND code = $3`, id, region, code);
+    }
+  });
   h = await startHarness();
 }, 60_000);
 
@@ -92,9 +102,13 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [budgetOwner.id, scopedOwner.id, planner.id, viewer.id, orgAdmin.id] } } });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
@@ -121,7 +135,7 @@ describe("rules", () => {
     const requestId = rid();
     const res = await call(budgetOwner, "PATCH", `/rules/${ruleId}`, { threshold: "1.15", severity: "critical" }, requestId);
     expect(res.body).toMatchObject({ threshold: "1.15", severity: "critical" });
-    const [a] = await owner.$queryRawUnsafe<Array<{ before: { threshold: string } }>>(`SELECT before FROM audit_event WHERE request_id = $1`, requestId);
+    const [a] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ before: { threshold: string } }>>(`SELECT before FROM audit_event WHERE request_id = $1`, requestId));
     expect(a?.before.threshold).toBe("1.1");
     expect((await call(budgetOwner, "PATCH", `/rules/${ruleId}`, { metric: "kpi_vs_target_pct", metricArgs: {} })).status).toBe(422);
   });
@@ -131,9 +145,11 @@ describe("rules", () => {
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(created.body).toMatchObject({ isActive: false, delivery: { inApp: false, assignTo: viewer.id }, metricArgs: { period: { kind: "relative", preset: "current_quarter" } } });
     const tempId = String(created.body["id"]);
-    const [env] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM envelope WHERE workspace_id = $1::uuid LIMIT 1`, ws);
     const alertId = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'warning', 'OPEN', 1.2, 1.1, '{}'::jsonb)`, alertId, ws, tempId, env?.id);
+    await asAdmin(async (tx) => {
+      const [env] = await tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM envelope WHERE workspace_id = $1::uuid LIMIT 1`, ws);
+      await tx.$executeRawUnsafe(`INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'warning', 'OPEN', 1.2, 1.1, '{}'::jsonb)`, alertId, ws, tempId, env?.id);
+    });
 
     expect((await call(planner, "DELETE", `/rules/${tempId}`)).status).toBe(403);
     const requestId = rid();
@@ -141,7 +157,7 @@ describe("rules", () => {
     expect(del.status, JSON.stringify(del.body)).toBe(200);
     expect(del.body).toMatchObject({ deleted: true, alertsResolved: 1 });
     expect(await actions(requestId)).toEqual(["rule.deleted"]);
-    const [alert] = await owner.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alertId);
+    const [alert] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status::text FROM alert WHERE id = $1::uuid`, alertId));
     expect(alert?.status).toBe("RESOLVED");
     const list = (await call(viewer, "GET", `/workspaces/${ws}/rules`)).body as unknown as Array<{ id: string }>;
     expect(list.map((r) => r.id)).not.toContain(tempId);
@@ -151,7 +167,7 @@ describe("rules", () => {
     const again = await call(budgetOwner, "POST", `/workspaces/${ws}/rules`, { ...overPace, name: "Temp rule" });
     expect(again.status).toBe(201);
     await call(budgetOwner, "DELETE", `/rules/${String(again.body["id"])}`);
-    await owner.$executeRawUnsafe(`DELETE FROM alert WHERE id = $1::uuid`, alertId);
+    await asAdmin((tx) => tx.$executeRawUnsafe(`DELETE FROM alert WHERE id = $1::uuid`, alertId));
   });
 });
 
@@ -172,7 +188,7 @@ describe("alerts", () => {
   });
 
   it("acknowledge → snooze → resolve; each change audited with one alert.changed; resolved is final", async () => {
-    const id = (await owner.alert.findFirstOrThrow({ where: { envelopeId: env["latam"] ?? "" } })).id;
+    const id = (await asAdmin((tx) => tx.alert.findFirstOrThrow({ where: { envelopeId: env["latam"] ?? "" } }))).id;
     expect((await call(viewer, "PATCH", `/alerts/${id}`, { status: "ACKNOWLEDGED" })).status).toBe(403);
     let requestId = rid();
     const ack = await call(planner, "PATCH", `/alerts/${id}`, { status: "ACKNOWLEDGED", ownerId: planner.id }, requestId);
@@ -187,13 +203,13 @@ describe("alerts", () => {
     expect(resolved.body).toMatchObject({ status: "RESOLVED", snoozedUntil: null });
     expect(resolved.body["resolvedAt"]).toEqual(expect.any(String));
     expect(await actions(requestId)).toEqual(["alert.resolved"]);
-    const changes = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'alert.changed' AND payload->>'alertId' = $1`, id);
+    const changes = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'alert.changed' AND payload->>'alertId' = $1`, id));
     expect(Number(changes[0]?.n)).toBe(3);
     expect((await call(planner, "PATCH", `/alerts/${id}`, { status: "ACKNOWLEDGED" })).status).toBe(409);
   });
 
   it("a scoped owner cannot touch an alert outside its scope", async () => {
-    const id = (await owner.alert.findFirstOrThrow({ where: { envelopeId: env["emea"] ?? "" } })).id;
+    const id = (await asAdmin((tx) => tx.alert.findFirstOrThrow({ where: { envelopeId: env["emea"] ?? "" } }))).id;
     expect((await call(scopedOwner, "PATCH", `/alerts/${id}`, { status: "ACKNOWLEDGED" })).status).toBe(403);
   });
 });

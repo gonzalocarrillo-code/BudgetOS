@@ -17,7 +17,14 @@ const url = (key: string) => {
   if (!v) throw new Error(`${key} is not set (packages/db/.env)`);
   return v;
 };
-const owner = new PrismaClient({ datasources: { db: { url: url("DATABASE_URL") } } });
+// W0-6: the owner has no BYPASSRLS, so `ingest_run`/`export_job`/`data_source`/`outbox`/
+// `audit_event` need the org-admin tenant context real writes get from withTenant. This file's
+// owner calls are scattered across many `it` blocks rather than a few setup/teardown hooks, so
+// `connection_limit=1` pins the client to one physical connection and a single session-level
+// `set_config` (not transaction-local) in beforeAll makes every later owner.* call on it see that
+// context for the rest of the file (same technique apps/workers/src/ingest/pipeline.test.ts and
+// packages/query-planner/src/test-support/db.ts use for the same reason).
+const owner = new PrismaClient({ datasources: { db: { url: `${url("DATABASE_URL")}?connection_limit=1` } } });
 const app = new PrismaClient({ datasources: { db: { url: url("APP_DATABASE_URL") } } });
 
 const orgId = randomUUID();
@@ -29,6 +36,9 @@ const count = async (sql: string, ...args: unknown[]) => Number((await owner.$qu
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "w34" } });
+  // Session-level (not transaction-local): persists on this connection_limit=1 connection for
+  // every owner.* call for the rest of this file, including the afterAll cleanup.
+  await owner.$executeRawUnsafe(`SELECT set_config('app.is_org_admin', 'true', false), set_config('app.org_id', $1, false)`, orgId);
   await owner.workspace.create({ data: { id: ws, orgId, slug: `w34-${ws}`, name: "W3-4", reportingCurrency: "USD" } });
   await owner.user.create({ data: { id: userId, orgId, email: `${userId}@w34.test`, name: "W3-4", googleSub: `g-${userId}` } });
   await owner.dataSource.create({ data: { id: sourceId, workspaceId: ws, kind: "csv", name: "W3-4 CSV", config: { kind: "csv", uri: `gs://w34-uploads/uploads/${ws}/spend.csv` }, mapping: { kind: "spend", columns: { COUNTRY: { dimension: "country" } } } } });
@@ -37,7 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

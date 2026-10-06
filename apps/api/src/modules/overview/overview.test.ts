@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { LIVE_LEAVES, TOP_LEVEL, elapsedFraction } from "@budget/domain";
+import { asOrgAdmin } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -115,7 +116,7 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(new Set(a.all.map((i) => i.envelopeId)).size).toBe(a.all.length);
     for (const k of ["over", "under", "noSpend", "kpi"] as const) expect(a.counts[k], k).toBeGreaterThanOrEqual(a[k].length);
     // The ended ES tiktok leaf (GOLDEN_HISTORY) needs no attention.
-    const ended = await owner.envelope.findMany({ where: { workspaceId: golden.workspaceId, endedAt: { not: null } }, select: { id: true } });
+    const ended = await asOrgAdmin(owner, (tx) => tx.envelope.findMany({ where: { workspaceId: golden.workspaceId, endedAt: { not: null } }, select: { id: true } }), golden.orgId);
     expect(ended.length).toBeGreaterThan(0);
     for (const e of ended) expect([...a.all, ...a.over, ...a.under, ...a.noSpend, ...a.kpi].map((i) => i.envelopeId)).not.toContain(e.id);
     // The workspace's queue, not the caller's list; freshness; CPA by market, worst gap first.
@@ -180,12 +181,12 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
 
   it("counts open alerts the way Home does: open or acknowledged, as the caller may read them (HO-001)", async () => {
     const ws = golden.workspaceId;
-    const [first] = await owner.alert.findMany({ where: { workspaceId: ws, status: "OPEN" }, orderBy: { openedAt: "asc" }, take: 1, select: { id: true } });
+    const [first] = await asOrgAdmin(owner, (tx) => tx.alert.findMany({ where: { workspaceId: ws, status: "OPEN" }, orderBy: { openedAt: "asc" }, take: 1, select: { id: true } }), golden.orgId);
     expect(first, "the golden has open alerts").toBeDefined();
     // An acknowledged alert is still open: someone saw it, nobody resolved it.
     const ack = await as("budgetOwner", "PATCH", `/api/v1/alerts/${first?.id ?? ""}`, { status: "ACKNOWLEDGED" });
     expect(ack.status, JSON.stringify(ack.body)).toBe(200);
-    const inDb = await owner.alert.count({ where: { workspaceId: ws, status: { in: ["OPEN", "ACKNOWLEDGED"] } } });
+    const inDb = await asOrgAdmin(owner, (tx) => tx.alert.count({ where: { workspaceId: ws, status: { in: ["OPEN", "ACKNOWLEDGED"] } } }), golden.orgId);
     for (const persona of ["orgAdmin", "planner", "finance1", "approver"]) {
       const o = (await as(persona, "GET", `/api/v1/workspaces/${ws}/overview`)).body as { alerts: { open: number; counts: Record<string, number> } };
       const home = (await as(persona, "GET", "/api/v1/me/home")).body as { totals: { openAlerts: number } };
@@ -242,21 +243,29 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     const ws = golden.workspaceId;
     const runId = golden.ingest?.runId;
     if (!runId) throw new Error("the golden has no ingest run");
-    const [leaf] = await owner.$queryRaw<Array<{ id: string }>>`
-      SELECT e.id FROM envelope e WHERE e.workspace_id = ${ws}::uuid AND e.status = 'APPROVED' AND e.ended_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id) ORDER BY e.id LIMIT 1`;
+    const [leaf] = await asOrgAdmin(
+      owner,
+      (tx) => tx.$queryRaw<Array<{ id: string }>>`
+        SELECT e.id FROM envelope e WHERE e.workspace_id = ${ws}::uuid AND e.status = 'APPROVED' AND e.ended_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id) ORDER BY e.id LIMIT 1`,
+      golden.orgId,
+    );
     if (!leaf) throw new Error("no live leaf");
     try {
-      await owner.$executeRaw`
-        INSERT INTO projection_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id)
-        VALUES (${ws}::uuid, ${leaf.id}::uuid, '{}'::jsonb, '2026-06-15', 'spend', 1234.5, 1234.5, 'ho-012-test', '2026-12-31', 'test', ${runId}::uuid)`;
+      await asOrgAdmin(
+        owner,
+        (tx) => tx.$executeRaw`
+          INSERT INTO projection_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id)
+          VALUES (${ws}::uuid, ${leaf.id}::uuid, '{}'::jsonb, '2026-06-15', 'spend', 1234.5, 1234.5, 'ho-012-test', '2026-12-31', 'test', ${runId}::uuid)`,
+        golden.orgId,
+      );
       const o = (await as("planner", "GET", `/api/v1/workspaces/${ws}/overview`)).body as { headline: { projected: string | null; projectedClosePct: string | null }; freshness: { projections: { source: string | null; loadedAt: string } | null } };
       expect(o.headline.projected).not.toBeNull();
       expect(new Decimal(o.headline.projected ?? 0).gte("1234.50")).toBe(true);
       expect(o.headline.projectedClosePct).not.toBeNull();
       expect(o.freshness.projections).toMatchObject({ source: "Golden actuals (CSV)" });
     } finally {
-      await owner.$executeRaw`DELETE FROM projection_fact WHERE workspace_id = ${ws}::uuid AND formula_version = 'ho-012-test'`;
+      await asOrgAdmin(owner, (tx) => tx.$executeRaw`DELETE FROM projection_fact WHERE workspace_id = ${ws}::uuid AND formula_version = 'ho-012-test'`, golden.orgId);
     }
   });
 });
@@ -271,36 +280,45 @@ describe("GET /workspaces/:ws/overview — no heatmap axes (T-3)", () => {
   async function leaf(name: string, budget: string, spend: string): Promise<string> {
     const id = randomUUID();
     const v = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
-       VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $4::uuid, now())`,
-      id,
-      ws,
-      name,
-      owner_.id,
-    );
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
-      v,
-      id,
-      budget,
-      owner_.id,
-    );
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-09-15', 'USD', $3::numeric, $3::numeric, 'fixture', $4::uuid, $5)`,
-      ws,
-      id,
-      spend,
-      randomUUID(),
-      randomUUID(),
+    // W0-6: the owner has no BYPASSRLS; envelope/envelope_version/spend_fact need the org-admin
+    // tenant context real writes get from withTenant.
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+           VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $4::uuid, now())`,
+          id,
+          ws,
+          name,
+          owner_.id,
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
+          v,
+          id,
+          budget,
+          owner_.id,
+        );
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+        await tx.$executeRawUnsafe(
+          `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-09-15', 'USD', $3::numeric, $3::numeric, 'fixture', $4::uuid, $5)`,
+          ws,
+          id,
+          spend,
+          randomUUID(),
+          randomUUID(),
+        );
+      },
+      orgId,
     );
     return id;
   }
 
   beforeAll(async () => {
     await owner.organization.create({ data: { id: orgId, name: "t3-no-axes" } });
-    await owner.workspace.create({ data: { id: ws, orgId, slug: `t3-${ws}`, name: "T-3 no axes", reportingCurrency: "USD" } });
+    // W0-6: workspace needs the org-admin tenant context.
+    await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t3-${ws}`, name: "T-3 no axes", reportingCurrency: "USD" } }), orgId);
     await owner.user.create({ data: { id: owner_.id, orgId, email: owner_.email, name: owner_.email, googleSub: `g-${owner_.sub}` } });
     await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: owner_.id, role: "BUDGET_OWNER", createdBy: owner_.id } });
     // Two top-level leaves, no dimensions at all: one well over pace, one well under. Over-pace alone
@@ -310,14 +328,22 @@ describe("GET /workspaces/:ws/overview — no heatmap axes (T-3)", () => {
   }, 60_000);
 
   afterAll(async () => {
-    await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
-    await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
+    // W0-6: all tenant tables below need the org-admin context; workspace.deleteMany must come
+    // after the rows referencing it are gone, so it stays last inside the same asOrgAdmin call.
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+        await tx.roleAssignment.deleteMany({ where: { workspaceId: ws } });
+        await tx.workspace.deleteMany({ where: { id: ws } });
+      },
+      orgId,
+    );
     await owner.user.deleteMany({ where: { id: owner_.id } });
-    await owner.workspace.deleteMany({ where: { id: ws } });
     await owner.organization.deleteMany({ where: { id: orgId } });
   });
 
@@ -348,48 +374,63 @@ describe("GET /workspaces/:ws/overview — heatmap gap (T-7)", () => {
   const countryValueId = new Map<string, string>();
   let platformValueId = "";
 
+  // W0-6: the owner has no BYPASSRLS; workspace, dimension and every generic tenant_isolation
+  // table below (envelope, envelope_version, envelope_dimension, outbox) need the org-admin
+  // tenant context real writes get from withTenant.
   async function leaf(name: string, dims: Record<string, string>, budget: string): Promise<string> {
     const id = randomUUID();
     const v = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
-       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
-      id,
-      ws,
-      name,
-      JSON.stringify(dims),
-      owner_.id,
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+           VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
+          id,
+          ws,
+          name,
+          JSON.stringify(dims),
+          owner_.id,
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
+          v,
+          id,
+          budget,
+          owner_.id,
+        );
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+        if (dims["country"]) await tx.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, countryDim, countryValueId.get(dims["country"]));
+        if (dims["platform"]) await tx.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, platformDim, platformValueId);
+      },
+      orgId,
     );
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
-      v,
-      id,
-      budget,
-      owner_.id,
-    );
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
-    if (dims["country"]) await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, countryDim, countryValueId.get(dims["country"]));
-    if (dims["platform"]) await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, platformDim, platformValueId);
     return id;
   }
 
   beforeAll(async () => {
     await owner.organization.create({ data: { id: orgId, name: "t7-gap" } });
-    await owner.workspace.create({ data: { id: ws, orgId, slug: `t7-${ws}`, name: "T-7 gap", reportingCurrency: "USD" } });
+    await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t7-${ws}`, name: "T-7 gap", reportingCurrency: "USD" } }), orgId);
     await owner.user.create({ data: { id: owner_.id, orgId, email: owner_.email, name: owner_.email, googleSub: `g-${owner_.sub}` } });
     await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: owner_.id, role: "BUDGET_OWNER", createdBy: owner_.id } });
-    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, countryDim, orgId, owner_.id);
-    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'platform', 'Platform', 'ENUM', $3::uuid)`, platformDim, orgId, owner_.id);
-    for (let i = 1; i <= ROWS; i++) {
-      const code = `c${String(i).padStart(2, "0")}`;
-      const id = randomUUID();
-      countryValueId.set(code, id);
-      await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, id, countryDim, code);
-    }
-    countryValueId.set("c99", randomUUID());
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'c99', 'c99')`, countryValueId.get("c99"), countryDim);
-    platformValueId = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'meta', 'Meta')`, platformValueId, platformDim);
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, countryDim, orgId, owner_.id);
+        await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'platform', 'Platform', 'ENUM', $3::uuid)`, platformDim, orgId, owner_.id);
+        for (let i = 1; i <= ROWS; i++) {
+          const code = `c${String(i).padStart(2, "0")}`;
+          const id = randomUUID();
+          countryValueId.set(code, id);
+          await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, id, countryDim, code);
+        }
+        countryValueId.set("c99", randomUUID());
+        await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'c99', 'c99')`, countryValueId.get("c99"), countryDim);
+        platformValueId = randomUUID();
+        await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'meta', 'Meta')`, platformValueId, platformDim);
+      },
+      orgId,
+    );
     // 61 leaves, strictly increasing budgets so the top-50 cut is deterministic: c01 (lowest) is
     // the first to go, c61 (highest of the 61) is the last of them still shown.
     for (let i = 1; i <= ROWS; i++) {
@@ -402,17 +443,23 @@ describe("GET /workspaces/:ws/overview — heatmap gap (T-7)", () => {
   }, 120_000);
 
   afterAll(async () => {
-    const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`, ws);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN ${envs}`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
-    await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
-    await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
+        await tx.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`, ws);
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN ${envs}`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
+        await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
+        await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+        await tx.roleAssignment.deleteMany({ where: { workspaceId: ws } });
+        await tx.workspace.deleteMany({ where: { id: ws } });
+      },
+      orgId,
+    );
     await owner.user.deleteMany({ where: { id: owner_.id } });
-    await owner.workspace.deleteMany({ where: { id: ws } });
     await owner.organization.deleteMany({ where: { id: orgId } });
   });
 

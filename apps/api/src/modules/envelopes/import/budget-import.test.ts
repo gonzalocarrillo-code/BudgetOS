@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../../seed/golden.js";
@@ -27,10 +27,13 @@ const csvOf = (rows: string[][]) => rows.map((r) => r.join(",")).join("\n");
 type Preview = { previewId: string; counts: Record<string, number>; totals: { new: string; change: string }; blocked: string | null; lines: Array<{ line: number; status: string; problems: Array<{ column: string | null; message: string; suggestion?: string | null }> }>; parents: Array<{ name: string; amount: string }>; overCap: Array<{ name: string }>; unknownColumns: string[] };
 
 let templateId: string;
+// W0-6: the owner has no BYPASSRLS; every owner.* call below needs the same org-admin tenant
+// context real reads/writes get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
   h = await startHarness();
-  templateId = (await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } })).id;
+  templateId = (await admin((tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } }))).id;
 }, 180_000);
 
 afterAll(async () => {
@@ -74,33 +77,36 @@ describe("budget import (D-007, D-008)", () => {
     expect(preview.blocked).toBeNull();
     expect(preview.parents.find((p) => p.name === "AMER")?.amount).toBe("48000.00");
     expect(preview.parents.find((p) => p.name === "AMER US meta")?.amount).toBe("6000.00");
-    const before = await owner.envelope.count({ where: { workspaceId: ws } });
+    const before = await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }));
 
     // Record audit/outbox counts before commit to make the test order-independent
-    const auditsBefore = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws);
-    const outBefore = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws);
+    const auditsBefore = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws));
+    const outBefore = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws));
 
     const commit = await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/commit`, { previewId: preview.previewId, rationale: "FY2027 AMER plan" });
     expect(commit.status, JSON.stringify(commit.body)).toBe(201);
     const done = commit.body as { requestId: string | null; autoApproved: boolean; created: number; parents: number; changed: number };
     expect(done).toMatchObject({ created: 48, parents: 35, changed: 2 });
     if (!done.autoApproved) expect((await as("admin", "POST", `/api/v1/approvals/${done.requestId}/decisions`, { decision: "approve" })).status).toBe(201);
-    expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(before + 83);
-    const amer = await owner.envelope.findFirstOrThrow({ where: { workspaceId: ws, name: "AMER", parentId: null } });
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }))).toBe(before + 83);
+    const amer = await admin((tx) => tx.envelope.findFirstOrThrow({ where: { workspaceId: ws, name: "AMER", parentId: null } }));
     expect(amer.status).toBe("APPROVED");
-    const amerVersion = await owner.envelopeVersion.findUniqueOrThrow({ where: { id: amer.currentVersionId as string } });
+    const amerVersion = await admin((tx) => tx.envelopeVersion.findUniqueOrThrow({ where: { id: amer.currentVersionId as string } }));
     expect(amerVersion.amount.toFixed(2)).toBe("48000.00");
-    const leaf = await owner.envelope.findFirstOrThrow({ where: { workspaceId: ws, dimensionValues: { equals: { region: "AMER", country: "US", platform: "meta", objective: "awareness", audience: "prospecting" } } } });
-    const parent = await owner.envelope.findUniqueOrThrow({ where: { id: leaf.parentId as string } });
+    const leaf = await admin((tx) => tx.envelope.findFirstOrThrow({ where: { workspaceId: ws, dimensionValues: { equals: { region: "AMER", country: "US", platform: "meta", objective: "awareness", audience: "prospecting" } } } }));
+    const parent = await admin((tx) => tx.envelope.findUniqueOrThrow({ where: { id: leaf.parentId as string } }));
     expect(parent.dimensionValues).toEqual({ region: "AMER", country: "US", platform: "meta", objective: "awareness" });
     for (const c of changeIds) {
-      const e = await owner.envelope.findUniqueOrThrow({ where: { id: c.id } });
-      expect((await owner.envelopeVersion.findUniqueOrThrow({ where: { id: e.currentVersionId as string } })).amount.toFixed(2)).toBe(c.amount);
+      const amount = await admin(async (tx) => {
+        const e = await tx.envelope.findUniqueOrThrow({ where: { id: c.id } });
+        return (await tx.envelopeVersion.findUniqueOrThrow({ where: { id: e.currentVersionId as string } })).amount;
+      });
+      expect(amount.toFixed(2)).toBe(c.amount);
     }
 
     // Verify audit and outbox row were created by checking the delta
-    const auditsAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws);
-    const outAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws);
+    const auditsAfter = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'budgets.imported'`, ws));
+    const outAfter = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'kind' = 'import'`, ws));
     expect([Number(auditsAfter[0]?.n) - Number(auditsBefore[0]?.n), Number(outAfter[0]?.n) - Number(outBefore[0]?.n)]).toEqual([1, 1]);
 
     // The same file again: every line is the budget as it is now.
@@ -115,7 +121,7 @@ describe("budget import (D-007, D-008)", () => {
     // APAC/JP is untouched by the golden seed and by the earlier AMER/EMEA tests in this file, so this is a genuinely new tuple.
     const tuple = { region: "APAC", country: "JP", platform: "meta", objective: "awareness", audience: "prospecting" };
     const file = csvOf([HEADER, ["", "APAC", "JP", "meta", "awareness", "prospecting", "USD", "500.00", "2026-01-01", "2026-12-31", ""]]);
-    expect(await owner.envelope.count({ where: { workspaceId: ws, dimensionValues: { equals: tuple } } })).toBe(0);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: ws, dimensionValues: { equals: tuple } } }))).toBe(0);
 
     const previewA = (await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/preview`, { csv: file, templateId })).body as unknown as Preview;
     const previewB = (await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/preview`, { csv: file, templateId })).body as unknown as Preview;
@@ -130,7 +136,7 @@ describe("budget import (D-007, D-008)", () => {
     expect(statuses[0]).toBe(201);
     expect([404, 409]).toContain(statuses[1]); // the loser: plan rebuilt after the winner's commit shows the tuple already exists (409), or the preview store already dropped it (404)
 
-    expect(await owner.envelope.count({ where: { workspaceId: ws, dimensionValues: { equals: tuple } } })).toBe(1);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: ws, dimensionValues: { equals: tuple } } }))).toBe(1);
   });
 
   it("problems are per line with the nearest value; a parent pushed over its budget blocks Commit", async () => {

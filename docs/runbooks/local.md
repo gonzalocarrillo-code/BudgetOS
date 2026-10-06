@@ -39,3 +39,11 @@ If the tree looks stale:
 ## Safety: seed, reset and load guards (B-7, I-31)
 
 Seed, reset and load tooling refuse to run against non-local databases (remote Cloud SQL, production RDS) to prevent accidental data destruction. They check the `DATABASE_URL` hostname and reject any non-local host unless `ALLOW_REMOTE_DB=1` is set. Local hosts include `localhost`, `127.0.0.1`, `[::1]`, `db`, `postgres`, and any hostname ending with `.localhost`. Set `ALLOW_REMOTE_DB=1` only when you know what you are doing (e.g. seeding a staging environment from a remote client); scripts always warn before proceeding.
+
+## Database owner role (W0-6, audit S-2/S-3/S-21)
+
+`docker-compose.yml`'s `db` service still starts as the Postgres superuser `budget` (`POSTGRES_USER`), but a first-boot init script (`scripts/db-init.sql`, mounted into `/docker-entrypoint-initdb.d/`) now creates a second role, `budget_owner` — `LOGIN NOSUPERUSER NOBYPASSRLS CREATEROLE CREATEDB` — and makes it the owner of the `budget` database. `pnpm db:migrate`, `pnpm db:seed` and every test suite run as `budget_owner` (`DATABASE_URL` in `packages/db/.env.example`), matching production's owner, which has never been a superuser or held BYPASSRLS (W2-3). `budget` (still a superuser) is kept only for `psql`/`docker exec` convenience and for running the init script itself; nothing else in the repo connects as it.
+
+Postgres only runs `/docker-entrypoint-initdb.d/` scripts the first time a container's data directory is created. **An existing local Postgres volume predates `budget_owner` and must be recreated**: run `pnpm db:reset` (`docker compose down -v && docker compose up -d`, then migrate and seed). A worktree or CI run that already has `budget_owner` (a fresh `docker compose up -d` or a fresh CI service container) needs no action.
+
+A guard test, `packages/db/src/owner-role.test.ts`, asserts `rolsuper = false AND rolbypassrls = false` for the role `DATABASE_URL` connects as, so a regression back to a superuser owner fails CI.

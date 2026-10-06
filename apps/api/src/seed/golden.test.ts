@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { QueryRequest, httpStatus, type FilterGroupT } from "@budget/domain";
-import { GOLDEN_ASSERTIONS, GOLDEN_FY, computeTotals, goldenFactsCsv, goldenPlan, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_FY, asOrgAdmin, computeTotals, goldenFactsCsv, goldenPlan, unmatchedSpend, withTenant, type TenantContext } from "@budget/db";
 import { compileQuery, compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -70,6 +71,11 @@ async function byDim(dim: string, over: Record<string, unknown> = {}): Promise<R
   const out = await rows({ filter: leaves, groupBy: [dim], ...over });
   return Object.fromEntries(out.map((r) => [String(r[`dim_${dim}`]), new Decimal(String(r["budget"])).toFixed(2)]).sort(([a], [b]) => a!.localeCompare(b!)));
 }
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read below (all scoped to the golden
+// workspace/org) needs the same org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, golden.orgId);
+}
 
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
@@ -103,19 +109,26 @@ describe("pnpm db:seed (T-006 done-when)", () => {
 
   it("creates the planned envelopes and approved versions, all through audited commands", async () => {
     const ws = golden.workspaceId;
-    expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(A.envelopes.total);
-    expect(await owner.envelope.count({ where: { workspaceId: ws, parentId: null } })).toBe(2);
-    const approved = await owner.envelopeVersion.count({ where: { envelope: { workspaceId: ws }, approvedAt: { not: null } } });
-    expect(approved).toBe(A.approvedVersions);
+    const data = await asOwner(async (tx) => ({
+      total: await tx.envelope.count({ where: { workspaceId: ws } }),
+      roots: await tx.envelope.count({ where: { workspaceId: ws, parentId: null } }),
+      approved: await tx.envelopeVersion.count({ where: { envelope: { workspaceId: ws }, approvedAt: { not: null } } }),
+      notApproved: await tx.envelope.count({ where: { workspaceId: ws, status: { not: "APPROVED" } } }),
+      pending: await tx.envelope.count({ where: { workspaceId: ws, status: "PENDING" } }),
+      archived: await tx.envelope.count({ where: { workspaceId: ws, status: "ARCHIVED" } }),
+      audits: await tx.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(
+        `SELECT action, count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid GROUP BY action`,
+        ws,
+      ),
+    }));
+    expect(data.total).toBe(A.envelopes.total);
+    expect(data.roots).toBe(2);
+    expect(data.approved).toBe(A.approvedVersions);
     // Everything is approved except the pending bulk change (T-013) and the archived split source (T-014).
-    expect(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "APPROVED" } } })).toBe(A.pendingBulk.rows + 1);
-    expect(await owner.envelope.count({ where: { workspaceId: ws, status: "PENDING" } })).toBe(A.pendingBulk.rows);
-    expect(await owner.envelope.count({ where: { workspaceId: ws, status: "ARCHIVED" } })).toBe(1);
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string; n: bigint }>>(
-      `SELECT action, count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid GROUP BY action`,
-      ws,
-    );
-    const count = Object.fromEntries(audits.map((a) => [a.action, Number(a.n)]));
+    expect(data.notApproved).toBe(A.pendingBulk.rows + 1);
+    expect(data.pending).toBe(A.pendingBulk.rows);
+    expect(data.archived).toBe(1);
+    const count = Object.fromEntries(data.audits.map((a) => [a.action, Number(a.n)]));
     expect(count["envelope.created"]).toBe(A.envelopes.total);
     expect(count["envelope.version.approved"]).toBe(A.approvedVersions);
     expect(count["approval.requested"]).toBeGreaterThan(0);
@@ -124,67 +137,78 @@ describe("pnpm db:seed (T-006 done-when)", () => {
 
   it("Phase E: the plan snapshot as of 1 Feb, and an ended leaf that continues in FY2027 (GOLDEN_HISTORY)", async () => {
     const ws = golden.workspaceId;
-    const snap = await owner.budgetBaseline.findFirstOrThrow({ where: { workspaceId: ws, name: GOLDEN_HISTORY.plan.name } });
+    const endedId = golden.envelopeIds.get(A.history.end.key) as string;
+    const { snap, byRegion, ended, successor, endedAmount, successorAmount } = await asOwner(async (tx) => {
+      const snap = await tx.budgetBaseline.findFirstOrThrow({ where: { workspaceId: ws, name: GOLDEN_HISTORY.plan.name } });
+      const byRegion = await tx.$queryRawUnsafe<Array<{ region: string; s: string }>>(
+        `SELECT dimension_values->>'region' AS region, sum(amount_reporting)::text AS s FROM budget_baseline_row
+         WHERE baseline_id = $1::uuid AND dimension_values ? 'audience' GROUP BY 1 ORDER BY 1`,
+        snap.id,
+      );
+      const ended = await tx.envelope.findUniqueOrThrow({ where: { id: endedId } });
+      const endedAmount = (await tx.envelopeVersion.findUniqueOrThrow({ where: { id: ended.currentVersionId as string } })).amount.toFixed(2);
+      const link = await tx.envelopeLineage.findFirstOrThrow({ where: { fromEnvelopeId: endedId, kind: "continues" } });
+      const successor = await tx.envelope.findUniqueOrThrow({ where: { id: link.toEnvelopeId } });
+      const successorAmount = (await tx.envelopeVersion.findUniqueOrThrow({ where: { id: successor.currentVersionId as string } })).amount.toFixed(2);
+      return { snap, byRegion, ended, link, successor, endedAmount, successorAmount };
+    });
     expect(snap).toMatchObject({ kind: "plan", periodKey: GOLDEN_HISTORY.plan.periodKey, rowCount: A.history.plan.rows });
     expect(snap.asOf.toISOString()).toBe(GOLDEN_HISTORY.plan.asOf);
-    const byRegion = await owner.$queryRawUnsafe<Array<{ region: string; s: string }>>(
-      `SELECT dimension_values->>'region' AS region, sum(amount_reporting)::text AS s FROM budget_baseline_row
-       WHERE baseline_id = $1::uuid AND dimension_values ? 'audience' GROUP BY 1 ORDER BY 1`,
-      snap.id,
-    );
     expect(Object.fromEntries(byRegion.map((r) => [r.region, new Decimal(r.s).toFixed(2)]))).toEqual(A.history.plan.leafByRegion);
-    const endedId = golden.envelopeIds.get(A.history.end.key) as string;
-    const ended = await owner.envelope.findUniqueOrThrow({ where: { id: endedId } });
-    const amountOf = async (versionId: string | null) => (await owner.envelopeVersion.findUniqueOrThrow({ where: { id: versionId as string } })).amount.toFixed(2);
     expect(ended.endedAt).not.toBeNull();
     expect(ended.endDate.toISOString().slice(0, 10)).toBe(GOLDEN_HISTORY.end.endDate);
-    expect(await amountOf(ended.currentVersionId)).toBe(A.history.end.finalAmount);
-    const link = await owner.envelopeLineage.findFirstOrThrow({ where: { fromEnvelopeId: endedId, kind: "continues" } });
-    const successor = await owner.envelope.findUniqueOrThrow({ where: { id: link.toEnvelopeId } });
+    expect(endedAmount).toBe(A.history.end.finalAmount);
     expect(successor).toMatchObject({ name: GOLDEN_HISTORY.end.successor.name, status: "APPROVED", parentId: ended.parentId, endedAt: null });
     expect(successor.startDate.toISOString().slice(0, 10)).toBe(GOLDEN_HISTORY.end.successor.startDate);
-    expect(await amountOf(successor.currentVersionId)).toBe(A.history.end.successorAmount);
+    expect(successorAmount).toBe(A.history.end.successorAmount);
   });
 
   it("uses more than one approval route (auto-approve, Minor, Standard, Major)", async () => {
-    const byPolicy = await owner.$queryRawUnsafe<Array<{ name: string; n: bigint }>>(
-      `SELECT p.name, count(*) AS n FROM approval_request r JOIN approval_policy p ON p.id = r.policy_id WHERE r.workspace_id = $1::uuid GROUP BY p.name`,
-      golden.workspaceId,
-    );
+    const { byPolicy, autos } = await asOwner(async (tx) => ({
+      byPolicy: await tx.$queryRawUnsafe<Array<{ name: string; n: bigint }>>(
+        `SELECT p.name, count(*) AS n FROM approval_request r JOIN approval_policy p ON p.id = r.policy_id WHERE r.workspace_id = $1::uuid GROUP BY p.name`,
+        golden.workspaceId,
+      ),
+      autos: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(
+        `SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'envelope.version.approved' AND reason LIKE 'auto-approved%'`,
+        golden.workspaceId,
+      ),
+    }));
     const names = byPolicy.map((p) => p.name).sort();
     expect(names).toEqual(expect.arrayContaining(["Major / over-allocation", "Minor adjustment", "Standard"]));
-    const autos = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(
-      `SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'envelope.version.approved' AND reason LIKE 'auto-approved%'`,
-      golden.workspaceId,
-    );
     expect(Number(autos[0]?.n)).toBeGreaterThan(0);
   });
 
   it("registry: default dimensions, 3 custom ones (market_tier with an asset: icon), 2 extra templates", async () => {
-    const dims = await owner.dimension.findMany({ where: { orgId: golden.orgId }, select: { key: true, icon: true } });
+    const { dims, templates } = await asOwner(async (tx) => ({
+      dims: await tx.dimension.findMany({ where: { orgId: golden.orgId }, select: { key: true, icon: true } }),
+      templates: await tx.hierarchyTemplate.findMany({ where: { workspaceId: golden.workspaceId }, select: { name: true } }),
+    }));
     const keys = dims.map((d) => d.key);
     expect(keys).toEqual(expect.arrayContaining(["region", "country", "platform", "objective", "audience", "retailer", "promo_wave", "market_tier"]));
     expect(dims.find((d) => d.key === "market_tier")?.icon).toMatch(/^asset:/);
-    const templates = await owner.hierarchyTemplate.findMany({ where: { workspaceId: golden.workspaceId }, select: { name: true } });
     expect(templates.map((t) => t.name).sort()).toEqual(["Channel first", "Default", "Region first"]);
   });
 });
 
 describe("pending bulk change (T-013 seed rows)", () => {
   it("is one bulk_change with one open approval request and the asserted totals", async () => {
-    const [bulk] = await owner.$queryRawUnsafe<Array<{ id: string; n: number }>>(
-      `SELECT id::text AS id, cardinality(version_ids) AS n FROM bulk_change WHERE workspace_id = $1::uuid`,
-      golden.workspaceId,
-    );
+    const { bulk, request, sums } = await asOwner(async (tx) => {
+      const [bulk] = await tx.$queryRawUnsafe<Array<{ id: string; n: number }>>(
+        `SELECT id::text AS id, cardinality(version_ids) AS n FROM bulk_change WHERE workspace_id = $1::uuid`,
+        golden.workspaceId,
+      );
+      const request = await tx.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, entityType: "bulk_change", entityId: bulk?.id ?? "" } });
+      const [sums] = await tx.$queryRawUnsafe<Array<{ after: string; before: string }>>(
+        `SELECT sum(v.amount)::text AS after, sum(c.amount)::text AS before
+         FROM envelope e JOIN envelope_version v ON v.id = e.draft_version_id JOIN envelope_version c ON c.id = e.current_version_id
+         WHERE e.workspace_id = $1::uuid AND v.status = 'PENDING'`,
+        golden.workspaceId,
+      );
+      return { bulk, request, sums };
+    });
     expect(bulk?.n).toBe(A.pendingBulk.rows);
-    const request = await owner.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, entityType: "bulk_change", entityId: bulk?.id ?? "" } });
     expect(request.status).toBe("PENDING");
-    const [sums] = await owner.$queryRawUnsafe<Array<{ after: string; before: string }>>(
-      `SELECT sum(v.amount)::text AS after, sum(c.amount)::text AS before
-       FROM envelope e JOIN envelope_version v ON v.id = e.draft_version_id JOIN envelope_version c ON c.id = e.current_version_id
-       WHERE e.workspace_id = $1::uuid AND v.status = 'PENDING'`,
-      golden.workspaceId,
-    );
     expect(new Decimal(sums?.before ?? 0).toFixed(2)).toBe(A.pendingBulk.totalsBefore);
     expect(new Decimal(sums?.after ?? 0).toFixed(2)).toBe(A.pendingBulk.totalsAfter);
   });
@@ -193,15 +217,23 @@ describe("pending bulk change (T-013 seed rows)", () => {
 describe("split (T-014 seed rows)", () => {
   it("parts hold the source's approved amount under the same parent; the source is archived at zero with lineage", async () => {
     const sourceId = golden.envelopeIds.get(A.split.sourceKey) as string;
-    const source = await owner.envelope.findUniqueOrThrow({ where: { id: sourceId }, include: { versions: { orderBy: { versionNo: "asc" } } } });
+    const { source, lineage, parts } = await asOwner(async (tx) => {
+      const source = await tx.envelope.findUniqueOrThrow({ where: { id: sourceId }, include: { versions: { orderBy: { versionNo: "asc" } } } });
+      const lineage = await tx.envelopeLineage.findMany({ where: { fromEnvelopeId: sourceId, kind: "split" } });
+      const parts = await Promise.all(
+        A.split.parts.map(async (part) => {
+          const pid = golden.envelopeIds.get(`${A.split.sourceKey}#${part.retailer}`) as string;
+          const env = await tx.envelope.findUniqueOrThrow({ where: { id: pid }, include: { versions: true } });
+          return { part, pid, env };
+        }),
+      );
+      return { source, lineage, parts };
+    });
     expect(source.status).toBe("ARCHIVED");
     expect(source.versions.at(-1)?.amount.toFixed(2)).toBe("0.00");
     expect(source.versions.at(-1)?.status).toBe("APPROVED");
-    const lineage = await owner.envelopeLineage.findMany({ where: { fromEnvelopeId: sourceId, kind: "split" } });
     expect(lineage).toHaveLength(A.split.parts.length);
-    for (const part of A.split.parts) {
-      const pid = golden.envelopeIds.get(`${A.split.sourceKey}#${part.retailer}`) as string;
-      const env = await owner.envelope.findUniqueOrThrow({ where: { id: pid }, include: { versions: true } });
+    for (const { part, pid, env } of parts) {
       expect(env.parentId).toBe(source.parentId);
       expect(env.status).toBe("APPROVED");
       expect(env.versions.find((v) => v.id === env.currentVersionId)?.amount.toFixed(2)).toBe(part.amount);
@@ -213,23 +245,32 @@ describe("split (T-014 seed rows)", () => {
 
 describe("naming and match method (T-036 done-when: match_method on 100% of matched golden facts)", () => {
   it("every envelope carries its match key; every matched fact says how it matched; the run summary counts spend by method", async () => {
-    expect(await owner.namingTemplate.count({ where: { workspaceId: golden.workspaceId, isActive: true } })).toBe(A.naming.templates);
     const leaf = goldenPlan().find((e) => e.level === 4) as { key: string; dimensionValues: Record<string, string> };
-    const e = await owner.envelope.findUniqueOrThrow({ where: { id: golden.envelopeIds.get(leaf.key) as string }, select: { matchKey: true, displayName: true } });
+    const { namingTemplates, e, rows: methodRows, run } = await asOwner(async (tx) => {
+      const namingTemplates = await tx.namingTemplate.count({ where: { workspaceId: golden.workspaceId, isActive: true } });
+      const e = await tx.envelope.findUniqueOrThrow({ where: { id: golden.envelopeIds.get(leaf.key) as string }, select: { matchKey: true, displayName: true } });
+      const rows: Record<string, { matched: bigint; with_method: bigint; unmatched_with_method: bigint } | undefined> = {};
+      for (const table of ["spend_fact", "kpi_fact"]) {
+        const [row] = await tx.$queryRawUnsafe<Array<{ matched: bigint; with_method: bigint; unmatched_with_method: bigint }>>(
+          `SELECT count(*) FILTER (WHERE envelope_id IS NOT NULL) AS matched, count(*) FILTER (WHERE envelope_id IS NOT NULL AND match_method IS NOT NULL) AS with_method,
+                  count(*) FILTER (WHERE envelope_id IS NULL AND match_method IS NOT NULL) AS unmatched_with_method
+             FROM ${table} WHERE workspace_id = $1::uuid`,
+          golden.workspaceId,
+        );
+        rows[table] = row;
+      }
+      const run = await tx.ingestRun.findUniqueOrThrow({ where: { id: golden.ingest?.runId ?? "" } });
+      return { namingTemplates, e, rows, run };
+    });
+    expect(namingTemplates).toBe(A.naming.templates);
     const d = leaf.dimensionValues;
     expect(e).toEqual({ matchKey: [d["country"], d["platform"], d["objective"], d["audience"]].join("_").toLowerCase(), displayName: null });
     for (const table of ["spend_fact", "kpi_fact"]) {
-      const [row] = await owner.$queryRawUnsafe<Array<{ matched: bigint; with_method: bigint; unmatched_with_method: bigint }>>(
-        `SELECT count(*) FILTER (WHERE envelope_id IS NOT NULL) AS matched, count(*) FILTER (WHERE envelope_id IS NOT NULL AND match_method IS NOT NULL) AS with_method,
-                count(*) FILTER (WHERE envelope_id IS NULL AND match_method IS NOT NULL) AS unmatched_with_method
-           FROM ${table} WHERE workspace_id = $1::uuid`,
-        golden.workspaceId,
-      );
+      const row = methodRows[table];
       expect(Number(row?.matched)).toBeGreaterThan(0);
       expect(Number(row?.with_method)).toBe(Number(row?.matched));
       expect(Number(row?.unmatched_with_method)).toBe(0);
     }
-    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: golden.ingest?.runId ?? "" } });
     const summary = run.summary as { matchedSpendRows: number; byMethod: Record<string, { rows: number }> };
     expect(Object.values(summary.byMethod).reduce((n, m) => n + m.rows, 0)).toBe(summary.matchedSpendRows);
     expect(summary.byMethod["tuple"]?.rows).toBe(summary.matchedSpendRows); // the golden CSV matches by tuple
@@ -239,7 +280,7 @@ describe("naming and match method (T-036 done-when: match_method on 100% of matc
 describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
   const F = A.facts;
   it("loads the golden CSV through the pipeline: counts, coverage and the rejected-rows report", async () => {
-    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: golden.ingest?.runId ?? "" } });
+    const run = await asOwner((tx) => tx.ingestRun.findUniqueOrThrow({ where: { id: golden.ingest?.runId ?? "" } }));
     expect(run).toMatchObject({ status: "ok", rowsRead: F.rowsRead, rowsRejected: F.rowsRejected, rowsAccepted: F.rowsRead - F.rowsRejected });
     const summary = run.summary as { matchCoverage: string; spendRows: number; matchedSpendRows: number; spend: string; matchedSpend: string };
     expect(summary).toMatchObject({ matchCoverage: F.matchCoverage, spendRows: F.spendRows, matchedSpendRows: F.matchedSpendRows, spend: F.spend, matchedSpend: F.matchedSpend });
@@ -280,9 +321,10 @@ describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
     const [exists] = await storage.bucket(uploadBucket()).exists();
     if (!exists) await storage.createBucket(uploadBucket());
     const gcs = new GcsObjectStore(storage);
-    const source = await owner.dataSource.findUniqueOrThrow({ where: { id: golden.ingest?.sourceId ?? "" } });
+    const source = await asOwner((tx) => tx.dataSource.findUniqueOrThrow({ where: { id: golden.ingest?.sourceId ?? "" } }));
     await gcs.write((source.config as { uri: string }).uri, goldenFactsCsv(goldenPlan()), "text/csv");
-    const facts = () => owner.$queryRawUnsafe<Array<{ n: bigint; s: string }>>(`SELECT count(*) AS n, sum(amount_reporting)::text AS s FROM spend_fact WHERE workspace_id = $1::uuid`, golden.workspaceId);
+    const facts = () =>
+      asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint; s: string }>>(`SELECT count(*) AS n, sum(amount_reporting)::text AS s FROM spend_fact WHERE workspace_id = $1::uuid`, golden.workspaceId));
     const before = await facts();
     const admin: AuthContext = {
       ctx: { ...ctx(), userId: golden.users.admin },
@@ -300,15 +342,17 @@ describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
     expect(report.toString().trim().split("\n")).toHaveLength(1 + F.rowsRejected);
     expect(await facts()).toEqual(before);
     // ADR-071: the identical file reloads the same facts in place; nothing is superseded.
-    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } })).summary).toMatchObject({ mode: "full", superseded: 0 });
+    expect((await asOwner((tx) => tx.ingestRun.findUniqueOrThrow({ where: { id: runId } }))).summary).toMatchObject({ mode: "full", superseded: 0 });
   });
 });
 
 describe("pacing (T-018 seed rows)", () => {
   it("the default rules evaluated on three days leave the planned open alerts, one per rule and envelope", async () => {
-    const rules = await owner.pacingRule.findMany({ where: { workspaceId: golden.workspaceId } });
+    const { rules, alerts } = await asOwner(async (tx) => ({
+      rules: await tx.pacingRule.findMany({ where: { workspaceId: golden.workspaceId } }),
+      alerts: await tx.alert.findMany({ where: { workspaceId: golden.workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } } }),
+    }));
     expect(rules.map((r) => r.name).sort()).toEqual(Object.keys(A.pacing.openAlertsByRule).sort());
-    const alerts = await owner.alert.findMany({ where: { workspaceId: golden.workspaceId, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } } });
     const byRule = Object.fromEntries(rules.map((r) => [r.name, alerts.filter((a) => a.ruleId === r.id).length]));
     expect(byRule).toEqual(A.pacing.openAlertsByRule);
     expect(new Set(alerts.map((a) => `${a.ruleId}|${a.envelopeId}`)).size).toBe(alerts.length);
@@ -327,14 +371,18 @@ describe("pacing (T-018 seed rows)", () => {
 describe("threads and tags (T-019 seed rows)", () => {
   const C = A.collab;
   it("seeds the planned threads, comments and tags", async () => {
-    const threads = await owner.thread.findMany({ where: { workspaceId: golden.workspaceId }, include: { comments: true } });
+    const { threads, reactions, counts } = await asOwner(async (tx) => {
+      const threads = await tx.thread.findMany({ where: { workspaceId: golden.workspaceId }, include: { comments: true } });
+      const reactions = await tx.commentReaction.count({ where: { workspaceId: golden.workspaceId } });
+      const tags = await tx.tag.findMany({ where: { workspaceId: golden.workspaceId } });
+      const counts = Object.fromEntries(await Promise.all(tags.map(async (t) => [t.name, await tx.taggable.count({ where: { tagId: t.id } })] as const)));
+      return { threads, reactions, counts };
+    });
     expect({ open: threads.filter((t) => t.status === "open").length, resolved: threads.filter((t) => t.status === "resolved").length, blocking: threads.filter((t) => t.isBlocking && t.status === "open").length }).toEqual(C.threads);
     expect(threads.reduce((n, t) => n + t.comments.length, 0)).toBe(C.comments);
-    expect(await owner.commentReaction.count({ where: { workspaceId: golden.workspaceId } })).toBe(C.reactions);
+    expect(reactions).toBe(C.reactions);
     const mentioned = threads.flatMap((t) => t.comments.flatMap((c) => c.mentions as Array<{ id: string }>)).map((m) => m.id);
     expect(mentioned).toEqual([golden.users.budgetOwner]);
-    const tags = await owner.tag.findMany({ where: { workspaceId: golden.workspaceId } });
-    const counts = Object.fromEntries(await Promise.all(tags.map(async (t) => [t.name, await owner.taggable.count({ where: { tagId: t.id } })] as const)));
     expect(counts).toEqual(C.tags);
   });
 
@@ -354,7 +402,7 @@ describe("threads and tags (T-019 seed rows)", () => {
       roles: ["PLANNER"],
       assignments: [{ role: "PLANNER", scope: {} }],
     };
-    const head = await owner.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { currentVersionId: true } });
+    const head = await asOwner((tx) => tx.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { currentVersionId: true } }));
     const draft = await createDraftVersion(app, planner, envelopeId, { amount: "1.00", basedOnVersionId: head.currentVersionId });
     await expect(submitVersion(app, planner, envelopeId, { versionId: draft.id })).rejects.toMatchObject({ code: "CONFLICT", details: { blockingThreads: 1 } });
   });
@@ -373,9 +421,11 @@ describe("search (T-020 seed rows; done-when: index lag < 5 s on the small golde
   const count = async (q: string, type: string) => (await find(q)).groups.find((g) => g.type === type)?.count ?? 0;
 
   it("the seed's re-index holds one document per entity", async () => {
-    const rows = await owner.$queryRawUnsafe<Array<{ entity_type: string; n: bigint }>>(`SELECT entity_type, count(*) AS n FROM search_document WHERE workspace_id = $1::uuid GROUP BY entity_type`, golden.workspaceId);
+    const { rows, requests } = await asOwner(async (tx) => ({
+      rows: await tx.$queryRawUnsafe<Array<{ entity_type: string; n: bigint }>>(`SELECT entity_type, count(*) AS n FROM search_document WHERE workspace_id = $1::uuid GROUP BY entity_type`, golden.workspaceId),
+      requests: await tx.approvalRequest.count({ where: { workspaceId: golden.workspaceId } }),
+    }));
     const counts = Object.fromEntries(rows.map((r) => [r.entity_type, Number(r.n)]));
-    const requests = await owner.approvalRequest.count({ where: { workspaceId: golden.workspaceId } });
     expect(counts).toEqual({ ...S, approval_request: requests });
   });
 
@@ -383,7 +433,8 @@ describe("search (T-020 seed rows; done-when: index lag < 5 s on the small golde
     expect(await count("tag:q4-push type:envelope", "envelope")).toBe(A.collab.tags["q4-push"]);
     const br = goldenPlan().filter((e) => e.dimensionValues["country"] === "BR").length;
     expect(await count("country:br type:envelope", "envelope")).toBe(br);
-    expect(await count("status:pending type:approval", "approval_request")).toBe(await owner.approvalRequest.count({ where: { workspaceId: golden.workspaceId, status: "PENDING" } }));
+    const pendingApprovals = await asOwner((tx) => tx.approvalRequest.count({ where: { workspaceId: golden.workspaceId, status: "PENDING" } }));
+    expect(await count("status:pending type:approval", "approval_request")).toBe(pendingApprovals);
     const fuzzy = (await find("brazl meta awareness")).groups.find((g) => g.type === "envelope")?.hits as Array<{ path: string }>;
     expect(fuzzy[0]?.path).toMatch(/BR › .*meta.*awareness/i);
     // Search counts any open thread on the envelope, cell threads included (the GB blocking thread and
@@ -396,13 +447,18 @@ describe("search (T-020 seed rows; done-when: index lag < 5 s on the small golde
 
   it("a change is searchable within 5 s of its commit: command → outbox → indexer → search", async () => {
     const id = golden.envelopeIds.get("LATAM/CO/meta/awareness/retargeting") as string;
-    const [{ max }] = (await owner.$queryRawUnsafe<Array<{ max: string | null }>>(`SELECT max(id)::text AS max FROM outbox WHERE workspace_id = $1::uuid`, golden.workspaceId)) as [{ max: string | null }];
-    const env = await owner.envelope.findUniqueOrThrow({ where: { id }, select: { rowVersion: true } });
+    const { max, env } = await asOwner(async (tx) => {
+      const [row] = (await tx.$queryRawUnsafe<Array<{ max: string | null }>>(`SELECT max(id)::text AS max FROM outbox WHERE workspace_id = $1::uuid`, golden.workspaceId)) as [{ max: string | null }];
+      const env = await tx.envelope.findUniqueOrThrow({ where: { id }, select: { rowVersion: true } });
+      return { max: row?.max, env };
+    });
     const name = `Colombia retargeting relaunch ${randomUUID().slice(0, 6)}`;
     const started = performance.now();
     await updateEnvelope(app, persona("planner", "PLANNER"), id, { rowVersion: env.rowVersion, name });
     // What the publisher would push, in outbox order (Pub/Sub transport itself is phase 20).
-    const events = await owner.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, golden.workspaceId, max ?? "0");
+    const events = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, golden.workspaceId, max ?? "0"),
+    );
     for (const e of events) {
       await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(e.payload)).toString("base64"), attributes: { outboxId: e.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: e.topic }, messageId: e.id }, subscription: "search-indexer" }, TODAY);
     }
@@ -416,11 +472,18 @@ describe("search (T-020 seed rows; done-when: index lag < 5 s on the small golde
 describe("targets (T-015 seed rows)", () => {
   it("seeds the metric library and every planned target, each with one approved version", async () => {
     const T = A.targets;
-    expect(await owner.metricDefinition.count({ where: { orgId: golden.orgId } })).toBe(11);
-    expect(await owner.target.count({ where: { workspaceId: golden.workspaceId, scopeType: "envelope" } })).toBe(T.envelope);
-    expect(await owner.target.count({ where: { workspaceId: golden.workspaceId, scopeType: "filter" } })).toBe(T.filter);
-    expect(await owner.targetVersion.count({ where: { target: { workspaceId: golden.workspaceId }, status: "APPROVED" } })).toBe(T.envelope + T.filter);
-    expect(await owner.target.count({ where: { workspaceId: golden.workspaceId, currentVersionId: null } })).toBe(0);
+    const counts = await asOwner(async (tx) => ({
+      metrics: await tx.metricDefinition.count({ where: { orgId: golden.orgId } }),
+      envelopeTargets: await tx.target.count({ where: { workspaceId: golden.workspaceId, scopeType: "envelope" } }),
+      filterTargets: await tx.target.count({ where: { workspaceId: golden.workspaceId, scopeType: "filter" } }),
+      approvedVersions: await tx.targetVersion.count({ where: { target: { workspaceId: golden.workspaceId }, status: "APPROVED" } }),
+      withoutCurrent: await tx.target.count({ where: { workspaceId: golden.workspaceId, currentVersionId: null } }),
+    }));
+    expect(counts.metrics).toBe(11);
+    expect(counts.envelopeTargets).toBe(T.envelope);
+    expect(counts.filterTargets).toBe(T.filter);
+    expect(counts.approvedVersions).toBe(T.envelope + T.filter);
+    expect(counts.withoutCurrent).toBe(0);
   });
 
   it("the planner resolves effective CPA (own or the country's) and the EMEA ROAS filter target on every live leaf", async () => {
@@ -480,13 +543,15 @@ describe("planner over the golden workspace (phase 9: planner tests read golden.
   });
 
   it("current leaf phasing sums to the asserted quarters (and to the leaf total)", async () => {
-    const q = await owner.$queryRawUnsafe<Array<{ q: string; s: string }>>(
-      `SELECT 'Q' || extract(quarter FROM p.month)::int AS q, sum(p.amount)::text AS s
-       FROM envelope e JOIN envelope_dimension ed ON ed.envelope_id = e.id
-       JOIN dimension d ON d.id = ed.dimension_id AND d.key = 'audience'
-       JOIN envelope_phasing p ON p.version_id = e.current_version_id
-       WHERE e.workspace_id = $1::uuid GROUP BY 1 ORDER BY 1`,
-      golden.workspaceId,
+    const q = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ q: string; s: string }>>(
+        `SELECT 'Q' || extract(quarter FROM p.month)::int AS q, sum(p.amount)::text AS s
+         FROM envelope e JOIN envelope_dimension ed ON ed.envelope_id = e.id
+         JOIN dimension d ON d.id = ed.dimension_id AND d.key = 'audience'
+         JOIN envelope_phasing p ON p.version_id = e.current_version_id
+         WHERE e.workspace_id = $1::uuid GROUP BY 1 ORDER BY 1`,
+        golden.workspaceId,
+      ),
     );
     const got = Object.fromEntries(q.map((r) => [r.q, new Decimal(r.s).toFixed(2)]));
     expect(got).toEqual(A.leafPhasingByQuarter);
@@ -498,7 +563,7 @@ describe("planner over the golden workspace (phase 9: planner tests read golden.
 // Runs last: its incremental case approves a new budget, which the golden totals above do not include.
 describe("saved views (T-027 seed rows)", () => {
   it("the planner's saved Explorer view", async () => {
-    const views = await owner.savedView.findMany({ where: { workspaceId: golden.workspaceId } });
+    const views = await asOwner((tx) => tx.savedView.findMany({ where: { workspaceId: golden.workspaceId } }));
     expect(views).toHaveLength(A.savedViews);
     expect(views[0]).toMatchObject({ name: GOLDEN_SAVED_VIEW.name, screen: "explorer", visibility: "private", createdBy: golden.users.planner });
   });
@@ -526,7 +591,7 @@ describe("exports (T-023 done-when: export respects filter)", () => {
   const col = (table: string[][], label: string) => (table[0] ?? []).indexOf(label);
 
   it("the seeded CSV holds exactly the planner's rows for its filter, and its totals", async () => {
-    const job = await owner.exportJob.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, filename: GOLDEN_EXPORT.filename } });
+    const job = await asOwner((tx) => tx.exportJob.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, filename: GOLDEN_EXPORT.filename } }));
     expect(job).toMatchObject({ status: "done", kind: "csv", rowCount: A.exports.rows });
     const table = csvTable(golden.ingest?.store.objects.get(String(job.objectUri))?.body);
     const data = table.slice(1, -1);
@@ -594,7 +659,7 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     return new Map(out.map((r) => [keys.map((k) => (r[`dim_${k}`] === null ? "∅" : String(r[`dim_${k}`]))).join("/"), Object.fromEntries(MONEY.map((m) => [m, dec(r[m])]))]));
   }
   async function assertTreeEqualsPivot() {
-    const templates = await owner.hierarchyTemplate.findMany({ where: { workspaceId: golden.workspaceId } });
+    const templates = await asOwner((tx) => tx.hierarchyTemplate.findMany({ where: { workspaceId: golden.workspaceId } }));
     expect(templates.map((t) => t.name).sort()).toEqual(Object.keys(R.nodesByTemplate).sort());
     for (const t of templates) {
       const nodes = await tree(t.id);
@@ -611,7 +676,7 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
 
   it("every cached node of every template equals the live pivot; the root equals the pivot totals", async () => {
     await assertTreeEqualsPivot();
-    const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const regionFirst = await asOwner((tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } }));
     const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
     // ADR-059: the root is Budget structure's total, the top-level budgets, not the leaves' 'rootBudget'.
     expect({ budget: dec(root?.measures["budget"]), actual: dec(root?.measures["actual"]) }).toEqual({ budget: await topLevelBudget(), actual: R.rootActual });
@@ -622,19 +687,24 @@ describe("rollup tree (T-022 done-when: tree totals == pivot totals on golden)",
     const key = "LATAM/AR/meta/awareness/prospecting";
     const id = golden.envelopeIds.get(key) as string;
     const planner: AuthContext = { ctx: { ...ctx(), userId: golden.users.planner }, user: { id: golden.users.planner, orgId: golden.orgId, email: "planner@golden.test", name: "planner" }, isOrgAdmin: false, roles: ["PLANNER"], assignments: [{ role: "PLANNER", scope: {} }] };
-    const [{ max }] = (await owner.$queryRawUnsafe<Array<{ max: string | null }>>(`SELECT max(id)::text AS max FROM outbox WHERE workspace_id = $1::uuid`, golden.workspaceId)) as [{ max: string | null }];
-    const head = await owner.envelope.findUniqueOrThrow({ where: { id }, include: { versions: { where: { status: "APPROVED" } } } });
+    const { max, head } = await asOwner(async (tx) => {
+      const [row] = (await tx.$queryRawUnsafe<Array<{ max: string | null }>>(`SELECT max(id)::text AS max FROM outbox WHERE workspace_id = $1::uuid`, golden.workspaceId)) as [{ max: string | null }];
+      const head = await tx.envelope.findUniqueOrThrow({ where: { id }, include: { versions: { where: { status: "APPROVED" } } } });
+      return { max: row?.max, head };
+    });
     const current = new Decimal(head.versions[0]?.amount.toString() ?? 0);
     const next = current.plus("10.00").toFixed(2); // under the auto-approve policy (< 2 %, < 1000)
     const draft = await createDraftVersion(app, planner, id, { amount: next, basedOnVersionId: head.currentVersionId });
     const submitted = await submitVersion(app, planner, id, { versionId: draft.id });
     expect(submitted.autoApproved).toBe(true);
-    const events = await owner.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, golden.workspaceId, max ?? "0");
+    const events = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, golden.workspaceId, max ?? "0"),
+    );
     for (const e of events) {
       await handleRollupEvent(app, { message: { data: Buffer.from(JSON.stringify(e.payload)).toString("base64"), attributes: { outboxId: e.id, workspaceId: golden.workspaceId, orgId: golden.orgId, topic: e.topic }, messageId: e.id }, subscription: "rollup-worker" }, TODAY);
     }
     await assertTreeEqualsPivot();
-    const regionFirst = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const regionFirst = await asOwner((tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } }));
     const root = (await tree(regionFirst.id)).find((n) => n.node_path === "");
     // The 10.00 comes out of what its parent holds: the top-level total does not move.
     expect(dec(root?.measures["budget"])).toBe(await topLevelBudget());
@@ -663,7 +733,7 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
     });
 
   it("each level equals /query's groups for the same budgets' holdings (ADR-059), and the root equals its totals", async () => {
-    const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const t = await asOwner((tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } }));
     let parent = "";
     for (let d = 0; d < t.path.length; d += 1) {
       const tree = await treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: range, parentPath: parent, measures: [...ALL] }, now);
@@ -689,7 +759,7 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
   });
 
   it("on the Default template (client first, never set) parents still open: ∅/EMEA is the EMEA budget", async () => {
-    const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, isDefault: true } });
+    const t = await asOwner((tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, isDefault: true } }));
     expect(t.path[0]).toBe("client");
     const tree = await treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: range, parentPath: "∅", measures: ["budget"] }, now);
     const emea = tree.rows.find((r) => r.key === "∅/EMEA");
@@ -699,7 +769,7 @@ describe("tree from the cache (ADR-038: POST /tree serves the Explorer's tree fr
   });
 
   it("a scoped caller, a period the cache does not hold, and a template of another workspace are refused or sent to /query", async () => {
-    const t = await owner.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } });
+    const t = await asOwner((tx) => tx.hierarchyTemplate.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: "Region first" } }));
     const emea = { logic: "and" as const, children: [{ field: { kind: "dimension" as const, key: "region" }, op: "eq" as const, value: "EMEA" }] };
     expect(await treeQuery(app, who(emea), { workspaceId: golden.workspaceId, templateId: t.id, period: range }, now)).toMatchObject({ available: false, reason: "scoped", rows: [] });
     expect(await treeQuery(app, who(), { workspaceId: golden.workspaceId, templateId: t.id, period: { kind: "range", start: "2026-02-03", end: "2026-02-20" } }, now)).toMatchObject({ available: false, reason: "not_cached" });
@@ -716,15 +786,23 @@ describe("closures (T-024 done-when: locked envelope rejects draft with 423)", (
     roles: [role],
     assignments: [{ role, scope: {} }],
   });
-  const statuses = async () => Object.fromEntries((await owner.envelope.findMany({ where: { workspaceId: golden.workspaceId }, select: { id: true, status: true } })).map((e) => [e.id, e.status]));
+  const statuses = async () =>
+    Object.fromEntries(
+      (await asOwner((tx) => tx.envelope.findMany({ where: { workspaceId: golden.workspaceId }, select: { id: true, status: true } }))).map((e) => [e.id, e.status]),
+    );
 
   it("the seeded 2026-Q1 closure is restated, its report frozen with the asserted totals, and nothing is left locked", async () => {
-    const c = await owner.periodClosure.findFirstOrThrow({ where: { workspaceId: golden.workspaceId } });
+    const { c, lockedEnvelopeRows, lockedNow, restated } = await asOwner(async (tx) => {
+      const c = await tx.periodClosure.findFirstOrThrow({ where: { workspaceId: golden.workspaceId } });
+      const lockedEnvelopeRows = await tx.closureEnvelope.count({ where: { closureId: c.id } });
+      const lockedNow = await tx.envelope.count({ where: { workspaceId: golden.workspaceId, status: "LOCKED" } });
+      const [restated] = await tx.$queryRawUnsafe<Array<{ reason: string }>>(`SELECT reason FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid AND action = 'closure.restated'`, c.id);
+      return { c, lockedEnvelopeRows, lockedNow, restated };
+    });
     expect(c.status).toBe("restated");
-    expect(await owner.closureEnvelope.count({ where: { closureId: c.id } })).toBe(A.closure.lockedEnvelopes);
+    expect(lockedEnvelopeRows).toBe(A.closure.lockedEnvelopes);
     expect(c.varianceSummary).toMatchObject({ period: { key: GOLDEN_CLOSURE.periodKey }, lockedEnvelopes: A.closure.lockedEnvelopes, rows: A.closure.rows, totals: { budget: A.closure.budget, actual: A.closure.actual } });
-    expect(await owner.envelope.count({ where: { workspaceId: golden.workspaceId, status: "LOCKED" } })).toBe(0);
-    const [restated] = await owner.$queryRawUnsafe<Array<{ reason: string }>>(`SELECT reason FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid AND action = 'closure.restated'`, c.id);
+    expect(lockedNow).toBe(0);
     expect(restated?.reason).toBe(GOLDEN_CLOSURE.reason);
   });
 
@@ -733,7 +811,9 @@ describe("closures (T-024 done-when: locked envelope rejects draft with 423)", (
     const sink = new RecordingClosureSink();
     const closed = await closePeriod(app, sink, person(golden.users.finance1, "FINANCE"), { periodKey: "2026-Q2" });
     // Live envelopes that overlap the quarter (the FY2027 successor of GOLDEN_HISTORY does not).
-    const outside = await owner.envelope.count({ where: { workspaceId: golden.workspaceId, status: { not: "ARCHIVED" }, OR: [{ startDate: { gt: new Date("2026-06-30") } }, { endDate: { lt: new Date("2026-04-01") } }] } });
+    const outside = await asOwner((tx) =>
+      tx.envelope.count({ where: { workspaceId: golden.workspaceId, status: { not: "ARCHIVED" }, OR: [{ startDate: { gt: new Date("2026-06-30") } }, { endDate: { lt: new Date("2026-04-01") } }] } }),
+    );
     const live = Object.values(before).filter((s) => s !== "ARCHIVED").length - outside;
     expect(closed).toMatchObject({ status: "closed", lockedEnvelopes: live, period: { start: "2026-04-01", end: "2026-06-30" } });
     expect(Object.values(await statuses()).filter((s) => s === "LOCKED")).toHaveLength(live);
@@ -743,7 +823,7 @@ describe("closures (T-024 done-when: locked envelope rejects draft with 423)", (
     const pivot = compileTotals(QueryRequest.parse({ workspaceId: golden.workspaceId, filter: { logic: "and", children: LIVE_LEAVES }, period: { kind: "range", ...q2 }, measures: ["budget", "actual"], limit: 1 }), q2, TODAY);
     const [p] = await withTenant(app, ctx(), (tx) => tx.$queryRawUnsafe<Array<{ budget: unknown; actual: unknown }>>(pivot.sql, ...pivot.values));
     const rows = [...sink.tables.values()][0] ?? [];
-    const templates = await owner.hierarchyTemplate.count({ where: { workspaceId: golden.workspaceId } });
+    const templates = await asOwner((tx) => tx.hierarchyTemplate.count({ where: { workspaceId: golden.workspaceId } }));
     const roots = rows.filter((r) => r.grain === "total" && r.node_path === "");
     expect(roots).toHaveLength(templates);
     for (const r of roots) expect([r.budget, r.actual]).toEqual([new Decimal(String(p?.budget)).toFixed(2), new Decimal(String(p?.actual)).toFixed(2)]);
@@ -755,7 +835,7 @@ describe("closures (T-024 done-when: locked envelope rejects draft with 423)", (
     const leaf = [...golden.envelopeIds.values()][golden.envelopeIds.size - 1] as string;
     await expect(createDraftVersion(app, person(golden.users.planner, "PLANNER"), leaf, { amount: "1.00", basedOnVersionId: null })).rejects.toMatchObject({ code: "LOCKED" });
     expect(httpStatus.LOCKED).toBe(423);
-    const bulk = await owner.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, entityType: "bulk_change", status: "PENDING" } });
+    const bulk = await asOwner((tx) => tx.approvalRequest.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, entityType: "bulk_change", status: "PENDING" } }));
     await expect(decide(app, person(golden.users.approver, "APPROVER"), bulk.id, { decision: "approve" })).rejects.toMatchObject({ code: "LOCKED" });
 
     const restated = await restateClosure(app, person(golden.users.admin, "WORKSPACE_ADMIN"), closed.id, { reason: "Q2 media invoices arrived late" });

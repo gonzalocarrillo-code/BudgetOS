@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { DEFAULT_TEMPLATE_KEY, audit, ensureDefaultTemplate, openAlert, outbox, withTenant } from "@budget/db";
+import { DEFAULT_TEMPLATE_KEY, asOrgAdmin, audit, ensureDefaultTemplate, openAlert, outbox, withTenant } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { Decimal } from "decimal.js";
 import type { AuthContext } from "../common/tenant.js";
@@ -50,10 +50,14 @@ export async function seedSlackSandbox(app: PrismaClient, owner: PrismaClient, e
   });
 
   // ---- The workspace, once ----
-  let ws = await owner.workspace.findFirst({ where: { orgId, slug: SLUG, deletedAt: null }, select: { id: true } });
+  // W0-6 (audit S-2, S-3, S-21): workspace and workspace_template have no owner_bootstrap policy
+  // (only organization/app_user/role_assignment do), so these reads need the same org-admin
+  // tenant context real code gets from withTenant — without it, FORCE RLS silently returns
+  // nothing and every run would create a fresh "slack-sandbox" workspace instead of reusing one.
+  let ws = await asOrgAdmin(owner, (tx) => tx.workspace.findFirst({ where: { orgId, slug: SLUG, deletedAt: null }, select: { id: true } }), orgId);
   if (!ws) {
     const ctx = { workspaceId: null, orgId, userId: boss.id, isOrgAdmin: true, actorType: "system" as const, requestId: "slack-sandbox-template" };
-    const templateId = (await owner.workspaceTemplate.findFirst({ where: { key: DEFAULT_TEMPLATE_KEY, OR: [{ orgId }, { orgId: null }] }, select: { id: true } }))?.id ?? (await withTenant(owner, ctx, (tx) => ensureDefaultTemplate(tx, newId)));
+    const templateId = (await asOrgAdmin(owner, (tx) => tx.workspaceTemplate.findFirst({ where: { key: DEFAULT_TEMPLATE_KEY, OR: [{ orgId }, { orgId: null }] }, select: { id: true } }), orgId))?.id ?? (await withTenant(owner, ctx, (tx) => ensureDefaultTemplate(tx, newId)));
     const created = await createWorkspace(app, as(boss, null, ["ORG_ADMIN"], true), { name: "Slack sandbox", slug: SLUG, templateId, withDemoData: true, reportingCurrency: "USD", fiscalYearStartMonth: 1 });
     ws = { id: String((created as { id: string }).id) };
   }
@@ -74,21 +78,33 @@ export async function seedSlackSandbox(app: PrismaClient, owner: PrismaClient, e
 
   // ---- Approvals: three budget changes and a bulk change, from the tester ----
   // Budgets free to change (no draft or request open), and every live leaf for alerts and comments.
-  const all = await owner.$queryRawUnsafe<Array<{ id: string; name: string; amount: string }>>(
-    `SELECT e.id::text, e.name, coalesce((SELECT v.amount::text FROM envelope_version v WHERE v.envelope_id = e.id AND v.status IN ('APPROVED', 'SUPERSEDED') ORDER BY v.approved_at DESC NULLS LAST LIMIT 1), '0') AS amount
-       FROM envelope e WHERE e.workspace_id = $1::uuid AND e.status <> 'ARCHIVED' AND e.ended_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id) ORDER BY e.name`,
-    workspaceId,
+  // envelope is a generic tenant_isolation table (app_visible_workspace_ids()): same org-admin
+  // context as above, since the workspace row this resolves through already exists by now.
+  const all = await asOrgAdmin(
+    owner,
+    (tx) =>
+      tx.$queryRawUnsafe<Array<{ id: string; name: string; amount: string }>>(
+        `SELECT e.id::text, e.name, coalesce((SELECT v.amount::text FROM envelope_version v WHERE v.envelope_id = e.id AND v.status IN ('APPROVED', 'SUPERSEDED') ORDER BY v.approved_at DESC NULLS LAST LIMIT 1), '0') AS amount
+           FROM envelope e WHERE e.workspace_id = $1::uuid AND e.status <> 'ARCHIVED' AND e.ended_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id) ORDER BY e.name`,
+        workspaceId,
+      ),
+    orgId,
   );
-  const leaves = await owner.$queryRawUnsafe<Array<{ id: string; name: string; version_id: string; amount: string }>>(
-    `SELECT e.id::text, e.name, v.id::text AS version_id, v.amount::text
-       FROM envelope e
-       JOIN LATERAL (SELECT id, amount FROM envelope_version WHERE envelope_id = e.id AND status = 'APPROVED' ORDER BY approved_at DESC LIMIT 1) v ON true
-      WHERE e.workspace_id = $1::uuid AND e.status = 'APPROVED' AND e.ended_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id)
-        AND NOT EXISTS (SELECT 1 FROM envelope_version d WHERE d.envelope_id = e.id AND d.status IN ('DRAFT', 'PENDING'))
-      ORDER BY e.name`,
-    workspaceId,
+  const leaves = await asOrgAdmin(
+    owner,
+    (tx) =>
+      tx.$queryRawUnsafe<Array<{ id: string; name: string; version_id: string; amount: string }>>(
+        `SELECT e.id::text, e.name, v.id::text AS version_id, v.amount::text
+           FROM envelope e
+           JOIN LATERAL (SELECT id, amount FROM envelope_version WHERE envelope_id = e.id AND status = 'APPROVED' ORDER BY approved_at DESC LIMIT 1) v ON true
+          WHERE e.workspace_id = $1::uuid AND e.status = 'APPROVED' AND e.ended_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM envelope c WHERE c.parent_id = e.id)
+            AND NOT EXISTS (SELECT 1 FROM envelope_version d WHERE d.envelope_id = e.id AND d.status IN ('DRAFT', 'PENDING'))
+          ORDER BY e.name`,
+        workspaceId,
+      ),
+    orgId,
   );
   if (all.length === 0) throw new Error("The sandbox has no budgets");
   const requests: string[] = [];

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GOLDEN_ASSERTIONS, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FY, GOLDEN_HISTORY } from "@budget/db";
+import { asOrgAdmin, GOLDEN_ASSERTIONS, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_FY, GOLDEN_HISTORY } from "@budget/db";
 import { LIVE_LEAVES } from "@budget/workers";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -33,24 +33,42 @@ async function tool(name: string, args: Record<string, unknown> = {}, who = "fin
   return res.body["data"] as never;
 }
 
-/** md5 of every row the golden workspace has in each table with a workspace_id (audit_event aside), plus key child tables. */
+/**
+ * md5 of every row the golden workspace has in each table with a workspace_id (audit_event
+ * aside), plus key child tables. W0-6: the owner has no BYPASSRLS, so these cross-table SELECTs
+ * (each would otherwise silently return zero rows under FORCE RLS) run under asOrgAdmin.
+ */
 async function fingerprint(): Promise<Record<string, string>> {
-  const tables = await owner.$queryRawUnsafe<Array<{ table_name: string }>>(
-    `SELECT c.table_name FROM information_schema.columns c JOIN pg_class p ON p.relname = c.table_name
-     WHERE c.table_schema = 'public' AND c.column_name = 'workspace_id' AND c.table_name <> 'audit_event' AND NOT p.relispartition ORDER BY 1`,
+  return asOrgAdmin(
+    owner,
+    async (tx) => {
+    const tables = await tx.$queryRawUnsafe<Array<{ table_name: string }>>(
+      `SELECT c.table_name FROM information_schema.columns c JOIN pg_class p ON p.relname = c.table_name
+       WHERE c.table_schema = 'public' AND c.column_name = 'workspace_id' AND c.table_name <> 'audit_event' AND NOT p.relispartition ORDER BY 1`,
+    );
+    const out: Record<string, string> = {};
+    const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
+    const sqls: Array<[string, string]> = [
+      ...tables.map((t): [string, string] => [t.table_name, `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM "${t.table_name}" x WHERE x.workspace_id = $1::uuid`]),
+      ["envelope_version", `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM envelope_version x WHERE x.envelope_id IN ${envs}`],
+      ["approval_decision", `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM approval_decision x WHERE x.request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)`],
+      ["comment", `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM comment x WHERE x.thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`],
+    ];
+      for (const [name, sql] of sqls) out[name] = (await tx.$queryRawUnsafe<Array<{ h: string }>>(sql, golden.workspaceId))[0]?.h ?? "";
+      return out;
+    },
+    golden.orgId,
   );
-  const out: Record<string, string> = {};
-  const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-  const sqls: Array<[string, string]> = [
-    ...tables.map((t): [string, string] => [t.table_name, `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM "${t.table_name}" x WHERE x.workspace_id = $1::uuid`]),
-    ["envelope_version", `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM envelope_version x WHERE x.envelope_id IN ${envs}`],
-    ["approval_decision", `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM approval_decision x WHERE x.request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)`],
-    ["comment", `SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM comment x WHERE x.thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`],
-  ];
-  for (const [name, sql] of sqls) out[name] = (await owner.$queryRawUnsafe<Array<{ h: string }>>(sql, golden.workspaceId))[0]?.h ?? "";
-  return out;
 }
-const mcpAudits = async () => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE actor_type = 'mcp' AND workspace_id = $1::uuid`, golden.workspaceId))[0]?.n ?? 0);
+const mcpAudits = async () =>
+  asOrgAdmin(
+    owner,
+    (tx) =>
+      tx
+        .$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE actor_type = 'mcp' AND workspace_id = $1::uuid`, golden.workspaceId)
+        .then((rows) => Number(rows[0]?.n ?? 0)),
+    golden.orgId,
+  );
 
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
@@ -252,7 +270,12 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
   it("wrote one mcp audit row per call and nothing else", async () => {
     expect(await fingerprint()).toEqual(before);
     expect((await mcpAudits()) - audits0).toBe(calls);
-    const [row] = await owner.$queryRawUnsafe<Array<{ action: string; actor_id: string }>>(`SELECT action, actor_id::text FROM audit_event WHERE actor_type = 'mcp' AND workspace_id = $1::uuid AND action = 'mcp.query_budgets' LIMIT 1`, golden.workspaceId);
+    const [row] = await asOrgAdmin(
+      owner,
+      (tx) =>
+        tx.$queryRawUnsafe<Array<{ action: string; actor_id: string }>>(`SELECT action, actor_id::text FROM audit_event WHERE actor_type = 'mcp' AND workspace_id = $1::uuid AND action = 'mcp.query_budgets' LIMIT 1`, golden.workspaceId),
+      golden.orgId,
+    );
     expect(row).toEqual({ action: "mcp.query_budgets", actor_id: golden.users.finance1 });
   });
 });
@@ -278,16 +301,28 @@ describe("MCP access rules", () => {
   it("a new dimension is an MCP parameter at once (Epic 0.4)", async () => {
     const dimId = randomUUID();
     const key = `t025_${randomUUID().slice(0, 6)}`;
-    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'T-025 channel', 'ENUM', $5::uuid)`, dimId, golden.orgId, golden.workspaceId, key, golden.users.orgAdmin);
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'retail', 'Retail')`, randomUUID(), dimId);
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'T-025 channel', 'ENUM', $5::uuid)`, dimId, golden.orgId, golden.workspaceId, key, golden.users.orgAdmin);
+        await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'retail', 'Retail')`, randomUUID(), dimId);
+      },
+      golden.orgId,
+    );
     const started = performance.now();
     const reg = (await tool("describe_dimensions")) as { dimensions: Array<{ key: string }> };
     expect(reg.dimensions.map((d) => d.key)).toContain(key);
     const res = (await tool("query_budgets", { filter: live({ field: { kind: "dimension", key }, op: "is_empty" }), groupBy: [key], measures: ["budget"], period })) as { totals: Record<string, string> };
     expect(new Decimal(res.totals["budget"] ?? 0).toFixed(2)).toBe(A.rollup.rootBudget);
     expect(performance.now() - started).toBeLessThan(10_000);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id = $1::uuid`, dimId);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE id = $1::uuid`, dimId);
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id = $1::uuid`, dimId);
+        await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE id = $1::uuid`, dimId);
+      },
+      golden.orgId,
+    );
   });
 
   it("rate limit: 120 calls a minute per user", async () => {

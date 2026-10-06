@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readDataVersion } from "@budget/db";
+import { asOrgAdmin, readDataVersion, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -28,19 +28,26 @@ const tok = (u: TestUser) => h.mint(u);
 const X = { "x-workspace-id": ws };
 let seq = 0;
 const rid = () => `t010-${++seq}-${orgId}`;
+// W0-6: the owner has no BYPASSRLS; every owner.* call below needs the same org-admin tenant
+// context real reads/writes get from withTenant, scoped to this suite's single org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 
 async function auditFor(requestId: string, envelopeId: string): Promise<Array<{ action: string }>> {
-  return owner.$queryRawUnsafe(`SELECT action FROM audit_event WHERE request_id = $1 AND entity_id = $2::uuid`, requestId, envelopeId);
+  return admin((tx) => tx.$queryRawUnsafe(`SELECT action FROM audit_event WHERE request_id = $1 AND entity_id = $2::uuid`, requestId, envelopeId));
 }
 async function outboxFor(envelopeId: string): Promise<number> {
-  const rows = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(
-    `SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'envelopeId' = $2`,
-    ws,
-    envelopeId,
+  const rows = await admin((tx) =>
+    tx.$queryRawUnsafe<Array<{ n: bigint }>>(
+      `SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'budget.changed' AND payload->>'envelopeId' = $2`,
+      ws,
+      envelopeId,
+    ),
   );
   return Number(rows[0]?.n ?? 0);
 }
-const dataVersion = (): Promise<number> => readDataVersion(owner, ws);
+// W0-6: workspace_data_version has the same tenant_isolation policy as every other tenant table;
+// the owner has no BYPASSRLS, so this needs the org-admin context too.
+const dataVersion = (): Promise<number> => admin((tx) => readDataVersion(tx, ws));
 
 /** Runs a write and asserts it produced exactly one audit_event (by request id) and one outbox row. */
 async function oneAuditOneOutbox(envelopeId: string | null, action: string, write: (requestId: string) => Promise<{ status: number; body: Record<string, unknown> }>) {
@@ -82,11 +89,34 @@ async function draft(id: string, body: Record<string, unknown>, user: TestUser =
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t010" } });
-  await owner.workspace.createMany({
-    data: [
-      { id: ws, orgId, slug: `t010-${ws}`, name: "T-010", reportingCurrency: "USD" },
-      { id: otherWs, orgId, slug: `t010-${otherWs}`, name: "T-010 other", reportingCurrency: "USD" },
-    ],
+  // W0-6: workspace and the org-wide dimension/dimension_value rows need the org-admin tenant
+  // context real writes get from withTenant; registry_read/write also needs an exact app.org_id
+  // match, which admin() sets alongside is_org_admin.
+  await admin(async (tx) => {
+    await tx.workspace.createMany({
+      data: [
+        { id: ws, orgId, slug: `t010-${ws}`, name: "T-010", reportingCurrency: "USD" },
+        { id: otherWs, orgId, slug: `t010-${otherWs}`, name: "T-010 other", reportingCurrency: "USD" },
+      ],
+    });
+    await tx.$executeRawUnsafe(
+      `INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $3::uuid, NULL, 'region', 'Region', 'ENUM', $4::uuid), ($2::uuid, $3::uuid, NULL, 'platform', 'Platform', 'ENUM', $4::uuid)`,
+      region,
+      platform,
+      orgId,
+      orgAdmin.id,
+    );
+    const ids: Record<string, string> = {};
+    for (const [code, dim, parent] of [["latam", region, null], ["br", region, "latam"], ["emea", region, null], ["de", region, "emea"], ["meta", platform, null], ["google", platform, null]] as const) {
+      ids[code] = randomUUID();
+      await tx.$executeRawUnsafe(
+        `INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, $3, $3, $4::uuid)`,
+        ids[code],
+        dim,
+        code,
+        parent ? ids[parent] : null,
+      );
+    }
   });
   await owner.user.createMany({
     data: [planner, viewer, scopedOwner, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.email, googleSub: `g-${u.sub}` })),
@@ -100,24 +130,6 @@ beforeAll(async () => {
       { id: randomUUID(), workspaceId: null, principalType: "user", principalId: orgAdmin.id, role: "ORG_ADMIN", createdBy: orgAdmin.id },
     ],
   });
-  await owner.$executeRawUnsafe(
-    `INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $3::uuid, NULL, 'region', 'Region', 'ENUM', $4::uuid), ($2::uuid, $3::uuid, NULL, 'platform', 'Platform', 'ENUM', $4::uuid)`,
-    region,
-    platform,
-    orgId,
-    orgAdmin.id,
-  );
-  const ids: Record<string, string> = {};
-  for (const [code, dim, parent] of [["latam", region, null], ["br", region, "latam"], ["emea", region, null], ["de", region, "emea"], ["meta", platform, null], ["google", platform, null]] as const) {
-    ids[code] = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, $3, $3, $4::uuid)`,
-      ids[code],
-      dim,
-      code,
-      parent ? ids[parent] : null,
-    );
-  }
   h = await startHarness();
 }, 60_000);
 
@@ -127,12 +139,16 @@ afterAll(async () => {
   // themselves, including envelope_dimension, which references dimension_value) in the same
   // order `purgeWorkspace` validates against production — before the org-level dimension cleanup
   // below, which would otherwise violate envelope_dimension_value_id_fkey.
-  await deleteWorkspaceForTests(owner, [ws, otherWs]);
-  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform); // W3-11 (I-32): self-ref FK
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM fx_rate WHERE base = $1`, TEST_CCY);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, [ws, otherWs], orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [planner.id, viewer.id, scopedOwner.id, orgAdmin.id] } } });
+  await admin(async (tx) => {
+    await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform); // W3-11 (I-32): self-ref FK
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
+  await owner.$executeRawUnsafe(`DELETE FROM fx_rate WHERE base = $1`, TEST_CCY);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await owner.$disconnect();
@@ -149,30 +165,32 @@ describe("create", () => {
     expect(draftV.phasing).toHaveLength(3);
     expect(res.body["status"]).toBe("DRAFT");
     expect(res.body["currentVersionId"]).toBeNull();
-    const dims = await owner.envelopeDimension.count({ where: { envelopeId: String(res.body["id"]) } });
+    const dims = await admin((tx) => tx.envelopeDimension.count({ where: { envelopeId: String(res.body["id"]) } }));
     expect(dims).toBe(2);
   });
 
   it("rejects a tuple the registry does not allow, and writes nothing", async () => {
-    const before = await owner.envelope.count({ where: { workspaceId: ws } });
+    const before = await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }));
     expect((await create(planner, envelopeBody({ dimensionValues: { region: "xx" } }))).status).toBe(422);
     expect((await create(planner, envelopeBody({ dimensionValues: { country: "br" } }))).status).toBe(422);
     expect((await create(planner, envelopeBody({ endDate: "2026-09-01" }))).status).toBeGreaterThanOrEqual(400);
     expect((await create(planner, envelopeBody({ amount: "10.123" }))).status).toBeGreaterThanOrEqual(400);
-    expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(before);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }))).toBe(before);
   });
 
   it("refuses a real envelope under a demo parent, and writes nothing (HF-1)", async () => {
     const demoParentId = randomUUID();
-    await owner.envelope.create({
-      data: { id: demoParentId, workspaceId: ws, name: "Demo parent", dimensionValues: { region: "br" }, startDate: new Date("2026-10-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: planner.id, demo: true },
-    });
-    const before = await owner.envelope.count({ where: { workspaceId: ws } });
+    await admin((tx) =>
+      tx.envelope.create({
+        data: { id: demoParentId, workspaceId: ws, name: "Demo parent", dimensionValues: { region: "br" }, startDate: new Date("2026-10-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: planner.id, demo: true },
+      }),
+    );
+    const before = await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }));
     const requestId = rid();
     const res = await create(planner, envelopeBody({ parentId: demoParentId }), { "x-request-id": requestId });
     expect(res.status).toBe(422);
     expect(res.body["code"]).toBe("VALIDATION");
-    expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(before);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }))).toBe(before);
     expect(await auditFor(requestId, demoParentId)).toEqual([]);
     expect(await outboxFor(demoParentId)).toBe(0);
   });
@@ -231,15 +249,17 @@ describe("draft versions and optimistic concurrency", () => {
     // Approval is T-011; the fixture writes the approved version directly.
     const approvedId = randomUUID();
     const approvedAt = new Date("2026-09-01T12:00:00Z");
-    await owner.envelopeVersion.create({
-      data: { id: approvedId, envelopeId: id, versionNo: 1, amount: "5000.00", amountReporting: "5000.00", status: "APPROVED", approvedAt, createdBy: planner.id },
+    await admin(async (tx) => {
+      await tx.envelopeVersion.create({
+        data: { id: approvedId, envelopeId: id, versionNo: 1, amount: "5000.00", amountReporting: "5000.00", status: "APPROVED", approvedAt, createdBy: planner.id },
+      });
+      await tx.envelope.update({ where: { id }, data: { currentVersionId: approvedId, status: "APPROVED" } });
     });
-    await owner.envelope.update({ where: { id }, data: { currentVersionId: approvedId, status: "APPROVED" } });
 
     const res = await draft(id, { amount: "6000.00", basedOnVersionId: approvedId });
     expect(res.status).toBe(200);
     expect(res.body["basedOnVersionId"]).toBe(approvedId);
-    const approved = await owner.envelopeVersion.findUniqueOrThrow({ where: { id: approvedId } });
+    const approved = await admin((tx) => tx.envelopeVersion.findUniqueOrThrow({ where: { id: approvedId } }));
     expect(approved.amount.toFixed(2)).toBe("5000.00");
     expect(approved.status).toBe("APPROVED");
     expect(approved.approvedAt?.toISOString()).toBe(approvedAt.toISOString());
@@ -253,7 +273,7 @@ describe("draft versions and optimistic concurrency", () => {
     const env = await create(planner, envelopeBody({ amount: "10.00" }));
     const id = String(env.body["id"]);
     const v1 = String(env.body["draftVersionId"]);
-    await owner.envelopeVersion.update({ where: { id: v1 }, data: { status: "PENDING" } });
+    await admin((tx) => tx.envelopeVersion.update({ where: { id: v1 }, data: { status: "PENDING" } }));
     const res = await draft(id, { amount: "20.00", basedOnVersionId: v1 });
     expect(res.status).toBe(409);
     expect((res.body["details"] as { currentVersionId: string }).currentVersionId).toBe(v1);
@@ -278,7 +298,7 @@ describe("phasing", () => {
     );
     expect(res.body).toMatchObject({ versionNo: 2, amount: "900.00" });
     expect((res.body["phasing"] as Array<{ amount: string }>).map((p) => p.amount)).toEqual(["600.00", "200.00", "100.00"]);
-    const old = await owner.envelopePhasing.findMany({ where: { versionId: v1 }, orderBy: { month: "asc" } });
+    const old = await admin((tx) => tx.envelopePhasing.findMany({ where: { versionId: v1 }, orderBy: { month: "asc" } }));
     expect(old.map((p) => p.amount.toFixed(2))).toEqual(["300.00", "300.00", "300.00"]);
   });
 });
@@ -299,7 +319,7 @@ describe("restore", () => {
     );
     expect(res.body).toMatchObject({ versionNo: 3, amount: "300.00", rationale: "Restored from v1", status: "DRAFT" });
     expect((res.body["phasing"] as unknown[]).length).toBe(3);
-    const statuses = await owner.envelopeVersion.findMany({ where: { envelopeId: id }, orderBy: { versionNo: "asc" }, select: { status: true } });
+    const statuses = await admin((tx) => tx.envelopeVersion.findMany({ where: { envelopeId: id }, orderBy: { versionNo: "asc" }, select: { status: true } }));
     expect(statuses.map((s) => s.status)).toEqual(["SUPERSEDED", "SUPERSEDED", "DRAFT"]);
   });
 });
@@ -330,7 +350,7 @@ describe("closed periods and tenancy", () => {
     const env = await create(planner, envelopeBody({ amount: "10.00" }));
     const id = String(env.body["id"]);
     const v1 = String(env.body["draftVersionId"]);
-    await owner.envelope.update({ where: { id }, data: { status: "LOCKED" } });
+    await admin((tx) => tx.envelope.update({ where: { id }, data: { status: "LOCKED" } }));
     const t = await tok(planner);
     expect((await draft(id, { amount: "11.00", basedOnVersionId: v1 })).status).toBe(423);
     expect((await h.call("PATCH", `/api/v1/envelopes/${id}/phasing`, t, { headers: X, body: { phasing: q4("10", "0", "0"), basedOnVersionId: v1 } })).status).toBe(423);

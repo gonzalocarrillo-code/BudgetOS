@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -21,7 +22,19 @@ const call = async (u: TestUser, method: "GET" | "POST", url: string, body?: unk
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t029" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t029-${ws}`, name: "T-029", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  // W0-6: the owner has no BYPASSRLS; workspace, dimension/dimension_value and approval_policy need
+  // the org-admin tenant context real writes get from withTenant.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.workspace.create({ data: { id: ws, orgId, slug: `t029-${ws}`, name: "T-029", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+      const region = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+      await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'latam', 'latam')`, randomUUID(), region);
+      await tx.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "One approver", priority: 1, conditions: {}, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true } });
+    },
+    orgId,
+  );
   await owner.user.createMany({ data: [planner, approver, viewer, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: `Name ${u.sub}`, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -31,10 +44,6 @@ beforeAll(async () => {
       { id: randomUUID(), workspaceId: null, principalType: "user", principalId: orgAdmin.id, role: "ORG_ADMIN", createdBy: orgAdmin.id },
     ],
   });
-  const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
-  await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'latam', 'latam')`, randomUUID(), region);
-  await owner.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "One approver", priority: 1, conditions: {}, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true } });
   h = await startHarness();
 }, 60_000);
 
@@ -42,10 +51,18 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+    },
+    orgId,
+  );
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await owner.$disconnect();

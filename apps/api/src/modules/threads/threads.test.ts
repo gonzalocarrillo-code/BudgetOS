@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests, handleThreadChanged } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -35,14 +36,17 @@ async function call(user: TestUser, method: "GET" | "POST" | "PATCH" | "DELETE",
 }
 const thread = (user: TestUser, over: Record<string, unknown>, requestId?: string) => call(user, "POST", "/threads", { anchorType: "envelope", anchorId: env["emea"], firstComment: { bodyMd: "Please look" }, ...over }, requestId);
 const mention = (u: TestUser) => `@[user:${u.id}]`;
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace-scoped tables
+// below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 const actions = async (requestId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId)).map((r) => r.action);
+  (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId))).map((r) => r.action);
 const notifications = async (userId: string) =>
-  owner.$queryRawUnsafe<Array<{ kind: string; payload: { threadId: string; action: string } }>>(`SELECT kind, payload FROM notification WHERE workspace_id = $1::uuid AND user_id = $2::uuid ORDER BY created_at`, ws, userId);
+  asAdmin((tx) => tx.$queryRawUnsafe<Array<{ kind: string; payload: { threadId: string; action: string } }>>(`SELECT kind, payload FROM notification WHERE workspace_id = $1::uuid AND user_id = $2::uuid ORDER BY created_at`, ws, userId));
 
 /** Delivers the latest thread.changed event for a thread to the in-app notifier, like a Pub/Sub push. */
 async function deliver(threadId: string) {
-  const [row] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'thread.changed' AND payload->>'threadId' = $1 ORDER BY id DESC LIMIT 1`, threadId);
+  const [row] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'thread.changed' AND payload->>'threadId' = $1 ORDER BY id DESC LIMIT 1`, threadId));
   const body = {
     message: { data: Buffer.from(JSON.stringify(row?.payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "thread.changed" }, messageId: randomUUID() },
     subscription: "projects/p/subscriptions/notify-worker",
@@ -61,11 +65,17 @@ async function approvedEnvelope(name: string, dimensionValues: Record<string, st
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t019" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t019-${ws}`, name: "T-019", reportingCurrency: "USD" } });
   const all = [planner, approver, budgetOwner, viewer, scoped, admin, outsider, groupMember, orgAdmin];
   await owner.user.createMany({ data: all.map((u) => ({ id: u.id, orgId, email: u.email, name: `Name ${u.sub}`, googleSub: `g-${u.sub}` })) });
-  await owner.group.create({ data: { id: groupId, orgId, googleGroup: `latam-team-${groupId}@t019.test`, name: "LATAM team" } });
-  await owner.groupMember.create({ data: { groupId, userId: groupMember.id } });
+  // W0-6: workspace, app_group and app_group_member have no owner_bootstrap policy; they need the
+  // org-admin tenant context real writes get from withTenant, with the real org id for the exact
+  // org_id match app_group/app_group_member require. The group member row's own app_user row must
+  // already exist, so users are created first.
+  await asAdmin(async (tx) => {
+    await tx.workspace.create({ data: { id: ws, orgId, slug: `t019-${ws}`, name: "T-019", reportingCurrency: "USD" } });
+    await tx.group.create({ data: { id: groupId, orgId, googleGroup: `latam-team-${groupId}@t019.test`, name: "LATAM team" } });
+    await tx.groupMember.create({ data: { groupId, userId: groupMember.id } });
+  });
   const latam = { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] };
   const assign = (u: TestUser, role: string, scope: unknown = {}, principalType = "user", principalId = u.id) => ({ id: randomUUID(), workspaceId: ws, principalType, principalId, role: role as "VIEWER", scope: scope as object, createdBy: orgAdmin.id });
   await owner.roleAssignment.createMany({
@@ -81,9 +91,11 @@ beforeAll(async () => {
     ],
   });
   const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
-  for (const code of ["latam", "emea"]) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
-  await owner.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 1, conditions: {}, chain: [], blockSelfApproval: true } });
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+    for (const code of ["latam", "emea"]) await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
+    await tx.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 1, conditions: {}, chain: [], blockSelfApproval: true } });
+  });
   h = await startHarness();
   env["emea"] = await approvedEnvelope("EMEA", { region: "emea" });
   env["latam"] = await approvedEnvelope("LATAM", { region: "latam" });
@@ -93,12 +105,16 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
-  await owner.groupMember.deleteMany({ where: { groupId } });
-  await owner.group.delete({ where: { id: groupId } });
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+    await tx.groupMember.deleteMany({ where: { groupId } });
+    await tx.group.delete({ where: { id: groupId } });
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -212,7 +228,7 @@ describe("reactions, edit history and people (plan 0.6, T-030)", () => {
     expect(added.status, JSON.stringify(added.body)).toBe(201);
     expect(added.body).toMatchObject({ commentId, emoji: "👍", mine: true, count: 1, changed: true });
     expect(await actions(requestId)).toEqual(["reaction.added"]);
-    const [last] = await owner.$queryRawUnsafe<Array<{ payload: { action: string; commentId: string } }>>(`SELECT payload FROM outbox WHERE workspace_id = $1::uuid AND topic = 'thread.changed' ORDER BY id DESC LIMIT 1`, ws);
+    const [last] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ payload: { action: string; commentId: string } }>>(`SELECT payload FROM outbox WHERE workspace_id = $1::uuid AND topic = 'thread.changed' ORDER BY id DESC LIMIT 1`, ws));
     expect(last?.payload).toMatchObject({ commentId });
 
     const again = rid();
@@ -275,7 +291,7 @@ describe("tags", () => {
     expect((await call(planner, "DELETE", "/tags/apply", { tagId: a.body["id"], entities: [entities[1]] })).body).toMatchObject({ changed: 1 });
     const list = (await call(viewer, "GET", `/workspaces/${ws}/tags`)).body as unknown as Array<{ name: string; count: number }>;
     expect(list).toEqual([{ id: a.body["id"], name: "Q4 push", color: "#FF8800", kind: "label", count: 1 }]);
-    const events = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'tag.changed'`, ws);
+    const events = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'tag.changed'`, ws));
     expect(Number(events[0]?.n)).toBe(8); // 2 creates, 3 applies, 1 merge, 1 rename, 1 remove
 
     // Chips anywhere: the tags on a set of entities of one type, entities without tags left out.

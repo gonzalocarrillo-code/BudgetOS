@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../../seed/golden.js";
@@ -26,7 +26,10 @@ async function as(method: "GET" | "POST", url: string, body?: unknown, requestId
   const token = await h.mint({ sub: "ip-planner", email: `planner@${slug}.golden.test` }, { googleSub: `golden-${slug}-planner` });
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId, "x-request-id": requestId }, ...(body === undefined ? {} : { body }) });
 }
-const count = async (sql: string, ...args: unknown[]) => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(sql, ...args))[0]?.n);
+// W0-6: the owner has no BYPASSRLS; every owner.* call below needs the same org-admin tenant
+// context real reads/writes get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
+const count = async (sql: string, ...args: unknown[]) => Number((await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(sql, ...args)))[0]?.n);
 
 let parentId = "";
 let children: string[] = [];
@@ -37,8 +40,10 @@ beforeAll(async () => {
   // A parent whose children have no open draft (the golden data has some drafts and pending requests).
   for (const e of plan.filter((p) => p.level === 3)) {
     const id = golden.envelopeIds.get(e.key) as string;
-    const kids = await owner.envelope.findMany({ where: { parentId: id, status: { not: "ARCHIVED" } }, select: { id: true, draftVersionId: true } });
-    const self = await owner.envelope.findUniqueOrThrow({ where: { id }, select: { draftVersionId: true } });
+    const { kids, self } = await admin(async (tx) => ({
+      kids: await tx.envelope.findMany({ where: { parentId: id, status: { not: "ARCHIVED" } }, select: { id: true, draftVersionId: true } }),
+      self: await tx.envelope.findUniqueOrThrow({ where: { id }, select: { draftVersionId: true } }),
+    }));
     if (kids.length >= 2 && self.draftVersionId === null && kids.every((k) => k.draftVersionId === null)) {
       parentId = id;
       children = kids.map((k) => k.id);
@@ -90,7 +95,7 @@ describe("family editing", () => {
     const saveId = `family-${randomUUID()}`;
     const saved = await as("POST", `/api/v1/envelopes/${parentId}/family`, input, saveId);
     expect(saved.status, JSON.stringify(saved.body)).toBe(201);
-    const rules = await owner.envelopeAllocation.findMany({ where: { childEnvelopeId: first.envelopeId, supersededAt: null } });
+    const rules = await admin((tx) => tx.envelopeAllocation.findMany({ where: { childEnvelopeId: first.envelopeId, supersededAt: null } }));
     expect(rules.map((r) => [r.parentEnvelopeId, r.mode, r.pct?.toString()])).toEqual([[parentId, "percent", share.toString()]]);
     expect(await count(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1 AND action = 'allocation.changed'`, saveId)).toBe(1);
     expect(await count(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'allocation.changed' AND payload->>'envelopeId' = $2`, golden.workspaceId, parentId)).toBe(1);
@@ -100,7 +105,7 @@ describe("family editing", () => {
     // Commit: drafts for the parent and the child, in one bulk change.
     const commit = await as("POST", `/api/v1/envelopes/bulk/${bulk?.previewId}/commit`);
     expect(commit.status, JSON.stringify(commit.body)).toBeLessThan(300);
-    const drafts = await owner.envelope.findMany({ where: { id: { in: [parentId, first.envelopeId] } }, select: { draftVersionId: true } });
+    const drafts = await admin((tx) => tx.envelope.findMany({ where: { id: { in: [parentId, first.envelopeId] } }, select: { draftVersionId: true } }));
     expect(drafts.every((d) => d.draftVersionId !== null)).toBe(true);
 
     // Saving the same rules again stores nothing new.

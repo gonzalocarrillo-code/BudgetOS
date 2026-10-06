@@ -1,0 +1,31 @@
+-- W0-6 (docs/STACK_AUDIT_2026-10-04.md: S-2, S-3, S-21): audit_event is deliberately
+-- "readable within tenant, insert-only" (0002_platform) — no policy exists for UPDATE or DELETE,
+-- for anyone, including the owner (FORCE ROW LEVEL SECURITY applies to the table owner too; a
+-- command with no applicable policy matches zero rows, silently, rather than erroring). That is
+-- correct and intentional for every real write path: AGENTS.md says audit rows are never
+-- hard-deleted, and apps/workers/src/purge/purge.ts's real `purgeWorkspace` (the only production
+-- caller that removes a workspace's rows) already knows this and keeps every audit_event row
+-- forever, only tombstoning the workspace.
+--
+-- The one caller this does not fit is test cleanup: `deleteWorkspaceForTests` (same file,
+-- test-only, never called by production code) and this package's own rls.org-admin.test.ts /
+-- tenant.isolation.test.ts fixtures (inline, since @budget/db cannot import @budget/workers) all
+-- hard-delete a test workspace's rows between runs, including the workspace row itself — and
+-- audit_event.workspace_id has been `ON DELETE RESTRICT` to workspace(id) since W3-11 (audit I-32,
+-- 20261012000000_schema_invariants), so the workspace delete now fails on an FK violation the
+-- instant one audit_event row still references it, which every exercised write path leaves behind.
+-- Before W0-6 this never surfaced: DATABASE_URL was a superuser, which bypasses RLS (and FORCE
+-- ROW LEVEL SECURITY) unconditionally, so the delete silently worked for the wrong reason.
+--
+-- Fix: one more policy in the same `owner_bootstrap` family (20261010050000) — unconditional,
+-- bound to the literal role that applies this migration (`budget_owner` locally and in CI,
+-- production's real owner), for DELETE only. It grants nothing to budget_app, budget_mcp or
+-- budget_publisher, and nothing beyond DELETE to the owner: audit_event stays read-only and
+-- insert-only for every other role, and the owner still cannot UPDATE a row (the
+-- audit_event_immutable trigger, independent of RLS, still fires for that). Production code never
+-- issues this DELETE (purgeWorkspace never does), so the audit trail's real-world immutability is
+-- unchanged; this exists solely so a role with no standing RLS bypass can still run a
+-- test-cleanup hard-delete, like production's real owner already can in every other regard.
+--
+-- Reverse: DROP POLICY IF EXISTS owner_test_cleanup_delete ON audit_event;
+CREATE POLICY owner_test_cleanup_delete ON audit_event FOR DELETE TO CURRENT_USER USING (true);

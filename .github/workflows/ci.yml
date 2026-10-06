@@ -52,9 +52,12 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      # Placeholder role passwords from packages/db/.env.example (migrations 0001_roles,
-      # 20260924070000, 20260925020000 create the roles themselves via `pnpm db:migrate`).
-      DATABASE_URL: postgresql://budget:budget@127.0.0.1:5432/budget
+      # W0-6 (audit S-2, S-3, S-21): DATABASE_URL is budget_owner — non-superuser, NOBYPASSRLS,
+      # created by scripts/db-init.sql below — not the postgres service's own superuser
+      # (POSTGRES_USER budget), matching production's owner. Placeholder role passwords from
+      # packages/db/.env.example (migrations 0001_roles, 20260924070000, 20260925020000 create
+      # the three login roles themselves via `pnpm db:migrate`).
+      DATABASE_URL: postgresql://budget_owner:budget_owner@127.0.0.1:5432/budget
       APP_DATABASE_URL: postgresql://budget_app:replace-in-secret-manager@127.0.0.1:5432/budget
       PUBLISHER_DATABASE_URL: postgresql://budget_publisher:replace-in-secret-manager@127.0.0.1:5432/budget
       MCP_DATABASE_URL: postgresql://budget_mcp:replace-in-secret-manager@127.0.0.1:5432/budget
@@ -92,6 +95,12 @@ jobs:
             [ "$code" != "000" ] && break
             sleep 1
           done
+      # W0-6: creates budget_owner (non-superuser, NOBYPASSRLS, CREATEROLE, CREATEDB) and makes it
+      # the owner of the `budget` database, as the postgres service's own superuser — the same
+      # script docker-compose.yml mounts into /docker-entrypoint-initdb.d/ for local dev. GitHub
+      # Actions starts service containers before checkout, so this runs it by hand instead of
+      # relying on the entrypoint. Everything after this runs as budget_owner (DATABASE_URL above).
+      - run: psql "postgresql://budget:budget@127.0.0.1:5432/budget" -v ON_ERROR_STOP=1 -f scripts/db-init.sql
       - run: pnpm --filter @budget/db exec prisma generate
       - run: pnpm db:migrate
       - run: pnpm exec turbo run test --env-mode=loose --concurrency=1

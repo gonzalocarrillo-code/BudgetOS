@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -23,23 +24,33 @@ let env = "";
 async function call(user: TestUser, method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: unknown, requestId = `periods-${randomUUID()}`) {
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: { ...X, "x-request-id": requestId }, ...(body === undefined ? {} : { body }) });
 }
-const auditCount = async (requestId: string) => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1`, requestId))[0]?.n);
+const auditCount = async (requestId: string) =>
+  asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1`, requestId).then((rows) => Number(rows[0]?.n)), orgId);
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "periods" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `periods-${ws}`, name: "Periods", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  // W0-6: the owner has no BYPASSRLS; workspace (unlike organization/app_user/role_assignment)
+  // has no owner_bootstrap policy, and the raw envelope/spend_fact inserts below need the same
+  // org-admin tenant context real writes get from withTenant.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.workspace.create({ data: { id: ws, orgId, slug: `periods-${ws}`, name: "Periods", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+      // One leaf with spend on 1 April: calendar Q2, but 4-4-5 Q1.
+      env = randomUUID();
+      const v = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'Leaf', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`, env, ws, admin.id);
+      await tx.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, 1000, 1000, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z')`, v, env, admin.id);
+      await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, env, v);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-04-01', 'USD', 40, 40, 'csv', $3::uuid, $4)`,
+        ws, env, randomUUID(), randomUUID(),
+      );
+    },
+    orgId,
+  );
   await owner.user.create({ data: { id: admin.id, orgId, email: admin.email, name: admin.sub, googleSub: `g-${admin.sub}` } });
   await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: admin.id, role: "WORKSPACE_ADMIN", createdBy: admin.id } });
-  // One leaf with spend on 1 April: calendar Q2, but 4-4-5 Q1.
-  env = randomUUID();
-  const v = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'Leaf', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`, env, ws, admin.id);
-  await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, 1000, 1000, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z')`, v, env, admin.id);
-  await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, env, v);
-  await owner.$executeRawUnsafe(
-    `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-04-01', 'USD', 40, 40, 'csv', $3::uuid, $4)`,
-    ws, env, randomUUID(), randomUUID(),
-  );
   h = await startHarness();
 }, 60_000);
 
@@ -47,7 +58,9 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -86,10 +99,10 @@ describe("the fiscal calendar", () => {
     const q1 = list.find((p) => p.key === "2026-Q1")?.id as string;
     const p02 = list.find((p) => p.key === "FY2026-P02")?.id as string;
     const bf = list.find((p) => p.key === "Black Friday 2026")?.id as string;
-    await owner.$executeRawUnsafe(`INSERT INTO period_closure (id, workspace_id, period_id, status, closed_by, registry_version, bq_table, variance_summary) VALUES ($1::uuid, $2::uuid, $3::uuid, 'closed', $4::uuid, '{}'::jsonb, 'memory', '{}'::jsonb)`, randomUUID(), ws, q1, admin.id);
+    await asOrgAdmin(owner, (tx) => tx.$executeRawUnsafe(`INSERT INTO period_closure (id, workspace_id, period_id, status, closed_by, registry_version, bq_table, variance_summary) VALUES ($1::uuid, $2::uuid, $3::uuid, 'closed', $4::uuid, '{}'::jsonb, 'memory', '{}'::jsonb)`, randomUUID(), ws, q1, admin.id), orgId);
     expect((await call(admin, "PATCH", `/periods/${q1}`, { end: "2026-03-31" })).status).toBe(409);
     expect((await call(admin, "DELETE", `/periods/${q1}`)).status).toBe(409);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET period_id = $2::uuid WHERE id = $1::uuid`, env, p02);
+    await asOrgAdmin(owner, (tx) => tx.$executeRawUnsafe(`UPDATE envelope SET period_id = $2::uuid WHERE id = $1::uuid`, env, p02), orgId);
     expect((await call(admin, "DELETE", `/periods/${p02}`)).status).toBe(409);
 
     const moved = await call(admin, "PATCH", `/periods/${bf}`, { start: "2026-11-19" });
@@ -109,13 +122,13 @@ describe("the fiscal calendar", () => {
     const res = await call(admin, "POST", `/workspaces/${ws}/periods/generate`, { fiscalYear: 2025, pattern: "445" });
     expect(res.status).toBe(409);
     expect(String(res.body["message"])).toMatch(/2025-Q1.*other dates/);
-    expect(await owner.fiscalPeriod.count({ where: { workspaceId: ws, key: { startsWith: "FY2025-P" } } })).toBe(0); // nothing created
+    expect(await asOrgAdmin(owner, (tx) => tx.fiscalPeriod.count({ where: { workspaceId: ws, key: { startsWith: "FY2025-P" } } }), orgId)).toBe(0); // nothing created
   });
 
   it("the fiscal year start month is set by an admin", async () => {
     const res = await call(admin, "PATCH", `/workspaces/${ws}/fiscal-year`, { startMonth: 7 });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect((await owner.workspace.findUniqueOrThrow({ where: { id: ws } })).fiscalYearStartMonth).toBe(7);
+    expect((await asOrgAdmin(owner, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: ws } }), orgId)).fiscalYearStartMonth).toBe(7);
     expect((await call(admin, "PATCH", `/workspaces/${ws}/fiscal-year`, { startMonth: 13 })).status).toBe(422);
   });
 });

@@ -1,6 +1,6 @@
 import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
-import { ensurePartitions, factMonthTotals, withTenant, type MonthTotals } from "@budget/db";
+import { asOrgAdmin, ensurePartitions, factMonthTotals, withTenant, type MonthTotals } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MemoryObjectStore } from "../ingest/object-store.js";
@@ -28,11 +28,19 @@ const user = randomUUID();
 const NOW = new Date("2026-09-28T12:00:00Z");
 const ctx = (workspaceId: string) => ({ workspaceId, orgId, userId: null, isOrgAdmin: false, actorType: "system" as const, requestId: `t-${workspaceId}` });
 
+// W0-6: the owner has no BYPASSRLS. spend_fact, envelope, outbox, data_source etc. check
+// `workspace_id = ANY(app_visible_workspace_ids())`, which includes the session's own
+// `app.workspace_id` unconditionally (no org-admin needed) — so a raw owner call scoped to one
+// known workspace just needs withTenant(owner, ctx(ws), ...), same as `ensurePartitions` below
+// already does. `workspace` itself is the exception (its org_admin_write policy needs
+// asOrgAdmin's is_org_admin + exact org match).
 async function spend(workspaceId: string, envelopeId: string, date: string, amount: string) {
-  await owner.$executeRawUnsafe(
-    `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-     VALUES ($1::uuid, $2::uuid, '{}', $3::date, 'USD', $4::numeric, $4::numeric, 'test', $5::uuid, $6)`,
-    workspaceId, envelopeId, date, amount, randomUUID(), randomUUID(),
+  await withTenant(owner, ctx(workspaceId), (tx) =>
+    tx.$executeRawUnsafe(
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
+       VALUES ($1::uuid, $2::uuid, '{}', $3::date, 'USD', $4::numeric, $4::numeric, 'test', $5::uuid, $6)`,
+      workspaceId, envelopeId, date, amount, randomUUID(), randomUUID(),
+    ),
   );
 }
 
@@ -47,12 +55,17 @@ class PostgresReplica implements ReplicaTotals {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "retention" } });
-  for (const [id, slug] of [[wsA, "a"], [wsB, "b"], [wsC, "c"]] as const) await owner.workspace.create({ data: { id, orgId, slug: `retention-${slug}-${id}`, name: `Retention ${slug}`, reportingCurrency: "USD" } });
+  // W0-6: workspace's org_admin_write policy needs the org-admin context (not just app.workspace_id).
+  await asOrgAdmin(owner, async (tx) => {
+    for (const [id, slug] of [[wsA, "a"], [wsB, "b"], [wsC, "c"]] as const) await tx.workspace.create({ data: { id, orgId, slug: `retention-${slug}-${id}`, name: `Retention ${slug}`, reportingCurrency: "USD" } });
+  }, orgId);
   await owner.user.create({ data: { id: user, orgId, email: `${user}@retention.test`, name: "r", googleSub: user } });
   for (const [id, ws] of [[envA, wsA], [envB, wsB], [envC, wsC]] as const) {
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'e', '{}', '2024-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`,
-      id, ws, user,
+    await withTenant(owner, ctx(ws), (tx) =>
+      tx.$executeRawUnsafe(
+        `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'e', '{}', '2024-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`,
+        id, ws, user,
+      ),
     );
   }
   await withTenant(owner, ctx(wsA), (tx) => ensurePartitions(tx, "2024-01-01", "2025-12-01"));
@@ -64,14 +77,20 @@ beforeAll(async () => {
 afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, [wsA, wsB, wsC]);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, [wsA, wsB, wsC], orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });
 
 const monthsLeft = async (workspaceId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ m: string }>>(`SELECT DISTINCT to_char(period_date, 'YYYY-MM') AS m FROM spend_fact WHERE workspace_id = $1::uuid ORDER BY 1`, workspaceId)).map((r) => r.m);
+  (
+    await withTenant(owner, ctx(workspaceId), (tx) =>
+      tx.$queryRawUnsafe<Array<{ m: string }>>(`SELECT DISTINCT to_char(period_date, 'YYYY-MM') AS m FROM spend_fact WHERE workspace_id = $1::uuid ORDER BY 1`, workspaceId),
+    )
+  ).map((r) => r.m);
 
 describe("fact retention (D-002)", () => {
   it("keeps 13 months: the cutoff is the first day of the month 12 months before this one", () => {
@@ -96,18 +115,21 @@ describe("fact retention (D-002)", () => {
     expect(first.pruned.map((p) => p.month)).toEqual(["2024-01-01"]);
     expect(first.held?.month).toBe("2024-02-01");
     expect(await monthsLeft(wsA)).toEqual(["2024-02", "2025-09"]);
-    const settings = (await owner.workspace.findUniqueOrThrow({ where: { id: wsA } })).settings as { factsPrunedBefore?: string };
+    // W0-6: workspace's org_admin_write policy needs the org-admin context.
+    const settings = (await asOrgAdmin(owner, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: wsA } }), orgId)).settings as { factsPrunedBefore?: string };
     expect(settings.factsPrunedBefore).toBe("2024-02-01");
 
     replica.tamper = null;
     const second = await pruneWorkspaceFacts(app, { workspaceId: wsA, orgId }, replica, { now: NOW });
     expect(second.pruned.map((p) => p.month)).toEqual(["2024-02-01"]);
     expect(await monthsLeft(wsA)).toEqual(["2025-09"]); // the hot month stays
-    expect(((await owner.workspace.findUniqueOrThrow({ where: { id: wsA } })).settings as { factsPrunedBefore?: string }).factsPrunedBefore).toBe("2024-03-01");
+    expect(((await asOrgAdmin(owner, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: wsA } }), orgId)).settings as { factsPrunedBefore?: string }).factsPrunedBefore).toBe("2024-03-01");
     expect(await monthsLeft(wsB)).toEqual(["2024-01"]); // never pruned by A's run
 
-    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsA);
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsA);
+    const { audits, out } = await withTenant(owner, ctx(wsA), async (tx) => ({
+      audits: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsA),
+      out: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsA),
+    }));
     expect([Number(audits[0]?.n), Number(out[0]?.n)]).toEqual([2, 2]);
   });
 
@@ -135,10 +157,14 @@ describe("fact retention (D-002)", () => {
     expect(r.held?.postgres.find((x) => x.table === "spend_fact")).toMatchObject({ rows: 2, amount: "1199.00" });
     expect(await monthsLeft(wsC)).toEqual(["2024-01"]); // nothing deleted, the restated row included
 
-    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsC);
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsC);
+    // W0-6: audit_event/outbox check app_visible_workspace_ids() (the session's own
+    // app.workspace_id is enough); workspace's org_admin_write policy needs the org-admin context.
+    const { audits, out } = await withTenant(owner, ctx(wsC), async (tx) => ({
+      audits: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsC),
+      out: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsC),
+    }));
     expect([Number(audits[0]?.n), Number(out[0]?.n)]).toEqual([0, 0]);
-    const settings = (await owner.workspace.findUniqueOrThrow({ where: { id: wsC } })).settings as { factsPrunedBefore?: string };
+    const settings = (await asOrgAdmin(owner, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: wsC } }), orgId)).settings as { factsPrunedBefore?: string };
     expect(settings.factsPrunedBefore).toBeUndefined();
 
     // The normal path: run again with no race — the compare and the delete now agree, so it prunes and audits.
@@ -146,8 +172,10 @@ describe("fact retention (D-002)", () => {
     expect(second.pruned.map((p) => p.month)).toEqual(["2024-01-01"]);
     expect(second.held).toBeNull();
     expect(await monthsLeft(wsC)).toEqual([]);
-    const auditsAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsC);
-    const outAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsC);
+    const { audits: auditsAfter, out: outAfter } = await withTenant(owner, ctx(wsC), async (tx) => ({
+      audits: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsC),
+      out: await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsC),
+    }));
     expect([Number(auditsAfter[0]?.n), Number(outAfter[0]?.n)]).toEqual([1, 1]);
   });
 });
@@ -177,7 +205,7 @@ describe("raw file retention (D-002)", () => {
     expect(r.removed).toEqual([`${prefix}fail.csv`, `${prefix}success.csv`]);
 
     // Verify audit rows were written (at least one from the first call)
-    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'uploads.pruned'`, wsA);
+    const audits = await withTenant(owner, ctx(wsA), (tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'uploads.pruned'`, wsA));
     expect(Number(audits[0]?.n)).toBeGreaterThan(0);
 
     // The success file should be gone, but fail should still exist
@@ -196,13 +224,18 @@ describe("raw file retention (D-002)", () => {
     await put("recent.csv", 10);
     await store.write(`gs://budget-os-uploads/uploads/${wsB}/other.csv`, "x", "text/csv");
     (store.objects.get(`gs://budget-os-uploads/uploads/${wsB}/other.csv`) as { updated?: Date }).updated = new Date(0);
-    await owner.dataSource.create({ data: { id: randomUUID(), workspaceId: wsA, kind: "csv", name: "keeps its file", config: { kind: "csv", uri: `${prefix}in-use.csv` }, mapping: {} } });
+    await withTenant(owner, ctx(wsA), (tx) => tx.dataSource.create({ data: { id: randomUUID(), workspaceId: wsA, kind: "csv", name: "keeps its file", config: { kind: "csv", uri: `${prefix}in-use.csv` }, mapping: {} } }));
 
     const r = await pruneRawFiles(app, { workspaceId: wsA, orgId }, store, { now: NOW, bucket: "budget-os-uploads" });
     expect(r.removed).toEqual([`${prefix}old.csv`]);
     expect([...store.objects.keys()].sort()).toEqual([`${prefix}in-use.csv`, `${prefix}recent.csv`, `gs://budget-os-uploads/uploads/${wsB}/other.csv`].sort());
 
-    await owner.workspace.update({ where: { id: wsA }, data: { settings: { ...((await owner.workspace.findUniqueOrThrow({ where: { id: wsA } })).settings as object), rawFileRetentionDays: 5 } } });
+    // W0-6: workspace's org_admin_write policy needs the org-admin context.
+    await asOrgAdmin(
+      owner,
+      async (tx) => tx.workspace.update({ where: { id: wsA }, data: { settings: { ...((await tx.workspace.findUniqueOrThrow({ where: { id: wsA } })).settings as object), rawFileRetentionDays: 5 } } }),
+      orgId,
+    );
     expect((await pruneRawFiles(app, { workspaceId: wsA, orgId }, store, { now: NOW, bucket: "budget-os-uploads" })).removed).toEqual([`${prefix}recent.csv`]);
   });
 });

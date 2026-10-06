@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { TOP_LEVEL, LIVE_LEAVES } from "@budget/domain";
-import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS, matchRunFacts } from "@budget/db";
+import type { Prisma } from "@prisma/client";
+import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS, asOrgAdmin, matchRunFacts } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -27,6 +28,13 @@ type Body = Record<string, unknown>;
 async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string, body?: unknown, ws: string | null = golden.workspaceId) {
   const token = await h.mint({ sub: `ip-${persona}`, email: `${persona.toLowerCase()}@${slug}.golden.test` }, { googleSub: `golden-${slug}-${persona}` });
   return h.call(method, `/api/v1${url}`, token, { headers: { ...(ws ? { "x-workspace-id": ws } : {}), "x-request-id": `t040-${randomUUID()}` }, ...(body === undefined ? {} : { body }) });
+}
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read/write below (all scoped to the golden
+// org's workspaces, created and seeded under the golden org) needs the same org-admin tenant
+// context real writes get from withTenant. owner.user.* and owner.tour.findMany({ workspaceId:
+// null }) are exceptions (app_user's owner_bootstrap policy; tour_read's workspace_id IS NULL branch).
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, golden.orgId);
 }
 
 beforeAll(async () => {
@@ -65,10 +73,10 @@ describe("workspace templates (T-040)", () => {
     // Usable: the org admin sees it, its registry and templates are there, the planner answers.
     const me = await as("orgAdmin", "GET", "/me", undefined, null);
     expect((me.body["workspaces"] as Array<{ workspaceId: string }>).map((w) => w.workspaceId)).toContain(ws);
-    const templatesThere = await owner.hierarchyTemplate.findMany({ where: { workspaceId: ws }, select: { name: true, isDefault: true } });
+    const templatesThere = await asOwner((tx) => tx.hierarchyTemplate.findMany({ where: { workspaceId: ws }, select: { name: true, isDefault: true } }));
     expect(templatesThere.find((t) => t.isDefault)?.name).toBe("Default");
-    expect(await owner.approvalPolicy.count({ where: { workspaceId: ws } })).toBe(DEFAULT_POLICIES.length);
-    expect(await owner.savedView.count({ where: { workspaceId: ws, visibility: "shared" } })).toBe(1);
+    expect(await asOwner((tx) => tx.approvalPolicy.count({ where: { workspaceId: ws } }))).toBe(DEFAULT_POLICIES.length);
+    expect(await asOwner((tx) => tx.savedView.count({ where: { workspaceId: ws, visibility: "shared" } }))).toBe(1);
     // T-5: a fresh demo workspace holds only demo budgets (no real ones yet, demoStatus below
     // confirms hasRealBudgets is false), so /query includes them with no includeDemo needed.
     const query = async () => as("orgAdmin", "POST", `/workspaces/${ws}/query`, { workspaceId: ws, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: LIVE_LEAVES }, measures: ["budget", "actual"], limit: 1 }, ws);
@@ -84,9 +92,9 @@ describe("workspace templates (T-040)", () => {
     // HF-1 (audit T-5 follow-up): `hidden` turns on the moment a real budget joins the demo ones —
     // the Sandbox bug (demo roots hiding the one real budget underneath, with nothing saying why).
     const realId = randomUUID();
-    await owner.envelope.create({ data: { id: realId, workspaceId: ws, name: "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.orgAdmin, demo: false } });
+    await asOwner((tx) => tx.envelope.create({ data: { id: realId, workspaceId: ws, name: "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.orgAdmin, demo: false } }));
     expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: true, hidden: true });
-    await owner.envelope.delete({ where: { id: realId } });
+    await asOwner((tx) => tx.envelope.delete({ where: { id: realId } }));
     expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false });
 
     // I-3: purging without confirming is refused.
@@ -97,10 +105,10 @@ describe("workspace templates (T-040)", () => {
     expect(purged.status, JSON.stringify(purged.body)).toBe(201);
     expect(purged.body).toMatchObject({ envelopes: 9, targets: 3, detachedFacts: 0 });
     expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0, hasRealBudgets: false, hidden: false });
-    expect(await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid`, ws)).toEqual([{ n: 0n }]);
+    expect(await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid`, ws))).toEqual([{ n: 0n }]);
     expect((await query()).body["totals"]).toMatchObject({ leafCount: "0" });
-    expect(await owner.approvalPolicy.count({ where: { workspaceId: ws } })).toBe(DEFAULT_POLICIES.length);
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'workspace' AND entity_id = $1::uuid ORDER BY occurred_at`, ws);
+    expect(await asOwner((tx) => tx.approvalPolicy.count({ where: { workspaceId: ws } }))).toBe(DEFAULT_POLICIES.length);
+    const audits = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'workspace' AND entity_id = $1::uuid ORDER BY occurred_at`, ws));
     expect(audits.map((a) => a.action)).toEqual(["workspace.created", "workspace.demo_seeded", "workspace.demo_purged"]);
     expect((await as("planner", "POST", "/workspaces", { name: "Nope", templateId: agency?.id }, null)).status).toBe(403);
   }, 90_000);
@@ -126,14 +134,17 @@ describe("demo purge safety (I-3)", () => {
 
   it("a non-demo target on a demo envelope refuses the whole purge (409)", async () => {
     const ws = await demoWorkspace("Purge Real Target");
-    const leaf = await owner.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } } });
-    const targetId = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO target (id, workspace_id, scope_type, envelope_id, metric_key, start_date, end_date, demo) VALUES ($1::uuid, $2::uuid, 'envelope', $3::uuid, 'cpa', '2026-01-01', '2026-12-31', false)`,
-      targetId,
-      ws,
-      leaf.id,
-    );
+    const targetId = await asOwner(async (tx) => {
+      const leaf = await tx.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } } });
+      const targetId = randomUUID();
+      await tx.$executeRawUnsafe(
+        `INSERT INTO target (id, workspace_id, scope_type, envelope_id, metric_key, start_date, end_date, demo) VALUES ($1::uuid, $2::uuid, 'envelope', $3::uuid, 'cpa', '2026-01-01', '2026-12-31', false)`,
+        targetId,
+        ws,
+        leaf.id,
+      );
+      return targetId;
+    });
     const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
     expect(purged.status, JSON.stringify(purged.body)).toBe(409);
     expect((purged.body["details"] as { targetIds: string[] })?.targetIds).toEqual([targetId]);
@@ -143,51 +154,57 @@ describe("demo purge safety (I-3)", () => {
 
   it("a real fact matched onto a demo envelope is detached (not deleted) by the purge, and re-matches on its next load", async () => {
     const ws = await demoWorkspace("Purge Detach Rematch");
-    const leaf = await owner.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } } });
-    const tuple = leaf.dimensionValues as Record<string, string>;
     const runId = randomUUID();
     const rowHash = `real:${runId}`;
-    // A real run's spend landed on the demo envelope (same bug as a real ingest run, I-3).
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo, match_method)
-       VALUES ($1::uuid, $2::uuid, $3::jsonb, '2026-02-01', 'USD', 42, 42, 'csv', $4::uuid, $5, false, 'tuple')`,
-      ws,
-      leaf.id,
-      JSON.stringify(tuple),
-      runId,
-      rowHash,
-    );
-    // A real budget for the same segment, narrower than the demo leaf's full tuple, so it is the
-    // only match left once the demo envelopes are gone.
     const realEnvelopeId = randomUUID();
-    const realTuple = { region: tuple["region"], country: tuple["country"] };
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo)
-       VALUES ($1::uuid, $2::uuid, 'Real budget', $3::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $4::uuid, now(), false)`,
-      realEnvelopeId,
-      ws,
-      JSON.stringify(realTuple),
-      golden.users.orgAdmin,
-    );
+    await asOwner(async (tx) => {
+      const leaf = await tx.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } } });
+      const tuple = leaf.dimensionValues as Record<string, string>;
+      // A real run's spend landed on the demo envelope (same bug as a real ingest run, I-3).
+      await tx.$executeRawUnsafe(
+        `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo, match_method)
+         VALUES ($1::uuid, $2::uuid, $3::jsonb, '2026-02-01', 'USD', 42, 42, 'csv', $4::uuid, $5, false, 'tuple')`,
+        ws,
+        leaf.id,
+        JSON.stringify(tuple),
+        runId,
+        rowHash,
+      );
+      // A real budget for the same segment, narrower than the demo leaf's full tuple, so it is the
+      // only match left once the demo envelopes are gone.
+      const realTuple = { region: tuple["region"], country: tuple["country"] };
+      await tx.$executeRawUnsafe(
+        `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo)
+         VALUES ($1::uuid, $2::uuid, 'Real budget', $3::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $4::uuid, now(), false)`,
+        realEnvelopeId,
+        ws,
+        JSON.stringify(realTuple),
+        golden.users.orgAdmin,
+      );
+    });
 
     const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
     expect(purged.status, JSON.stringify(purged.body)).toBe(201);
     expect((purged.body as { detachedFacts: number }).detachedFacts).toBeGreaterThanOrEqual(1);
 
-    const detached = await owner.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null }>>(
-      `SELECT envelope_id::text AS envelope_id, match_method FROM spend_fact WHERE workspace_id = $1::uuid AND source_row_hash = $2`,
-      ws,
-      rowHash,
+    const detached = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null }>>(
+        `SELECT envelope_id::text AS envelope_id, match_method FROM spend_fact WHERE workspace_id = $1::uuid AND source_row_hash = $2`,
+        ws,
+        rowHash,
+      ),
     );
     expect(detached).toEqual([{ envelope_id: null, match_method: null }]);
 
     // The next load of that row (matchRunFacts for its source_run_id) re-matches it — here, to the
     // real envelope now that the demo envelopes it used to tie with are gone.
-    await matchRunFacts(owner, ws, runId);
-    const rematched = await owner.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null }>>(
-      `SELECT envelope_id::text AS envelope_id, match_method FROM spend_fact WHERE workspace_id = $1::uuid AND source_row_hash = $2`,
-      ws,
-      rowHash,
+    await asOwner((tx) => matchRunFacts(tx, ws, runId));
+    const rematched = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null }>>(
+        `SELECT envelope_id::text AS envelope_id, match_method FROM spend_fact WHERE workspace_id = $1::uuid AND source_row_hash = $2`,
+        ws,
+        rowHash,
+      ),
     );
     expect(rematched).toEqual([{ envelope_id: realEnvelopeId, match_method: "tuple" }]);
   });
@@ -286,7 +303,7 @@ describe("home (T-040)", () => {
     const renamed = await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/general`, { name: "Golden Co" });
     expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
     expect(renamed.body).toMatchObject({ name: "Golden Co" });
-    const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'workspace.renamed'`, golden.workspaceId);
+    const [a] = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'workspace.renamed'`, golden.workspaceId));
     expect(Number(a?.n)).toBe(1);
     await as("admin", "PATCH", `/workspaces/${golden.workspaceId}/general`, { name: "Golden" });
   });
@@ -301,9 +318,9 @@ describe("home (T-040)", () => {
     expect((me.body["user"] as { name: string }).name).toBe("Maya Chen");
     const row = await owner.user.findUniqueOrThrow({ where: { id: golden.users.planner }, select: { name: true, email: true } });
     expect(row).toMatchObject({ name: "Maya Chen", email: `planner@${slug}.golden.test` });
-    const [audited] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'user.renamed'`, golden.users.planner);
+    const [audited] = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'user.renamed'`, golden.users.planner));
     expect(Number(audited?.n)).toBe(1);
-    const [evented] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'user.updated' AND payload->>'userId' = $1`, golden.users.planner);
+    const [evented] = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'user.updated' AND payload->>'userId' = $1`, golden.users.planner));
     expect(Number(evented?.n)).toBe(1);
     await owner.user.update({ where: { id: golden.users.planner }, data: { name: "Golden planner" } });
   });

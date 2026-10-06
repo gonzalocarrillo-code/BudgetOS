@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -24,6 +24,9 @@ async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId, ...(requestId ? { "x-request-id": requestId } : {}) }, ...(body === undefined ? {} : { body }) });
 }
 const id = (key: string) => golden.envelopeIds.get(key) as string;
+// W0-6: the owner has no BYPASSRLS; every owner.* read below needs the same org-admin tenant
+// context real reads get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 const leafKeys = (prefix: string) => plan.filter((e) => e.level === 4 && e.key.startsWith(prefix)).map((e) => e.key);
 interface EnvView {
   status: string;
@@ -71,9 +74,9 @@ describe("end a budget (H-011)", () => {
     expect(after.ended?.reason).toBe("campaign stopped");
     expect(after.currentVersionId).not.toBe(e.currentVersionId);
 
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 AND entity_id = $2::uuid`, requestId, leaf);
+    const audits = await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 AND entity_id = $2::uuid`, requestId, leaf));
     expect(audits.map((a) => a.action)).toContain("envelope.ended");
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'end' AND payload->>'envelopeId' = $2`, golden.workspaceId, leaf);
+    const out = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'end' AND payload->>'envelopeId' = $2`, golden.workspaceId, leaf));
     expect(Number(out[0]?.n)).toBe(1);
 
     // Read-only from now on: a new draft, a move and a second end are refused.
@@ -168,8 +171,7 @@ describe("reintroduce a budget (H-012)", () => {
     expect(successor.current?.amount).toBe(released.toFixed(2));
     expect(successor.lineage.continues?.id).toBe(leaf);
     expect((await env(leaf)).lineage.continuedBy.map((c) => c.id)).toEqual([successorId]);
-    const src = await owner.envelope.findUniqueOrThrow({ where: { id: leaf } });
-    const created = await owner.envelope.findUniqueOrThrow({ where: { id: successorId } });
+    const [src, created] = await admin((tx) => Promise.all([tx.envelope.findUniqueOrThrow({ where: { id: leaf } }), tx.envelope.findUniqueOrThrow({ where: { id: successorId } })]));
     expect(created.dimensionValues).toEqual(src.dimensionValues);
     expect(created.currency).toBe(src.currency);
     expect(created.ownerId).toBe(src.ownerId);
@@ -188,6 +190,6 @@ describe("reintroduce a budget (H-012)", () => {
     const successor = await env(successorId);
     expect(successor).toMatchObject({ status: "APPROVED", parentId: e.parentId });
     expect(successor.current?.amount).toBe(amount);
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: leaf, toEnvelopeId: successorId, kind: "continues" } })).toBe(1);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: leaf, toEnvelopeId: successorId, kind: "continues" } }))).toBe(1);
   });
 });

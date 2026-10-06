@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setMySlackSettings } from "./people.js";
-import { withTenant, type TenantContext } from "./tenant.js";
+import { asOrgAdmin, withTenant, type TenantContext } from "./tenant.js";
 
 /**
  * S-010: app_user stays org-admin-write under RLS; a person saves their own Slack settings only
@@ -31,13 +31,16 @@ const settingsOf = async (id: string) => (await owner.user.findUniqueOrThrow({ w
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "s010" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `s010-${ws}`, name: "S-010", reportingCurrency: "USD" } });
+  // W0-6: workspace has no owner_bootstrap policy (only organization/app_user/role_assignment do
+  // — bootstrap.ts never writes workspace directly either); the owner needs the same org-admin
+  // tenant context real workspace creation gets from withTenant.
+  await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `s010-${ws}`, name: "S-010", reportingCurrency: "USD" } }), orgId);
   await owner.user.createMany({ data: [me, other].map((id) => ({ id, orgId, email: `${id}@s010.test`, name: "Someone", googleSub: `g-${id}`, settings: { theme: "dark" } })) });
 });
 
 afterAll(async () => {
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
+  await asOrgAdmin(owner, (tx) => tx.workspace.deleteMany({ where: { orgId } }), orgId);
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

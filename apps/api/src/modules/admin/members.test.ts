@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -26,9 +27,21 @@ type Members = { users: Array<{ id: string; email: string; signedIn: boolean; or
 
 beforeAll(async () => {
   for (const [id, name] of [[orgId, "members"], [otherOrg, "other"]] as const) await owner.organization.create({ data: { id, name } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `members-${ws}`, name: "Members", reportingCurrency: "USD" } });
   for (const u of [admin, planner, orgAdmin]) await owner.user.create({ data: { id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` } });
   await owner.user.create({ data: { id: outsider.id, orgId: otherOrg, email: outsider.email, name: outsider.sub, googleSub: `g-${outsider.sub}` } });
+  // W0-6: workspace, app_group and app_group_member have no owner_bootstrap policy; they need the
+  // org-admin tenant context real writes get from withTenant, with the real org id for the exact
+  // org_id match app_group/app_group_member require. The group member row's own app_user row must
+  // already exist (its EXISTS check also needs the matching org_id), so users are created first.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.workspace.create({ data: { id: ws, orgId, slug: `members-${ws}`, name: "Members", reportingCurrency: "USD" } });
+      await tx.group.create({ data: { id: groupId, orgId, googleGroup: `leads-${groupId}@members.test`, name: "Leads" } });
+      await tx.groupMember.create({ data: { groupId, userId: planner.id } });
+    },
+    orgId,
+  );
   await owner.roleAssignment.createMany({
     data: [
       { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: admin.id, role: "WORKSPACE_ADMIN", createdBy: admin.id },
@@ -36,8 +49,6 @@ beforeAll(async () => {
       { id: randomUUID(), workspaceId: null, principalType: "user", principalId: orgAdmin.id, role: "ORG_ADMIN", createdBy: admin.id },
     ],
   });
-  await owner.group.create({ data: { id: groupId, orgId, googleGroup: `leads-${groupId}@members.test`, name: "Leads" } });
-  await owner.groupMember.create({ data: { groupId, userId: planner.id } });
   h = await startHarness();
 }, 60_000);
 
@@ -45,10 +56,18 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.groupMember.deleteMany({ where: { groupId } });
+      await tx.group.deleteMany({ where: { orgId } });
+    },
+    orgId,
+  );
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
-  await owner.groupMember.deleteMany({ where: { groupId } });
-  await owner.group.deleteMany({ where: { orgId } });
   await owner.user.deleteMany({ where: { orgId: { in: [orgId, otherOrg] } } });
   await owner.organization.deleteMany({ where: { id: { in: [orgId, otherOrg] } } });
   await owner.$disconnect();
@@ -74,7 +93,7 @@ describe("members (ORG-005: a workspace admin sees and adds only their workspace
     const added = await call(admin, "POST", `/workspaces/${ws}/members`, { email: "  New.Person@Members.test ", name: "New Person" }, requestId);
     expect(added.status, JSON.stringify(added.body)).toBe(201);
     expect(added.body).toMatchObject({ email: "new.person@members.test", created: true, role: "VIEWER" });
-    const audited = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId);
+    const audited = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId), orgId);
     expect(audited.map((a) => a.action).sort()).toEqual(["role.assigned", "user.added"]);
     const again = await call(admin, "POST", `/workspaces/${ws}/members`, { email: "new.person@members.test", name: "Someone else", role: "BUDGET_OWNER", scope: { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "LATAM" }] } });
     expect(again.body).toMatchObject({ id: added.body["id"], created: false, role: "BUDGET_OWNER" });

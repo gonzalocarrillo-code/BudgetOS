@@ -23,7 +23,15 @@ const url = (key: string) => {
   if (!v) throw new Error(`${key} is not set (packages/db/.env)`);
   return v;
 };
-const owner = new PrismaClient({ datasources: { db: { url: url("DATABASE_URL") } } });
+// W0-6: the owner has no BYPASSRLS, so `data_source`/`ingest_run`/`fiscal_period`/`period_closure`
+// and the generic tenant_isolation tables this whole file touches (envelope, dimension,
+// spend_fact, outbox, audit_event, …) need the org-admin tenant context real writes get from
+// withTenant. This file's owner calls are scattered across ~20 `it` blocks rather than a few
+// setup/teardown hooks, so instead of wrapping every call, `connection_limit=1` pins the client to
+// one physical connection and a single session-level `set_config` (not transaction-local) in
+// beforeAll makes every later owner.* call on it see that context for the rest of the file (same
+// technique packages/query-planner/src/test-support/db.ts uses for the same reason).
+const owner = new PrismaClient({ datasources: { db: { url: `${url("DATABASE_URL")}?connection_limit=1` } } });
 const app = new PrismaClient({ datasources: { db: { url: url("APP_DATABASE_URL") } } });
 
 const orgId = randomUUID();
@@ -89,6 +97,9 @@ const count = async (sql: string, ...args: unknown[]) => Number((await owner.$qu
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t017" } });
+  // Session-level (not transaction-local): persists on this connection_limit=1 connection for
+  // every owner.* call for the rest of this file, including nested beforeAll/afterAll blocks.
+  await owner.$executeRawUnsafe(`SELECT set_config('app.is_org_admin', 'true', false), set_config('app.org_id', $1, false)`, orgId);
   await owner.workspace.create({ data: { id: ws, orgId, slug: `t017-${ws}`, name: "T-017", reportingCurrency: "USD" } });
   await owner.user.create({ data: { id: userId, orgId, email: `${userId}@t017.test`, name: "T-017", googleSub: `g-${userId}` } });
   const dims: Record<string, string> = {};
@@ -113,7 +124,7 @@ afterAll(async () => {
   // itself, including envelope_dimension, which references dimension_value) in the same order
   // `purgeWorkspace` validates against production — before the org-level dimension cleanup below,
   // which would otherwise violate envelope_dimension_value_id_fkey.
-  await deleteWorkspaceForTests(owner, ws);
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
