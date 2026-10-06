@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -6,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
+import { Logger } from "nestjs-pino";
 import { configureApp } from "../configure-app.js";
 import { PrismaClient } from "@prisma/client";
 import { SignJWT, exportJWK, generateKeyPair, type CryptoKey, type JWK } from "jose";
@@ -83,7 +85,15 @@ export async function startHarness(opts: { configureAppEnv?: Record<string, stri
   process.env["AUTH_ISSUER"] = ISSUER;
   process.env["AUTH_JWKS_URL"] = `http://127.0.0.1:${(jwks.address() as AddressInfo).port}/jwks`;
 
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: ["error"], abortOnError: false, bodyParser: false });
+  // W5-1: the same genReqId main.ts passes its FastifyAdapter, so a test's X-Request-Id header is
+  // honoured here too (Fastify's own default id generator ignores incoming headers unless told to).
+  const genReqId = (req: { headers: Record<string, string | string[] | undefined> }): string => {
+    const header = req.headers["x-request-id"];
+    const incoming = Array.isArray(header) ? header[0] : header;
+    return incoming ?? randomUUID();
+  };
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ genReqId }), { logger: ["error"], abortOnError: false, bodyParser: false, bufferLogs: true });
+  app.useLogger(app.get(Logger));
   await configureApp(app, { ...process.env, ...opts.configureAppEnv });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

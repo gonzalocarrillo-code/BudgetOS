@@ -18,6 +18,8 @@ export interface AuthContext {
 }
 
 export interface TenantRequest {
+  /** Fastify's own request id (main.ts's `genReqId`): the incoming `X-Request-Id` or a fresh uuid, set before any handler runs. The tenant interceptor reuses it as the audit/log requestId so both agree (W5-1). */
+  id?: string;
   method?: string;
   headers: Record<string, string | string[] | undefined>;
   params?: Record<string, string | undefined>;

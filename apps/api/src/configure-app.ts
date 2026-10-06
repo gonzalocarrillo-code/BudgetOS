@@ -1,5 +1,6 @@
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import { RequestMethod } from "@nestjs/common";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 
 /**
@@ -45,8 +46,17 @@ const isGuarded = (path: string): boolean => path.startsWith("/api/v1/") || path
  * every other route refuses a form body (S-6: the parser used to be accepted everywhere).
  */
 export async function configureApp(app: NestFastifyApplication, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  app.setGlobalPrefix("api/v1");
+  // W5-1 (audit M-7): GET /ready (common/health.controller.ts) stays unprefixed, like /health
+  // (serve-web.ts), so Cloud Run's readiness probe config doesn't need the API prefix.
+  app.setGlobalPrefix("api/v1", { exclude: [{ path: "ready", method: RequestMethod.GET }] });
   const fastify = app.getHttpAdapter().getInstance();
+
+  // W5-1 (audit M-3): every response carries the request id pino logged it under, whether the
+  // caller sent one (X-Request-Id echoed back) or main.ts's genReqId minted one.
+  fastify.addHook("onSend", async (request, reply, payload) => {
+    void reply.header("x-request-id", request.id);
+    return payload;
+  });
 
   // S-6: headers. CSP/HSTS/Referrer-Policy/X-Content-Type-Options/frame-ancestors on every response,
   // API and (serve-web.ts) the SPA and the OAuth consent page alike.

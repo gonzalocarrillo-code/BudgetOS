@@ -1,12 +1,13 @@
 import "./test-support/env.js";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import { outbox, withTenant, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handleExportRequested } from "./export/export.js";
 import { handleIngestRequested } from "./ingest/worker.js";
 import { MemoryObjectStore } from "./ingest/object-store.js";
-import { MAX_ATTEMPTS, isStopping, pass, shutdown, type RunnerDeps, type RunnerHandlers } from "./local-runner.js";
+import { MAX_ATTEMPTS, healthRequestListener, isStopping, pass, shutdown, type RunnerDeps, type RunnerHandlers } from "./local-runner.js";
 import { handleInApp } from "./notify/in-app.js";
 import { handleSlackEvent } from "./notify/slack.js";
 import { handleRollupEvent } from "./rollup/rollup.js";
@@ -185,5 +186,22 @@ describe("local-runner on the publisher role (W2-3 done-when, audit S-2)", () =>
 
   it("budget_publisher cannot read workspace columns it was not granted (e.g. name)", async () => {
     await expect(publisher.$queryRawUnsafe("SELECT name FROM workspace LIMIT 1")).rejects.toThrow(/permission denied/i);
+  });
+});
+
+describe("local runner health server (M-7, audit M-7)", () => {
+  it("answers 200 only on /health; every other path is 404, not an implicit ok", async () => {
+    const server = createServer(healthRequestListener).listen(0, "127.0.0.1");
+    try {
+      await new Promise<void>((resolve) => server.once("listening", resolve));
+      const port = (server.address() as { port: number }).port;
+      const health = await fetch(`http://127.0.0.1:${port}/health`);
+      expect(health.status).toBe(200);
+      expect(await health.text()).toBe("ok");
+      const other = await fetch(`http://127.0.0.1:${port}/anything-else`);
+      expect(other.status).toBe(404);
+    } finally {
+      server.close();
+    }
   });
 });

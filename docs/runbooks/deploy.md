@@ -56,6 +56,21 @@ from the request path regardless of environment.
 ## OpenAI (mapping suggestions)
 `budgetos-openai-api-key`, the same way. Without it the route answers 503.
 
+## Logs
+`budgetos-app` logs JSON (pino, W5-1, audit M-3): every line from a request carries `requestId`
+(the incoming `X-Request-Id`, echoed back as a response header on every response including errors,
+or a uuid main.ts minted when the caller sent none), and `workspaceId`/`actorId` once
+`TenantInterceptor` resolves the caller — so a single request's lines, including the one line any
+unhandled error logs at `error` with its stack, all share one `requestId`. To pull one request's
+full trace in Cloud Logging:
+```
+resource.type="cloud_run_revision" resource.labels.service_name="budgetos-app"
+jsonPayload.requestId="<id from the X-Request-Id response header, or from the error body>"
+```
+`Authorization`, `Cookie`, `X-Goog-Iap-Jwt-Assertion` and any `password`/`token`/`secret` field are
+redacted (`[Redacted]`) before the line is written, not just before display — they are never in the
+log store to begin with. `LOG_LEVEL` (`.env.example`) controls verbosity; default `info`.
+
 ## When something fails
 - **Migrations:** `gcloud run jobs executions list --job budgetos-migrate --region us-central1 --project dmus-gonzalo`, then the execution's logs. For a partial failure or a rollback, see `docs/runbooks/restore.md` (d).
 - **Worker:** logs of `budgetos-worker`. It must stay at one instance. See `docs/runbooks/worker.md`

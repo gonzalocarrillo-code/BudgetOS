@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { DomainError } from "@budget/domain";
 import { Inject, Injectable, type CallHandler, type ExecutionContext, type NestInterceptor } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { PinoLogger } from "nestjs-pino";
 import { from, switchMap, type Observable } from "rxjs";
 import { AccessRepository } from "./auth/access.repository.js";
 import { JwtVerifier } from "./auth/jwt-verifier.js";
@@ -25,6 +26,7 @@ export class TenantInterceptor implements NestInterceptor {
     @Inject(JwtVerifier) private readonly verifier: JwtVerifier,
     @Inject(AccessRepository) private readonly access: AccessRepository,
     @Inject(ROLE_CACHE) private readonly cache: RoleCache,
+    @Inject(PinoLogger) private readonly logger: PinoLogger,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -41,6 +43,9 @@ export class TenantInterceptor implements NestInterceptor {
     if (permission === undefined) {
       throw new DomainError("FORBIDDEN", "Route declares no permission");
     }
+    // W5-1: the same exemption /health gets (never entering Nest's router), but declared so the
+    // interceptor's fail-closed default still applies to every route that doesn't opt out.
+    if (permission === "public") return;
     if (permission === "slack.signed") {
       verifySlackSignature({
         rawBody: (request as unknown as { rawBody?: string }).rawBody,
@@ -52,12 +57,20 @@ export class TenantInterceptor implements NestInterceptor {
       });
       return;
     }
+    // Fastify assigns `request.id` (main.ts's genReqId: the incoming X-Request-Id, or a fresh uuid)
+    // before any middleware runs, and pino-http keeps it rather than generating its own (W5-1), so
+    // this is the same id the request's log lines carry. request.id is only undefined outside a
+    // real Fastify request (a unit test building a bare TenantRequest).
+    const requestId = request.id ?? randomUUID();
     const tenant = await authenticate(
       { verifier: this.verifier, access: this.access, cache: this.cache },
-      { authorization: this.verifier.credential(request.headers), workspaceId: resolveWorkspace(request), requestId: header(request, "x-request-id") ?? randomUUID(), use: lifecycle ? "lifecycle" : request.method === "GET" || request.method === "HEAD" ? "read" : "write" },
+      { authorization: this.verifier.credential(request.headers), workspaceId: resolveWorkspace(request), requestId, use: lifecycle ? "lifecycle" : request.method === "GET" || request.method === "HEAD" ? "read" : "write" },
     );
     authorize(tenant, permission);
     request.tenant = tenant;
+    // W5-1 (AGENTS §4 logging): every log line for the rest of this request carries workspaceId and
+    // actorId once resolved, alongside the requestId pino-http already bound from request.id.
+    this.logger.assign({ workspaceId: tenant.ctx.workspaceId, actorId: tenant.ctx.userId });
   }
 }
 
