@@ -1,5 +1,5 @@
 import { FilterGroup, QueryRequest, RuleMetricArgs, newId, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { audit, openAlert, outbox, plannerOptions, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { audit, lockWorkspacePacing, openAlert, outbox, plannerOptions, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PacingRule, PrismaClient } from "@prisma/client";
@@ -140,6 +140,9 @@ export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspac
     prisma,
     ctx,
     async (tx) => {
+      // I-23: serialize this workspace's evaluation so two overlapping runs (the 15-minute schedule
+      // and a manual re-run, or two scheduler ticks) cannot both transition the same alert.
+      await lockWorkspacePacing(tx, tenant.workspaceId);
       const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { fiscalYearStartMonth: true } });
       const rules = await tx.pacingRule.findMany({ where: { workspaceId: tenant.workspaceId, isActive: true, deletedAt: null }, orderBy: { id: "asc" } });
       result.rules = rules.length;
@@ -193,15 +196,21 @@ export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspac
           if (breached && consecutive >= rule.consecutiveDays && !existing) {
             toOpen.push({ envelopeId, value, row });
           } else if (breached && existing?.status === "SNOOZED" && existing.snoozedUntil !== null && existing.snoozedUntil <= now) {
-            await tx.alert.update({ where: { id: existing.id }, data: { status: "OPEN", snoozedUntil: null, metricValue: value.toDecimalPlaces(4).toFixed(4) } });
-            await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "alert.reopened", entityType: "alert", entityId: existing.id, after: { rule: rule.name, value: value.toFixed(4) }, requestId: ctx.requestId });
-            await outbox(tx, { workspaceId: tenant.workspaceId, topic: "alert.triggered", payload: { alertId: existing.id, ruleId: rule.id, envelopeId, severity: rule.severity, delivery: rule.delivery, reopened: true } });
-            result.reopened.push(existing.id);
+            // I-23: guarded by status so two overlapping evaluations cannot both reopen the same alert.
+            const transitioned = await tx.alert.updateMany({ where: { id: existing.id, status: "SNOOZED" }, data: { status: "OPEN", snoozedUntil: null, metricValue: value.toDecimalPlaces(4).toFixed(4) } });
+            if (transitioned.count === 1) {
+              await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "alert.reopened", entityType: "alert", entityId: existing.id, after: { rule: rule.name, value: value.toFixed(4) }, requestId: ctx.requestId });
+              await outbox(tx, { workspaceId: tenant.workspaceId, topic: "alert.triggered", payload: { alertId: existing.id, ruleId: rule.id, envelopeId, severity: rule.severity, delivery: rule.delivery, reopened: true } });
+              result.reopened.push(existing.id);
+            }
           } else if (!breached && existing && existing.status !== "SNOOZED") {
-            await tx.alert.update({ where: { id: existing.id }, data: { status: "RESOLVED", resolvedAt: now } });
-            await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "alert.resolved", entityType: "alert", entityId: existing.id, after: { rule: rule.name, value: value.toFixed(4) }, requestId: ctx.requestId });
-            await outbox(tx, { workspaceId: tenant.workspaceId, topic: "alert.changed", payload: { alertId: existing.id, status: "RESOLVED" } });
-            result.resolved.push(existing.id);
+            // I-23: guarded by the status just read so a concurrent transition is not clobbered or double-audited.
+            const transitioned = await tx.alert.updateMany({ where: { id: existing.id, status: existing.status }, data: { status: "RESOLVED", resolvedAt: now } });
+            if (transitioned.count === 1) {
+              await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "alert.resolved", entityType: "alert", entityId: existing.id, after: { rule: rule.name, value: value.toFixed(4) }, requestId: ctx.requestId });
+              await outbox(tx, { workspaceId: tenant.workspaceId, topic: "alert.changed", payload: { alertId: existing.id, status: "RESOLVED" } });
+              result.resolved.push(existing.id);
+            }
           }
         }
         await saveRuleStates(tx, rule.id, saved);

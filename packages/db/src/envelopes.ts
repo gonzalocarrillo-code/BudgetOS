@@ -34,3 +34,15 @@ export async function lockEnvelope(tx: Tx, envelopeId: string): Promise<LockedEn
 export async function lockTreeShape(tx: Tx, workspaceId: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('envelope-tree:' || ${workspaceId}, 0))`;
 }
+
+/**
+ * Serializes budget CSV import commits for one workspace (audit I-16). The plan is built by reading
+ * the registry and live budgets, then written a few queries later in the same transaction; without a
+ * lock, two concurrent commits can both read "no budget for this tuple yet" and both create it. A
+ * session-scoped advisory lock held for the rest of the transaction (released automatically at
+ * commit or rollback) makes the second committer wait, then re-read the plan against what the first
+ * one just wrote.
+ */
+export async function lockWorkspaceImport(tx: Tx, workspaceId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`budget-import:${workspaceId}`}, 0))`;
+}
