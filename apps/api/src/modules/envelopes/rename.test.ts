@@ -32,8 +32,14 @@ describe("rename a budget", () => {
   it("the new name shows even with a display naming template; 'use the template name' brings it back", async () => {
     const template = await as("admin", "POST", `/workspaces/${golden.workspaceId}/naming-templates`, { kind: "display", chips: [{ type: "dimension", key: "country" }, { type: "separator", value: " " }, { type: "dimension", key: "platform" }] });
     expect(template.status, JSON.stringify(template.body)).toBe(201);
+    // W0-7: the golden seed's own split (T-014) archives its source envelope, which still gets a
+    // display_name from the template below (recomputeNames does not filter by status). Without
+    // `status <> 'ARCHIVED'` and a deterministic ORDER BY, this unordered LIMIT 1 can intermittently
+    // pick that archived row depending on the shared `envelope` table's physical layout at the time
+    // (CI with VITEST_MAX_WORKERS=1 hits this because many other suites' rows have passed through the
+    // same relation beforehand) and the PATCH below then fails with 409 "Envelope is archived".
     const [env] = await owner.$queryRawUnsafe<Array<{ id: string; name: string; display_name: string | null }>>(
-      `SELECT id::text, name, display_name FROM envelope WHERE workspace_id = $1::uuid AND display_name IS NOT NULL AND display_name <> name LIMIT 1`,
+      `SELECT e.id::text, e.name, e.display_name FROM envelope e WHERE e.workspace_id = $1::uuid AND e.status <> 'ARCHIVED' AND e.display_name IS NOT NULL AND e.display_name <> e.name ORDER BY e.id LIMIT 1`,
       golden.workspaceId,
     );
     expect(env, "the display template named the budgets").toBeDefined();
