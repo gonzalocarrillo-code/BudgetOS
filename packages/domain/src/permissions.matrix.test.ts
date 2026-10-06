@@ -39,18 +39,19 @@ const ACTIONS: Action[] = [
   "export.run", //           plan: Export
   "view.share_workspace",
   "user.manage",
+  "baseline.save", //        S-16: same grantees as closure.close or envelope.edit_draft
 ];
 
-//                        r c e s m b | r e s | d f | g p u | c a | c r | c r | s x v u
+//                        r c e s m b | r e s | d f | g p u | c a | c r | c r | s x v u | b
 const GRID: Record<Role, string> = {
-  VIEWER: /*          */ "Y . . . . . | Y . . | . . | . . . | . Y | Y . | . . | . Y . .",
-  PLANNER: /*         */ "Y Y Y Y Y Y | Y Y Y | . . | . . . | . Y | Y Y | . . | . Y . .",
-  BUDGET_OWNER: /*    */ "Y Y Y Y Y Y | Y Y Y | Y . | . . Y | . Y | Y Y | . . | . Y . .",
-  APPROVER: /*        */ "Y . . . . . | Y . . | Y . | . . . | . Y | Y Y | . . | . Y . .",
-  FINANCE: /*         */ "Y . . . . . | Y . . | Y . | . . . | . Y | Y Y | Y . | . Y . .",
-  DATA_ADMIN: /*      */ "Y . . . . . | Y . . | . . | . . . | . Y | Y . | . . | Y Y . .",
-  WORKSPACE_ADMIN: /* */ "Y Y Y Y Y Y | Y Y Y | Y . | Y Y Y | Y Y | Y Y | Y Y | Y Y Y Y",
-  ORG_ADMIN: /*       */ "Y Y Y Y Y Y | Y Y Y | Y Y | Y Y Y | Y Y | Y Y | Y Y | Y Y Y Y",
+  VIEWER: /*          */ "Y . . . . . | Y . . | . . | . . . | . Y | Y . | . . | . Y . . | .",
+  PLANNER: /*         */ "Y Y Y Y Y Y | Y Y Y | . . | . . . | . Y | Y Y | . . | . Y . . | Y",
+  BUDGET_OWNER: /*    */ "Y Y Y Y Y Y | Y Y Y | Y . | . . Y | . Y | Y Y | . . | . Y . . | Y",
+  APPROVER: /*        */ "Y . . . . . | Y . . | Y . | . . . | . Y | Y Y | . . | . Y . . | .",
+  FINANCE: /*         */ "Y . . . . . | Y . . | Y . | . . . | . Y | Y Y | Y . | . Y . . | Y",
+  DATA_ADMIN: /*      */ "Y . . . . . | Y . . | . . | . . . | . Y | Y . | . . | Y Y . . | .",
+  WORKSPACE_ADMIN: /* */ "Y Y Y Y Y Y | Y Y Y | Y . | Y Y Y | Y Y | Y Y | Y Y | Y Y Y Y | Y",
+  ORG_ADMIN: /*       */ "Y Y Y Y Y Y | Y Y Y | Y Y | Y Y Y | Y Y | Y Y | Y Y | Y Y Y Y | Y",
 };
 
 const ROLES = Object.keys(GRID) as Role[];

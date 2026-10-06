@@ -138,9 +138,15 @@ function googleIdentity(payload: JWTPayload): string | null {
  * IAP's keys, fetched with Node's fetch and cached for an hour (ADR-065). On Cloud Run jose's
  * remote key set failed to parse gstatic's response ("Failed to parse the JSON Web Key Set HTTP
  * response as JSON") although the same URL parses everywhere else; an unknown `kid` refetches.
+ * S-20: that unknown-`kid` refetch is throttled to once per 60 s, so a burst of assertions signed
+ * with a `kid` that never matches (a stale cache, or probing) costs one upstream fetch, not one
+ * per request.
  */
-function fetchedJwks(url: string) {
+const KID_RELOAD_THROTTLE_MS = 60_000;
+
+function fetchedJwks(url: string, now: () => number = Date.now) {
   let cached: { at: number; set: ReturnType<typeof createLocalJWKSet>; kids: Set<string> } | null = null;
+  let lastReload = 0;
   const load = async () => {
     // Uncompressed, please; and if a gzip body arrives undecoded anyway (seen inside the API process
     // on Cloud Run, where the global fetch is replaced), decompress it here.
@@ -154,12 +160,16 @@ function fetchedJwks(url: string) {
     } catch {
       throw new Error(`IAP keys are not JSON (HTTP ${res.status}, ${res.headers.get("content-type") ?? "no type"}): ${text.slice(0, 80)}`);
     }
-    cached = { at: Date.now(), set: createLocalJWKSet(body), kids: new Set(body.keys.map((k) => k.kid ?? "")) };
+    cached = { at: now(), set: createLocalJWKSet(body), kids: new Set(body.keys.map((k) => k.kid ?? "")) };
+    lastReload = now();
     return cached;
   };
   return async (header: { kid?: string }, token: unknown) => {
     let c = cached as typeof cached;
-    if (c === null || Date.now() - c.at > 3_600_000 || (header.kid !== undefined && !c.kids.has(header.kid))) c = await load();
+    const stale = c !== null && now() - c.at > 3_600_000;
+    const unknownKid = header.kid !== undefined && (c === null || !c.kids.has(header.kid));
+    const throttled = now() - lastReload < KID_RELOAD_THROTTLE_MS;
+    if (c === null || stale || (unknownKid && !throttled)) c = await load();
     return c.set(header as never, token as never);
   };
 }

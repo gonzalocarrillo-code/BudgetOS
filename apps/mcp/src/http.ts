@@ -1,4 +1,6 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import { McpOAuth } from "@budget/api/auth";
 import { DomainError } from "@budget/domain";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -17,12 +19,40 @@ export interface OAuthConfig {
   appUrl: string;
 }
 
+export interface HttpOptions {
+  /** Cloud Run (K_SERVICE set): the socket's peer is Google's front end, so trust X-Forwarded-For. */
+  trustProxy?: boolean;
+}
+
 /**
  * `POST /mcp`: Streamable HTTP in stateless mode, one server and transport per request (spec §16).
  * The bearer token reaches the tools as `authInfo`; each tool verifies it. `GET /healthz`.
+ *
+ * S-6: this server never renders HTML (every response is JSON, including the OAuth consent page's
+ * *data* — the page itself is `apps/api/src/serve-web.ts`'s `/oauth/authorize`), so its CSP can be
+ * the strictest possible rather than the SPA's; it still gets the same HSTS/Referrer-Policy/
+ * X-Content-Type-Options as the app.
  */
-export function buildHttp(deps: McpDeps, oauth: OAuthConfig | null = null): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 1_000_000 });
+export async function buildHttp(deps: McpDeps, oauth: OAuthConfig | null = null, opts: HttpOptions = {}): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false, bodyLimit: 1_000_000, trustProxy: opts.trustProxy ?? false });
+  await app.register(helmet, {
+    contentSecurityPolicy: { useDefaults: false, directives: { defaultSrc: ["'none'"] } },
+    hsts: { maxAge: 31_536_000, includeSubDomains: true },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  });
+  // Awaited: its `onRoute` hook (what makes a route's own `config.rateLimit` take effect) must be
+  // attached before the /oauth/* routes below are registered.
+  await app.register(rateLimit, {
+    global: false,
+    errorResponseBuilder: (_request, context) => ({ statusCode: context.statusCode, code: "RATE_LIMITED", message: `Too many requests; retry in ${context.after}` }),
+  });
+  // The plugin throws what the builder above returns rather than sending it itself; a plain Fastify
+  // app (no Nest) respects `.statusCode` by default, but this keeps the body exactly {code, message}.
+  app.setErrorHandler((err, _request, reply) => {
+    const e = err as { statusCode?: number; code?: string; message?: string };
+    const statusCode = typeof e.statusCode === "number" ? e.statusCode : 500;
+    return reply.code(statusCode).send({ code: e.code ?? "INTERNAL", message: e.message ?? "Internal error" });
+  });
   app.get("/healthz", async () => ({ ok: true }));
   app.get("/health", async () => ({ ok: true }));
   if (oauth) registerOAuth(app, oauth);
@@ -70,7 +100,10 @@ function registerOAuth(app: FastifyInstance, { oauth, publicUrl, appUrl }: OAuth
   app.get("/.well-known/oauth-authorization-server", async () => server);
   app.get("/.well-known/openid-configuration", async () => server);
   const oauthError = (reply: import("fastify").FastifyReply, error: string, description: string, status = 400) => reply.code(status).header("cache-control", "no-store").send({ error, error_description: description });
-  app.post("/oauth/register", async (request, reply) => {
+  // S-6: by IP, 30/min — these are public-client endpoints (no cookie, no CSRF exposure), but
+  // still worth capping against registration/token-exchange abuse.
+  const oauthRateLimit = { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } };
+  app.post("/oauth/register", oauthRateLimit, async (request, reply) => {
     const body = (request.body ?? {}) as { redirect_uris?: unknown; client_name?: unknown };
     const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris.filter((u): u is string => typeof u === "string") : [];
     try {
@@ -80,7 +113,7 @@ function registerOAuth(app: FastifyInstance, { oauth, publicUrl, appUrl }: OAuth
       return oauthError(reply, "invalid_redirect_uri", e instanceof Error ? e.message : String(e));
     }
   });
-  app.post("/oauth/token", async (request, reply) => {
+  app.post("/oauth/token", oauthRateLimit, async (request, reply) => {
     const b = (request.body ?? {}) as Record<string, string | undefined>;
     try {
       if (b["grant_type"] === "authorization_code") return reply.header("cache-control", "no-store").send(await oauth.exchangeCode(b["code"] ?? "", b["client_id"] ?? "", b["redirect_uri"] ?? "", b["code_verifier"] ?? ""));

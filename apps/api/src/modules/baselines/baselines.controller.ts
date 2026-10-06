@@ -24,13 +24,13 @@ export class BaselinesController {
   }
 
   @Post("workspaces/:ws/baselines")
-  @Permission("workspace.member")
+  @Permission("baseline.save")
   save(@Tenant() auth: AuthContext, @Body() body: CreateBaselineDto) {
     return saveBaseline(this.prisma, auth, body);
   }
 
   @Patch("baselines/:id")
-  @Permission("workspace.member")
+  @Permission("baseline.save")
   update(@Tenant() auth: AuthContext, @Param("id") id: string, @Body() body: UpdateBaselineDto) {
     return updateBaseline(this.prisma, auth, id, body);
   }

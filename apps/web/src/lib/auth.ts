@@ -69,7 +69,9 @@ export function clearToken(): void {
 /** The person's Sign out: the session ends on the server (session mode), else the token goes. */
 export function signOut(): void {
   if (SESSION) {
-    window.location.assign("/auth/logout");
+    // S-6: logout is a state change, so it is POST, not a GET navigation; the browser's own
+    // Sec-Fetch-Site: same-origin on this fetch is what the server's CSRF check requires.
+    fetch("/auth/logout", { method: "POST", credentials: "include" }).finally(() => window.location.assign("/"));
     return;
   }
   clearToken();
