@@ -180,15 +180,17 @@ describe("create", () => {
 
   it("refuses a real envelope under a demo parent, and writes nothing (HF-1)", async () => {
     const demoParentId = randomUUID();
-    await owner.envelope.create({
-      data: { id: demoParentId, workspaceId: ws, name: "Demo parent", dimensionValues: { region: "br" }, startDate: new Date("2026-10-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: planner.id, demo: true },
-    });
-    const before = await owner.envelope.count({ where: { workspaceId: ws } });
+    await admin((tx) =>
+      tx.envelope.create({
+        data: { id: demoParentId, workspaceId: ws, name: "Demo parent", dimensionValues: { region: "br" }, startDate: new Date("2026-10-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: planner.id, demo: true },
+      }),
+    );
+    const before = await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }));
     const requestId = rid();
     const res = await create(planner, envelopeBody({ parentId: demoParentId }), { "x-request-id": requestId });
     expect(res.status).toBe(422);
     expect(res.body["code"]).toBe("VALIDATION");
-    expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(before);
+    expect(await admin((tx) => tx.envelope.count({ where: { workspaceId: ws } }))).toBe(before);
     expect(await auditFor(requestId, demoParentId)).toEqual([]);
     expect(await outboxFor(demoParentId)).toBe(0);
   });

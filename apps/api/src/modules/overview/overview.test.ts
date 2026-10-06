@@ -338,11 +338,11 @@ describe("GET /workspaces/:ws/overview — no heatmap axes (T-3)", () => {
         await tx.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
         await tx.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
         await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+        await tx.roleAssignment.deleteMany({ where: { workspaceId: ws } });
         await tx.workspace.deleteMany({ where: { id: ws } });
       },
       orgId,
     );
-    await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
     await owner.user.deleteMany({ where: { id: owner_.id } });
     await owner.organization.deleteMany({ where: { id: orgId } });
   });
@@ -454,11 +454,11 @@ describe("GET /workspaces/:ws/overview — heatmap gap (T-7)", () => {
         await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
         await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
         await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+        await tx.roleAssignment.deleteMany({ where: { workspaceId: ws } });
         await tx.workspace.deleteMany({ where: { id: ws } });
       },
       orgId,
     );
-    await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
     await owner.user.deleteMany({ where: { id: owner_.id } });
     await owner.organization.deleteMany({ where: { id: orgId } });
   });

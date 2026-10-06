@@ -92,9 +92,9 @@ describe("workspace templates (T-040)", () => {
     // HF-1 (audit T-5 follow-up): `hidden` turns on the moment a real budget joins the demo ones —
     // the Sandbox bug (demo roots hiding the one real budget underneath, with nothing saying why).
     const realId = randomUUID();
-    await owner.envelope.create({ data: { id: realId, workspaceId: ws, name: "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.orgAdmin, demo: false } });
+    await asOwner((tx) => tx.envelope.create({ data: { id: realId, workspaceId: ws, name: "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.orgAdmin, demo: false } }));
     expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: true, hidden: true });
-    await owner.envelope.delete({ where: { id: realId } });
+    await asOwner((tx) => tx.envelope.delete({ where: { id: realId } }));
     expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false });
 
     // I-3: purging without confirming is refused.

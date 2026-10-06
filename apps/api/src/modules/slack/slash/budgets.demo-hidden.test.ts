@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb } from "../../../test-support/harness.js";
@@ -27,16 +28,22 @@ function authFor(workspaceId: string, userId: string): AuthContext {
   };
 }
 
+// W0-6: the owner has no BYPASSRLS; workspace and envelope need the org-admin tenant context real
+// writes get from withTenant.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
+
 async function envelope(workspaceId: string, userId: string, demo: boolean) {
-  await owner.envelope.create({
-    data: { id: randomUUID(), workspaceId, name: demo ? "Demo budget" : "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: userId, demo },
-  });
+  await admin((tx) =>
+    tx.envelope.create({
+      data: { id: randomUUID(), workspaceId, name: demo ? "Demo budget" : "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: userId, demo },
+    }),
+  );
 }
 
 async function workspace(): Promise<{ workspaceId: string; userId: string }> {
   const workspaceId = randomUUID();
   const userId = randomUUID();
-  await owner.workspace.create({ data: { id: workspaceId, orgId, slug: `hf1-${workspaceId}`, name: "HF-1", reportingCurrency: "USD" } });
+  await admin((tx) => tx.workspace.create({ data: { id: workspaceId, orgId, slug: `hf1-${workspaceId}`, name: "HF-1", reportingCurrency: "USD" } }));
   await owner.user.create({ data: { id: userId, orgId, email: `${workspaceId}@hf1.test`, name: "Org Admin", googleSub: `hf1-${workspaceId}` } });
   workspaceIds.push(workspaceId);
   return { workspaceId, userId };
@@ -47,7 +54,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await deleteWorkspaceForTests(owner, workspaceIds);
+  await deleteWorkspaceForTests(owner, workspaceIds, orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.deleteMany({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
