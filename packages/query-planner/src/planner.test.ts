@@ -660,44 +660,6 @@ describe.sequential("T-007 query planner", () => {
     }
   });
 
-  it("ties versions approved at the same instant using version_no (T-17)", async () => {
-    // Two versions approved at the exact same moment: the planner should pick the higher version_no
-    const tiebreakName = "Tiebreak Test";
-    const sameApprovedAt = "2026-05-15T12:30:45.000Z";
-    const tiebreakId = newId();
-
-    // Create envelope with two versions approved at the same instant
-    await insertLeaf({
-      id: tiebreakId,
-      workspaceId: matrixWs,
-      name: tiebreakName,
-      status: "APPROVED",
-      ownerId: me,
-      currency: "USD",
-      start: "2026-05-01",
-      end: "2026-05-31",
-      createdAt: "2026-05-01T00:00:00.000Z",
-      versions: [
-        { amount: "100.00", approvedAt: sameApprovedAt },
-        { amount: "200.00", approvedAt: sameApprovedAt }, // version_no 2: should win
-      ],
-    });
-
-    // Query with asOf at the exact moment both versions are approved
-    const compiled = compile({
-      field: nameField,
-      op: "eq",
-      value: tiebreakName,
-      asOf: sameApprovedAt,
-      measures: ["budget"],
-    });
-    const rows = await queryRows<{ name: string; budget: string | null }>(compiled.sql, compiled.values);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.name).toBe(tiebreakName);
-    // Should pick version 2 (amount 200.00) due to version_no DESC tie-break
-    expect(Number(rows[0]?.budget)).toBeCloseTo(200.00, 2);
-  });
-
   it("sums leaf budgets, actuals, and projections for an empty filter", async () => {
     const compiled = compile({
       field: statusField,
@@ -1022,5 +984,50 @@ describe.sequential("T-007 query planner", () => {
     } finally {
       await otherClient.end();
     }
+  });
+
+  it("ties versions approved at the same instant using version_no (T-17)", async () => {
+    // Two versions approved at the exact same moment: the planner should pick the higher version_no
+    const tiebreakName = "Tiebreak Test";
+    const sameApprovedAt = "2026-09-15T12:30:45.000Z";
+    const tiebreakId = newId();
+
+    // Create envelope with two versions approved at the same instant
+    const tiebreakRegionId = newId();
+    await sql(
+      `INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'TIEBREAK', 'Tiebreak')`,
+      [tiebreakRegionId, regionDim],
+    );
+    await insertLeaf({
+      id: tiebreakId,
+      workspaceId: matrixWs,
+      name: tiebreakName,
+      status: "APPROVED",
+      ownerId: me,
+      currency: "USD",
+      start: "2026-09-10",
+      end: "2026-10-10",
+      createdAt: "2026-09-10T00:00:00.000Z",
+      regionValueId: tiebreakRegionId,
+      dimensionId: regionDim,
+      versions: [
+        { amount: "100.00", approvedAt: sameApprovedAt },
+        { amount: "200.00", approvedAt: sameApprovedAt }, // version_no 2: should win
+      ],
+    });
+
+    // Query with asOf one second after versions approved
+    const compiled = compile({
+      field: nameField,
+      op: "eq",
+      value: tiebreakName,
+      asOf: "2026-09-15T12:30:46.000Z",
+      measures: ["budget"],
+    });
+    const rows = await queryRows<{ name: string; budget: string | null }>(compiled.sql, compiled.values);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.name).toBe(tiebreakName);
+    // Should pick version 2 (amount 200.00) due to version_no DESC tie-break
+    expect(Number(rows[0]?.budget)).toBeCloseTo(200.00, 2);
   });
 });
