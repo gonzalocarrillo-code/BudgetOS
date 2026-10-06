@@ -1,5 +1,5 @@
 import { DomainError, EXPORT_MAX_ROWS, ExportRequested, QueryRequest, factsPrunedBefore, readsPrunedFacts, resolvePeriod } from "@budget/domain";
-import { audit, envelopePaths, outbox, plannerOptions, withTenant, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { audit, envelopePaths, outbox, plannerOptions, readDataVersion, withTenant, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce } from "../consumer.js";
@@ -57,7 +57,7 @@ export async function exportTable(tx: Tx, tenant: { workspaceId: string; orgId: 
     select: { key: true, label: true },
   });
   const table = buildTable(q, rows, totals ?? {}, { dimensions, paths, reportingCurrency: ws.reportingCurrency });
-  const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
+  const dataVersion = await readDataVersion(tx, tenant.workspaceId);
   return { q, table, period, workspaceName: ws.name, dataVersion };
 }
 

@@ -1,4 +1,4 @@
-import { audit, bumpDataVersion, outbox, unlockClosureEnvelopes, type Tx } from "@budget/db";
+import { audit, outbox, unlockClosureEnvelopes, type Tx } from "@budget/db";
 import type { FiscalPeriod, PeriodClosure } from "@prisma/client";
 import type { AuthContext } from "../../../common/tenant.js";
 
@@ -19,6 +19,5 @@ export async function failClosure(tx: Tx, auth: AuthContext, current: PeriodClos
   const period = await tx.fiscalPeriod.findUniqueOrThrow({ where: { id: current.periodId } });
   await audit(tx, { workspaceId: current.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action, entityType: "period_closure", entityId: current.id, before: { status: "closing" }, after: { status: "failed", error: text, table: current.bqTable, unlockedEnvelopes: unlocked.length }, requestId: auth.ctx.requestId });
   await outbox(tx, { workspaceId: current.workspaceId, topic: "period.closure_failed", payload: { closureId: current.id, periodId: period.id, periodKey: period.key, table: current.bqTable, unlockedEnvelopes: unlocked.length, error: text } });
-  await bumpDataVersion(tx, current.workspaceId);
   return { saved, period, unlocked };
 }

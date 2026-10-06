@@ -1,5 +1,5 @@
 import { DomainError, newId } from "@budget/domain";
-import { applyDates, applyEnd, archiveEnvelopes, audit, auditMany, bumpDataVersion, closeBulkVersions, loadBulkChange, lockEnvelopes, outbox, releaseHeld, type BulkChangeRow, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
+import { applyDates, applyEnd, archiveEnvelopes, audit, auditMany, closeBulkVersions, loadBulkChange, lockEnvelopes, outbox, releaseHeld, type BulkChangeRow, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { clock } from "../../common/clock.js";
 import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
 import { approveVersion } from "./commands/approve-version.js";
@@ -138,7 +138,6 @@ async function applyRequestedDates(tx: Tx, ctx: TenantContext, bulk: BulkChangeR
   for (const d of rest) {
     await outbox(tx, { workspaceId, topic: "budget.changed", payload: { envelopeId: d.envelopeId, kind: "dates", startDate: d.startDate, endDate: d.endDate, bulkChangeId: bulk.id, requestId } });
   }
-  await bumpDataVersion(tx, workspaceId);
 }
 
 /** Envelope depth (0 = root) so bulk approvals run parents first and child caps see the parent's new amount. */

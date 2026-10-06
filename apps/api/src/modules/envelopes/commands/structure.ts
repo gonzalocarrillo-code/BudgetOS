@@ -2,7 +2,6 @@ import { DomainError, MergeEnvelopesInput, MoveEnvelopeInput, SplitEnvelopeInput
 import {
   audit,
   auditMany,
-  bumpDataVersion,
   insertBulkChange,
   lockEnvelope,
   lockApprovalRequest,
@@ -46,8 +45,9 @@ import { assertBasedOnHead, assertDraftNotPending, assertNotHeld, lockForWrite, 
  *      with a plain read first, then locks it; a decision or a withdrawal starts with it;
  *   3. envelopes, by id (`lockEnvelopes`): a move locks the budget, its old parent and its new
  *      parent; a decision locks every budget of the request and their parents
- *      (`lockRequestEnvelopes`); a date change locks the budget, its parent and its subtree;
- *   4. the workspace row (`bumpDataVersion`), last.
+ *      (`lockRequestEnvelopes`); a date change locks the budget, its parent and its subtree.
+ * The data version row (`workspace_data_version`) is bumped at commit by the outbox trigger
+ * (ADR-0084), after all of these, so it never takes part in this order.
  *
  * Re-locking a row already held is a no-op, so the per-row locks taken further down (lockForWrite,
  * lockParentCap, approveVersion) never wait once the set above is held. Before W3-5 a move locked
@@ -315,7 +315,6 @@ export async function splitIn(tx: Tx, auth: AuthContext, workspaceId: string, so
     })),
   );
   await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "split", sourceId, partIds, bulkChangeId: routed.bulkChangeId, requestId: routed.requestId } });
-  await bumpDataVersion(tx, workspaceId);
   return { sourceId, partIds, ...routed };
 }
 
@@ -405,6 +404,5 @@ export async function mergeIn(tx: Tx, auth: AuthContext, workspaceId: string, id
     },
   ]);
   await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "merge", sourceIds: ids, targetId: target.id, bulkChangeId: routed.bulkChangeId, requestId: routed.requestId } });
-  await bumpDataVersion(tx, workspaceId);
   return { sourceIds: ids, targetId: target.id, ...routed };
 }

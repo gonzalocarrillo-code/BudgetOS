@@ -1,5 +1,5 @@
 import { DomainError, QueryRequest, factsPrunedBefore, readScopeFilter, readsPrunedFacts, resolvePeriod, todayIso, type FilterGroupT, type QueryResponse } from "@budget/domain";
-import { envelopePaths, envelopesByTuple, plannerOptions, resolveElapsedThrough, withTenant, fiscalCalendar } from "@budget/db";
+import { envelopePaths, envelopesByTuple, plannerOptions, readDataVersion, resolveElapsedThrough, withTenant, fiscalCalendar } from "@budget/db";
 import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { HEAVY_MONTHS, HEAVY_ROWS, QUERY_CACHE_TTL_SECONDS, cacheKey, engineFromEnv, maxPlanRows, monthsSpanned, type QueryEngine } from "./engine.js";
 import { Decimal } from "decimal.js";
@@ -52,7 +52,7 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
     // ("data" by default), the same pace Overview reads for the same budget.
     const elapsedThrough = internal.elapsedThrough ?? (await resolveElapsedThrough(tx, q.workspaceId, today, q.elapsedThrough));
     const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period)), ...(elapsedThrough === undefined ? {} : { elapsedThrough }) };
-    const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
+    const dataVersion = await readDataVersion(tx, q.workspaceId);
     const key = engine.cache ? cacheKey(q, dataVersion, today, elapsedThrough) : null;
     if (key && engine.cache) {
       const hit = await engine.cache.get(key);

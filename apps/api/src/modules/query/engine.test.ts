@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { QueryRequest } from "@budget/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthContext } from "../../common/tenant.js";
+import { outbox, withTenant } from "@budget/db";
 import { appDb, ownerDb, testUser } from "../../test-support/harness.js";
 import { MemoryQueryCache, cacheKey, maxPlanRows, monthsSpanned, type Row, type Warehouse } from "./queries/engine.js";
 import { runQuery } from "./queries/run-query.js";
@@ -45,6 +46,7 @@ afterAll(async () => {
   await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
   await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
   await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+  await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
@@ -85,8 +87,19 @@ describe("query routing", () => {
     const again = await runQuery(app, auth(), body(period), now, { cache, warehouse: null });
     expect(again.engine).toBe("cache");
     expect(again.totals["budget"]).toBe("1000.00");
-    await owner.$executeRawUnsafe(`UPDATE workspace SET settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{dataVersion}', to_jsonb(coalesce((settings->>'dataVersion')::int, 0) + 1)) WHERE id = $1::uuid`, ws);
-    expect((await runQuery(app, auth(), body(period), now, { cache, warehouse: null })).engine).toBe("postgres");
+    // W3-8 (ADR-0084): a write moves the version through its outbox row, at commit, as the app role.
+    // An open (or rolled-back) write does not; a committed one does.
+    const write = () => withTenant(app, auth().ctx, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { kind: "engine-test" } }));
+    await expect(withTenant(app, auth().ctx, async (tx) => {
+      await outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { kind: "engine-test" } });
+      throw new Error("rolled back");
+    })).rejects.toThrow("rolled back");
+    expect((await runQuery(app, auth(), body(period), now, { cache, warehouse: null })).engine).toBe("cache");
+    await write();
+    const fresh = await runQuery(app, auth(), body(period), now, { cache, warehouse: null });
+    expect(fresh.engine).toBe("postgres");
+    expect(fresh.dataVersion).toBe(again.dataVersion + 1);
+    expect((await runQuery(app, auth(), body(period), now, { cache, warehouse: null })).engine).toBe("cache");
   });
 });
 
@@ -116,11 +129,11 @@ describe("routing helpers", () => {
     expect(monthsSpanned({ start: "2025-01-15", end: "2026-02-01" })).toBe(14);
     expect(maxPlanRows([{ Plan: { "Plan Rows": 10, Plans: [{ "Plan Rows": 250_000 }, { "Plan Rows": 3 }] } }])).toBe(250_000);
     const q = (filter: unknown) => QueryRequest.parse({ workspaceId: ws, period: { kind: "relative", preset: "current_year" }, filter });
-    expect(cacheKey(q({ logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] }), 7, "2026-06-15")).toMatch(new RegExp(`^q:${ws}:7:2026-06-15:[0-9a-f]{64}$`));
+    expect(cacheKey(q({ logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] }), 7, "2026-06-15")).toMatch(new RegExp(`^q2:${ws}:7:2026-06-15:[0-9a-f]{64}$`));
     expect(cacheKey(q({ logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: "q4" }] }), 7, "2026-06-15")).toBeNull();
     // ADR-062: pace counted through the data's last day is another answer; through today (or later) is the same one.
     const latam = q({ logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: "latam" }] });
-    expect(cacheKey(latam, 7, "2026-06-15", "2026-05-31")).toMatch(new RegExp(`^q:${ws}:7:2026-06-15~2026-05-31:[0-9a-f]{64}$`));
+    expect(cacheKey(latam, 7, "2026-06-15", "2026-05-31")).toMatch(new RegExp(`^q2:${ws}:7:2026-06-15~2026-05-31:[0-9a-f]{64}$`));
     expect(cacheKey(latam, 7, "2026-06-15", "2026-06-20")).toBe(cacheKey(latam, 7, "2026-06-15"));
   });
 });

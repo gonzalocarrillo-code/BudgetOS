@@ -1,5 +1,5 @@
 import { DomainError, RestateInput } from "@budget/domain";
-import { audit, bumpDataVersion, lockClosure, outbox, unlockClosureEnvelopes, withTenant } from "@budget/db";
+import { audit, lockClosure, outbox, unlockClosureEnvelopes, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
@@ -25,7 +25,6 @@ export async function restateClosure(prisma: PrismaClient, auth: AuthContext, ra
     const period = await tx.fiscalPeriod.findUniqueOrThrow({ where: { id: current.periodId } });
     await audit(tx, { workspaceId: current.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "closure.restated", entityType: "period_closure", entityId: id, before: { status: "closed" }, after: { status: "restated", unlockedEnvelopes: unlocked.length }, reason: input.reason, requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId: current.workspaceId, topic: "period.restated", payload: { closureId: id, periodId: period.id, periodKey: period.key, unlockedEnvelopes: unlocked.length, reason: input.reason } });
-    await bumpDataVersion(tx, current.workspaceId);
     const lockedCount = await tx.closureEnvelope.count({ where: { closureId: id } });
     return { ...closureView(saved, period, lockedCount), unlockedEnvelopes: unlocked.length };
   });

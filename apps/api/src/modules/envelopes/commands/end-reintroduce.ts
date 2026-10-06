@@ -1,5 +1,5 @@
 import { DomainError, EndEnvelopeInput, ReintroduceInput, newId } from "@budget/domain";
-import { audit, auditMany, bumpDataVersion, outbox, recomputeNames, withTenant, type Tx } from "@budget/db";
+import { audit, auditMany, outbox, recomputeNames, withTenant, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Envelope, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -153,7 +153,6 @@ export async function endIn(tx: Tx, auth: AuthContext, workspaceId: string, enve
       : []),
   ]);
   await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "end", envelopeId, successorId: successor?.id ?? null, bulkChangeId: routed.bulkChangeId, requestId: routed.requestId } });
-  await bumpDataVersion(tx, workspaceId);
   return { envelopeId, endVersionId: endVersion.id, successorId: successor?.id ?? null, ended: routed.autoApproved, ...routed };
 }
 
@@ -197,6 +196,5 @@ export async function reintroduceIn(tx: Tx, auth: AuthContext, workspaceId: stri
     requestId: auth.ctx.requestId,
   });
   await outbox(tx, { workspaceId, topic: "budget.changed", payload: { kind: "reintroduce", envelopeId, successorId: successor.id, bulkChangeId: routed.bulkChangeId, requestId: routed.requestId } });
-  await bumpDataVersion(tx, workspaceId);
   return { envelopeId, successorId: successor.id, ...routed };
 }

@@ -68,6 +68,7 @@ export const OWN = [
   "projection_fact",
   "spend_month",
   "rollup_cache",
+  "workspace_data_version",
   "search_document",
   "search_term",
   "alert",

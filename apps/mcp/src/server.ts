@@ -3,7 +3,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { authenticate, authorize, type AuthContext, type AuthDeps } from "@budget/api/auth";
 import * as q from "@budget/api/queries";
-import { audit, withTenant } from "@budget/db";
+import { audit, readDataVersion, withTenant } from "@budget/db";
 import { DomainError, FilterGroup, PeriodSpec, QueryRequest } from "@budget/domain";
 import type { ObjectStore } from "@budget/workers";
 import type { PrismaClient } from "@prisma/client";
@@ -65,8 +65,7 @@ export function buildServer(deps: McpDeps): McpServer {
       const argText = JSON.stringify(args ?? {});
       await audit(tx, { workspaceId, actorId: auth.user.id, actorType: "mcp", action: `mcp.${tool}`, entityType: "mcp_call", entityId: callId, after: { tool, args: argText.length > 4000 ? `${argText.slice(0, 4000)}…` : JSON.parse(argText) }, requestId });
       if (workspaceId === null) return null;
-      const ws = await tx.workspace.findUnique({ where: { id: workspaceId }, select: { settings: true } });
-      return Number((ws?.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
+      return readDataVersion(tx, workspaceId);
     });
     const data = await fn(auth);
     log.info({ tool, requestId, workspaceId, actorId: auth.user.id }, "mcp tool");

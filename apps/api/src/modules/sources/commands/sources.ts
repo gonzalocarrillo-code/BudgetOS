@@ -1,5 +1,5 @@
 import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, RunSourceInput, SourceConfig, SourceMapping, UpdateSourceInput, newId, rowIdentityProblem } from "@budget/domain";
-import { assignUnmatched, audit, bumpDataVersion, outbox, withTenant, type Tx } from "@budget/db";
+import { assignUnmatched, audit, outbox, withTenant, type Tx } from "@budget/db";
 import { uploadBucket, type ObjectStore } from "@budget/workers";
 import type { DataSource, Prisma, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -134,7 +134,6 @@ export async function mapUnmatched(prisma: PrismaClient, auth: AuthContext, raw:
     if (assigned.spend + assigned.kpi + assigned.projection === 0) throw new DomainError("NOT_FOUND", "No unmatched facts with this tuple inside the envelope's dates");
     await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "facts.mapped", entityType: "envelope", entityId: env.id, after: { dimensionValues: input.dimensionValues, ...assigned }, requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId, topic: "facts.loaded", payload: { envelopeIds: [env.id], mapped: assigned, dimensionValues: input.dimensionValues } });
-    await bumpDataVersion(tx, workspaceId);
     return { envelopeId: env.id, ...assigned };
   });
 }

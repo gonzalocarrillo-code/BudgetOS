@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readDataVersion } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -39,10 +40,7 @@ async function outboxFor(envelopeId: string): Promise<number> {
   );
   return Number(rows[0]?.n ?? 0);
 }
-async function dataVersion(): Promise<number> {
-  const w = await owner.workspace.findUniqueOrThrow({ where: { id: ws } });
-  return Number((w.settings as { dataVersion?: number }).dataVersion ?? 0);
-}
+const dataVersion = (): Promise<number> => readDataVersion(owner, ws);
 
 /** Runs a write and asserts it produced exactly one audit_event (by request id) and one outbox row. */
 async function oneAuditOneOutbox(envelopeId: string | null, action: string, write: (requestId: string) => Promise<{ status: number; body: Record<string, unknown> }>) {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { CreateManualEntryInput, DomainError, UpdateManualEntryInput, newId, type ManualEntryRowInput } from "@budget/domain";
-import { audit, bumpDataVersion, ensurePartitions, matchRunFacts, outbox, upsertKpiFacts, upsertSpendFacts, withTenant, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
+import { audit, ensurePartitions, matchRunFacts, outbox, upsertKpiFacts, upsertSpendFacts, withTenant, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { ManualEntryBatch, Prisma, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -150,7 +150,6 @@ export async function approveManualEntry(tx: Tx, ctx: TenantContext, batchId: st
   await audit(tx, { workspaceId: b.workspaceId, actorId: ctx.userId, actorType: ctx.actorType, action: "manual_entry.approved", entityType: "manual_entry", entityId: b.id, after: { status: "APPROVED", requestId, reason, spendFacts: spend.length, kpiFacts: kpis.length, envelopeIds, enteredBy: b.createdBy, approvedBy }, requestId: ctx.requestId });
   // Same topic as an ingest run: rollups, pacing and search pick the new actuals up.
   await outbox(tx, { workspaceId: b.workspaceId, topic: "facts.loaded", payload: { runId: b.id, sourceSystem: "manual", manualEntryId: b.id, envelopeIds } });
-  await bumpDataVersion(tx, b.workspaceId);
   return batchView(approved);
 }
 

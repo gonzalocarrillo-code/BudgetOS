@@ -1,5 +1,5 @@
 import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, parseOutboxPayload, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { cachedPeriods, deleteRollupNodes, loadBulkChange, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, rollupRoot, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { cachedPeriods, deleteRollupNodes, loadBulkChange, deleteRollupNodesExcept, readDataVersion, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, rollupRoot, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { HierarchyTemplate, PrismaClient } from "@prisma/client";
@@ -160,10 +160,7 @@ async function nodeEnvelopes(tx: Tx, workspaceId: string, path: string[], nodePa
   return new Map([...hits].filter(([, ids]) => ids.length === 1).map(([p, ids]) => [p, ids[0] as string]));
 }
 
-const dataVersionOf = async (tx: Tx, workspaceId: string) => {
-  const w = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { settings: true } });
-  return Number(((w.settings ?? {}) as { dataVersion?: number }).dataVersion ?? 0);
-};
+const dataVersionOf = (tx: Tx, workspaceId: string) => readDataVersion(tx, workspaceId);
 
 /**
  * Every node of a template for a period (root first, then each depth), not stored. The deepest

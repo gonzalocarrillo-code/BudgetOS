@@ -53,7 +53,8 @@ function reachable(entries: string[]): { files: Set<string>; forbidden: string[]
 // to its three budget_mcp-side RPCs — consumeOauthCode (single-use check), issueRefreshToken and
 // consumeRefreshToken (rotation + reuse detection). None of these touch business data: they are the
 // MCP server's own OAuth plumbing, same footing as audit (the one other write budget_mcp can make).
-const DB_ALLOWED = new Set(["withTenant", "audit", "consumeOauthCode", "issueRefreshToken", "consumeRefreshToken"]);
+// readDataVersion (W3-8, ADR-0084) is a single SELECT: the version every MCP result carries.
+const DB_ALLOWED = new Set(["withTenant", "audit", "readDataVersion", "consumeOauthCode", "issueRefreshToken", "consumeRefreshToken"]);
 
 describe("read-only MCP imports (T-025 CI guard)", () => {
   it("nothing reachable from apps/mcp/src is a commands/ module", () => {

@@ -459,7 +459,7 @@ describe("org-admin RLS bypass is scoped to the admin's org", () => {
       await tx.$executeRaw`UPDATE workspace SET settings = settings WHERE id = ${wsA1}::uuid`,
       await tx.$executeRaw`UPDATE workspace SET settings = settings WHERE id = ${wsA2}::uuid`,
     ]);
-    expect(bumped, "a session updates its own workspace row only (bumpDataVersion)").toEqual([1, 0]);
+    expect(bumped, "a session updates its own workspace row only").toEqual([1, 0]);
     const moved = withTenant(app, session, (tx) =>
       tx.$executeRaw`UPDATE workspace SET org_id = ${orgB}::uuid WHERE id = ${wsA1}::uuid`,
     );
