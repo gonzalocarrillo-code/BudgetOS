@@ -169,15 +169,22 @@ describe("Any envelope or roll-up shows a full timeline from audit data alone", 
     expect(decided.status).toBe(201);
     // Alerts, ingest and closures have no commands yet (T-018, T-017, T-024): fixture rows.
     const ws = golden.workspaceId;
+    // W3-11 (audit I-32): alert.rule_id is a FK to pacing_rule(id) now; give it a real row.
+    const rule = randomUUID();
+    await owner.$executeRawUnsafe(
+      `INSERT INTO pacing_rule (id, workspace_id, name, metric, comparator, threshold, severity) VALUES ($1::uuid, $2::uuid, 'fixture rule', 'pace_index', 'gt', 1, 'high')`,
+      rule, ws,
+    );
     await owner.$executeRawUnsafe(
       `INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context, opened_at, resolved_at)
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'high', 'RESOLVED', 1.4, 1.2, '{}'::jsonb, '2026-03-01T00:00:00Z', '2026-03-02T00:00:00Z')`,
-      randomUUID(), ws, randomUUID(), envelopeId,
+      randomUUID(), ws, rule, envelopeId,
     );
     const source = randomUUID();
     const run = randomUUID();
     await owner.$executeRawUnsafe(`INSERT INTO data_source (id, workspace_id, kind, name, config, mapping) VALUES ($1::uuid, $2::uuid, 'csv', 'fixture', '{}'::jsonb, '{}'::jsonb)`, source, ws);
-    await owner.$executeRawUnsafe(`INSERT INTO ingest_run (id, source_id, started_at, finished_at, status, rows_accepted) VALUES ($1::uuid, $2::uuid, '2026-03-03T00:00:00Z', '2026-03-03T00:05:00Z', 'succeeded', 1)`, run, source);
+    // W3-11 (audit I-34): ingest_run.status is queued | running | ok | failed (pipeline.ts, worker.ts); 'succeeded' was never a real value.
+    await owner.$executeRawUnsafe(`INSERT INTO ingest_run (id, source_id, started_at, finished_at, status, rows_accepted) VALUES ($1::uuid, $2::uuid, '2026-03-03T00:00:00Z', '2026-03-03T00:05:00Z', 'ok', 1)`, run, source);
     await owner.$executeRawUnsafe(
       `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
        VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-03-01', 'USD', 10, 10, 'csv', $3::uuid, $4)`,

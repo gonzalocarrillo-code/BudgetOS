@@ -13,24 +13,40 @@ import { log } from "../log.js";
  */
 
 /** Child tables without workspace_id, deleted through their parent (the parent is still there). */
-const VIA_PARENT: Array<[table: string, sql: string]> = [
+export const VIA_PARENT: Array<[table: string, sql: string]> = [
   ["comment_reaction", "DELETE FROM comment_reaction WHERE workspace_id = $1::uuid"],
   ["comment", "DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)"],
   ["approval_decision", "DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)"],
   ["envelope_phasing", "DELETE FROM envelope_phasing WHERE version_id IN (SELECT v.id FROM envelope_version v JOIN envelope e ON e.id = v.envelope_id WHERE e.workspace_id = $1::uuid)"],
+  // W3-11 (audit I-32): envelope.current_version_id / draft_version_id and envelope.parent_id are
+  // now FKs to envelope_version(id) and envelope(id) respectively. Each statement here runs in its
+  // own transaction (see `run` below), so — unlike the DEFERRABLE INITIALLY DEFERRED on those FKs,
+  // which only helps within a single transaction — the pointers must be cleared in a transaction of
+  // their own before the rows they point at are deleted in a later one. parent_id is self-referencing
+  // within one DELETE statement too: nulling it for every envelope in the workspace first means no
+  // row is still pointed at by a sibling by the time the final DELETE FROM envelope runs, regardless
+  // of the order Postgres deletes rows within that statement.
+  ["envelope (clear version pointers)", "UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid"],
+  ["envelope (clear parent_id)", "UPDATE envelope SET parent_id = NULL WHERE workspace_id = $1::uuid"],
   ["envelope_version", "DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)"],
   ["envelope_dimension", "DELETE FROM envelope_dimension WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)"],
   ["closure_envelope", "DELETE FROM closure_envelope WHERE closure_id IN (SELECT id FROM period_closure WHERE workspace_id = $1::uuid)"],
+  // Same reasoning as envelope's version pointers, for target.current_version_id / draft_version_id
+  // -> target_version(id).
+  ["target (clear version pointers)", "UPDATE target SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid"],
   ["target_version", "DELETE FROM target_version WHERE target_id IN (SELECT id FROM target WHERE workspace_id = $1::uuid)"],
   ["rule_state", "DELETE FROM rule_state WHERE rule_id IN (SELECT id FROM pacing_rule WHERE workspace_id = $1::uuid)"],
   ["ingest_run", "DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)"],
   ["tour_completion", "DELETE FROM tour_completion WHERE tour_id IN (SELECT id FROM tour WHERE workspace_id = $1::uuid)"],
   ["value_constraint", "DELETE FROM value_constraint WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)"],
+  // dimension_value.parent_value_id / merged_into_id are self-referencing (same single-DELETE-
+  // statement reasoning as envelope.parent_id above).
+  ["dimension_value (clear self-refs)", "UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)"],
   ["dimension_value", "DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)"],
 ];
 
 /** Tables with workspace_id, in an order that satisfies the foreign keys (children before parents). */
-const OWN = [
+export const OWN = [
   "bulk_preview",
   "idempotency_key",
   "budget_baseline_row",
@@ -84,7 +100,8 @@ export async function purgeWorkspace(prisma: PrismaClient, ws: { workspaceId: st
     counts[table] = await withTenant(prisma, ctx, (tx) => tx.$executeRawUnsafe(sql, ws.workspaceId), { timeoutMs: 300_000 });
   };
   for (const [table, sql] of VIA_PARENT) await run(table, sql);
-  // envelope's self reference is ON DELETE SET NULL; its other children are gone above.
+  // envelope.parent_id and dimension_value's self-refs are already NULL (cleared above, W3-11);
+  // envelope's other children are gone above too.
   for (const table of OWN) await run(table, `DELETE FROM ${table} WHERE workspace_id = $1::uuid`);
   await withTenant(prisma, { ...ctx, isOrgAdmin: true }, async (tx) => {
     await tx.workspace.update({ where: { id: ws.workspaceId }, data: { purgedAt: now } });
@@ -94,6 +111,37 @@ export async function purgeWorkspace(prisma: PrismaClient, ws: { workspaceId: st
   });
   log.info({ workspaceId: ws.workspaceId, orgId: ws.orgId, requestId: ctx.requestId, counts }, "workspace purged");
   return counts;
+}
+
+/**
+ * W3-11 (audit I-32): test-only. Hard-deletes one or more workspaces and every row that FKs to
+ * them, including the `workspace` row itself (unlike `purgeWorkspace`, which keeps `audit_event`
+ * and the tombstone `workspace` row for the real purge flow — tests want a clean slate, not a
+ * tombstone). Reuses the exact `VIA_PARENT`/`OWN` order `purgeWorkspace` validates against
+ * production: those are the tables every tenant table's workspace_id (and the pointer columns)
+ * now FKs to.
+ *
+ * Requires a connection that bypasses RLS (the superuser `owner`/`DATABASE_URL` role tests already
+ * use locally and in CI — never the app role, and never in production code). `audit_event` is
+ * append-only (the `audit_event_immutable` trigger); it is disabled around the delete, test cleanup
+ * only, same as the real purge keeps it on but this never runs outside a test.
+ */
+export async function deleteWorkspaceForTests(prisma: PrismaClient, workspaceIds: string | readonly string[]): Promise<void> {
+  const ids = Array.isArray(workspaceIds) ? workspaceIds : [workspaceIds];
+  if (ids.length === 0) return;
+  for (const id of ids) {
+    for (const [, sql] of VIA_PARENT) await prisma.$executeRawUnsafe(sql, id);
+    for (const table of OWN) await prisma.$executeRawUnsafe(`DELETE FROM ${table} WHERE workspace_id = $1::uuid`, id);
+  }
+  // outbox and audit_event are deliberately outside VIA_PARENT/OWN: purgeWorkspace keeps both (the
+  // real purge never deletes the workspace row either, only tombstones it, so their FKs to
+  // workspace(id) never bind there). A test hard-delete needs them gone first.
+  await prisma.$executeRawUnsafe(`DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = ANY($1::uuid[]))`, ids);
+  await prisma.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, ids);
+  await prisma.$executeRawUnsafe(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
+  await prisma.$executeRawUnsafe(`DELETE FROM audit_event WHERE workspace_id = ANY($1::uuid[])`, ids);
+  await prisma.$executeRawUnsafe(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
+  await prisma.$executeRawUnsafe(`DELETE FROM workspace WHERE id = ANY($1::uuid[])`, ids);
 }
 
 /** Every deleted workspace of these orgs whose retention window has passed and is not purged yet. */

@@ -152,9 +152,15 @@ afterAll(async () => {
   if (dimensionIds.length > 0) {
     await owner.valueConstraint.deleteMany({ where: { dimensionId: { in: dimensionIds } } });
   }
+  // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
+  await owner.$executeRaw`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ${orgId}::uuid)`;
   await owner.dimensionValue.deleteMany({ where: { dimension: { orgId } } });
   await owner.dimension.deleteMany({ where: { orgId } });
   await owner.$executeRaw`DELETE FROM outbox WHERE payload->>'orgId' = ${orgId}`;
+  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
+  await owner.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+  await owner.$executeRaw`DELETE FROM audit_event WHERE org_id = ${orgId}::uuid`;
+  await owner.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
   await owner.workspace.deleteMany({ where: { id: workspaceId } });
   await owner.organization.deleteMany({ where: { id: orgId } });
   await app.$disconnect();

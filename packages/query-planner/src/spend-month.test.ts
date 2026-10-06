@@ -67,6 +67,9 @@ describe("spend_month", () => {
     expect((await monthsFromTable()).map((r) => r.month)).toEqual(["2026-01-01", "2026-03-01", "2026-04-01"]); // February emptied and removed
   });
 
+  // W3-11 (audit I-32): spend_fact.workspace_id is now a validated FK, so each of the 300
+  // sequential inserts below does one more lookup than before; the default 5s test timeout was
+  // already tight for 300 round trips plus 60 property runs against real Postgres.
   it("the planner's actual equals the facts' sum for any period (property)", async () => {
     await owner.query(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, [ws]);
     // ~300 facts over the year, then random periods, month-aligned or not.
@@ -86,5 +89,5 @@ describe("spend_month", () => {
       }),
       { numRuns: 60 },
     );
-  });
+  }, 20_000);
 });

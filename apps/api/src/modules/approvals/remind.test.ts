@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Role } from "@budget/domain";
+import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthContext } from "../../common/tenant.js";
 import { appDb, ownerDb } from "../../test-support/harness.js";
@@ -45,16 +46,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-    `DELETE FROM approval_request WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

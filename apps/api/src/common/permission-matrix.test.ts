@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { can, eligibleApprover, type Role } from "@budget/domain";
 import { withTenant } from "@budget/db";
+import { deleteWorkspaceForTests } from "@budget/workers";
 import { SignJWT } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openApiDocument } from "../openapi.js";
@@ -87,17 +88,17 @@ afterAll(async () => {
   await h?.close();
   const wss = [wsA, wsB, wsC];
   const orgs = [orgA, orgB];
-  await owner.$executeRawUnsafe(`DELETE FROM approval_request WHERE workspace_id = ANY($1::uuid[])`, wss);
-  await owner.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = ANY($1::uuid[]))`, wss);
-  await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = ANY($1::uuid[])`, wss);
+  // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
+  // themselves), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, wss);
+  // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
+  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ANY($1::uuid[]))`, orgs);
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = ANY($1::uuid[]))`, orgs);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = ANY($1::uuid[])`, orgs);
-  await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, wss);
   await owner.$executeRawUnsafe(`DELETE FROM app_group_member WHERE group_id IN (SELECT id FROM app_group WHERE org_id = ANY($1::uuid[]))`, orgs);
   await owner.$executeRawUnsafe(`DELETE FROM app_group WHERE org_id = ANY($1::uuid[])`, orgs);
-  await owner.roleAssignment.deleteMany({ where: { OR: [{ workspaceId: { in: wss } }, { principalId: users.ORG_ADMIN.id }] } });
+  await owner.roleAssignment.deleteMany({ where: { principalId: users.ORG_ADMIN.id } });
   await owner.user.deleteMany({ where: { orgId: { in: orgs } } });
-  await owner.workspace.deleteMany({ where: { id: { in: wss } } });
   await owner.organization.deleteMany({ where: { id: { in: orgs } } });
   await Promise.all([owner.$disconnect(), appDb.$disconnect()]);
 });

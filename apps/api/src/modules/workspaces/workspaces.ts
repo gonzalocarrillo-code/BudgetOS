@@ -86,6 +86,10 @@ export async function createWorkspace(prisma: PrismaClient, auth: AuthContext, r
     const rules = z.array(z.record(z.string(), z.unknown())).parse(template.rules);
     for (const r of rules) await insertRule(tx, ctx, workspaceId, parseInput(CreateRuleInput, { ...r, delivery: { inApp: true } }));
     const views = z.array(TemplateSavedView).parse(template.savedViews);
+    // "shared" (not @budget/domain's SavedViewVisibility, which only covers the user-facing
+    // "private" | "workspace" on POST /saved-views) is a third, system-only value a workspace
+    // template's own views are seeded with (home.test.ts asserts it); the W3-11 CHECK constraint
+    // on saved_view.visibility includes it for exactly this write path.
     for (const v of views) await tx.savedView.create({ data: { id: newId(), workspaceId, name: v.name, screen: v.screen, definition: json(v.definition), visibility: "shared", createdBy: auth.user.id } });
     const tours = Tours.parse(template.tours);
     for (const t of tours) await tx.tour.create({ data: { id: newId(), workspaceId, role: t.role, name: t.name, steps: json(t.steps) } });

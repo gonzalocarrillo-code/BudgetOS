@@ -139,9 +139,32 @@ it must always run exactly one. See `docs/runbooks/deploy.md` "Alerts" and
 ## Other periodic passes
 
 The same loop also runs, on their own schedules, independent of outbox rows: workspace purge (every
-minute, ADR-052), fact/raw-file retention (daily, `FACT_RETENTION_ENABLED`, see
-`docs/runbooks/retention.md`), snapshot integrity (weekly, `SNAPSHOT_INTEGRITY=off` disables),
-search re-index (workspaces with an empty index on startup, every workspace daily, see
-`docs/runbooks/search.md`) and pacing (`PACING_EVERY_MS`, see `docs/runbooks/pacing.md`). None of
-these touch the outbox retry columns above; they have no row to fail or dead-letter — a failure
-there is caught and logged, and the pass is simply tried again on its own next scheduled tick.
+minute, ADR-052), partition maintenance (daily, W3-11, see below), fact/raw-file retention (daily,
+`FACT_RETENTION_ENABLED`, see `docs/runbooks/retention.md`), snapshot integrity (weekly,
+`SNAPSHOT_INTEGRITY=off` disables), search re-index (workspaces with an empty index on startup,
+every workspace daily, see `docs/runbooks/search.md`) and pacing (`PACING_EVERY_MS`, see
+`docs/runbooks/pacing.md`). None of these touch the outbox retry columns above; they have no row to
+fail or dead-letter — a failure there is caught and logged, and the pass is simply tried again on
+its own next scheduled tick.
+
+## Partition maintenance (W3-11, audit I-37)
+
+Once a day, the loop calls `ensure_fact_partitions(CURRENT_DATE, 6)` as `budget_app` (the function
+is `SECURITY DEFINER`, owned by the migration role; `budget_app` holds `EXECUTE` on it since
+migration `20260924080000`) to keep `spend_fact`, `kpi_fact`, `projection_fact` and `audit_event`
+partitioned six months ahead. This is a backstop, not the primary mechanism — migrate-time
+(`SELECT ensure_fact_partitions(current_date, 6)` in `0002_platform`), the ingest pipeline and the
+pacing evaluator already extend partitions as they go; between the four, a write for a date within
+six months stays covered even if one caller stalls.
+
+**No `DEFAULT` partition**: one was tried in `20261012000000_schema_invariants` and reverted.
+PostgreSQL 16 takes an `ACCESS EXCLUSIVE` lock on a table's `DEFAULT` partition (and scans it)
+every time a new range partition is attached to the same parent, so the three concurrent partition
+creators above started deadlocking against ordinary readers holding a `RowShareLock` on the same
+relation — the same deadlock class W3-10 fixed elsewhere, and exactly what the Postgres docs warn
+against for a `DEFAULT` partition on a table this hot. A write outside every explicit month
+partition fails with "no partition of relation found for row" instead of silently landing
+somewhere unindexed; `ensure_fact_partitions`'s own advisory-style table lock (`LOCK TABLE ... IN
+SHARE UPDATE EXCLUSIVE MODE`, taken before any `CREATE TABLE`, migration `20260924100000`) keeps
+concurrent creators from racing each other, and `packages/db/src/invariants.test.ts` proves a fact
+five months out inserts cleanly right after one `ensure_fact_partitions` call.

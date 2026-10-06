@@ -6,6 +6,7 @@ import { compileQuery } from "@budget/query-planner";
 import { Storage } from "@google-cloud/storage";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { GcsObjectStore, MemoryObjectStore } from "./object-store.js";
 import { runIngest, type IngestDeps } from "./pipeline.js";
 import type { Connector, RawRow } from "./types.js";
@@ -108,27 +109,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-    `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
-    `DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`,
-    `DELETE FROM projection_fact WHERE workspace_id = $1::uuid`,
-    `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM data_source WHERE workspace_id = $1::uuid`,
-    `DELETE FROM period_closure WHERE workspace_id = $1::uuid`,
-    `DELETE FROM fiscal_period WHERE workspace_id = $1::uuid`,
-    `UPDATE envelope SET parent_id = NULL WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself, including envelope_dimension, which references dimension_value) in the same order
+  // `purgeWorkspace` validates against production — before the org-level dimension cleanup below,
+  // which would otherwise violate envelope_dimension_value_id_fkey.
+  await deleteWorkspaceForTests(owner, ws);
+  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
   await owner.fxRate.deleteMany({ where: { base: FX } });
   await owner.fxRate.deleteMany({ where: { base: FX2 } });
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

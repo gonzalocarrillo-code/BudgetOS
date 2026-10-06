@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodePush, handleOnce, type EventHandler, type OutboxEvent } from "./consumer.js";
 import { publishBatch, type EventPublisher, type OutboxMessage } from "./outbox-publisher.js";
+import { deleteWorkspaceForTests } from "./purge/purge.js";
 
 /**
  * T-016 done-when: exactly-once with duplicate delivery. The publisher delivers at least once
@@ -86,15 +87,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM notification WHERE workspace_id = ANY($1::uuid[])`,
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = ANY($1::uuid[]))`,
-    `DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, [ws, otherWs]);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
+  // themselves), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, [ws, otherWs]);
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect(), publisherDb.$disconnect()]);
 });

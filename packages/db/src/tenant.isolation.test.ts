@@ -184,7 +184,16 @@ it("writes audit, outbox, and a bumped data version in one tenant transaction", 
     expect(Number(auditRows[0]?.n)).toBe(1);
     expect(Number(outboxRows[0]?.n)).toBe(1);
   } finally {
+    // W3-11 (audit I-32): outbox.workspace_id and audit_event.workspace_id are FKs to
+    // workspace(id) now (@budget/workers's deleteWorkspaceForTests, used by apps/api and
+    // apps/workers test fixtures, mirrors this same order; @budget/db cannot import
+    // @budget/workers — that would be circular — so it stays inline here). audit_event is
+    // append-only (audit_event_immutable trigger); the trigger is disabled for this test cleanup
+    // only, the same way migration 20261010030000's one-time backfill does.
     await prisma.$executeRaw`DELETE FROM outbox WHERE payload->>'entityId' = ${entityId}`;
+    await prisma.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+    await prisma.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ${workspaceId}::uuid`;
+    await prisma.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
     await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
     await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
   }

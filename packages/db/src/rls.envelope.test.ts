@@ -41,6 +41,8 @@ const appUrl =
   process.env["APP_DATABASE_URL"] ??
   "postgresql://budget_app:replace-in-secret-manager@localhost:5432/budget";
 
+const orgA = "01927a00-0000-7000-8000-0000000000f1";
+const orgB = "01927a00-0000-7000-8000-0000000000f2";
 const workspaceA = "01927a00-0000-7000-8000-0000000000a1";
 const workspaceB = "01927a00-0000-7000-8000-0000000000b2";
 const envelopeA = "01927a00-0000-7000-8000-0000000000e1";
@@ -93,6 +95,14 @@ it("budget_app cannot read another workspace's envelope", async () => {
     expect(effective.rows[0]?.ok, "effective_target").toBe(true);
 
     await owner.query("DELETE FROM envelope WHERE id IN ($1::uuid, $2::uuid)", [envelopeA, envelopeB]);
+    // W3-11 (audit I-32): envelope.workspace_id is now a FK to workspace(id), which needs an
+    // organization. Idempotent (ON CONFLICT DO NOTHING) so a rerun after an aborted previous run
+    // does not fail on the pre-existing rows.
+    await owner.query("INSERT INTO organization (id, name) VALUES ($1::uuid, 'rls-envelope-a'), ($2::uuid, 'rls-envelope-b') ON CONFLICT (id) DO NOTHING", [orgA, orgB]);
+    await owner.query(
+      "INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES ($1::uuid, $2::uuid, 'rls-envelope-a', 'RLS A', 'USD'), ($3::uuid, $4::uuid, 'rls-envelope-b', 'RLS B', 'USD') ON CONFLICT (id) DO NOTHING",
+      [workspaceA, orgA, workspaceB, orgB],
+    );
     await owner.query(
       `INSERT INTO envelope (
          id, workspace_id, name, dimension_values, start_date, end_date, currency, created_by, updated_at
@@ -120,6 +130,8 @@ it("budget_app cannot read another workspace's envelope", async () => {
       });
     } finally {
       await owner.query("DELETE FROM envelope WHERE id IN ($1::uuid, $2::uuid)", [envelopeA, envelopeB]);
+      await owner.query("DELETE FROM workspace WHERE id IN ($1::uuid, $2::uuid)", [workspaceA, workspaceB]);
+      await owner.query("DELETE FROM organization WHERE id IN ($1::uuid, $2::uuid)", [orgA, orgB]);
     }
   });
 });

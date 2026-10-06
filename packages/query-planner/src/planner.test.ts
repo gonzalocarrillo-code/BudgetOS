@@ -321,18 +321,27 @@ async function wipeWorkspace(workspaceId: string): Promise<void> {
   await sql(`DELETE FROM taggable WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM tag WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM alert WHERE workspace_id = $1::uuid`, [workspaceId]);
+  await sql(`DELETE FROM pacing_rule WHERE workspace_id = $1::uuid`, [workspaceId]); // W3-11 (I-32): alert.rule_id FK
   await sql(`DELETE FROM approval_request WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM role_assignment WHERE workspace_id = $1::uuid`, [workspaceId]);
+  // W3-11 (audit I-32): target/envelope current_version_id and draft_version_id, and
+  // dimension_value's self-referencing parent_value_id/merged_into_id, are FKs now.
+  await sql(`UPDATE target SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM target_version WHERE target_id IN (SELECT id FROM target WHERE workspace_id = $1::uuid)`, [workspaceId]);
   await sql(`DELETE FROM target WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM projection_fact WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM envelope_dimension WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, [workspaceId]);
+  await sql(`UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid`, [workspaceId]);
   await sql(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, [workspaceId]);
   await sql(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, [workspaceId]);
+  await sql(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)`, [workspaceId]);
   await sql(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE workspace_id = $1::uuid)`, [workspaceId]);
   await sql(`DELETE FROM dimension WHERE workspace_id = $1::uuid`, [workspaceId]);
+  await sql(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
+  await sql(`DELETE FROM audit_event WHERE workspace_id = $1::uuid`, [workspaceId]);
+  await sql(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
   await sql(`DELETE FROM workspace WHERE id = $1::uuid`, [workspaceId]);
 }
 
@@ -541,7 +550,9 @@ describe.sequential("T-007 query planner", () => {
        VALUES ($1::uuid, $2::uuid, 'user', $3::uuid, 'APPROVER'::"Role", $4::uuid)`,
       [newId(), matrixWs, approver, me],
     );
+    // W3-11 (audit I-32): alert.rule_id is a FK to pacing_rule(id) now.
     const ruleId = newId();
+    await sql(`INSERT INTO pacing_rule (id, workspace_id, name, metric, comparator, threshold, severity) VALUES ($1::uuid, $2::uuid, 'fixture rule', 'pace_index', 'gt', 1, 'high')`, [ruleId, matrixWs]);
     await sql(
       `INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context)
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'warning', 'OPEN'::"AlertStatus", 1, 1, '{}'::jsonb)`,

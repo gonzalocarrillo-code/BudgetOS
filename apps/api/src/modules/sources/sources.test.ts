@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MemoryObjectStore, runIngest, uploadBucket } from "@budget/workers";
+import { deleteWorkspaceForTests, MemoryObjectStore, runIngest, uploadBucket } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
 
@@ -64,20 +64,14 @@ beforeAll(async () => {
 afterAll(async () => {
   if (savedKey !== undefined) process.env["OPENAI_API_KEY"] = savedKey;
   await h?.close();
-  for (const sql of [
-    `DELETE FROM spend_fact WHERE workspace_id = ANY($1::uuid[])`,
-    `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = ANY($1::uuid[]))`,
-    `DELETE FROM data_source WHERE workspace_id = ANY($1::uuid[])`,
-    `DELETE FROM envelope WHERE workspace_id = ANY($1::uuid[])`,
-    `DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, [ws, otherWs]);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
+  // themselves, including mapping_synonym and data_source's own FKs) in the same order
+  // `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, [ws, otherWs]);
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [dataAdmin.id, planner.id, orgAdmin.id] } } });
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

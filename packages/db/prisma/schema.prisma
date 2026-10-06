@@ -45,24 +45,58 @@ model Workspace {
   /// W3-2 (ADR-0081): Idempotency-Key replays are ephemeral; they cascade when the workspace is deleted.
   idempotencyKeys      IdempotencyKey[]
 
+  // W3-11 (audit I-32): back-relations for the workspace_id -> workspace(id) FK every tenant table
+  // now has. No query uses these lists (the app always filters the child table directly under
+  // RLS); they exist only because Prisma requires both sides of a relation to be declared.
+  roleAssignments     RoleAssignment[]
+  dimensions          Dimension[]
+  hierarchyTemplates  HierarchyTemplate[]
+  fiscalPeriods       FiscalPeriod[]
+  envelopes           Envelope[]
+  envelopeLineages    EnvelopeLineage[]
+  targets             Target[]
+  approvalPolicies    ApprovalPolicy[]
+  approvalRequests    ApprovalRequest[]
+  pacingRules         PacingRule[]
+  alerts              Alert[]
+  threads             Thread[]
+  tags                Tag[]
+  taggables           Taggable[]
+  savedViews          SavedView[]
+  periodClosures      PeriodClosure[]
+  dataSources         DataSource[]
+  exportJobs          ExportJob[]
+  commentReactions    CommentReaction[]
+  namingTemplates     NamingTemplate[]
+  experiments         Experiment[]
+  experimentEnvelopes ExperimentEnvelope[]
+  manualEntryBatches  ManualEntryBatch[]
+  manualEntryFacts    ManualEntryFact[]
+  tours               Tour[]
+  envelopeAllocations EnvelopeAllocation[]
+  budgetBaselines     BudgetBaseline[]
+  mappingProfiles     MappingProfile[]
+  mappingSynonyms     MappingSynonym[]
+  metricDefinitions   MetricDefinition[]
+
   @@unique([orgId, slug])
   @@map("workspace")
 }
 
 model User {
-  id        String   @id @db.Uuid
-  orgId     String   @map("org_id") @db.Uuid
-  email     String   @unique
-  name      String
-  googleSub String?  @unique @map("google_sub")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id          String   @id @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  email       String   @unique
+  name        String
+  googleSub   String?  @unique @map("google_sub")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   /// The person's own settings (S-010): `slack.defaultWorkspaceId`. Written only through app_set_my_slack_settings.
-  settings  Json     @default("{}")
+  settings    Json     @default("{}")
   /// S-14 (ADR-075): the Slack user id this app user's identity is pinned to, set on first contact
   /// by app_link_my_slack_user. A partial unique index (org_id, slack_user_id) in the migration
   /// (not representable here) keeps one Slack account from pinning to two app users of an org.
-  slackUserId String? @map("slack_user_id")
+  slackUserId String?       @map("slack_user_id")
   sessions    AuthSession[]
 
   @@map("app_user")
@@ -101,14 +135,15 @@ enum Role {
 }
 
 model RoleAssignment {
-  id            String   @id @db.Uuid
-  workspaceId   String?  @map("workspace_id") @db.Uuid // null => org-wide (ORG_ADMIN only)
-  principalType String   @map("principal_type") // 'user' | 'group'
-  principalId   String   @map("principal_id") @db.Uuid
+  id            String     @id @db.Uuid
+  workspaceId   String?    @map("workspace_id") @db.Uuid // null => org-wide (ORG_ADMIN only)
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  principalType String     @map("principal_type") // 'user' | 'group'
+  principalId   String     @map("principal_id") @db.Uuid
   role          Role
-  scope         Json     @default("{}") // FilterGroup or {} = whole workspace
-  createdBy     String   @map("created_by") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  scope         Json       @default("{}") // FilterGroup or {} = whole workspace
+  createdBy     String     @map("created_by") @db.Uuid
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([workspaceId, principalId])
   @@map("role_assignment")
@@ -123,41 +158,51 @@ enum DimensionDataType {
 }
 
 model Dimension {
-  id                String            @id @db.Uuid
-  orgId             String            @map("org_id") @db.Uuid
-  workspaceId       String?           @map("workspace_id") @db.Uuid // null = org-wide default
-  key               String
-  label             String
-  description       String?
-  dataType          DimensionDataType @map("data_type")
-  icon              String            @default("lucide:tag") // 'lucide:<name>' | 'asset:<gcs-object>'
-  color             String?
-  allowedParents    String[]          @map("allowed_parents") // dimension keys
-  isRequiredForLeaf Boolean           @default(false) @map("is_required_for_leaf")
-  sortOrder         Int               @default(0) @map("sort_order")
-  isActive          Boolean           @default(true) @map("is_active")
-  version           Int               @default(1)
-  createdBy         String            @map("created_by") @db.Uuid
-  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  values            DimensionValue[]
+  id                 String              @id @db.Uuid
+  orgId              String              @map("org_id") @db.Uuid
+  workspaceId        String?             @map("workspace_id") @db.Uuid // null = org-wide default
+  workspace          Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  key                String
+  label              String
+  description        String?
+  dataType           DimensionDataType   @map("data_type")
+  icon               String              @default("lucide:tag") // 'lucide:<name>' | 'asset:<gcs-object>'
+  color              String?
+  allowedParents     String[]            @default([]) @map("allowed_parents") // dimension keys
+  isRequiredForLeaf  Boolean             @default(false) @map("is_required_for_leaf")
+  sortOrder          Int                 @default(0) @map("sort_order")
+  isActive           Boolean             @default(true) @map("is_active")
+  version            Int                 @default(1)
+  createdBy          String              @map("created_by") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  values             DimensionValue[]
+  envelopeDimensions EnvelopeDimension[]
 
   @@unique([orgId, workspaceId, key])
   @@map("dimension")
 }
 
 model DimensionValue {
-  id            String               @id @db.Uuid
-  dimensionId   String               @map("dimension_id") @db.Uuid
-  dimension     Dimension            @relation(fields: [dimensionId], references: [id])
-  code          String
-  label         String
-  parentValueId String?              @map("parent_value_id") @db.Uuid
-  path          Unsupported("ltree") // set by trigger from parent chain; e.g. 'emea.de'
-  aliases       String[]             @default([])
-  externalIds   Json                 @default("{}") @map("external_ids")
-  isActive      Boolean              @default(true) @map("is_active")
-  retiredAt     DateTime?            @map("retired_at") @db.Timestamptz
-  mergedIntoId  String?              @map("merged_into_id") @db.Uuid
+  id                 String               @id @db.Uuid
+  dimensionId        String               @map("dimension_id") @db.Uuid
+  dimension          Dimension            @relation(fields: [dimensionId], references: [id])
+  code               String
+  label              String
+  parentValueId      String?              @map("parent_value_id") @db.Uuid
+  /// W3-11 (audit I-32): self-referencing FK, RESTRICT. The workspace purge nulls parentValueId
+  /// and mergedIntoId for a dimension's values before deleting them (a single DELETE statement
+  /// cannot satisfy a self-reference row-by-row in an arbitrary order).
+  parent             DimensionValue?      @relation("DimensionValueParent", fields: [parentValueId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  children           DimensionValue[]     @relation("DimensionValueParent")
+  path               Unsupported("ltree") // set by trigger from parent chain; e.g. 'emea.de'
+  aliases            String[]             @default([])
+  externalIds        Json                 @default("{}") @map("external_ids")
+  isActive           Boolean              @default(true) @map("is_active")
+  retiredAt          DateTime?            @map("retired_at") @db.Timestamptz
+  mergedIntoId       String?              @map("merged_into_id") @db.Uuid
+  mergedInto         DimensionValue?      @relation("DimensionValueMergedInto", fields: [mergedIntoId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  mergedFrom         DimensionValue[]     @relation("DimensionValueMergedInto")
+  envelopeDimensions EnvelopeDimension[]
 
   @@unique([dimensionId, code])
   @@index([dimensionId, parentValueId])
@@ -165,13 +210,14 @@ model DimensionValue {
 }
 
 model HierarchyTemplate {
-  id          String   @id @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name        String
-  path        String[] // ['client','region','country','platform','objective']
-  isDefault   Boolean  @default(false) @map("is_default")
-  version     Int      @default(1)
-  createdBy   String   @map("created_by") @db.Uuid
+  path        String[]  @default([]) // ['client','region','country','platform','objective']
+  isDefault   Boolean   @default(false) @map("is_default")
+  version     Int       @default(1)
+  createdBy   String    @map("created_by") @db.Uuid
 
   @@unique([workspaceId, name])
   @@map("hierarchy_template")
@@ -182,18 +228,20 @@ model ValueConstraint {
   dimensionId       String   @map("dimension_id") @db.Uuid
   whenDimensionKey  String   @map("when_dimension_key")
   whenValueCode     String   @map("when_value_code")
-  allowedValueCodes String[] @map("allowed_value_codes")
+  allowedValueCodes String[] @default([]) @map("allowed_value_codes")
 
   @@map("value_constraint")
 }
 
 model FiscalPeriod {
-  id          String   @id @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
-  key         String // '2026-Q4', '2026-11', 'FY26'
-  kind        String // month | quarter | year | custom
-  startDate   DateTime @map("start_date") @db.Date
-  endDate     DateTime @map("end_date") @db.Date
+  id             String          @id @db.Uuid
+  workspaceId    String          @map("workspace_id") @db.Uuid
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  key            String // '2026-Q4', '2026-11', 'FY26'
+  kind           String // month | quarter | year | custom
+  startDate      DateTime        @map("start_date") @db.Date
+  endDate        DateTime        @map("end_date") @db.Date
+  periodClosures PeriodClosure[]
 
   @@unique([workspaceId, key])
   @@map("fiscal_period")
@@ -227,8 +275,12 @@ enum AmountType {
 model Envelope {
   id                  String               @id @db.Uuid
   workspaceId         String               @map("workspace_id") @db.Uuid
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   parentId            String?              @map("parent_id") @db.Uuid
-  parent              Envelope?            @relation("EnvelopeTree", fields: [parentId], references: [id])
+  /// W3-11 (audit I-32): was ON DELETE SET NULL (silently reparented children to the root on a
+  /// hard delete); now RESTRICT. The workspace purge nulls parentId for every envelope in the
+  /// workspace before deleting them (apps/workers/src/purge/purge.ts).
+  parent              Envelope?            @relation("EnvelopeTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   children            Envelope[]           @relation("EnvelopeTree")
   name                String
   /// Renamed by someone: the display naming template leaves it alone.
@@ -250,8 +302,17 @@ model Envelope {
   createdBy           String               @map("created_by") @db.Uuid
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
-  versions            EnvelopeVersion[]
+  /// W3-11 (audit I-32): DEFERRABLE INITIALLY DEFERRED (SQL-only; Prisma cannot express
+  /// deferrability) — envelopeVersion.envelopeId -> envelope already exists, so a version names
+  /// its envelope before the envelope ever points back at it. The workspace purge nulls both
+  /// pointers before deleting the envelope's versions (purge.ts).
+  currentVersion      EnvelopeVersion?     @relation("EnvelopeCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  draftVersion        EnvelopeVersion?     @relation("EnvelopeDraftVersion", fields: [draftVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  versions            EnvelopeVersion[]    @relation("EnvelopeVersions")
   dims                EnvelopeDimension[]
+  alerts              Alert[]
+  targets             Target[]
+  closureEnvelopes    ClosureEnvelope[]
   /// T-040: written by the demo dataset; the purge deletes these rows.
   demo                Boolean              @default(false)
   /// Phase E (ADR-053): stopped early on end_date with its final amount; read-only after.
@@ -268,10 +329,13 @@ model Envelope {
 }
 
 model EnvelopeDimension {
-  envelopeId  String   @map("envelope_id") @db.Uuid
-  dimensionId String   @map("dimension_id") @db.Uuid
-  valueId     String   @map("value_id") @db.Uuid
-  envelope    Envelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+  envelopeId  String         @map("envelope_id") @db.Uuid
+  dimensionId String         @map("dimension_id") @db.Uuid
+  valueId     String         @map("value_id") @db.Uuid
+  envelope    Envelope       @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+  /// W3-11 (audit I-32): was unenforced.
+  dimension   Dimension      @relation(fields: [dimensionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  value       DimensionValue @relation(fields: [valueId], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@id([envelopeId, dimensionId])
   @@index([dimensionId, valueId, envelopeId])
@@ -281,7 +345,11 @@ model EnvelopeDimension {
 model EnvelopeVersion {
   id               String            @id @db.Uuid
   envelopeId       String            @map("envelope_id") @db.Uuid
-  envelope         Envelope          @relation(fields: [envelopeId], references: [id])
+  envelope         Envelope          @relation("EnvelopeVersions", fields: [envelopeId], references: [id])
+  /// Back-relations for envelope.currentVersionId / draftVersionId, required once there is more
+  /// than one relation between Envelope and EnvelopeVersion (Prisma then requires every one named).
+  envelopesCurrent Envelope[]        @relation("EnvelopeCurrentVersion")
+  envelopesDraft   Envelope[]        @relation("EnvelopeDraftVersion")
   versionNo        Int               @map("version_no")
   amountType       AmountType        @default(BUDGET) @map("amount_type")
   amount           Decimal           @db.Decimal(18, 2) // envelope currency
@@ -316,14 +384,15 @@ model EnvelopePhasing {
 }
 
 model EnvelopeLineage {
-  id             String   @id @db.Uuid
-  workspaceId    String   @map("workspace_id") @db.Uuid
-  fromEnvelopeId String   @map("from_envelope_id") @db.Uuid
-  toEnvelopeId   String   @map("to_envelope_id") @db.Uuid
+  id             String    @id @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  fromEnvelopeId String    @map("from_envelope_id") @db.Uuid
+  toEnvelopeId   String    @map("to_envelope_id") @db.Uuid
   kind           String // move | split | merge | continues (H-012)
-  versionId      String?  @map("version_id") @db.Uuid
-  actorId        String   @map("actor_id") @db.Uuid
-  at             DateTime @default(now()) @db.Timestamptz
+  versionId      String?   @map("version_id") @db.Uuid
+  actorId        String    @map("actor_id") @db.Uuid
+  at             DateTime  @default(now()) @db.Timestamptz
 
   @@index([fromEnvelopeId])
   @@index([toEnvelopeId])
@@ -344,10 +413,11 @@ model FxRate {
 
 // ---------- Targets (§4.8) ----------
 model MetricDefinition {
-  id          String  @id @db.Uuid
-  orgId       String  @map("org_id") @db.Uuid
+  id          String     @id @db.Uuid
+  orgId       String     @map("org_id") @db.Uuid
   /// ORG-007: set for a workspace's own metric; null for the shared library (superadmins).
-  workspaceId String? @map("workspace_id") @db.Uuid
+  workspaceId String?    @map("workspace_id") @db.Uuid
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   key         String // budget | cpa | cpl | roas | cpm | cpc | ctr | conversions | revenue | ...
   label       String
   numerator   String // 'spend' | 'kpi:<metric>' | 'budget'
@@ -355,8 +425,8 @@ model MetricDefinition {
   direction   String // lower_is_better | higher_is_better
   format      String // currency | number | percent | ratio
   unit        String?
-  multiplier  Decimal @default(1) @db.Decimal // applied after the division: cpm = spend / impressions × 1000
-  isActive    Boolean @default(true) @map("is_active")
+  multiplier  Decimal    @default(1) @db.Decimal // applied after the division: cpm = spend / impressions × 1000
+  isActive    Boolean    @default(true) @map("is_active")
 
   @@unique([orgId, key])
   @@map("metric_definition")
@@ -365,8 +435,11 @@ model MetricDefinition {
 model Target {
   id               String          @id @db.Uuid
   workspaceId      String          @map("workspace_id") @db.Uuid
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   scopeType        String          @map("scope_type") // envelope | filter
   envelopeId       String?         @map("envelope_id") @db.Uuid
+  /// W3-11 (audit I-32): was unenforced (nullable: scopeType "filter" has none).
+  envelope         Envelope?       @relation(fields: [envelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   scopeFilter      Json?           @map("scope_filter") // FilterGroup
   metricKey        String          @map("metric_key")
   startDate        DateTime        @map("start_date") @db.Date
@@ -375,7 +448,11 @@ model Target {
   status           String          @default("active")
   currentVersionId String?         @map("current_version_id") @db.Uuid
   draftVersionId   String?         @map("draft_version_id") @db.Uuid
-  versions         TargetVersion[]
+  /// W3-11: not deferred, unlike envelope's — target-writer.ts always creates the target with both
+  /// pointers NULL and sets them in a later UPDATE once the version exists.
+  currentVersion   TargetVersion?  @relation("TargetCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  draftVersion     TargetVersion?  @relation("TargetDraftVersion", fields: [draftVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  versions         TargetVersion[] @relation("TargetVersions")
   /// T-040: written by the demo dataset; the purge deletes these rows.
   demo             Boolean         @default(false)
 
@@ -386,7 +463,10 @@ model Target {
 model TargetVersion {
   id                String        @id @db.Uuid
   targetId          String        @map("target_id") @db.Uuid
-  target            Target        @relation(fields: [targetId], references: [id])
+  target            Target        @relation("TargetVersions", fields: [targetId], references: [id])
+  /// Back-relations for target.currentVersionId / draftVersionId (see EnvelopeVersion's equivalent).
+  targetsCurrent    Target[]      @relation("TargetCurrentVersion")
+  targetsDraft      Target[]      @relation("TargetDraftVersion")
   versionNo         Int           @map("version_no")
   value             Decimal       @db.Decimal(18, 4)
   comparator        String // lte | gte | eq | between
@@ -408,16 +488,17 @@ model TargetVersion {
 
 // ---------- Approvals (§8.1–8.2) ----------
 model ApprovalPolicy {
-  id                    String  @id @db.Uuid
-  workspaceId           String  @map("workspace_id") @db.Uuid
+  id                    String    @id @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name                  String
   priority              Int
   conditions            Json // see §9.1 of this spec
   chain                 Json // [{ role, groupId?, minApprovals, timeoutHours, escalateTo? }]
-  allowExternalEvidence Boolean @default(false) @map("allow_external_evidence")
-  blockSelfApproval     Boolean @default(true) @map("block_self_approval")
-  version               Int     @default(1)
-  isActive              Boolean @default(true) @map("is_active")
+  allowExternalEvidence Boolean   @default(false) @map("allow_external_evidence")
+  blockSelfApproval     Boolean   @default(true) @map("block_self_approval")
+  version               Int       @default(1)
+  isActive              Boolean   @default(true) @map("is_active")
 
   @@unique([workspaceId, name])
   @@index([workspaceId, priority])
@@ -436,6 +517,7 @@ enum RequestStatus {
 model ApprovalRequest {
   id             String             @id @db.Uuid
   workspaceId    String             @map("workspace_id") @db.Uuid
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   entityType     String             @map("entity_type") // envelope_version | target_version | bulk_change
   entityId       String             @map("entity_id") @db.Uuid
   policyId       String             @map("policy_id") @db.Uuid
@@ -468,24 +550,28 @@ model ApprovalDecision {
   decidedAt DateTime        @default(now()) @map("decided_at") @db.Timestamptz
 
   @@index([requestId, stepIndex])
+  /// W3-11 (audit I-38): the approver-history lookup (who decided what on this request).
+  @@index([requestId, decidedBy], map: "approval_decision_request_decider")
   @@map("approval_decision")
 }
 
 // ---------- Pacing (§8.4) ----------
 model PacingRule {
-  id              String  @id @db.Uuid
-  workspaceId     String  @map("workspace_id") @db.Uuid
+  id              String    @id @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name            String
-  scope           Json    @default("{}") // FilterGroup
+  scope           Json      @default("{}") // FilterGroup
   metric          String // pace_index | projected_close_pct | kpi_vs_target_pct | ...
-  metricArgs      Json    @default("{}") @map("metric_args") // e.g. { "metricKey": "cpa" }
+  metricArgs      Json      @default("{}") @map("metric_args") // e.g. { "metricKey": "cpa" }
   comparator      String // gt | gte | lt | lte
-  threshold       Decimal @db.Decimal(18, 4)
-  consecutiveDays Int     @default(1) @map("consecutive_days")
+  threshold       Decimal   @db.Decimal(18, 4)
+  consecutiveDays Int       @default(1) @map("consecutive_days")
   severity        String // info | warning | critical | data
-  delivery        Json    @default("{\"inApp\":true}") // { inApp, slackChannel?, emails? }
-  isActive        Boolean @default(true) @map("is_active")
+  delivery        Json      @default("{\"inApp\":true}") // { inApp, slackChannel?, emails? }
+  isActive        Boolean   @default(true) @map("is_active")
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+  alerts          Alert[]
 
   @@map("pacing_rule")
 }
@@ -512,8 +598,11 @@ enum AlertStatus {
 model Alert {
   id           String      @id @db.Uuid
   workspaceId  String      @map("workspace_id") @db.Uuid
+  workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   ruleId       String      @map("rule_id") @db.Uuid
+  rule         PacingRule  @relation(fields: [ruleId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   envelopeId   String      @map("envelope_id") @db.Uuid
+  envelope     Envelope    @relation(fields: [envelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   severity     String
   status       AlertStatus @default(OPEN)
   metricValue  Decimal     @map("metric_value") @db.Decimal(18, 4)
@@ -533,6 +622,7 @@ model Alert {
 model Thread {
   id          String    @id @db.Uuid
   workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   anchorType  String    @map("anchor_type") // envelope | envelope_version | target | approval_request | alert | closure | dimension_value | cell | diff_field
   anchorId    String    @map("anchor_id") @db.Uuid
   anchorMeta  Json      @default("{}") @map("anchor_meta") // cell: { month }, diff_field: { field }
@@ -571,12 +661,13 @@ model Comment {
 
 /// An emoji reaction on a comment, by one account (plan §8.6, 0.6). One row per (comment, user, emoji).
 model CommentReaction {
-  commentId   String   @map("comment_id") @db.Uuid
-  comment     Comment  @relation(fields: [commentId], references: [id])
-  userId      String   @map("user_id") @db.Uuid
+  commentId   String    @map("comment_id") @db.Uuid
+  comment     Comment   @relation(fields: [commentId], references: [id])
+  userId      String    @map("user_id") @db.Uuid
   emoji       String
-  workspaceId String   @map("workspace_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   @@id([commentId, userId, emoji])
   @@index([workspaceId, commentId])
@@ -584,24 +675,26 @@ model CommentReaction {
 }
 
 model Tag {
-  id          String  @id @db.Uuid
-  workspaceId String  @map("workspace_id") @db.Uuid
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name        String
   color       String?
-  kind        String  @default("label") // label | status | team | custom
-  createdBy   String  @map("created_by") @db.Uuid
+  kind        String    @default("label") // label | status | team | custom
+  createdBy   String    @map("created_by") @db.Uuid
 
   @@unique([workspaceId, name])
   @@map("tag")
 }
 
 model Taggable {
-  workspaceId String   @map("workspace_id") @db.Uuid
-  tagId       String   @map("tag_id") @db.Uuid
-  entityType  String   @map("entity_type")
-  entityId    String   @map("entity_id") @db.Uuid
-  taggedBy    String   @map("tagged_by") @db.Uuid
-  taggedAt    DateTime @default(now()) @map("tagged_at") @db.Timestamptz
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  tagId       String    @map("tag_id") @db.Uuid
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id") @db.Uuid
+  taggedBy    String    @map("tagged_by") @db.Uuid
+  taggedAt    DateTime  @default(now()) @map("tagged_at") @db.Timestamptz
 
   @@id([tagId, entityType, entityId])
   @@index([entityType, entityId])
@@ -609,14 +702,15 @@ model Taggable {
 }
 
 model SavedView {
-  id          String @id @db.Uuid
-  workspaceId String @map("workspace_id") @db.Uuid
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name        String
   screen      String // explorer | alerts | approvals | targets | report
   definition  Json // { filter, groupBy, measures, period, grain, columns, sort }
-  visibility  String @default("private") // private | shared | workspace_default
-  sharedWith  Json   @default("[]") @map("shared_with")
-  createdBy   String @map("created_by") @db.Uuid
+  visibility  String    @default("private") // private | shared | workspace_default
+  sharedWith  Json      @default("[]") @map("shared_with")
+  createdBy   String    @map("created_by") @db.Uuid
 
   @@map("saved_view")
 }
@@ -625,6 +719,7 @@ model SavedView {
 model ExportJob {
   id          String    @id @db.Uuid
   workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   kind        String // csv | xlsx | sheets
   status      String    @default("queued") // queued | running | done | failed
   query       Json // QueryRequest with the requester's read scope ANDed into filter; cursor / limit dropped
@@ -647,18 +742,22 @@ model ExportJob {
 
 // ---------- Closures & ingestion (§4.5, §6.1) ----------
 model PeriodClosure {
-  id              String   @id @db.Uuid
-  workspaceId     String   @map("workspace_id") @db.Uuid
-  periodId        String   @map("period_id") @db.Uuid
-  status          String   @default("closed") // closing | closed | failed | restated (W3-1, ADR-018 addendum)
-  closedBy        String   @map("closed_by") @db.Uuid
+  id              String            @id @db.Uuid
+  workspaceId     String            @map("workspace_id") @db.Uuid
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  periodId        String            @map("period_id") @db.Uuid
+  /// W3-11 (audit I-32): was unenforced.
+  period          FiscalPeriod      @relation(fields: [periodId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  status          String            @default("closed") // closing | closed | failed | restated (W3-1, ADR-018 addendum)
+  closedBy        String            @map("closed_by") @db.Uuid
   /// When the close started while `closing`; when it became `closed` after that.
-  closedAt        DateTime @default(now()) @map("closed_at") @db.Timestamptz
-  registryVersion Json     @map("registry_version") // { dimensions: {key: version}, templates: {...} }
-  bqTable         String   @map("bq_table")
-  varianceSummary Json     @map("variance_summary")
+  closedAt        DateTime          @default(now()) @map("closed_at") @db.Timestamptz
+  registryVersion Json              @map("registry_version") // { dimensions: {key: version}, templates: {...} }
+  bqTable         String            @map("bq_table")
+  varianceSummary Json              @map("variance_summary")
   /// Why a `failed` closure failed (the sink's error, or who abandoned it).
   error           String?
+  envelopes       ClosureEnvelope[]
 
   @@unique([workspaceId, periodId, closedAt])
   @@map("period_closure")
@@ -667,7 +766,10 @@ model PeriodClosure {
 /// Envelopes a closure locked, with the status each had before (restored on restatement unless another closed closure still covers it).
 model ClosureEnvelope {
   closureId   String         @map("closure_id") @db.Uuid
+  /// W3-11 (audit I-32): both columns of the composite PK were unenforced.
+  closure     PeriodClosure  @relation(fields: [closureId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   envelopeId  String         @map("envelope_id") @db.Uuid
+  envelope    Envelope       @relation(fields: [envelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   priorStatus EnvelopeStatus @map("prior_status")
 
   @@id([closureId, envelopeId])
@@ -676,19 +778,21 @@ model ClosureEnvelope {
 }
 
 model DataSource {
-  id           String  @id @db.Uuid
-  workspaceId  String  @map("workspace_id") @db.Uuid
-  kind         String // snowflake | sheets | bigquery | csv
-  name         String
-  config       Json // non-secret config; secretRef points to Secret Manager
-  mapping      Json // column → dimension/measure mapping
-  schedule     String? // cron
-  isActive     Boolean @default(true) @map("is_active")
+  id               String          @id @db.Uuid
+  workspaceId      String          @map("workspace_id") @db.Uuid
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  kind             String // snowflake | sheets | bigquery | csv
+  name             String
+  config           Json // non-secret config; secretRef points to Secret Manager
+  mapping          Json // column → dimension/measure mapping
+  schedule         String? // cron
+  isActive         Boolean         @default(true) @map("is_active")
   /// T-036: regex with named groups applied to the column mapped as match_key.
-  parsePattern String? @map("parse_pattern")
+  parsePattern     String?         @map("parse_pattern")
   /// D-004: the saved mapping this source takes its mapping from, if any.
   mappingProfileId String?         @map("mapping_profile_id") @db.Uuid
   mappingProfile   MappingProfile? @relation(fields: [mappingProfileId], references: [id], onDelete: Restrict)
+  ingestRuns       IngestRun[]
 
   @@map("data_source")
 }
@@ -697,6 +801,7 @@ model DataSource {
 model MappingProfile {
   id           String       @id @db.Uuid
   workspaceId  String       @map("workspace_id") @db.Uuid
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name         String
   kind         String
   mapping      Json
@@ -715,17 +820,18 @@ model MappingProfile {
 
 /// D-005: the workspace's own words for columns (header → mapping) and metrics (tcpa → cpa).
 model MappingSynonym {
-  id          String   @id @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   kind        String
   term        String
   target      Json
   origin      String
-  uses        Int      @default(1)
-  isActive    Boolean  @default(true) @map("is_active")
-  createdBy   String?  @map("created_by") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  uses        Int       @default(1)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdBy   String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
 
   @@unique([workspaceId, kind, term])
   @@map("mapping_synonym")
@@ -733,38 +839,41 @@ model MappingSynonym {
 
 /// T-036 (§24.1): how envelopes are named (`display`) and keyed for matching (`match_key`).
 model NamingTemplate {
-  id           String   @id @db.Uuid
-  workspaceId  String   @map("workspace_id") @db.Uuid
+  id           String    @id @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   kind         String // display | match_key
   chips        Json
-  casing       String   @default("original")
-  whitespace   String   @default("keep")
-  stripAccents Boolean  @default(false) @map("strip_accents")
-  version      Int      @default(1)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdBy    String   @map("created_by") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  casing       String    @default("original")
+  whitespace   String    @default("keep")
+  stripAccents Boolean   @default(false) @map("strip_accents")
+  version      Int       @default(1)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdBy    String    @map("created_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("naming_template")
 }
 
 model IngestRun {
-  id             String    @id @db.Uuid
-  sourceId       String    @map("source_id") @db.Uuid
-  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz
-  finishedAt     DateTime? @map("finished_at") @db.Timestamptz
-  status         String    @default("running") // queued | running | ok | failed
+  id             String     @id @db.Uuid
+  sourceId       String     @map("source_id") @db.Uuid
+  /// W3-11 (audit I-32): was unenforced.
+  source         DataSource @relation(fields: [sourceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  startedAt      DateTime   @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt     DateTime?  @map("finished_at") @db.Timestamptz
+  status         String     @default("running") // queued | running | ok | failed
   /// W3-4 (audit I-9): set when the run is claimed (queued → running) and refreshed after each
   /// 5,000-row flush; a `running` run whose lease expired is stuck (the worker died) and the
   /// sweeper fails it, converges its partial facts, and re-queues it once.
-  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz
-  heartbeatAt    DateTime? @map("heartbeat_at") @db.Timestamptz
-  rowsRead       Int       @default(0) @map("rows_read")
-  rowsAccepted   Int       @default(0) @map("rows_accepted")
-  rowsRejected   Int       @default(0) @map("rows_rejected")
-  errorReportUri String?   @map("error_report_uri")
-  formulaVersion String?   @map("formula_version")
-  summary        Json      @default("{}") // matchCoverage, matched / unmatched rows, reject reasons, error (spec §24.3), requeuedFrom (W3-4)
+  leaseUntil     DateTime?  @map("lease_until") @db.Timestamptz
+  heartbeatAt    DateTime?  @map("heartbeat_at") @db.Timestamptz
+  rowsRead       Int        @default(0) @map("rows_read")
+  rowsAccepted   Int        @default(0) @map("rows_accepted")
+  rowsRejected   Int        @default(0) @map("rows_rejected")
+  errorReportUri String?    @map("error_report_uri")
+  formulaVersion String?    @map("formula_version")
+  summary        Json       @default("{}") // matchCoverage, matched / unmatched rows, reject reasons, error (spec §24.3), requeuedFrom (W3-4)
 
   @@index([sourceId, startedAt])
   @@map("ingest_run")
@@ -774,6 +883,7 @@ model IngestRun {
 model Experiment {
   id            String               @id @db.Uuid
   workspaceId   String               @map("workspace_id") @db.Uuid
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name          String
   hypothesis    String
   kind          ExperimentKind
@@ -800,6 +910,7 @@ model ExperimentEnvelope {
   experiment   Experiment     @relation(fields: [experimentId], references: [id])
   envelopeId   String         @map("envelope_id") @db.Uuid
   workspaceId  String         @map("workspace_id") @db.Uuid
+  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   role         ExperimentRole
 
   @@id([experimentId, envelopeId])
@@ -833,6 +944,7 @@ enum ExperimentRole {
 model ManualEntryBatch {
   id                String            @id @db.Uuid
   workspaceId       String            @map("workspace_id") @db.Uuid
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   channel           String // dimension_value.code of `channel` (tv, ooh, dooh, print, radio, sponsorship, other)
   periodStart       DateTime          @map("period_start") @db.Date
   periodEnd         DateTime          @map("period_end") @db.Date
@@ -852,6 +964,7 @@ model ManualEntryBatch {
 /// Lineage of the facts an approved batch wrote: who entered and who approved each (spec §26.2).
 model ManualEntryFact {
   workspaceId   String           @map("workspace_id") @db.Uuid
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   batchId       String           @map("batch_id") @db.Uuid
   batch         ManualEntryBatch @relation(fields: [batchId], references: [id])
   rowNo         Int              @map("row_no")
@@ -879,6 +992,7 @@ enum ManualEntryStatus {
 model Tour {
   id          String           @id @db.Uuid
   workspaceId String?          @map("workspace_id") @db.Uuid
+  workspace   Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   role        String // planner | approver | finance | data_admin
   name        String
   steps       Json // [{ path?, element: '[data-tour="…"]', title, description }]
@@ -924,6 +1038,7 @@ model WorkspaceTemplate {
 model EnvelopeAllocation {
   id               String    @id @db.Uuid
   workspaceId      String    @map("workspace_id") @db.Uuid
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   parentEnvelopeId String    @map("parent_envelope_id") @db.Uuid
   parent           Envelope  @relation("AllocationParent", fields: [parentEnvelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "envelope_allocation_parent_fkey")
   childEnvelopeId  String    @map("child_envelope_id") @db.Uuid
@@ -942,6 +1057,7 @@ model EnvelopeAllocation {
 model BudgetBaseline {
   id             String              @id @db.Uuid
   workspaceId    String              @map("workspace_id") @db.Uuid
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   name           String
   kind           String // plan | close | other
   scope          Json                @default("{}")

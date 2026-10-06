@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MemoryObjectStore } from "../ingest/object-store.js";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { handleExportRequested } from "./export.js";
 
 /**
@@ -82,22 +83,15 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-  for (const sql of [
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-    `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
-    `UPDATE envelope SET current_version_id = NULL, parent_id = NULL WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself, including envelope_dimension, which references dimension_value) in the same order
+  // `purgeWorkspace` validates against production — before the org-level dimension cleanup below,
+  // which would otherwise violate envelope_dimension_value_id_fkey.
+  await deleteWorkspaceForTests(owner, ws);
+  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

@@ -346,11 +346,17 @@ export async function seedNamedFixture(org: FixtureOrg): Promise<NamedFixture> {
     [randomUUID(), t2, u2, JSON.stringify([{ type: "user", id: u1 }])],
   );
 
-  // Alert: E3 open, high.
+  // Alert: E3 open, high. W3-11 (audit I-32): alert.rule_id is a FK to pacing_rule(id) now, so the
+  // rule it names must be a real row.
+  const alertRuleId = randomUUID();
+  await owner.query(
+    `INSERT INTO pacing_rule (id, workspace_id, name, metric, comparator, threshold, severity) VALUES ($1, $2, 'fixture rule', 'pace_index', 'gt', 1, 'high')`,
+    [alertRuleId, ws],
+  );
   await owner.query(
     `INSERT INTO alert (id, workspace_id, rule_id, envelope_id, severity, status, metric_value, threshold, context)
      VALUES ($1, $2, $3, $4, 'high', 'OPEN', 1.5, 1.2, '{}'::jsonb)`,
-    [randomUUID(), ws, randomUUID(), e3.id],
+    [randomUUID(), ws, alertRuleId, e3.id],
   );
 
   // Pending approval on E2's second version, requested by u1; u2 holds APPROVER in this workspace.
@@ -398,32 +404,52 @@ export async function seedNamedFixture(org: FixtureOrg): Promise<NamedFixture> {
 export async function cleanupOrg(org: FixtureOrg): Promise<void> {
   const ws = `(SELECT id FROM workspace WHERE org_id = $1)`;
   const env = `(SELECT id FROM envelope WHERE workspace_id IN ${ws})`;
+  // W3-11 (audit I-32): target/envelope current_version_id and draft_version_id are FKs to
+  // target_version(id)/envelope_version(id) now, so both pointers must be cleared (in their own
+  // statement, before the version rows are deleted) rather than relying on deletion order alone.
+  // No fixture here writes outbox, so unlike @budget/workers's deleteWorkspaceForTests (which this
+  // mirrors; @budget/query-planner cannot import @budget/workers — that would be circular, workers
+  // already depends on query-planner — so this stays inline) there is nothing to clear there.
   const statements = [
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id IN ${ws})`,
     `DELETE FROM thread WHERE workspace_id IN ${ws}`,
     `DELETE FROM taggable WHERE workspace_id IN ${ws}`,
     `DELETE FROM tag WHERE workspace_id IN ${ws}`,
     `DELETE FROM alert WHERE workspace_id IN ${ws}`,
+    // W3-11 (audit I-32): pacing_rule.workspace_id is a FK now.
+    `DELETE FROM pacing_rule WHERE workspace_id IN ${ws}`,
     `DELETE FROM approval_request WHERE workspace_id IN ${ws}`,
     `DELETE FROM role_assignment WHERE workspace_id IN ${ws}`,
+    `UPDATE target SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id IN ${ws}`,
     `DELETE FROM target_version WHERE target_id IN (SELECT id FROM target WHERE workspace_id IN ${ws})`,
     `DELETE FROM target WHERE workspace_id IN ${ws}`,
     `DELETE FROM spend_fact WHERE workspace_id IN ${ws}`,
+    // spend_month is maintained by a trigger on spend_fact (spend_month_apply); deleting it only
+    // after spend_fact is gone, so the trigger does not re-insert a row here (audit I-32: its
+    // workspace_id is a FK now too).
+    `DELETE FROM spend_month WHERE workspace_id IN ${ws}`,
     `DELETE FROM kpi_fact WHERE workspace_id IN ${ws}`,
     `DELETE FROM projection_fact WHERE workspace_id IN ${ws}`,
     `DELETE FROM budget_baseline_row WHERE workspace_id IN ${ws}`,
     `DELETE FROM budget_baseline WHERE workspace_id IN ${ws}`,
     `DELETE FROM envelope_dimension WHERE envelope_id IN ${env}`,
+    `UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id IN ${ws}`,
     `DELETE FROM envelope_version WHERE envelope_id IN ${env}`,
     `DELETE FROM envelope WHERE workspace_id IN ${ws}`,
+    // audit_event.workspace_id is a FK to workspace(id) now; the table is append-only
+    // (audit_event_immutable trigger), disabled further down (its own call, no $1) for cleanup only.
+    `DELETE FROM audit_event WHERE workspace_id IN ${ws} OR org_id = $1`,
     `DELETE FROM workspace WHERE org_id = $1`,
+    `UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1)`,
     `DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1)`,
     `DELETE FROM dimension WHERE org_id = $1`,
     `DELETE FROM metric_definition WHERE org_id = $1`,
     `DELETE FROM app_user WHERE org_id = $1`,
     `DELETE FROM organization WHERE id = $1`,
   ];
+  await owner.query("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
   for (const sql of statements) {
     await owner.query(sql, [org.orgId]);
   }
+  await owner.query("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
 }
