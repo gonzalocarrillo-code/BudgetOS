@@ -120,6 +120,9 @@ describe("export-worker", () => {
     expect(csv).not.toContain("EMEA");
     const job = await owner.exportJob.findUniqueOrThrow({ where: { id: jobId } });
     expect(job).toMatchObject({ status: "done", rowCount: 3 });
+    // W3-4 (audit I-9): the claim set a lease and it was refreshed once the object was written.
+    expect(job.leaseUntil).toBeInstanceOf(Date);
+    expect(job.heartbeatAt).toBeInstanceOf(Date);
     const fx = await effects(jobId);
     expect(fx.audit.map((a) => a.action)).toEqual(["export.done"]);
     expect(fx.outbox.map((o) => o.payload)).toEqual([{ jobId, requestedBy: userId, status: "done", kind: "csv", rowCount: 3, error: null }]);

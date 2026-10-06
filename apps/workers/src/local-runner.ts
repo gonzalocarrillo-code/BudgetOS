@@ -14,6 +14,7 @@ import {
 } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { handleIngestRequested } from "./ingest/worker.js";
+import { sweeperPass } from "./ingest/sweeper.js";
 import { handleRollupEvent } from "./rollup/rollup.js";
 import { handleInApp } from "./notify/in-app.js";
 import { handleSlackEvent, slackConfigWarnings, slackFromEnv, type SlackClient } from "./notify/slack.js";
@@ -280,6 +281,8 @@ async function main(): Promise<void> {
     await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
     if (isStopping()) break;
     await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
+    if (isStopping()) break;
+    await sweeperPass(app, publisher, scope).catch((err: unknown) => log.error({ err }, "ingest/export lease sweeper pass failed"));
     if (isStopping()) break;
     const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));
     if (n === 0 && !isStopping()) await new Promise((r) => setTimeout(r, 1000));

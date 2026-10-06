@@ -14,11 +14,7 @@ The outbox row wasn't delivered. Check that `outbox.published_at` is set for the
 
 ## A job is stuck in `running`
 
-The worker died mid-export. Jobs aren't retried: the dedupe row is committed with the claim. Ask the requester to start a new export. If needed, mark the old job failed as the owner role:
-
-```sql
-UPDATE export_job SET status = 'failed', error = 'worker stopped; start a new export', completed_at = now() WHERE id = '<job>' AND status = 'running';
-```
+The worker died mid-export. Nothing to do by hand: the sweeper (`runSweeper`, `apps/workers/src/ingest/sweeper.ts`, part of every local-runner pass) fails the job after 20 minutes without a heartbeat (`lease_until`/`heartbeat_at`, refreshed once the object is written), with the same `export.failed` audit row and `export.completed` outbox row a normal failure writes. Unlike ingest (which the sweeper re-queues once), an export job is never re-queued automatically — the dedupe row was already committed with the claim, so exports are re-requested from the UI.
 
 ## A job `failed`
 

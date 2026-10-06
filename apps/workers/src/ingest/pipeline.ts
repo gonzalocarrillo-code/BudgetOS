@@ -25,6 +25,7 @@ import {
 import { Decimal } from "decimal.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { log } from "../log.js";
+import { leaseUntil } from "../run-lease.js";
 import { connectorFor } from "./connectors/index.js";
 import { RegistryIndex, normalize, occurrenceKey, type MatchKeys, type RegistryValue } from "./normalize.js";
 import type { ObjectStore } from "./object-store.js";
@@ -135,31 +136,39 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
   const ctx = systemCtx(tenant.workspaceId, tenant.orgId, runId);
   const prisma = deps.prisma;
   const batchSize = deps.batchSize ?? BATCH;
-  const setup = await withTenant(prisma, ctx, async (tx) => {
-    const run = await tx.ingestRun.findUnique({ where: { id: runId } });
-    if (run === null) throw new Error(`ingest run ${runId} not found`);
-    if (run.status !== "queued" && run.status !== "running") throw new Error(`ingest run ${runId} is ${run.status}`);
-    const source = await tx.dataSource.findUnique({ where: { id: run.sourceId } });
-    if (source === null || source.workspaceId !== tenant.workspaceId) throw new Error(`source ${run.sourceId} not found in workspace`);
-    await tx.ingestRun.update({ where: { id: runId }, data: { status: "running", startedAt: new Date() } });
-    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { reportingCurrency: true } });
-    const previous = await tx.ingestRun.findFirst({ where: { sourceId: source.id, status: "ok" }, orderBy: { startedAt: "desc" }, select: { startedAt: true, summary: true } });
-    // Facts dated in a closed period are rejected unless the run is flagged as its restatement (spec §15).
-    const requested = (run.summary ?? {}) as { restatementOf?: string; mode?: string };
-    const restatementOf = requested.restatementOf ?? null;
-    const closed = (await closedPeriods(tx, tenant.workspaceId)).filter((c) => c.closureId !== restatementOf);
-    // §24.3 step 2: every live envelope's match key → its tuple (only when the mapping has a match_key column).
-    const parsed = SourceMapping.safeParse(source.mapping);
-    const hasKey = parsed.success && Object.values(parsed.data.columns).some((c) => "role" in c && c.role === "match_key");
-    const keyed = hasKey ? await tx.envelope.findMany({ where: { workspaceId: tenant.workspaceId, status: { not: "ARCHIVED" }, matchKey: { not: null } }, select: { matchKey: true, dimensionValues: true } }) : [];
-    const keys: MatchKeys = { envelopes: new Map(keyed.map((e) => [String(e.matchKey).toLowerCase(), e.dimensionValues as Record<string, string>])), pattern: source.parsePattern ? compileParsePattern(source.parsePattern) : null };
-    // ADR-071: incremental only after a run that already keyed its facts (a run before ADR-071 has no `mode`).
-    const previousKeyed = previous !== null && typeof (previous.summary as { mode?: unknown } | null)?.mode === "string";
-    const since = requested.mode !== "full" && previousKeyed ? new Date(previous.startedAt.getTime() - SINCE_OVERLAP_MS) : undefined;
-    return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since, closed, restatementOf, keys };
-  });
+  // I-9: tracked as soon as the run row is read, so a failure anywhere below (including setup
+  // itself) can still record ingest.run.failed with the right sourceId in its payload.
+  let sourceId: string | null = null;
 
   try {
+    const setup = await withTenant(prisma, ctx, async (tx) => {
+      const run = await tx.ingestRun.findUnique({ where: { id: runId } });
+      if (run === null) throw new Error(`ingest run ${runId} not found`);
+      sourceId = run.sourceId;
+      if (run.status !== "queued" && run.status !== "running") throw new Error(`ingest run ${runId} is ${run.status}`);
+      const source = await tx.dataSource.findUnique({ where: { id: run.sourceId } });
+      if (source === null || source.workspaceId !== tenant.workspaceId) throw new Error(`source ${run.sourceId} not found in workspace`);
+      const now = new Date();
+      // W3-4: the claim also happens here, not only in handleIngestRequested, for callers (and
+      // tests) that invoke runIngest directly; either way the run leaves this update with a lease.
+      await tx.ingestRun.update({ where: { id: runId }, data: { status: "running", startedAt: now, leaseUntil: leaseUntil(now), heartbeatAt: now } });
+      const ws = await tx.workspace.findUniqueOrThrow({ where: { id: tenant.workspaceId }, select: { reportingCurrency: true } });
+      const previous = await tx.ingestRun.findFirst({ where: { sourceId: source.id, status: "ok" }, orderBy: { startedAt: "desc" }, select: { startedAt: true, summary: true } });
+      // Facts dated in a closed period are rejected unless the run is flagged as its restatement (spec §15).
+      const requested = (run.summary ?? {}) as { restatementOf?: string; mode?: string };
+      const restatementOf = requested.restatementOf ?? null;
+      const closed = (await closedPeriods(tx, tenant.workspaceId)).filter((c) => c.closureId !== restatementOf);
+      // §24.3 step 2: every live envelope's match key → its tuple (only when the mapping has a match_key column).
+      const parsed = SourceMapping.safeParse(source.mapping);
+      const hasKey = parsed.success && Object.values(parsed.data.columns).some((c) => "role" in c && c.role === "match_key");
+      const keyed = hasKey ? await tx.envelope.findMany({ where: { workspaceId: tenant.workspaceId, status: { not: "ARCHIVED" }, matchKey: { not: null } }, select: { matchKey: true, dimensionValues: true } }) : [];
+      const keys: MatchKeys = { envelopes: new Map(keyed.map((e) => [String(e.matchKey).toLowerCase(), e.dimensionValues as Record<string, string>])), pattern: source.parsePattern ? compileParsePattern(source.parsePattern) : null };
+      // ADR-071: incremental only after a run that already keyed its facts (a run before ADR-071 has no `mode`).
+      const previousKeyed = previous !== null && typeof (previous.summary as { mode?: unknown } | null)?.mode === "string";
+      const since = requested.mode !== "full" && previousKeyed ? new Date(previous.startedAt.getTime() - SINCE_OVERLAP_MS) : undefined;
+      return { source, registry: await loadRegistry(tx, tenant.orgId, tenant.workspaceId), reporting: ws.reportingCurrency, since, closed, restatementOf, keys };
+    });
+
     const config = SourceConfig.parse(setup.source.config);
     const mapping = SourceMapping.parse(setup.source.mapping);
     const identityProblem = rowIdentityProblem(config, mapping);
@@ -281,6 +290,9 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
               for (const e of m.envelopeIds) moved.envelopeIds.add(e);
             }
           }
+          // W3-4: one UPDATE per flush, in the same transaction as the chunk it commits — if this
+          // chunk's facts land, so does the lease that says the run is still making progress.
+          await tx.ingestRun.update({ where: { id: runId }, data: { heartbeatAt: new Date(), leaseUntil: leaseUntil() } });
         },
         TX,
       );
@@ -334,11 +346,7 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await withTenant(prisma, ctx, async (tx) => {
-      await tx.ingestRun.update({ where: { id: runId }, data: { status: "failed", finishedAt: new Date(), summary: { error: message.slice(0, 2000) } } });
-      await audit(tx, { workspaceId: tenant.workspaceId, actorId: null, actorType: "system", action: "ingest.run.failed", entityType: "ingest_run", entityId: runId, after: { sourceId: setup.source.id, error: message.slice(0, 2000) }, requestId: ctx.requestId });
-      await outbox(tx, { workspaceId: tenant.workspaceId, topic: "ingest.failed", payload: { runId, sourceId: setup.source.id } });
-    });
+    await withTenant(prisma, ctx, (tx) => failIngestRun(tx, { workspaceId: tenant.workspaceId, sourceId, runId, error: message, requestId: ctx.requestId }));
     log.error({ err: error, runId, workspaceId: tenant.workspaceId, requestId: ctx.requestId }, "ingest run failed");
     throw error;
   }
@@ -346,4 +354,42 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
 
 async function noSecrets(ref: string): Promise<Record<string, string>> {
   throw new Error(`source needs secret ${ref}, and no Secret Manager client is configured (phase 20)`);
+}
+
+export interface FailIngestRunArgs {
+  workspaceId: string;
+  /** null only when the run row itself could not be read (the id doesn't exist). */
+  sourceId: string | null;
+  runId: string;
+  error: string;
+  requestId: string;
+  /**
+   * The sweeper's optimistic guard (I-9): only fail the run if it is still in `status` with a lease
+   * older than `leaseBefore`, so a run whose lease the pipeline just renewed (or that another
+   * sweeper pass already failed) is left alone.
+   */
+  guard?: { status: string; leaseBefore: Date };
+}
+
+/**
+ * Ends a run `failed` with one `ingest.run.failed` audit_event and one `ingest.failed` outbox row —
+ * the one failure path, shared by the pipeline's own catch and by `runSweeper`. I-12: if any chunk
+ * committed facts before the failure, they are matched to envelopes here and one `facts.loaded` +
+ * data-version bump follow, so the roll-up cache and the planner agree before a rerun instead of
+ * disagreeing until one happens. Returns false (nothing written) when `guard` no longer matches.
+ */
+export async function failIngestRun(tx: Tx, args: FailIngestRunArgs): Promise<boolean> {
+  const where = args.guard ? { id: args.runId, status: args.guard.status, leaseUntil: { lt: args.guard.leaseBefore } } : { id: args.runId };
+  const message = args.error.slice(0, 2000);
+  const n = await tx.ingestRun.updateMany({ where, data: { status: "failed", finishedAt: new Date(), summary: { error: message } } });
+  if (n.count === 0) return false;
+  await audit(tx, { workspaceId: args.workspaceId, actorId: null, actorType: "system", action: "ingest.run.failed", entityType: "ingest_run", entityId: args.runId, after: { sourceId: args.sourceId, error: message }, requestId: args.requestId });
+  await outbox(tx, { workspaceId: args.workspaceId, topic: "ingest.failed", payload: { runId: args.runId, sourceId: args.sourceId } });
+  const matched = await matchRunFacts(tx, args.workspaceId, args.runId);
+  const envelopeIds = [...new Set([...matched, ...(await runEnvelopes(tx, args.workspaceId, args.runId))])].sort();
+  if (envelopeIds.length > 0) {
+    await outbox(tx, { workspaceId: args.workspaceId, topic: "facts.loaded", payload: { runId: args.runId, sourceId: args.sourceId, envelopeIds } });
+    await bumpDataVersion(tx, args.workspaceId);
+  }
+  return true;
 }

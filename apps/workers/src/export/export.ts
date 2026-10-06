@@ -5,15 +5,18 @@ import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce } from "../consumer.js";
 import { uploadBucket, type ObjectStore } from "../ingest/object-store.js";
 import { log } from "../log.js";
+import { leaseUntil } from "../run-lease.js";
 import { buildTable, type ExportTable } from "./table.js";
 import { toCsv, toXlsx } from "./writers.js";
 
 /**
  * export-worker (spec §19, plan §6.2, ADR-017). `export.requested` claims the queued job under the
- * consumer's dedupe row; the export then runs in one repeatable-read transaction, so every page
- * and the totals row see the same snapshot. The file goes to `gs://<uploads>/exports/<ws>/<job>.<ext>`
+ * consumer's dedupe row, setting a lease (W3-4, audit I-9); the export then runs in one
+ * repeatable-read transaction, so every page and the totals row see the same snapshot. The lease is
+ * refreshed once the file is written. The file goes to `gs://<uploads>/exports/<ws>/<job>.<ext>`
  * and the job becomes `done` (or `failed`) with one audit_event and one `export.completed` outbox row.
- * A job left `running` by a crashed worker is not retried (the requester starts a new one).
+ * A job left `running` by a crashed worker is not retried here — `runSweeper` fails it once its
+ * lease expires; the requester starts a new export.
  */
 
 export const EXPORT_CONSUMER = "export-worker";
@@ -82,6 +85,10 @@ export async function runExport(prisma: PrismaClient, store: ObjectStore, tenant
     const body = await encode(kind, built.table, { workspaceName: built.workspaceName, period: built.period, generatedAt: new Date().toISOString(), dataVersion: built.dataVersion, query: built.q });
     const uri = exportUri(tenant.workspaceId, jobId, kind);
     await store.write(uri, body, CONTENT_TYPE[kind]);
+    // W3-4: refresh the lease now that the (possibly slow) object write is done, before the final
+    // status update below.
+    const now = new Date();
+    await withTenant(prisma, ctx, (tx) => tx.exportJob.update({ where: { id: jobId }, data: { heartbeatAt: now, leaseUntil: leaseUntil(now) } }));
     result = { outcome: "done", jobId, rowCount: built.table.rows.length, objectUri: uri, error: null };
   } catch (error) {
     const known = error instanceof DomainError;
@@ -107,7 +114,8 @@ export async function handleExportRequested(prisma: PrismaClient, store: ObjectS
   const { jobId } = ExportRequested.parse(event.payload);
   let claimed = false;
   const outcome = await handleOnce(prisma, EXPORT_CONSUMER, event, async (tx) => {
-    const n = await tx.exportJob.updateMany({ where: { id: jobId, status: "queued" }, data: { status: "running", startedAt: new Date() } });
+    const now = new Date();
+    const n = await tx.exportJob.updateMany({ where: { id: jobId, status: "queued" }, data: { status: "running", startedAt: now, leaseUntil: leaseUntil(now), heartbeatAt: now } });
     claimed = n.count === 1;
   });
   if (outcome === "duplicate") return { outcome: "duplicate" };

@@ -170,6 +170,55 @@ describe("runIngest (spec §14)", () => {
     expect((run.summary as { matchCoverage: string }).matchCoverage).toBe("0.826087");
     expect(await count(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'ingest.run.finished'`, runId)).toBe(1);
     expect(await count(`SELECT count(*) AS n FROM outbox WHERE topic = 'facts.loaded' AND payload->>'runId' = $1`, runId)).toBe(1);
+    // W3-4 (audit I-9): the claim left a lease; it stays set (though stale) once the run finishes.
+    expect(run.leaseUntil).toBeInstanceOf(Date);
+    expect(run.heartbeatAt).toBeInstanceOf(Date);
+  });
+
+  it("I-9: a run whose setup throws (before any chunk runs) still ends failed, audited, with one outbox row", async () => {
+    // The claim already transitioned this run past queued/running, so runIngest's own setup guard
+    // throws before it reads a single row — the exact shape of a worker that crashed mid-setup on
+    // an earlier attempt, before W3-4 moved this check inside the try.
+    const runId = randomUUID();
+    await owner.ingestRun.create({ data: { id: runId, sourceId, status: "failed", summary: { error: "an earlier attempt" } } });
+    await expect(runIngest(deps(), tenant, runId)).rejects.toThrow(/ingest run .* is failed/);
+    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("failed");
+    expect((run.summary as { error: string }).error).toMatch(/ingest run .* is failed/);
+    expect(await count(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'ingest.run.failed'`, runId)).toBe(1);
+    expect(await count(`SELECT count(*) AS n FROM outbox WHERE topic = 'ingest.failed' AND payload->>'runId' = $1`, runId)).toBe(1);
+  });
+
+  it("I-12: a failure after one committed chunk still matches its facts and emits facts.loaded + a data-version bump", async () => {
+    const runId = await queueRun();
+    const rows: RawRow[] = [
+      { COUNTRY: "BR", PLATFORM: "meta", MONTH: "2026-04", SPEND: "10.00", CCY: "USD", CONV: "1" },
+      { COUNTRY: "BR", PLATFORM: "meta", MONTH: "2026-04", SPEND: "20.00", CCY: "USD", CONV: "2" },
+    ];
+    const crashing: Connector = {
+      kind: "csv",
+      async *read() {
+        for (const r of rows) yield r;
+        throw new Error("connector crashed");
+      },
+    };
+    const before = (await owner.workspace.findUniqueOrThrow({ where: { id: ws }, select: { settings: true } })).settings as { dataVersion?: number };
+    await expect(runIngest({ ...deps(), connector: () => crashing, batchSize: 2 }, tenant, runId)).rejects.toThrow(/connector crashed/);
+
+    const run = await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("failed");
+    // The one chunk of 2 rows (batchSize 2) committed before the connector crashed.
+    expect(await count(`SELECT count(*) AS n FROM spend_fact WHERE source_run_id = $1::uuid`, runId)).toBe(2);
+    const matched = await owner.$queryRawUnsafe<Array<{ envelope_id: string | null }>>(`SELECT DISTINCT envelope_id::text AS envelope_id FROM spend_fact WHERE source_run_id = $1::uuid`, runId);
+    expect(matched).toEqual([{ envelope_id: env["brMeta"] }]);
+    const [outboxRow] = await owner.$queryRawUnsafe<Array<{ payload: { envelopeIds: string[] } }>>(`SELECT payload FROM outbox WHERE topic = 'facts.loaded' AND payload->>'runId' = $1 ORDER BY outbox.id DESC LIMIT 1`, runId);
+    expect(outboxRow?.payload.envelopeIds).toEqual([env["brMeta"]]);
+    const after = (await owner.workspace.findUniqueOrThrow({ where: { id: ws }, select: { settings: true } })).settings as { dataVersion?: number };
+    expect(after.dataVersion ?? 0).toBeGreaterThan(before.dataVersion ?? 0);
+    // Later tests in this file assert absolute fact counts for the whole workspace; keep this
+    // test's own facts from leaking into those.
+    await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE source_run_id = $1::uuid`, runId);
+    await owner.$executeRawUnsafe(`DELETE FROM kpi_fact WHERE source_run_id = $1::uuid`, runId);
   });
 
   it("is idempotent: reloading the same file updates the same facts and keeps their envelopes", async () => {
