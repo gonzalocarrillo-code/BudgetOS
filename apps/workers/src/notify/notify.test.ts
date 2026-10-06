@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { outbox, withTenant } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { handleInApp } from "./in-app.js";
 import { handleSlackEvent, type SlackClient } from "./slack.js";
 
@@ -92,32 +93,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM notification WHERE workspace_id = $1::uuid`,
-    `DELETE FROM slack_message WHERE workspace_id = $1::uuid`,
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-    `DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM approval_request WHERE workspace_id = $1::uuid`,
-    `DELETE FROM alert WHERE workspace_id = $1::uuid`,
-    `DELETE FROM pacing_rule WHERE workspace_id = $1::uuid`,
-    `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM thread WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_version WHERE envelope_id = '${envelopeId}'::uuid`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-    `DELETE FROM role_assignment WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
-  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  // org_id (for most rows) and workspace_id (belt and braces, in case a row was ever written
-  // without the session's app.org_id set, so it never got the migration's DEFAULT backfill).
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid OR workspace_id = $2::uuid", orgId, ws);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

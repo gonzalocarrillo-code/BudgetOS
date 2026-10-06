@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handleOnce } from "./consumer.js";
+import { deleteWorkspaceForTests } from "./purge/purge.js";
 
 /** ADR-052: an archived or deleted workspace is frozen, so its events are acknowledged and not applied. */
 const url = (name: string) => {
@@ -25,13 +26,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await owner.$executeRawUnsafe(`DELETE FROM processed_event WHERE consumer = 'freeze-test'`);
-  await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, [live, frozen]);
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
-  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
+  // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
+  // themselves), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, [live, frozen]);
   await owner.organization.deleteMany({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

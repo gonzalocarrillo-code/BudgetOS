@@ -10,6 +10,7 @@ import { MemoryObjectStore } from "./ingest/object-store.js";
 import { MAX_ATTEMPTS, healthRequestListener, isStopping, pass, shutdown, type RunnerDeps, type RunnerHandlers } from "./local-runner.js";
 import { handleInApp } from "./notify/in-app.js";
 import { handleSlackEvent } from "./notify/slack.js";
+import { deleteWorkspaceForTests } from "./purge/purge.js";
 import { handleRollupEvent } from "./rollup/rollup.js";
 import { handleSearchEvent } from "./search-indexer/indexer.js";
 
@@ -85,20 +86,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-    `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
-  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect(), publisher.$disconnect()]);
 });

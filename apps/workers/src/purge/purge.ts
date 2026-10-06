@@ -13,7 +13,7 @@ import { log } from "../log.js";
  */
 
 /** Child tables without workspace_id, deleted through their parent (the parent is still there). */
-const VIA_PARENT: Array<[table: string, sql: string]> = [
+export const VIA_PARENT: Array<[table: string, sql: string]> = [
   ["comment_reaction", "DELETE FROM comment_reaction WHERE workspace_id = $1::uuid"],
   ["comment", "DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)"],
   ["approval_decision", "DELETE FROM approval_decision WHERE request_id IN (SELECT id FROM approval_request WHERE workspace_id = $1::uuid)"],
@@ -46,7 +46,7 @@ const VIA_PARENT: Array<[table: string, sql: string]> = [
 ];
 
 /** Tables with workspace_id, in an order that satisfies the foreign keys (children before parents). */
-const OWN = [
+export const OWN = [
   "bulk_preview",
   "idempotency_key",
   "budget_baseline_row",
@@ -111,6 +111,37 @@ export async function purgeWorkspace(prisma: PrismaClient, ws: { workspaceId: st
   });
   log.info({ workspaceId: ws.workspaceId, orgId: ws.orgId, requestId: ctx.requestId, counts }, "workspace purged");
   return counts;
+}
+
+/**
+ * W3-11 (audit I-32): test-only. Hard-deletes one or more workspaces and every row that FKs to
+ * them, including the `workspace` row itself (unlike `purgeWorkspace`, which keeps `audit_event`
+ * and the tombstone `workspace` row for the real purge flow — tests want a clean slate, not a
+ * tombstone). Reuses the exact `VIA_PARENT`/`OWN` order `purgeWorkspace` validates against
+ * production: those are the tables every tenant table's workspace_id (and the pointer columns)
+ * now FKs to.
+ *
+ * Requires a connection that bypasses RLS (the superuser `owner`/`DATABASE_URL` role tests already
+ * use locally and in CI — never the app role, and never in production code). `audit_event` is
+ * append-only (the `audit_event_immutable` trigger); it is disabled around the delete, test cleanup
+ * only, same as the real purge keeps it on but this never runs outside a test.
+ */
+export async function deleteWorkspaceForTests(prisma: PrismaClient, workspaceIds: string | readonly string[]): Promise<void> {
+  const ids = Array.isArray(workspaceIds) ? workspaceIds : [workspaceIds];
+  if (ids.length === 0) return;
+  for (const id of ids) {
+    for (const [, sql] of VIA_PARENT) await prisma.$executeRawUnsafe(sql, id);
+    for (const table of OWN) await prisma.$executeRawUnsafe(`DELETE FROM ${table} WHERE workspace_id = $1::uuid`, id);
+  }
+  // outbox and audit_event are deliberately outside VIA_PARENT/OWN: purgeWorkspace keeps both (the
+  // real purge never deletes the workspace row either, only tombstones it, so their FKs to
+  // workspace(id) never bind there). A test hard-delete needs them gone first.
+  await prisma.$executeRawUnsafe(`DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = ANY($1::uuid[]))`, ids);
+  await prisma.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, ids);
+  await prisma.$executeRawUnsafe(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
+  await prisma.$executeRawUnsafe(`DELETE FROM audit_event WHERE workspace_id = ANY($1::uuid[])`, ids);
+  await prisma.$executeRawUnsafe(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
+  await prisma.$executeRawUnsafe(`DELETE FROM workspace WHERE id = ANY($1::uuid[])`, ids);
 }
 
 /** Every deleted workspace of these orgs whose retention window has passed and is not purged yet. */

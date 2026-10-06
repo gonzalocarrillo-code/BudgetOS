@@ -130,8 +130,12 @@ ALTER TABLE budget_baseline_row VALIDATE CONSTRAINT budget_baseline_row_currency
 --     target-writer.ts); nothing sets it to anything else. Assumption: CHECK restricted to that one
 --     value for now; widen it in the same PR that introduces a second status.
 --   * thread.status: open | resolved (threads/commands/threads.ts).
---   * saved_view.visibility: @budget/domain SavedViewVisibility = z.enum(["private","workspace"]) —
---     narrower than schema.prisma's stale comment ("private | shared | workspace_default").
+--   * saved_view.visibility: @budget/domain SavedViewVisibility = z.enum(["private","workspace"])
+--     covers POST /saved-views (apps/api/src/modules/views); a third value, 'shared', is written
+--     only by workspaces.ts when a workspace is created from a template (home.test.ts asserts it) —
+--     schema.prisma's stale comment ("private | shared | workspace_default") predates the simpler
+--     two-value user-facing enum but 'shared' itself is still live. 'workspace_default' is not: grep
+--     finds no writer anywhere, so it is left out.
 --   * approval_decision.decision: @budget/domain's DecideInput enum (approve | reject |
 --     request_changes) plus 'external_evidence', written only by external-evidence.ts.
 --   * role_assignment.principal_type: @budget/domain access.ts z.enum(["user","group"]).
@@ -145,7 +149,7 @@ ALTER TABLE target ADD CONSTRAINT target_status_check CHECK (status IN ('active'
 ALTER TABLE target VALIDATE CONSTRAINT target_status_check;
 ALTER TABLE thread ADD CONSTRAINT thread_status_check CHECK (status IN ('open', 'resolved')) NOT VALID;
 ALTER TABLE thread VALIDATE CONSTRAINT thread_status_check;
-ALTER TABLE saved_view ADD CONSTRAINT saved_view_visibility_check CHECK (visibility IN ('private', 'workspace')) NOT VALID;
+ALTER TABLE saved_view ADD CONSTRAINT saved_view_visibility_check CHECK (visibility IN ('private', 'workspace', 'shared')) NOT VALID;
 ALTER TABLE saved_view VALIDATE CONSTRAINT saved_view_visibility_check;
 ALTER TABLE approval_decision ADD CONSTRAINT approval_decision_decision_check CHECK (decision IN ('approve', 'reject', 'request_changes', 'external_evidence')) NOT VALID;
 ALTER TABLE approval_decision VALIDATE CONSTRAINT approval_decision_decision_check;

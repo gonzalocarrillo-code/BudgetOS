@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { SETTINGS } from "@budget/domain";
-import { handleSearchEvent, reindexWorkspace } from "@budget/workers";
+import { deleteWorkspaceForTests, handleSearchEvent, reindexWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
 import { perfBudgetMs } from "../../test-support/perf.js";
@@ -85,37 +85,15 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await h?.close();
-  const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-  for (const sql of [
-    `DELETE FROM search_document WHERE workspace_id = $1::uuid`,
-    `DELETE FROM search_term WHERE workspace_id = $1::uuid`,
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM notification WHERE workspace_id = $1::uuid`,
-    `DELETE FROM subscription WHERE workspace_id = $1::uuid`,
-    `DELETE FROM taggable WHERE workspace_id = $1::uuid`,
-    `DELETE FROM tag WHERE workspace_id = $1::uuid`,
-    `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM thread WHERE workspace_id = $1::uuid`,
-    `DELETE FROM approval_policy WHERE workspace_id = $1::uuid`,
-    `UPDATE envelope SET current_version_id = NULL, draft_version_id = NULL WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
-    `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-    `DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself, including envelope_dimension, which references dimension_value) in the same order
+  // `purgeWorkspace` validates against production — before the org-level dimension cleanup below.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
-  await owner.roleAssignment.deleteMany({ where: { OR: [{ workspaceId: ws }, { principalId: orgAdmin.id }] } });
+  await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

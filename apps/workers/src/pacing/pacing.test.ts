@@ -4,6 +4,7 @@ import { openAlert, withTenant, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { evaluateWorkspace, metricValue, streak } from "./evaluate.js";
 import { runPacing } from "./main.js";
 
@@ -83,25 +84,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM alert WHERE workspace_id = $1::uuid`,
-    `DELETE FROM rule_state WHERE rule_id IN (SELECT id FROM pacing_rule WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM pacing_rule WHERE workspace_id = $1::uuid`,
-    `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
-    `UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
-  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

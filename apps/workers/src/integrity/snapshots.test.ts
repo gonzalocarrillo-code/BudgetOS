@@ -2,6 +2,7 @@ import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { checkSnapshotIntegrity } from "./snapshots.js";
 
 /**
@@ -31,15 +32,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const t of ["notification", "outbox", "budget_baseline_row", "budget_baseline", "envelope", "role_assignment"]) await owner.$executeRawUnsafe(`DELETE FROM ${t} WHERE workspace_id = $1::uuid`, ws);
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.roleAssignment.deleteMany({ where: { principalId: superadmin } });
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
-  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

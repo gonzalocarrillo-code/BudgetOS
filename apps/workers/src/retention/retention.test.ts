@@ -4,6 +4,7 @@ import { ensurePartitions, factMonthTotals, withTenant, type MonthTotals } from 
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MemoryObjectStore } from "../ingest/object-store.js";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { pruneRawFiles, pruneWorkspaceFacts, retentionCutoff, runRetention, type ReplicaTotals } from "./retention.js";
 
 /**
@@ -61,14 +62,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const t of ["spend_fact", "spend_month", "outbox", "data_source", "envelope"]) await owner.$executeRawUnsafe(`DELETE FROM ${t} WHERE workspace_id = ANY($1::uuid[])`, [wsA, wsB, wsC]);
+  // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
+  // themselves), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, [wsA, wsB, wsC]);
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); the table is
-  // append-only (audit_event_immutable trigger), disabled here for cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });

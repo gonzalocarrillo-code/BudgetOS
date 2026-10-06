@@ -28,7 +28,7 @@ export type { ExportResult } from "./export/export.js";
 export { buildTable } from "./export/table.js";
 export type { Column, ExportTable } from "./export/table.js";
 export { toCsv, toXlsx } from "./export/writers.js";
-export { purgeDueWorkspaces, purgeWorkspace } from "./purge/purge.js";
+export { deleteWorkspaceForTests, purgeDueWorkspaces, purgeWorkspace } from "./purge/purge.js";
 export { checkSnapshotIntegrity } from "./integrity/snapshots.js";
 export type { IntegrityFinding } from "./integrity/snapshots.js";
 export { BigQueryReplicaTotals, HOT_MONTHS, RAW_FILE_RETENTION_DAYS, pruneRawFiles, pruneWorkspaceFacts, retentionCutoff, retentionFromEnv, runRetention } from "./retention/retention.js";

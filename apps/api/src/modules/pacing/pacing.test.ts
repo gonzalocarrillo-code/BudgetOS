@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
 
@@ -89,29 +90,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await h?.close();
-  const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-  for (const sql of [
-    `DELETE FROM alert WHERE workspace_id = $1::uuid`,
-    `DELETE FROM rule_state WHERE rule_id IN (SELECT id FROM pacing_rule WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM pacing_rule WHERE workspace_id = $1::uuid`,
-    `DELETE FROM spend_fact WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`,
-    `UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`,
-    `DELETE FROM envelope_version WHERE envelope_id IN ${envs}`,
-    `DELETE FROM envelope WHERE workspace_id = $1::uuid`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [budgetOwner.id, scopedOwner.id, planner.id, viewer.id, orgAdmin.id] } } });
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await owner.$disconnect();
 });

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
 
@@ -42,17 +43,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await h?.close();
-  await owner.$executeRawUnsafe(`DELETE FROM hierarchy_template WHERE workspace_id = $1::uuid`, ws);
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself, including envelope_dimension, which references dimension_value) in the same order
+  // `purgeWorkspace` validates against production — before the org-level dimension cleanup below.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
-  await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
   await owner.user.deleteMany({ where: { orgId } });
-  // W3-11 (audit I-32): audit_event.workspace_id is now a FK to workspace(id); append-only, so the trigger is disabled for this cleanup only.
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable");
-  await owner.$executeRawUnsafe("DELETE FROM audit_event WHERE org_id = $1::uuid", orgId);
-  await owner.$executeRawUnsafe("ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable");
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await owner.$disconnect();
 });

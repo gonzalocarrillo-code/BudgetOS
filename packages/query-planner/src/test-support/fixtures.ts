@@ -407,6 +407,9 @@ export async function cleanupOrg(org: FixtureOrg): Promise<void> {
   // W3-11 (audit I-32): target/envelope current_version_id and draft_version_id are FKs to
   // target_version(id)/envelope_version(id) now, so both pointers must be cleared (in their own
   // statement, before the version rows are deleted) rather than relying on deletion order alone.
+  // No fixture here writes outbox, so unlike @budget/workers's deleteWorkspaceForTests (which this
+  // mirrors; @budget/query-planner cannot import @budget/workers — that would be circular, workers
+  // already depends on query-planner — so this stays inline) there is nothing to clear there.
   const statements = [
     `DELETE FROM comment WHERE thread_id IN (SELECT id FROM thread WHERE workspace_id IN ${ws})`,
     `DELETE FROM thread WHERE workspace_id IN ${ws}`,
