@@ -576,6 +576,19 @@ const samples: Record<string, readonly unknown[]> = {
   ],
   UploadAssetInput: [{ contentType: "image/svg+xml", svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>" }],
   PurgeDemoInput: [{ confirm: true }],
+  MatchRuleOp: ["eq", "in", "not_empty"],
+  MatchRuleCondition: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "cmp_1" }, { field: { kind: "dimension", key: "campaign" }, op: "in", value: ["a", "b"] }],
+  MatchRulePredicate: [{ logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "cmp_1" }, { logic: "or", not: true, children: [{ field: { kind: "dimension", key: "country" }, op: "is_empty" }] }] }],
+  CreateMatchRuleInput: [{ envelopeId: workspaceId, predicate: { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "cmp_1" }] }, startDate: "2026-01-01" }],
+  MatchRuleView: [{ id: workspaceId, envelopeId: workspaceId, envelopeName: "BR", predicate: { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "cmp_1" }] }, startDate: null, endDate: null, createdBy: workspaceId, createdAt: "2026-10-06T00:00:00.000Z" }],
+  MatchRulesResponse: [{ rules: [] }],
+  RematchResult: [{ spend: 2, kpi: 0, projection: 0, envelopeIds: [workspaceId] }],
+  MatchRuleWriteResponse: [{ rule: { id: workspaceId, envelopeId: workspaceId, envelopeName: "BR", predicate: { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "x" }] }, startDate: null, endDate: null, createdBy: workspaceId, createdAt: "2026-10-06T00:00:00.000Z" }, rematch: { spend: 0, kpi: 0, projection: 0, envelopeIds: [] } }],
+  MatchCoverageQuery: [{ from: "2026-01-01", to: "2026-01-31" }, {}],
+  CoverageAmounts: [{ total: "10.00", matched: "5.00", unmatched: "3.00", ambiguous: "2.00", totalRows: 4, matchedRows: 2, unmatchedRows: 1, ambiguousRows: 1 }],
+  MatchCandidate: [{ id: workspaceId, name: "BR" }],
+  OpenCampaign: [{ campaign: "cmp_1", label: "Spring", status: "ambiguous", amount: "2.00", rows: 1, firstDate: "2026-01-01", lastDate: "2026-01-01", candidates: [{ id: workspaceId, name: "BR" }] }],
+  MatchCoverageResponse: [{ from: null, to: null, currency: "USD", totals: { total: "0", matched: "0", unmatched: "0", ambiguous: "0", totalRows: 0, matchedRows: 0, unmatchedRows: 0, ambiguousRows: 0 }, bySource: [], byCampaign: [], open: [] }],
 };
 
 function isZodType(value: unknown): value is z.ZodType {
@@ -637,4 +650,13 @@ it("checks the permission matrix", () => {
   expect(can(["ORG_ADMIN"], "approval.force")).toBe(true);
   expect(can(["DATA_ADMIN"], "source.manage")).toBe(true);
   expect(can(["FINANCE"], "closure.close")).toBe(true);
+});
+
+it("EX-1: a match rule predicate is a non-empty FilterGroup over dimensions only", () => {
+  const ok = { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "c1" }] };
+  expect(domain.MatchRulePredicate.safeParse(ok).success).toBe(true);
+  expect(domain.MatchRulePredicate.safeParse({ logic: "and", children: [] }).success).toBe(false);
+  expect(domain.MatchRulePredicate.safeParse({ logic: "and", children: [{ field: { kind: "measure", key: "actual" }, op: "gt", value: "1" }] }).success).toBe(false);
+  expect(domain.MatchRulePredicate.safeParse({ logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "in", value: "c1" }] }).success).toBe(false);
+  expect(domain.MatchRulePredicate.safeParse({ logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "descends_from", value: "c1" }] }).success).toBe(false);
 });

@@ -10156,6 +10156,957 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/match-rules": {
+      "get": {
+        "operationId": "listMatchRules",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live match rules (EX-1, ADR-0085), newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "envelopeId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "envelopeName": {
+                            "type": "string"
+                          },
+                          "predicate": {
+                            "type": "object",
+                            "properties": {
+                              "logic": {
+                                "type": "string",
+                                "enum": [
+                                  "and",
+                                  "or"
+                                ]
+                              },
+                              "not": {
+                                "type": "boolean"
+                              },
+                              "children": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 50,
+                                "items": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "field": {
+                                          "type": "object",
+                                          "properties": {
+                                            "kind": {
+                                              "type": "string",
+                                              "enum": [
+                                                "dimension"
+                                              ]
+                                            },
+                                            "key": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 120
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "key"
+                                          ]
+                                        },
+                                        "op": {
+                                          "type": "string",
+                                          "enum": [
+                                            "eq",
+                                            "neq",
+                                            "in",
+                                            "nin",
+                                            "contains",
+                                            "starts_with",
+                                            "is_empty",
+                                            "not_empty"
+                                          ]
+                                        },
+                                        "value": {
+                                          "oneOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 500
+                                            },
+                                            {
+                                              "type": "array",
+                                              "minItems": 1,
+                                              "maxItems": 1000,
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 500
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "op"
+                                      ]
+                                    },
+                                    {}
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "logic",
+                              "children"
+                            ]
+                          },
+                          "startDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "endDate": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "createdBy": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "envelopeId",
+                          "envelopeName",
+                          "predicate",
+                          "startDate",
+                          "endDate",
+                          "createdBy",
+                          "createdAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "rules"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMatchRule",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "envelopeId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "predicate": {},
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDate": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "envelopeId",
+                  "predicate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The rule, and what re-matching the facts it covers changed (closed periods are left alone)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rule": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "envelopeName": {
+                          "type": "string"
+                        },
+                        "predicate": {
+                          "type": "object",
+                          "properties": {
+                            "logic": {
+                              "type": "string",
+                              "enum": [
+                                "and",
+                                "or"
+                              ]
+                            },
+                            "not": {
+                              "type": "boolean"
+                            },
+                            "children": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 50,
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "field": {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": [
+                                              "dimension"
+                                            ]
+                                          },
+                                          "key": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 120
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "key"
+                                        ]
+                                      },
+                                      "op": {
+                                        "type": "string",
+                                        "enum": [
+                                          "eq",
+                                          "neq",
+                                          "in",
+                                          "nin",
+                                          "contains",
+                                          "starts_with",
+                                          "is_empty",
+                                          "not_empty"
+                                        ]
+                                      },
+                                      "value": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 500
+                                          },
+                                          {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "maxItems": 1000,
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 500
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "field",
+                                      "op"
+                                    ]
+                                  },
+                                  {}
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "logic",
+                            "children"
+                          ]
+                        },
+                        "startDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "endDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "envelopeId",
+                        "envelopeName",
+                        "predicate",
+                        "startDate",
+                        "endDate",
+                        "createdBy",
+                        "createdAt"
+                      ]
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "rule",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The same rule already exists, or the envelope is archived"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/match-rules/rematch": {
+      "post": {
+        "operationId": "rematchFacts",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Every live fact not pinned by hand and outside closed periods matched again: manual > rules > tuple, ties ambiguous",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "spend": {
+                      "type": "integer"
+                    },
+                    "kpi": {
+                      "type": "integer"
+                    },
+                    "projection": {
+                      "type": "integer"
+                    },
+                    "envelopeIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  },
+                  "required": [
+                    "spend",
+                    "kpi",
+                    "projection",
+                    "envelopeIds"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/match-rules/{id}": {
+      "delete": {
+        "operationId": "deleteMatchRule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule soft-deleted; the facts it covered matched again without it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rule": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "envelopeId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "envelopeName": {
+                          "type": "string"
+                        },
+                        "predicate": {
+                          "type": "object",
+                          "properties": {
+                            "logic": {
+                              "type": "string",
+                              "enum": [
+                                "and",
+                                "or"
+                              ]
+                            },
+                            "not": {
+                              "type": "boolean"
+                            },
+                            "children": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 50,
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "field": {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": [
+                                              "dimension"
+                                            ]
+                                          },
+                                          "key": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 120
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "key"
+                                        ]
+                                      },
+                                      "op": {
+                                        "type": "string",
+                                        "enum": [
+                                          "eq",
+                                          "neq",
+                                          "in",
+                                          "nin",
+                                          "contains",
+                                          "starts_with",
+                                          "is_empty",
+                                          "not_empty"
+                                        ]
+                                      },
+                                      "value": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 500
+                                          },
+                                          {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "maxItems": 1000,
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 500
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "field",
+                                      "op"
+                                    ]
+                                  },
+                                  {}
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "logic",
+                            "children"
+                          ]
+                        },
+                        "startDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "endDate": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "envelopeId",
+                        "envelopeName",
+                        "predicate",
+                        "startDate",
+                        "endDate",
+                        "createdBy",
+                        "createdAt"
+                      ]
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "rule",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/match-coverage": {
+      "get": {
+        "operationId": "getMatchCoverage",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live spend matched / unmatched / ambiguous (reporting currency, Decimal strings, and row counts), by source and by campaign; unmatched and ambiguous campaigns largest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "to": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "totals": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "matched": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "unmatched": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "ambiguous": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                        },
+                        "totalRows": {
+                          "type": "integer"
+                        },
+                        "matchedRows": {
+                          "type": "integer"
+                        },
+                        "unmatchedRows": {
+                          "type": "integer"
+                        },
+                        "ambiguousRows": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "total",
+                        "matched",
+                        "unmatched",
+                        "ambiguous",
+                        "totalRows",
+                        "matchedRows",
+                        "unmatchedRows",
+                        "ambiguousRows"
+                      ]
+                    },
+                    "bySource": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "total": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "matched": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "unmatched": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "ambiguous": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "totalRows": {
+                            "type": "integer"
+                          },
+                          "matchedRows": {
+                            "type": "integer"
+                          },
+                          "unmatchedRows": {
+                            "type": "integer"
+                          },
+                          "ambiguousRows": {
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "sourceName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "sourceSystem": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "total",
+                          "matched",
+                          "unmatched",
+                          "ambiguous",
+                          "totalRows",
+                          "matchedRows",
+                          "unmatchedRows",
+                          "ambiguousRows",
+                          "sourceId",
+                          "sourceName",
+                          "sourceSystem"
+                        ]
+                      }
+                    },
+                    "byCampaign": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "total": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "matched": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "unmatched": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "ambiguous": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "totalRows": {
+                            "type": "integer"
+                          },
+                          "matchedRows": {
+                            "type": "integer"
+                          },
+                          "unmatchedRows": {
+                            "type": "integer"
+                          },
+                          "ambiguousRows": {
+                            "type": "integer"
+                          },
+                          "campaign": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "label": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "total",
+                          "matched",
+                          "unmatched",
+                          "ambiguous",
+                          "totalRows",
+                          "matchedRows",
+                          "unmatchedRows",
+                          "ambiguousRows",
+                          "campaign",
+                          "label"
+                        ]
+                      }
+                    },
+                    "open": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "campaign": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "label": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "unmatched",
+                              "ambiguous"
+                            ]
+                          },
+                          "amount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$"
+                          },
+                          "rows": {
+                            "type": "integer"
+                          },
+                          "firstDate": {
+                            "type": "string"
+                          },
+                          "lastDate": {
+                            "type": "string"
+                          },
+                          "candidates": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "campaign",
+                          "label",
+                          "status",
+                          "amount",
+                          "rows",
+                          "firstDate",
+                          "lastDate",
+                          "candidates"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "currency",
+                    "totals",
+                    "bySource",
+                    "byCampaign",
+                    "open"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/uploads": {
       "post": {
         "operationId": "createUpload",

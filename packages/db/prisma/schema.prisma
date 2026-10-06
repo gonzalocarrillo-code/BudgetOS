@@ -77,6 +77,7 @@ model Workspace {
   budgetBaselines     BudgetBaseline[]
   mappingProfiles     MappingProfile[]
   mappingSynonyms     MappingSynonym[]
+  matchRules          MatchRule[]
   metricDefinitions   MetricDefinition[]
 
   @@unique([orgId, slug])
@@ -327,6 +328,7 @@ model Envelope {
   endedReason         String?              @map("ended_reason")
   allocationsAsParent EnvelopeAllocation[] @relation("AllocationParent")
   allocationsAsChild  EnvelopeAllocation[] @relation("AllocationChild")
+  matchRules          MatchRule[]
 
   @@index([workspaceId, parentId])
   @@index([workspaceId, startDate, endDate])
@@ -854,6 +856,27 @@ model MappingSynonym {
 
   @@unique([workspaceId, kind, term])
   @@map("mapping_synonym")
+}
+
+/// EX-1 (ADR-0085): facts whose dimension_values satisfy `predicate` (a FilterGroup over fact
+/// dimensions) go to `envelope`, inside [startDate, endDate] when set. Beats the tuple match; two
+/// rules naming different envelopes for one fact make it ambiguous. Soft-deleted only.
+model MatchRule {
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  envelopeId  String    @map("envelope_id") @db.Uuid
+  envelope    Envelope  @relation(fields: [envelopeId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  predicate   Json
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  deletedBy   String?   @map("deleted_by") @db.Uuid
+
+  @@index([envelopeId], map: "match_rule_envelope")
+  @@map("match_rule")
 }
 
 /// T-036 (§24.1): how envelopes are named (`display`) and keyed for matching (`match_key`).
