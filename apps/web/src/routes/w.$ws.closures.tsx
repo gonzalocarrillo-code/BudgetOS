@@ -233,6 +233,7 @@ function Report({ ws, closure, canRestate, canClose, onChanged }: { ws: string; 
                 ))}
               </dl>
             ) : null}
+            {s.basis ? <p className="text-xs text-muted-foreground" data-testid="closure-basis-note">{t("closures.basisNote", { note: s.basis.note })}</p> : null}
             <p className="text-xs text-muted-foreground">{t("closures.frozen", { table: closure.table, rows: s.rows ?? 0, locked: closure.lockedEnvelopes })}</p>
             {(s.byTemplate ?? []).slice(0, 1).map((tpl) => (
               <div key={tpl.templateId} className="overflow-x-auto">

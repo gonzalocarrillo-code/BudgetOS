@@ -1638,6 +1638,8 @@ const en = {
   "closures.closeNow": "Close {period}",
   "closures.report": "Report for {period}",
   "closures.budget": "Budget",
+  /** D-1 (audit T-12): the basis a closure's Budget figure used, shown next to it. */
+  "closures.basisNote": "This Budget figure: {note}",
   "closures.actual": "Actual",
   "closures.variance": "Variance",
   "closures.variancePct": "Variance %",

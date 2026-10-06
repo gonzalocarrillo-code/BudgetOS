@@ -142,6 +142,8 @@ describe("closures (T-024)", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     q1 = String(res.body["id"]);
     expect(res.body).toMatchObject({ status: "closed", lockedEnvelopes: 2, period: { key: "2026-Q1", kind: "quarter", start: "2026-01-01", end: "2026-03-31" } });
+    // D-1 (audit T-12): the closure records which "budget" basis its report used.
+    expect(res.body["basis"]).toEqual({ budget: "live_leaves", note: expect.stringContaining("holdings") });
     expect([await status("latam"), await status("emea"), await status("apac")]).toEqual(["LOCKED", "LOCKED", "APPROVED"]);
 
     const latam = env["latam"]?.id ?? "";
@@ -176,7 +178,9 @@ describe("closures (T-024)", () => {
     ]);
     const report = await call(finance, "GET", `/closures/${q1}/report`);
     expect(report.status).toBe(200);
-    expect(report.body["summary"]).toMatchObject({ lockedEnvelopes: 2, rows: rows.length, totals: { budget: "600.00", actual: "140.50", variance: "-459.50" }, months: [{ month: "2026-01-01", actual: "100.00" }, { month: "2026-02-01", actual: "40.50" }, { month: "2026-03-01", actual: "0.00" }] });
+    expect(report.body["summary"]).toMatchObject({ lockedEnvelopes: 2, rows: rows.length, totals: { budget: "600.00", actual: "140.50", variance: "-459.50" }, months: [{ month: "2026-01-01", actual: "100.00" }, { month: "2026-02-01", actual: "40.50" }, { month: "2026-03-01", actual: "0.00" }], basis: { budget: "live_leaves" } });
+    // D-1: the API view (not just the raw stored summary) also carries the basis.
+    expect((report.body["closure"] as Record<string, unknown>)["basis"]).toEqual({ budget: "live_leaves", note: expect.any(String) });
     // Two transactions (W3-1): `closure.started` + `period.closing` before the sink, then exactly one
     // `closure.created` + `period.closed` once the rows are written.
     expect(await auditsOf(q1)).toEqual(["closure.created", "closure.started"]);

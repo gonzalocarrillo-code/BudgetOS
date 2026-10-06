@@ -470,6 +470,7 @@ const samples: Record<string, readonly unknown[]> = {
   CloseInput: [{ periodKey: "2026-Q1" }, { periodId: "01927a00-0000-7000-8000-0000000000c1" }],
   RestateInput: [{ reason: "Late invoices" }],
   ClosureStatus: ["closing", "closed", "failed", "restated"],
+  ClosureBasis: [{ budget: "live_leaves", note: "Sum of approved leaf budgets live in the period." }],
   ClosureView: [
     {
       id: "01927a00-0000-7000-8000-0000000000c2",
@@ -480,6 +481,18 @@ const samples: Record<string, readonly unknown[]> = {
       closedAt: "2026-04-02T09:00:00.000Z",
       table: "closures.closure_01927a0000007000800000000000c2",
       lockedEnvelopes: 12,
+      error: null,
+    },
+    {
+      id: "01927a00-0000-7000-8000-0000000000c4",
+      workspaceId,
+      period: { id: "01927a00-0000-7000-8000-0000000000c1", key: "2026-Q1", kind: "quarter", start: "2026-01-01", end: "2026-03-31" },
+      status: "closed",
+      closedBy: "01927a00-0000-7000-8000-0000000000c3",
+      closedAt: "2026-04-02T09:00:00.000Z",
+      table: "closures.closure_01927a0000007000800000000000c4",
+      lockedEnvelopes: 12,
+      basis: { budget: "live_leaves", note: "Sum of approved leaf budgets live in the period." },
       error: null,
     },
   ],

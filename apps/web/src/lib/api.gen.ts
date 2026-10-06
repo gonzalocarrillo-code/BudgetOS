@@ -8433,6 +8433,11 @@ export interface operations {
                         closedAt: string;
                         table: string;
                         lockedEnvelopes: number;
+                        basis?: {
+                            /** @enum {string} */
+                            budget: "live_leaves";
+                            note: string;
+                        };
                         error: string | null;
                     }[];
                 };
@@ -8485,6 +8490,11 @@ export interface operations {
                         closedAt: string;
                         table: string;
                         lockedEnvelopes: number;
+                        basis?: {
+                            /** @enum {string} */
+                            budget: "live_leaves";
+                            note: string;
+                        };
                         error: string | null;
                     };
                 };
@@ -8580,6 +8590,11 @@ export interface operations {
                         closedAt: string;
                         table: string;
                         lockedEnvelopes: number;
+                        basis?: {
+                            /** @enum {string} */
+                            budget: "live_leaves";
+                            note: string;
+                        };
                         error: string | null;
                     };
                 };
