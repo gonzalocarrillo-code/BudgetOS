@@ -67,7 +67,11 @@ jobs:
       # apps/api's suites assumes; every such assertion scales through test-support/perf.ts.
       # Product gates (e.g. T-006's 60 s) are unchanged locally and in `pnpm bench`.
       PERF_BUDGET_SCALE: "3"
-      VITEST_MAX_WORKERS: "3"
+      # Read only by apps/api/vitest.config.mjs (db, workers and planner run at their defaults).
+      # apps/api stays at 1 until W0-6 (#186) merges: concurrent test cleanups toggle the shared
+      # audit_event_immutable trigger and race ("audit_event is append-only"). The partition
+      # deadlock that also forced 1 is fixed (W3-10).
+      VITEST_MAX_WORKERS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
