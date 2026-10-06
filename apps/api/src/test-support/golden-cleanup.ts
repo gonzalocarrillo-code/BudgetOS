@@ -16,10 +16,14 @@ import type { GoldenResult } from "../seed/golden.js";
  */
 export async function cleanupGolden(owner: PrismaClient, golden: GoldenResult): Promise<void> {
   // Every workspace of the org: a test may have created more (T-040: a workspace from a template).
-  // The e2e teardown passes only the workspace id, so the org comes from the workspace; never an unfiltered query.
-  const orgId = golden.orgId ?? (await owner.workspace.findUnique({ where: { id: golden.workspaceId }, select: { orgId: true } }))?.orgId;
+  // The e2e teardown passes only the workspace id, so the org comes from the workspace; never an
+  // unfiltered query. W0-6: this one lookup has no org to give asOrgAdmin (that is what it is
+  // trying to discover) — every current caller always has golden.orgId already, so this stays
+  // unreachable in practice; a caller that genuinely only has the workspace id would need its own
+  // org lookup (e.g. golden.ts's organization-name trick) before this function could help it.
+  const orgId = golden.orgId ?? (await asOrgAdmin(owner, (tx) => tx.workspace.findUnique({ where: { id: golden.workspaceId }, select: { orgId: true } })))?.orgId;
   if (orgId) {
-    const others = await owner.workspace.findMany({ where: { orgId, id: { not: golden.workspaceId } }, select: { id: true } });
+    const others = await asOrgAdmin(owner, (tx) => tx.workspace.findMany({ where: { orgId, id: { not: golden.workspaceId } }, select: { id: true } }), orgId);
     for (const w of others) await cleanupWorkspace(owner, w.id, orgId);
   }
   await cleanupWorkspace(owner, golden.workspaceId, orgId);
