@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { parseEnv, WorkerEnv } from "@budget/domain";
 import { withTenant } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { log } from "../log.js";
@@ -30,9 +31,10 @@ export async function runPacing(prisma: PrismaClient, orgIds: readonly string[],
 }
 
 async function main(): Promise<void> {
-  const url = process.env["APP_DATABASE_URL"];
+  const env = parseEnv(WorkerEnv, process.env);
+  const url = env.APP_DATABASE_URL;
   if (!url) throw new Error("APP_DATABASE_URL is required");
-  const orgIds = (process.env["PACING_ORG_IDS"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const orgIds = (env.PACING_ORG_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (orgIds.length === 0) throw new Error("PACING_ORG_IDS is required (comma-separated org ids)");
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
