@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Storage } from "@google-cloud/storage";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests, GcsObjectStore, handleExportRequested, uploadBucket } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -27,6 +28,9 @@ const store = new GcsObjectStore(storage);
 const period = { kind: "range", start: "2026-01-01", end: "2026-12-31" };
 const regionIs = (code: string) => ({ logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "eq", value: code }] });
 
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace-scoped tables
+// below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 type Res = { status: number; body: Record<string, unknown> };
 async function call(user: TestUser, method: "GET" | "POST", url: string, body?: unknown): Promise<Res> {
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: X, ...(body === undefined ? {} : { body }) });
@@ -35,7 +39,7 @@ const requestExport = (user: TestUser, body: Record<string, unknown>) => call(us
 
 /** Delivers the job's `export.requested` outbox row to the worker, as Pub/Sub would. */
 async function deliver(jobId: string) {
-  const [row] = await owner.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'export.requested' AND payload->>'jobId' = $1`, jobId);
+  const [row] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; payload: unknown }>>(`SELECT id::text, payload FROM outbox WHERE topic = 'export.requested' AND payload->>'jobId' = $1`, jobId));
   expect(row).toBeDefined();
   const body = { message: { data: Buffer.from(JSON.stringify(row?.payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "export.requested" }, messageId: row?.id ?? "" }, subscription: "export-worker" };
   return handleExportRequested(app, store, body);
@@ -60,7 +64,9 @@ beforeAll(async () => {
   const [exists] = await storage.bucket(uploadBucket()).exists();
   if (!exists) await storage.createBucket(uploadBucket());
   await owner.organization.create({ data: { id: orgId, name: "t023" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t023-${ws}`, name: "T-023", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  // W0-6: workspace has no owner_bootstrap policy; it needs the org-admin tenant context real
+  // writes get from withTenant, with the real org id for its exact org_id match.
+  await asAdmin((tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t023-${ws}`, name: "T-023", reportingCurrency: "USD", fiscalYearStartMonth: 1 } }));
   await owner.user.createMany({ data: [planner, scoped, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -70,9 +76,11 @@ beforeAll(async () => {
     ],
   });
   const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
-  for (const code of ["latam", "emea"]) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
-  await owner.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 1, conditions: {}, chain: [], blockSelfApproval: true } });
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+    for (const code of ["latam", "emea"]) await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
+    await tx.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 1, conditions: {}, chain: [], blockSelfApproval: true } });
+  });
   h = await startHarness();
   await envelope("Brazil always-on", "latam", "700.00");
   await envelope("Mexico launch", "latam", "300.25");
@@ -83,10 +91,14 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -98,7 +110,7 @@ describe("exports (T-023)", () => {
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(created.body).toMatchObject({ kind: "csv", status: "queued", filename: "LATAM budgets", downloadUrl: null });
     const jobId = String(created.body["id"]);
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string; actor_id: string }>>(`SELECT action, actor_id::text FROM audit_event WHERE entity_type = 'export_job' AND entity_id = $1::uuid ORDER BY occurred_at`, jobId);
+    const audits = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string; actor_id: string }>>(`SELECT action, actor_id::text FROM audit_event WHERE entity_type = 'export_job' AND entity_id = $1::uuid ORDER BY occurred_at`, jobId));
     expect(audits).toEqual([{ action: "export.requested", actor_id: planner.id }]);
     expect((await call(planner, "GET", `/exports/${jobId}`)).body).toMatchObject({ status: "queued", downloadUrl: null });
 
@@ -111,7 +123,7 @@ describe("exports (T-023)", () => {
       ["", "1000.25"],
     ]);
     expect(table.at(-1)?.[0]).toBe("Total");
-    const done = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'export_job' AND entity_id = $1::uuid ORDER BY occurred_at`, jobId);
+    const done = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'export_job' AND entity_id = $1::uuid ORDER BY occurred_at`, jobId));
     expect(done.map((a) => a.action)).toEqual(["export.requested", "export.done"]);
     expect(await deliver(jobId)).toEqual({ outcome: "duplicate" });
   });

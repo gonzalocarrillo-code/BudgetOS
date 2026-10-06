@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { LIVE_LEAVES } from "@budget/domain";
-import { GOLDEN_ASSERTIONS, GOLDEN_MANUAL_ENTRY, goldenPlan } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_MANUAL_ENTRY, asOrgAdmin, goldenPlan } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -38,6 +39,11 @@ async function actual(envelopeId: string): Promise<string> {
 }
 async function decide(persona: string, requestId: string, decision: "approve" | "reject", comment?: string) {
   return as(persona, "POST", `/approvals/${requestId}/decisions`, { decision, ...(comment ? { comment } : {}) });
+}
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read/write below (all scoped to the golden
+// workspace/org) needs the same org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, golden.orgId);
 }
 
 beforeAll(async () => {
@@ -109,13 +115,17 @@ describe("manual result entry (T-039)", () => {
     expect(approved.body, JSON.stringify(approved.body)).toMatchObject({ status: "APPROVED" });
     expect(await actual(target.id)).toBe(new Decimal(before).plus(1000).toFixed(2));
 
-    const facts = await owner.$queryRawUnsafe<Array<{ source_system: string; source_run_id: string; envelope_id: string; match_method: string; amount: string; dimension_values: Record<string, string> }>>(
-      `SELECT source_system, source_run_id::text, envelope_id::text, match_method, amount::text, dimension_values FROM spend_fact WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid`,
-      golden.workspaceId,
-      id,
+    const facts = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ source_system: string; source_run_id: string; envelope_id: string; match_method: string; amount: string; dimension_values: Record<string, string> }>>(
+        `SELECT source_system, source_run_id::text, envelope_id::text, match_method, amount::text, dimension_values FROM spend_fact WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid`,
+        golden.workspaceId,
+        id,
+      ),
     );
     expect(facts).toEqual([{ source_system: "manual", source_run_id: id, envelope_id: target.id, match_method: "tuple", amount: "1000.00", dimension_values: { ...target.dims, channel: "tv" } }]);
-    const kpi = await owner.$queryRawUnsafe<Array<{ metric: string; value: string; envelope_id: string }>>(`SELECT metric, value::text, envelope_id::text FROM kpi_fact WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid`, golden.workspaceId, id);
+    const kpi = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ metric: string; value: string; envelope_id: string }>>(`SELECT metric, value::text, envelope_id::text FROM kpi_fact WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid`, golden.workspaceId, id),
+    );
     expect(kpi).toEqual([{ metric: "conversions", value: "25.0000", envelope_id: target.id }]);
 
     const detail = await as("planner", "GET", `/manual-entries/${id}`);
@@ -124,10 +134,10 @@ describe("manual result entry (T-039)", () => {
       { rowNo: 1, factTable: "spend_fact", metric: null, periodDate: "2026-08-10", enteredBy: golden.users.planner, approvedBy: golden.users.finance1 },
       { rowNo: 1, factTable: "kpi_fact", metric: "conversions", periodDate: "2026-08-10", enteredBy: golden.users.planner, approvedBy: golden.users.finance1 },
     ]);
-    const loaded = await owner.$queryRawUnsafe<Array<{ payload: Body }>>(`SELECT payload FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.loaded' AND payload->>'manualEntryId' = $2`, golden.workspaceId, id);
+    const loaded = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ payload: Body }>>(`SELECT payload FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.loaded' AND payload->>'manualEntryId' = $2`, golden.workspaceId, id));
     expect(loaded).toHaveLength(1);
     expect(loaded[0]?.payload["envelopeIds"]).toEqual([target.id]);
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'manual_entry' AND entity_id = $1::uuid ORDER BY occurred_at`, id);
+    const audits = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'manual_entry' AND entity_id = $1::uuid ORDER BY occurred_at`, id));
     expect(audits.map((a) => a.action)).toEqual(["manual_entry.created", "manual_entry.updated", "manual_entry.approved"]);
     expect((await decide("finance2", requestId, "approve")).status).toBe(409); // closed
   });
@@ -143,7 +153,7 @@ describe("manual result entry (T-039)", () => {
     expect(rejected.body).toMatchObject({ status: "REJECTED" });
     const detail = await as("planner", "GET", `/manual-entries/${id}`);
     expect(detail.body).toMatchObject({ status: "DRAFT", approvalRequestId: null, lastRequest: { id: requestId, status: "REJECTED", decision: { decision: "reject", comment } } });
-    expect(await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE source_run_id = $1::uuid`, id)).toEqual([{ n: 0n }]);
+    expect(await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE source_run_id = $1::uuid`, id))).toEqual([{ n: 0n }]);
 
     const edited = await as("planner", "PATCH", `/manual-entries/${id}`, { rows: [{ dimensionValues: target.dims, periodDate: "2026-08-21", currency: "USD", amount: "750.00", kpis: {} }] });
     expect(edited.status).toBe(200);
@@ -156,14 +166,14 @@ describe("manual result entry (T-039)", () => {
     expect((await as("planner", "POST", `/workspaces/${golden.workspaceId}/manual-entries`, { channel: "carrier_pigeon", periodStart: "2026-08-01", periodEnd: "2026-08-31" })).status).toBe(422);
     expect((await as("approver", "POST", `/workspaces/${golden.workspaceId}/manual-entries`, { channel: "tv", periodStart: "2026-08-01", periodEnd: "2026-08-31" })).status).toBe(403);
     // Close the period holding 5 March for this test (golden restated its Q1 closure), then a row on that day is refused.
-    const period = await owner.fiscalPeriod.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, startDate: { lte: new Date("2026-03-05") }, endDate: { gte: new Date("2026-03-05") } }, orderBy: { startDate: "desc" } });
+    const period = await asOwner((tx) => tx.fiscalPeriod.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, startDate: { lte: new Date("2026-03-05") }, endDate: { gte: new Date("2026-03-05") } }, orderBy: { startDate: "desc" } }));
     const closureId = randomUUID();
-    await owner.periodClosure.create({ data: { id: closureId, workspaceId: golden.workspaceId, periodId: period.id, closedBy: golden.users.finance1, registryVersion: {}, bqTable: "t", varianceSummary: {} } });
+    await asOwner((tx) => tx.periodClosure.create({ data: { id: closureId, workspaceId: golden.workspaceId, periodId: period.id, closedBy: golden.users.finance1, registryVersion: {}, bqTable: "t", varianceSummary: {} } }));
     try {
       const res = await as("planner", "POST", `/workspaces/${golden.workspaceId}/manual-entries`, { channel: "tv", periodStart: "2026-03-01", periodEnd: "2026-03-31", rows: [{ dimensionValues: { country: "BR" }, periodDate: "2026-03-05", currency: "USD", amount: "10.00" }] });
       expect((res.body["issues"] as Issue[]).map((i) => i.message)).toContain(`period ${period.key} is closed`);
     } finally {
-      await owner.periodClosure.deleteMany({ where: { id: closureId } });
+      await asOwner((tx) => tx.periodClosure.deleteMany({ where: { id: closureId } }));
     }
   });
 });

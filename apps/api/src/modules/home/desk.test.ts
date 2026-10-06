@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Role } from "@budget/domain";
-import { GOLDEN_PENDING_BULK } from "@budget/db";
+import { GOLDEN_PENDING_BULK, asOrgAdmin } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -154,7 +154,9 @@ describe("Home is each person's desk (HO-005)", () => {
     expect(Object.keys(byName).sort()).toEqual(["EMEA", "LATAM"]);
     expect(d.scopes.reduce((n, s) => n + s.alerts, 0)).toBe(d.totals.openAlerts); // every open alert sits under one of them
     // Budgets waiting for approval, under the budget they sit in: the bulk's 24 are all in EMEA.
-    expect(d.scopes.reduce((n, s) => n + s.pending, 0)).toBe(await owner.envelope.count({ where: { workspaceId: golden.workspaceId, status: "PENDING" } }));
+    // W0-6: the owner has no BYPASSRLS; this read needs the same org-admin tenant context real writes get from withTenant.
+    const pendingCount = await asOrgAdmin(owner, (tx) => tx.envelope.count({ where: { workspaceId: golden.workspaceId, status: "PENDING" } }), golden.orgId);
+    expect(d.scopes.reduce((n, s) => n + s.pending, 0)).toBe(pendingCount);
     expect(byName["EMEA"]?.pending).toBeGreaterThanOrEqual(24);
     expect(d.scopes.every((s) => s.owner === false && s.remaining !== null)).toBe(true);
 

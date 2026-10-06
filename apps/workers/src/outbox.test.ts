@@ -1,6 +1,6 @@
 import "./test-support/env.js";
 import { randomUUID } from "node:crypto";
-import { insertNotification, outbox, withTenant, type TenantContext } from "@budget/db";
+import { asOrgAdmin, insertNotification, outbox, withTenant, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodePush, handleOnce, type EventHandler, type OutboxEvent } from "./consumer.js";
@@ -50,7 +50,9 @@ async function emit(n: number, workspaceId = ws, topic = "budget.changed"): Prom
   return (await unpublished(workspaceId)).filter((id) => !before.has(id));
 }
 async function unpublished(workspaceId = ws): Promise<string[]> {
-  const rows = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text AS id FROM outbox WHERE workspace_id = $1::uuid AND published_at IS NULL ORDER BY outbox.id`, workspaceId);
+  // W0-6: the owner has no BYPASSRLS; outbox is workspace-scoped, so this read needs the same
+  // org-admin tenant context real writes get from withTenant.
+  const rows = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text AS id FROM outbox WHERE workspace_id = $1::uuid AND published_at IS NULL ORDER BY outbox.id`, workspaceId), orgId);
   return rows.map((r) => r.id);
 }
 /** Passes until one publishes nothing (other suites may have rows queued too). */
@@ -66,7 +68,7 @@ const push = (m: OutboxMessage, messageId: string = randomUUID()) => ({
   subscription: "projects/budget-os-test/subscriptions/test",
 });
 async function notifications(kind: string): Promise<number> {
-  const rows = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM notification WHERE workspace_id = $1::uuid AND kind = $2`, ws, kind);
+  const rows = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM notification WHERE workspace_id = $1::uuid AND kind = $2`, ws, kind), orgId);
   return Number(rows[0]?.n ?? 0);
 }
 const notifyHandler =
@@ -77,19 +79,28 @@ const notifyHandler =
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t016" } });
-  await owner.workspace.createMany({
-    data: [
-      { id: ws, orgId, slug: `t016-${ws}`, name: "T-016", reportingCurrency: "USD" },
-      { id: otherWs, orgId, slug: `t016-${otherWs}`, name: "T-016 other", reportingCurrency: "USD" },
-    ],
-  });
+  // W0-6: the owner has no BYPASSRLS; workspace has no owner_bootstrap policy, so the create needs
+  // the same org-admin tenant context real writes get from withTenant.
+  await asOrgAdmin(
+    owner,
+    (tx) =>
+      tx.workspace.createMany({
+        data: [
+          { id: ws, orgId, slug: `t016-${ws}`, name: "T-016", reportingCurrency: "USD" },
+          { id: otherWs, orgId, slug: `t016-${otherWs}`, name: "T-016 other", reportingCurrency: "USD" },
+        ],
+      }),
+    orgId,
+  );
   await owner.user.create({ data: { id: userId, orgId, email: `${userId}@t016.test`, name: "T-016", googleSub: `g-${userId}` } });
 });
 
 afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, [ws, otherWs]);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, [ws, otherWs], orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect(), publisherDb.$disconnect()]);

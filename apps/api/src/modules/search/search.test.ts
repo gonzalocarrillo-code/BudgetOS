@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { SETTINGS } from "@budget/domain";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests, handleSearchEvent, reindexWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -28,6 +29,9 @@ type Res = { status: number; body: Record<string, unknown> };
 async function call(user: TestUser, method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<Res> {
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: X, ...(body === undefined ? {} : { body }) });
 }
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace-scoped tables
+// below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 type Groups = Array<{ type: string; count: number; hits: Array<{ id: string; title: string; path: string; deepLink: string }> }>;
 const search = async (user: TestUser, q: string, limit = 20) => {
   const res = await call(user, "GET", `/workspaces/${ws}/search?q=${encodeURIComponent(q)}&limit=${limit}`);
@@ -38,7 +42,7 @@ const titles = (groups: Groups, type: string) => (groups.find((g) => g.type === 
 
 /** Pushes every outbox row of the workspace not yet delivered to the search indexer, in order. */
 async function index(): Promise<void> {
-  const rows = await owner.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, ws, delivered);
+  const rows = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string; topic: string; payload: unknown }>>(`SELECT id::text, topic, payload FROM outbox WHERE workspace_id = $1::uuid AND id > $2::bigint ORDER BY id`, ws, delivered));
   for (const r of rows) {
     await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(r.payload)).toString("base64"), attributes: { outboxId: r.id, workspaceId: ws, orgId, topic: r.topic }, messageId: r.id }, subscription: "search-indexer" });
     delivered = r.id;
@@ -55,7 +59,9 @@ async function envelope(name: string, region: string): Promise<string> {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t020" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t020-${ws}`, name: "T-020", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  // W0-6: workspace has no owner_bootstrap policy; it needs the org-admin tenant context real
+  // writes get from withTenant, with the real org id for its exact org_id match.
+  await asAdmin((tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t020-${ws}`, name: "T-020", reportingCurrency: "USD", fiscalYearStartMonth: 1 } }));
   await owner.user.createMany({ data: [planner, scoped, admin, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` })) });
   const latam = { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "descends_from", value: "latam" }] };
   await owner.roleAssignment.createMany({
@@ -67,13 +73,15 @@ beforeAll(async () => {
     ],
   });
   const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
   const ids: Record<string, string> = {};
-  for (const [code, label, parent] of [["latam", "Latin America", null], ["br", "Brazil", "latam"], ["emea", "Europe", null]] as const) {
-    ids[code] = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id, aliases) VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::text[])`, ids[code], region, code, label, parent ? ids[parent] : null, code === "br" ? ["Brasil"] : []);
-  }
-  await owner.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 1, conditions: {}, chain: [], blockSelfApproval: true } });
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+    for (const [code, label, parent] of [["latam", "Latin America", null], ["br", "Brazil", "latam"], ["emea", "Europe", null]] as const) {
+      ids[code] = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id, aliases) VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::text[])`, ids[code], region, code, label, parent ? ids[parent] : null, code === "br" ? ["Brasil"] : []);
+    }
+    await tx.approvalPolicy.create({ data: { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 1, conditions: {}, chain: [], blockSelfApproval: true } });
+  });
   h = await startHarness();
   env["br"] = await envelope("Brazil always-on", "br");
   env["latam"] = await envelope("LATAM brand", "latam");
@@ -88,11 +96,15 @@ afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself, including envelope_dimension, which references dimension_value) in the same order
   // `purgeWorkspace` validates against production — before the org-level dimension cleanup below.
-  await deleteWorkspaceForTests(owner, ws);
-  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -117,10 +129,12 @@ describe("search", () => {
   });
 
   it("a common word ranks and counts at most 1,000 matches per type and says there are more (T-034)", async () => {
-    await owner.$executeRawUnsafe(
-      `INSERT INTO search_document (workspace_id, entity_type, entity_id, title, path, body, updated_at)
+    await asAdmin((tx) =>
+      tx.$executeRawUnsafe(
+        `INSERT INTO search_document (workspace_id, entity_type, entity_id, title, path, body, updated_at)
        SELECT $1::uuid, 'comment', gen_random_uuid(), 'note ' || g, '', 'zebracrossing plan ' || g, now() FROM generate_series(1, 1001) g`,
-      ws,
+        ws,
+      ),
     );
     try {
       const res = await call(planner, "GET", `/workspaces/${ws}/search?q=zebracrossing&limit=5`);
@@ -133,7 +147,7 @@ describe("search", () => {
       const envelopes = (await search(planner, "brazil")).find((x) => x.type === "envelope") as { count: number; more: boolean } | undefined;
       expect(envelopes).toMatchObject({ count: 1, more: false });
     } finally {
-      await owner.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND body LIKE 'zebracrossing plan %'`, ws);
+      await asAdmin((tx) => tx.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND body LIKE 'zebracrossing plan %'`, ws));
     }
   });
 
@@ -185,7 +199,7 @@ describe("search", () => {
 
 describe("settings (T-041: typing a setting name in ⌘K opens the right admin page)", () => {
   it("indexes the settings catalog; a setting's name leads the results and deep-links to its admin page", async () => {
-    const count = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws);
+    const count = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws));
     expect(Number(count[0]?.n)).toBe(SETTINGS.length);
     for (const [q, title, link] of [
       ["pacing rules", "Pacing rules", "/admin/rules"],
@@ -205,10 +219,10 @@ describe("settings (T-041: typing a setting name in ⌘K opens the right admin p
   });
 
   it("a created workspace gets the catalog from its workspace.created event", async () => {
-    await owner.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws);
+    await asAdmin((tx) => tx.$executeRawUnsafe(`DELETE FROM search_document WHERE workspace_id = $1::uuid AND entity_type = 'setting'`, ws));
     expect(await search(planner, "type:settings")).toEqual([]);
     const payload = { workspaceId: ws };
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, 'workspace.created', $2::jsonb) RETURNING id::text`, ws, JSON.stringify(payload));
+    const [row] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, 'workspace.created', $2::jsonb) RETURNING id::text`, ws, JSON.stringify(payload)));
     await handleSearchEvent(app, { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "workspace.created" }, messageId: `t041-${row?.id}` }, subscription: "search-indexer" });
     expect(titles(await search(planner, "type:settings", 50), "setting")).toHaveLength(SETTINGS.length);
   });

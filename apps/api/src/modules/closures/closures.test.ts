@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -30,6 +31,9 @@ const admin = testUser("t024-admin", randomUUID());
 const orgAdmin = testUser("t024-org", randomUUID());
 const X = { "x-workspace-id": ws };
 const env: Record<string, { id: string; draftVersionId: string }> = {};
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace-scoped tables
+// below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 
 type Res = { status: number; body: Record<string, unknown> };
 async function call(user: TestUser, method: "GET" | "POST" | "PATCH", url: string, body?: unknown): Promise<Res> {
@@ -43,16 +47,16 @@ async function envelope(key: string, name: string, amount: string, dates = { sta
   expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
   env[key] = { id, draftVersionId: String(created.body["draftVersionId"]) };
 }
-const status = async (key: string) => (await owner.envelope.findUniqueOrThrow({ where: { id: env[key]?.id ?? "" }, select: { status: true } })).status;
+const status = async (key: string) => (await asAdmin((tx) => tx.envelope.findUniqueOrThrow({ where: { id: env[key]?.id ?? "" }, select: { status: true } }))).status;
 const head = async (key: string) => {
-  const e = await owner.envelope.findUniqueOrThrow({ where: { id: env[key]?.id ?? "" }, select: { currentVersionId: true, draftVersionId: true } });
+  const e = await asAdmin((tx) => tx.envelope.findUniqueOrThrow({ where: { id: env[key]?.id ?? "" }, select: { currentVersionId: true, draftVersionId: true } }));
   return e.draftVersionId ?? e.currentVersionId;
 };
 const close = (periodKey: string, user: TestUser = finance) => call(user, "POST", `/workspaces/${ws}/closures`, { periodKey });
 const auditsOf = async (closureId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid`, closureId)).map((a) => a.action).sort();
+  (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid`, closureId))).map((a) => a.action).sort();
 const topicsOf = async (closureId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ topic: string }>>(`SELECT topic FROM outbox WHERE workspace_id = $1::uuid AND payload->>'closureId' = $2`, ws, closureId)).map((o) => o.topic).sort();
+  (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ topic: string }>>(`SELECT topic FROM outbox WHERE workspace_id = $1::uuid AND payload->>'closureId' = $2`, ws, closureId))).map((o) => o.topic).sort();
 /** Resolves to "timeout" when `p` has not settled within `ms`. */
 function within<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
   let timer: NodeJS.Timeout | undefined;
@@ -67,7 +71,9 @@ function gate() {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t024" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t024-${ws}`, name: "T-024", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  // W0-6: workspace has no owner_bootstrap policy; it needs the org-admin tenant context real
+  // writes get from withTenant, with the real org id for its exact org_id match.
+  await asAdmin((tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t024-${ws}`, name: "T-024", reportingCurrency: "USD", fiscalYearStartMonth: 1 } }));
   await owner.user.createMany({ data: [planner, finance, approver, admin, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -79,14 +85,16 @@ beforeAll(async () => {
     ],
   });
   const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
-  for (const code of ["latam", "emea", "apac"]) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
-  await owner.hierarchyTemplate.create({ data: { id: randomUUID(), workspaceId: ws, name: "By region", path: ["region"], createdBy: orgAdmin.id } });
-  await owner.approvalPolicy.createMany({
-    data: [
-      { id: randomUUID(), workspaceId: ws, name: "Large", priority: 1, conditions: { amountAbs: { gte: 1000 } }, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true },
-      { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 2, conditions: {}, chain: [], blockSelfApproval: true },
-    ],
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, orgAdmin.id);
+    for (const code of ["latam", "emea", "apac"]) await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), region, code);
+    await tx.hierarchyTemplate.create({ data: { id: randomUUID(), workspaceId: ws, name: "By region", path: ["region"], createdBy: orgAdmin.id } });
+    await tx.approvalPolicy.createMany({
+      data: [
+        { id: randomUUID(), workspaceId: ws, name: "Large", priority: 1, conditions: { amountAbs: { gte: 1000 } }, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true },
+        { id: randomUUID(), workspaceId: ws, name: "Auto", priority: 2, conditions: {}, chain: [], blockSelfApproval: true },
+      ],
+    });
   });
   h = await startHarness();
   sink = h.app.get(CLOSURE_SINK, { strict: false }) as RecordingClosureSink;
@@ -94,23 +102,29 @@ beforeAll(async () => {
   await envelope("emea", "Europe launch", "2000.00"); // pending: the Large policy needs an approver
   await envelope("apac", "APAC 2025 wrap-up", "50.00", { startDate: "2025-10-01", endDate: "2025-12-31" });
   await owner.$executeRawUnsafe(`SELECT ensure_fact_partitions('2026-01-01'::date, 3)`);
-  for (const [day, amount] of [["2026-01-15", "100.00"], ["2026-02-10", "40.50"], ["2026-04-02", "7.00"]] as const) {
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (id, workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, loaded_at)
+  await asAdmin(async (tx) => {
+    for (const [day, amount] of [["2026-01-15", "100.00"], ["2026-02-10", "40.50"], ["2026-04-02", "7.00"]] as const) {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO spend_fact (id, workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, loaded_at)
        VALUES ($1::uuid, $2::uuid, $3::uuid, '{"region":"latam"}', $4::date, 'USD', $5::numeric, $5::numeric, 'csv', $6::uuid, $1, now())`,
-      randomUUID(), ws, env["latam"]?.id, day, amount, randomUUID(),
-    );
-  }
+        randomUUID(), ws, env["latam"]?.id, day, amount, randomUUID(),
+      );
+    }
+  });
 }, 60_000);
 
 afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: orgAdmin.id } });
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -137,7 +151,7 @@ describe("closures (T-024)", () => {
   });
 
   it("the pending request on a locked envelope cannot be decided or withdrawn", async () => {
-    const [request] = await owner.approvalRequest.findMany({ where: { workspaceId: ws, status: "PENDING" } });
+    const [request] = await asAdmin((tx) => tx.approvalRequest.findMany({ where: { workspaceId: ws, status: "PENDING" } }));
     expect(request).toBeDefined();
     expect((await call(approver, "POST", `/approvals/${request?.id}/decisions`, { decision: "approve" })).status).toBe(423);
     expect((await call(planner, "POST", `/approvals/${request?.id}/withdraw`, {})).status).toBe(423);
@@ -188,7 +202,7 @@ describe("closures (T-024)", () => {
     const again = await call(admin, "POST", `/closures/${String(feb.body["id"])}/restate`, { reason: "Reopen February too" });
     expect(again.body).toMatchObject({ unlockedEnvelopes: 2 });
     expect([await status("latam"), await status("emea")]).toEqual(["APPROVED", "PENDING"]);
-    const [audit] = await owner.$queryRawUnsafe<Array<{ reason: string }>>(`SELECT reason FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid AND action = 'closure.restated'`, q1);
+    const [audit] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ reason: string }>>(`SELECT reason FROM audit_event WHERE entity_type = 'period_closure' AND entity_id = $1::uuid AND action = 'closure.restated'`, q1));
     expect(audit?.reason).toBe("Late January invoices");
     expect((await call(admin, "POST", `/closures/${q1}/restate`, { reason: "twice" })).status).toBe(409);
   });
@@ -226,7 +240,7 @@ describe("two-phase close (W3-1, audit I-4)", () => {
     }
     expect(res.status, JSON.stringify(res.body)).toBe(503);
     expect(res.body).toMatchObject({ code: "UNAVAILABLE" });
-    const failed = await owner.periodClosure.findFirstOrThrow({ where: { workspaceId: ws, bqTable: partial } });
+    const failed = await asAdmin((tx) => tx.periodClosure.findFirstOrThrow({ where: { workspaceId: ws, bqTable: partial } }));
     expect(failed.status).toBe("failed");
     expect(failed.error).toContain("quota exceeded");
     expect(await status("apac")).toBe(before);
@@ -249,7 +263,7 @@ describe("two-phase close (W3-1, audit I-4)", () => {
 
   it("while the sink writes: a concurrent close is 409, other writes go through, restate and an early abandon are 409; a stale close is abandoned and its envelopes unlocked", { timeout: 120_000 }, async () => {
     const before = await status("apac");
-    const period = await owner.fiscalPeriod.findFirstOrThrow({ where: { workspaceId: ws, key: "2025-Q4" } });
+    const period = await asAdmin((tx) => tx.fiscalPeriod.findFirstOrThrow({ where: { workspaceId: ws, key: "2025-Q4" } }));
     const g = gate();
     const original = sink.write;
     sink.write = async (table, rows, opts) => {
@@ -265,7 +279,7 @@ describe("two-phase close (W3-1, audit I-4)", () => {
       if (first === "timeout") return;
       expect(first.r.status, JSON.stringify(first.r.body)).toBe(409);
       const winner = attempts[1 - first.i] as Promise<Res>;
-      const open = await owner.periodClosure.findMany({ where: { workspaceId: ws, periodId: period.id, status: { in: ["closing", "closed"] } } });
+      const open = await asAdmin((tx) => tx.periodClosure.findMany({ where: { workspaceId: ws, periodId: period.id, status: { in: ["closing", "closed"] } } }));
       expect(open.map((c) => c.status)).toEqual(["closing"]);
       const closing = open[0]?.id ?? "";
       expect(await status("apac")).toBe("LOCKED");
@@ -284,7 +298,7 @@ describe("two-phase close (W3-1, audit I-4)", () => {
       expect((await call(finance, "POST", `/closures/${closing}/abandon`, {})).status).toBe(409);
 
       // (d) after 15 minutes it is stale: abandon fails it and gives the envelopes back.
-      await owner.periodClosure.update({ where: { id: closing }, data: { closedAt: new Date(Date.now() - 20 * 60_000) } });
+      await asAdmin((tx) => tx.periodClosure.update({ where: { id: closing }, data: { closedAt: new Date(Date.now() - 20 * 60_000) } }));
       expect((await call(planner, "POST", `/closures/${closing}/abandon`, {})).status).toBe(403);
       const abandoned = await call(finance, "POST", `/closures/${closing}/abandon`, {});
       expect(abandoned.status, JSON.stringify(abandoned.body)).toBe(201);
@@ -297,7 +311,7 @@ describe("two-phase close (W3-1, audit I-4)", () => {
       g.release();
       const late = await winner;
       expect(late.status, JSON.stringify(late.body)).toBe(409);
-      expect((await owner.periodClosure.findUniqueOrThrow({ where: { id: closing } })).status).toBe("failed");
+      expect((await asAdmin((tx) => tx.periodClosure.findUniqueOrThrow({ where: { id: closing } }))).status).toBe("failed");
       expect(await status("apac")).toBe(before);
     } finally {
       g.release();

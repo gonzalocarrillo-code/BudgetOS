@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { TenantContext } from "@budget/db";
+import { asOrgAdmin, type TenantContext } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb as appDbClient, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -84,16 +84,25 @@ async function approvedEnvelope(amount: string, over: Body = {}) {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "epic-1.3" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `e13-${ws}`, name: "Epic 1.3", reportingCurrency: "USD" } });
+  // W0-6: the owner has no BYPASSRLS; workspace and dimension/dimension_value need the org-admin
+  // tenant context real writes get from withTenant (organization/user/roleAssignment keep their
+  // owner_bootstrap policy and need no wrapping).
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.workspace.create({ data: { id: ws, orgId, slug: `e13-${ws}`, name: "Epic 1.3", reportingCurrency: "USD" } });
+      const region = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, users.admin.id);
+      const latam = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'latam', 'LATAM')`, latam, region);
+      await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, 'br', 'Brazil', $3::uuid)`, randomUUID(), region, latam);
+    },
+    orgId,
+  );
   await owner.user.createMany({ data: Object.values(users).map((u) => ({ id: u.id, orgId, email: u.email, name: u.email, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: (Object.keys(users) as Array<keyof typeof users>).map((k) => ({ id: randomUUID(), workspaceId: ws, principalType: "user", principalId: users[k].id, role: roles[k] as never, createdBy: users.admin.id })),
   });
-  const region = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'region', 'Region', 'ENUM', $3::uuid)`, region, orgId, users.admin.id);
-  const latam = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'latam', 'LATAM')`, latam, region);
-  await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, 'br', 'Brazil', $3::uuid)`, randomUUID(), region, latam);
   h = await startHarness();
   const ctx: TenantContext = { workspaceId: ws, orgId, userId: users.admin.id, isOrgAdmin: false, actorType: "user", requestId: `e13-seed-${ws}` };
   expect(await seedDefaultPolicies(appDb, ctx)).toBe(6); // + "Manual results" (T-039)
@@ -103,11 +112,19 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
-  // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
-  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      // W3-11 (audit I-32): dimension_value.parent_value_id / merged_into_id are self-referencing FKs now.
+      await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+    },
+    orgId,
+  );
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), appDb.$disconnect()]);
@@ -147,7 +164,7 @@ describe("Policies configured as in §8.1 route requests through the correct cha
 
   it("an over-allocating child routes to Major even when small", async () => {
     const parent = await approvedEnvelope("1000.00");
-    await owner.envelope.update({ where: { id: parent }, data: { allowOverAllocation: true } });
+    await asOrgAdmin(owner, (tx) => tx.envelope.update({ where: { id: parent }, data: { allowOverAllocation: true } }), orgId);
     await approvedEnvelope("600.00", { parentId: parent });
     const child = await newEnvelope("500.00", { parentId: parent });
     expect((await submit(child.id, child.draft)).policy.name).toBe("Major / over-allocation");
@@ -158,21 +175,21 @@ describe("Policies configured as in §8.1 route requests through the correct cha
     const s1 = await submit(e.id, e.draft);
     expect([400, 422]).toContain((await decide(s1.requestId!, users.budgetOwner, "reject")).status); // comment required
     expect((await decide(s1.requestId!, users.budgetOwner, "reject", "not this quarter")).status).toBe(201);
-    const rejected = await owner.envelopeVersion.findUniqueOrThrow({ where: { id: e.draft } });
+    const rejected = await asOrgAdmin(owner, (tx) => tx.envelopeVersion.findUniqueOrThrow({ where: { id: e.draft } }), orgId);
     expect(rejected.status).toBe("REJECTED");
     expect(await envelope(e.id)).toMatchObject({ status: "DRAFT", draftVersionId: null });
 
     const v2 = await redraft(e.id, "1800.00");
     const s2 = await submit(e.id, v2);
     expect((await decide(s2.requestId!, users.budgetOwner, "request_changes", "split by month please")).status).toBe(201);
-    expect((await owner.envelopeVersion.findUniqueOrThrow({ where: { id: v2 } })).status).toBe("DRAFT");
-    const thread = await owner.thread.findFirstOrThrow({ where: { anchorId: e.id, isBlocking: true } });
+    expect((await asOrgAdmin(owner, (tx) => tx.envelopeVersion.findUniqueOrThrow({ where: { id: v2 } }), orgId)).status).toBe("DRAFT");
+    const thread = await asOrgAdmin(owner, (tx) => tx.thread.findFirstOrThrow({ where: { anchorId: e.id, isBlocking: true } }), orgId);
     const blocked = await as(users.planner, "POST", `/api/v1/envelopes/${e.id}/submit`, { versionId: v2 });
     expect(blocked.status).toBe(409);
-    await owner.thread.update({ where: { id: thread.id }, data: { status: "resolved" } }); // thread resolution is T-019
+    await asOrgAdmin(owner, (tx) => tx.thread.update({ where: { id: thread.id }, data: { status: "resolved" } }), orgId); // thread resolution is T-019
     const s3 = await submit(e.id, v2);
     expect(s3.requestId).not.toBe(s2.requestId);
-    expect((await owner.approvalRequest.findUniqueOrThrow({ where: { id: s2.requestId! } })).status).toBe("WITHDRAWN");
+    expect((await asOrgAdmin(owner, (tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: s2.requestId! } }), orgId)).status).toBe("WITHDRAWN");
   });
 
   it("each decision writes one approval audit_event and one outbox row; the final one also approves the envelope", async () => {
@@ -180,12 +197,12 @@ describe("Policies configured as in §8.1 route requests through the correct cha
     const s = await submit(e.id, e.draft);
     await decide(s.requestId!, users.budgetOwner);
     const requestId = `e13-final-${randomUUID()}`;
-    const maxId = async () => Number((await owner.$queryRawUnsafe<Array<{ m: bigint | null }>>(`SELECT max(id) AS m FROM outbox`))[0]?.m ?? 0);
+    const maxId = async () => Number((await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ m: bigint | null }>>(`SELECT max(id) AS m FROM outbox`), orgId))[0]?.m ?? 0);
     const before = await maxId();
     expect((await as(users.approver, "POST", `/api/v1/approvals/${s.requestId}/decisions`, { decision: "approve" }, requestId)).status).toBe(201);
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string; entity_type: string }>>(`SELECT action, entity_type FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId);
+    const audits = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ action: string; entity_type: string }>>(`SELECT action, entity_type FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId), orgId);
     expect(audits.map((a) => `${a.entity_type}:${a.action}`).sort()).toEqual(["approval_request:approval.approve", "envelope:envelope.version.approved"]);
-    const topics = await owner.$queryRawUnsafe<Array<{ topic: string }>>(`SELECT topic FROM outbox WHERE workspace_id = $1::uuid AND id > $2 ORDER BY id`, ws, before);
+    const topics = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ topic: string }>>(`SELECT topic FROM outbox WHERE workspace_id = $1::uuid AND id > $2 ORDER BY id`, ws, before), orgId);
     expect(topics.map((t) => t.topic).sort()).toEqual(["approval.changed", "budget.changed"]);
   });
 });
@@ -241,7 +258,7 @@ describe("overdue requests escalate", () => {
     const e = await newEnvelope("8000.00");
     const s = await submit(e.id, e.draft);
     await decide(s.requestId!, users.budgetOwner); // now at the approver step (escalateTo FINANCE)
-    await owner.approvalRequest.update({ where: { id: s.requestId! }, data: { dueAt: new Date(Date.now() - 3_600_000) } });
+    await asOrgAdmin(owner, (tx) => tx.approvalRequest.update({ where: { id: s.requestId! }, data: { dueAt: new Date(Date.now() - 3_600_000) } }), orgId);
 
     const out = await escalateOverdue(appDb, [orgId]);
     expect(out.escalated).toContain(s.requestId);
@@ -260,7 +277,7 @@ describe("overdue requests escalate", () => {
   it("a request that is not overdue, or whose step has no escalateTo, is left alone", async () => {
     const e = await newEnvelope("9000.00");
     const s = await submit(e.id, e.draft); // step 0: BUDGET_OWNER, no escalateTo
-    await owner.approvalRequest.update({ where: { id: s.requestId! }, data: { dueAt: new Date(Date.now() - 3_600_000) } });
+    await asOrgAdmin(owner, (tx) => tx.approvalRequest.update({ where: { id: s.requestId! }, data: { dueAt: new Date(Date.now() - 3_600_000) } }), orgId);
     expect((await escalateOverdue(appDb, [orgId])).escalated).not.toContain(s.requestId);
   });
 });
@@ -311,14 +328,14 @@ describe("cap trigger: children cannot be approved above the parent", () => {
     expect(last.body["details"]).toMatchObject({ parent: "1000.00", children: "1100.00" });
     expect((await envelope(b.id)).status).toBe("PENDING");
     expect((await envelope(a)).current?.amount).toBe("600.00");
-    expect(await owner.approvalDecision.count({ where: { requestId: s.requestId!, decidedBy: users.finance2.id } })).toBe(0); // rolled back
+    expect(await asOrgAdmin(owner, (tx) => tx.approvalDecision.count({ where: { requestId: s.requestId!, decidedBy: users.finance2.id } }), orgId)).toBe(0); // rolled back
   });
 
   it("the database trigger blocks it even when the service is bypassed", async () => {
     const parent = await approvedEnvelope("1000.00");
     await approvedEnvelope("700.00", { parentId: parent });
     const b = await newEnvelope("400.00", { parentId: parent });
-    await expect(owner.$executeRawUnsafe(`UPDATE envelope_version SET status = 'APPROVED', approved_at = now() WHERE id = $1::uuid`, b.draft)).rejects.toThrow(/CAP_EXCEEDED/);
+    await expect(asOrgAdmin(owner, (tx) => tx.$executeRawUnsafe(`UPDATE envelope_version SET status = 'APPROVED', approved_at = now() WHERE id = $1::uuid`, b.draft), orgId)).rejects.toThrow(/CAP_EXCEEDED/);
   });
 
   it("up to the parent amount is fine", async () => {

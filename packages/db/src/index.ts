@@ -93,7 +93,7 @@ export { lockEnvelope, lockTreeShape, lockWorkspaceImport } from "./envelopes.js
 export { effectiveTargets, lockTarget } from "./targets.js";
 export type { EffectiveTargetRow, LockedTargetRow } from "./targets.js";
 export type { LockedEnvelopeRow } from "./envelopes.js";
-export { withIdentity, withTenant } from "./tenant.js";
+export { asOrgAdmin, withIdentity, withTenant } from "./tenant.js";
 export type { IdentityLookup, TenantContext } from "./tenant.js";
 export { activeNamingTemplates, dimensionLabels, fiscalLabel, recomputeNames } from "./naming.js";
 export { DEFAULT_TOURS } from "../seed/defaults.tours.js";

@@ -1,4 +1,4 @@
-import { withTenant, type TenantContext } from "@budget/db";
+import { asOrgAdmin, withTenant, type TenantContext } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { log } from "../log.js";
 
@@ -122,27 +122,37 @@ export async function purgeWorkspace(prisma: PrismaClient, ws: { workspaceId: st
  * production: those are the tables every tenant table's workspace_id (and the pointer columns)
  * now FKs to.
  *
- * Requires a connection that bypasses RLS (the superuser `owner`/`DATABASE_URL` role tests already
- * use locally and in CI — never the app role, and never in production code). `audit_event` is
- * append-only (the `audit_event_immutable` trigger); it is disabled around the delete, test cleanup
- * only, same as the real purge keeps it on but this never runs outside a test.
+ * W0-6: the owner has no BYPASSRLS (it matches production's real, non-superuser owner), so every
+ * statement below needs the org-admin tenant context real writes get from `withTenant` — without
+ * it, FORCE RLS silently deletes zero rows. `orgId` is the one org every workspace id here belongs
+ * to (every caller cleans up workspaces from a single test org); `asOrgAdmin` wraps the whole
+ * delete in one transaction with that context set transaction-locally, which also keeps the
+ * surrounding `ALTER TABLE ... DISABLE/ENABLE TRIGGER` pair atomic with the deletes between them.
+ * `audit_event` is append-only (the `audit_event_immutable` trigger); it is disabled around the
+ * delete, test cleanup only, same as the real purge keeps it on but this never runs outside a test.
  */
-export async function deleteWorkspaceForTests(prisma: PrismaClient, workspaceIds: string | readonly string[]): Promise<void> {
+export async function deleteWorkspaceForTests(prisma: PrismaClient, workspaceIds: string | readonly string[], orgId: string): Promise<void> {
   const ids = Array.isArray(workspaceIds) ? workspaceIds : [workspaceIds];
   if (ids.length === 0) return;
-  for (const id of ids) {
-    for (const [, sql] of VIA_PARENT) await prisma.$executeRawUnsafe(sql, id);
-    for (const table of OWN) await prisma.$executeRawUnsafe(`DELETE FROM ${table} WHERE workspace_id = $1::uuid`, id);
-  }
-  // outbox and audit_event are deliberately outside VIA_PARENT/OWN: purgeWorkspace keeps both (the
-  // real purge never deletes the workspace row either, only tombstones it, so their FKs to
-  // workspace(id) never bind there). A test hard-delete needs them gone first.
-  await prisma.$executeRawUnsafe(`DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = ANY($1::uuid[]))`, ids);
-  await prisma.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, ids);
-  await prisma.$executeRawUnsafe(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
-  await prisma.$executeRawUnsafe(`DELETE FROM audit_event WHERE workspace_id = ANY($1::uuid[])`, ids);
-  await prisma.$executeRawUnsafe(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
-  await prisma.$executeRawUnsafe(`DELETE FROM workspace WHERE id = ANY($1::uuid[])`, ids);
+  await asOrgAdmin(
+    prisma,
+    async (tx) => {
+      for (const id of ids) {
+        for (const [, sql] of VIA_PARENT) await tx.$executeRawUnsafe(sql, id);
+        for (const table of OWN) await tx.$executeRawUnsafe(`DELETE FROM ${table} WHERE workspace_id = $1::uuid`, id);
+      }
+      // outbox and audit_event are deliberately outside VIA_PARENT/OWN: purgeWorkspace keeps both
+      // (the real purge never deletes the workspace row either, only tombstones it, so their FKs
+      // to workspace(id) never bind there). A test hard-delete needs them gone first.
+      await tx.$executeRawUnsafe(`DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = ANY($1::uuid[]))`, ids);
+      await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = ANY($1::uuid[])`, ids);
+      await tx.$executeRawUnsafe(`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`);
+      await tx.$executeRawUnsafe(`DELETE FROM audit_event WHERE workspace_id = ANY($1::uuid[])`, ids);
+      await tx.$executeRawUnsafe(`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`);
+      await tx.$executeRawUnsafe(`DELETE FROM workspace WHERE id = ANY($1::uuid[])`, ids);
+    },
+    orgId,
+  );
 }
 
 /** Every deleted workspace of these orgs whose retention window has passed and is not purged yet. */

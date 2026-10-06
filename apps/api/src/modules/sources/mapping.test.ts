@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
+import { asOrgAdmin } from "@budget/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
@@ -20,6 +22,11 @@ const slug = `map-${randomUUID().slice(0, 8)}`;
 async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string, body?: unknown) {
   const token = await h.mint({ sub: `ip-${persona}`, email: `${persona.toLowerCase()}@${slug}.golden.test` }, { googleSub: `golden-${slug}-${persona}` });
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId }, ...(body === undefined ? {} : { body }) });
+}
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read below (all scoped to the golden
+// workspace/org) needs the same org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, golden.orgId);
 }
 
 const header = ["Date", "Country", "Platform", "Spend", "Currency", "Conversions", "tCPA"];
@@ -94,7 +101,7 @@ describe("synonyms (D-005)", () => {
     expect((await as("admin", "POST", `/api/v1/workspaces/${ws}/mapping-synonyms`, { kind: "metric", term: "x", target: { role: "amount" } })).status).toBe(422);
     const off = await as("admin", "PATCH", `/api/v1/mapping-synonyms/${String(made.body["id"])}`, { isActive: false });
     expect(off.body).toMatchObject({ isActive: false });
-    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action LIKE 'mapping_synonym.%'`, ws);
+    const audits = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action LIKE 'mapping_synonym.%'`, ws));
     expect(Number(audits[0]?.n)).toBe(2);
   });
 });
@@ -121,13 +128,15 @@ describe("mapping profiles (D-004)", () => {
     const remapped = { ...mapping, columns: { ...mapping.columns, Conversions: { role: "kpi", metric: "purchases" } } };
     const updated = await as("admin", "PATCH", `/api/v1/mapping-profiles/${profileId}`, { mapping: remapped });
     expect(updated.body).toMatchObject({ sources: 1 });
-    const row = await owner.dataSource.findUniqueOrThrow({ where: { id: String(source.body["id"]) } });
+    const row = await asOwner((tx) => tx.dataSource.findUniqueOrThrow({ where: { id: String(source.body["id"]) } }));
     expect(row.mapping).toEqual(remapped);
-    const actions = (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE workspace_id = $1::uuid AND entity_id = ANY($2::uuid[]) ORDER BY occurred_at`, ws, [profileId, String(source.body["id"])])).map((a) => a.action);
+    const actions = (
+      await asOwner((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE workspace_id = $1::uuid AND entity_id = ANY($2::uuid[]) ORDER BY occurred_at`, ws, [profileId, String(source.body["id"])]))
+    ).map((a) => a.action);
     expect(actions).toEqual(["mapping_profile.created", "source.created", "source.updated", "mapping_profile.updated"]);
 
     // Every column mapped was learned (the ratio left out was not).
-    const learned = await owner.mappingSynonym.findMany({ where: { workspaceId: ws, origin: "learned" } });
+    const learned = await asOwner((tx) => tx.mappingSynonym.findMany({ where: { workspaceId: ws, origin: "learned" } }));
     // (The golden seed's own source taught its columns too.)
     expect(learned.map((l) => l.term)).toEqual(expect.arrayContaining(["conversions", "country", "currency", "date", "platform", "spend"]));
     expect(learned.map((l) => l.term)).not.toContain("tcpa");

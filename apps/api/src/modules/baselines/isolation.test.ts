@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GOLDEN_HISTORY, withTenant } from "@budget/db";
+import { asOrgAdmin, GOLDEN_HISTORY, withTenant } from "@budget/db";
 import { checkSnapshotIntegrity } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -33,9 +33,13 @@ async function as(persona: string, workspaceId: string, method: "GET" | "POST" |
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
   h = await startHarness();
-  snapA = (await owner.budgetBaseline.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: GOLDEN_HISTORY.plan.name } })).id;
+  // W0-6: the owner has no BYPASSRLS; budget_baseline and workspace need the org-admin tenant
+  // context real writes get from withTenant.
+  snapA = (
+    await asOrgAdmin(owner, (tx) => tx.budgetBaseline.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, name: GOLDEN_HISTORY.plan.name } }), golden.orgId)
+  ).id;
   // Workspace B in the same org: the golden admin is its admin too.
-  await owner.workspace.create({ data: { id: wsB, orgId: golden.orgId, slug: `${slug}-b`, name: "Isolation B", reportingCurrency: "USD" } });
+  await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: wsB, orgId: golden.orgId, slug: `${slug}-b`, name: "Isolation B", reportingCurrency: "USD" } }), golden.orgId);
   await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: wsB, principalType: "user", principalId: golden.users.admin, role: "WORKSPACE_ADMIN", createdBy: golden.users.orgAdmin } });
   const env = await as("admin", wsB, "POST", `/api/v1/workspaces/${wsB}/envelopes`, { name: "B budget", parentId: null, dimensionValues: { region: "EMEA" }, startDate: "2026-01-01", endDate: "2026-12-31", currency: "USD", amount: "100.00" });
   expect(env.status, JSON.stringify(env.body)).toBe(201);
@@ -69,10 +73,15 @@ describe("snapshots never cross tenants (D-013)", () => {
 
   it("Postgres refuses a snapshot row whose workspace is not its snapshot's or its budget's", async () => {
     const row = (baselineId: string, workspaceId: string, envelopeId: string) =>
-      owner.$executeRawUnsafe(
-        `INSERT INTO budget_baseline_row (baseline_id, workspace_id, envelope_id, version_id, amount, amount_reporting, currency, parent_id, name, dimension_values, start_date, end_date, is_leaf)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, NULL, 1, 1, 'USD', NULL, 'x', '{}', '2026-01-01', '2026-12-31', true)`,
-        baselineId, workspaceId, envelopeId,
+      asOrgAdmin(
+        owner,
+        (tx) =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO budget_baseline_row (baseline_id, workspace_id, envelope_id, version_id, amount, amount_reporting, currency, parent_id, name, dimension_values, start_date, end_date, is_leaf)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, NULL, 1, 1, 'USD', NULL, 'x', '{}', '2026-01-01', '2026-12-31', true)`,
+            baselineId, workspaceId, envelopeId,
+          ),
+        golden.orgId,
       );
     const envA = golden.envelopeIds.values().next().value as string;
     await expect(row(snapA, wsB, envB)).rejects.toThrow(/budget_baseline_row_baseline_tenant_fkey/); // A's snapshot, B's row

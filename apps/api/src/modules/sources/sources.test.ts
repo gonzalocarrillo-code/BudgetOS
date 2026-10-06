@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests, MemoryObjectStore, runIngest, uploadBucket } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
@@ -29,16 +30,21 @@ let savedKey: string | undefined;
 async function call(user: TestUser, method: "GET" | "POST" | "PATCH", url: string, body?: unknown, requestId = rid()) {
   return h.call(method, `/api/v1${url}`, await h.mint(user), { headers: { ...X, "x-request-id": requestId }, ...(body === undefined ? {} : { body }) });
 }
+// W0-6: the owner has no BYPASSRLS; every raw/Prisma call against the workspace-scoped tables
+// below needs the org-admin tenant context real writes get from withTenant.
+const asAdmin = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 const actions = async (requestId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId)).map((r) => r.action);
+  (await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId))).map((r) => r.action);
 const topics = async (topic: string, key: string, value: string) =>
-  Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = $2 AND payload->>$3 = $4`, ws, topic, key, value))[0]?.n ?? 0);
+  Number((await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = $2 AND payload->>$3 = $4`, ws, topic, key, value)))[0]?.n ?? 0);
 
 beforeAll(async () => {
   savedKey = process.env["OPENAI_API_KEY"];
   delete process.env["OPENAI_API_KEY"];
   await owner.organization.create({ data: { id: orgId, name: "t017-api" } });
-  await owner.workspace.createMany({ data: [ws, otherWs].map((id) => ({ id, orgId, slug: `t017-${id}`, name: "T-017", reportingCurrency: "USD" })) });
+  // W0-6: workspace has no owner_bootstrap policy; it needs the org-admin tenant context real
+  // writes get from withTenant, with the real org id for its exact org_id match.
+  await asAdmin((tx) => tx.workspace.createMany({ data: [ws, otherWs].map((id) => ({ id, orgId, slug: `t017-${id}`, name: "T-017", reportingCurrency: "USD" })) }));
   await owner.user.createMany({ data: [dataAdmin, planner, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.email, googleSub: `g-${u.sub}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -48,16 +54,18 @@ beforeAll(async () => {
     ],
   });
   const country = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, country, orgId, orgAdmin.id);
-  for (const code of ["BR", "US"]) await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), country, code);
   envelopeId = randomUUID();
-  await owner.$executeRawUnsafe(
-    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, country, orgId, orgAdmin.id);
+    for (const code of ["BR", "US"]) await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, randomUUID(), country, code);
+    await tx.$executeRawUnsafe(
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
      VALUES ($1::uuid, $2::uuid, 'BR', '{"country":"BR"}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`,
-    envelopeId,
-    ws,
-    orgAdmin.id,
-  );
+      envelopeId,
+      ws,
+      orgAdmin.id,
+    );
+  });
   h = await startHarness();
 }, 60_000);
 
@@ -67,9 +75,13 @@ afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves, including mapping_synonym and data_source's own FKs) in the same order
   // `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, [ws, otherWs]);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, [ws, otherWs], orgId);
+  await asAdmin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [dataAdmin.id, planner.id, orgAdmin.id] } } });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
@@ -105,7 +117,7 @@ describe("sources", () => {
     const requestId = rid();
     const res = await call(dataAdmin, "PATCH", `/sources/${sourceId}`, { name: "Monthly spend (US)", schedule: "0 6 * * *" }, requestId);
     expect(res.body).toMatchObject({ name: "Monthly spend (US)", schedule: "0 6 * * *" });
-    const [a] = await owner.$queryRawUnsafe<Array<{ before: { name: string } }>>(`SELECT before FROM audit_event WHERE request_id = $1`, requestId);
+    const [a] = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ before: { name: string } }>>(`SELECT before FROM audit_event WHERE request_id = $1`, requestId));
     expect(a?.before.name).toBe("Monthly spend");
   });
 
@@ -136,7 +148,7 @@ describe("sources", () => {
     expect(run.status, JSON.stringify(run.body)).toBe(201);
     expect(await actions(requestId)).toEqual(["ingest.run.queued"]);
     expect(await topics("ingest.requested", "runId", String(run.body["runId"]))).toBe(1);
-    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: String(run.body["runId"]) } })).summary).toEqual({ mode: "full" });
+    expect((await asAdmin((tx) => tx.ingestRun.findUniqueOrThrow({ where: { id: String(run.body["runId"]) } }))).summary).toEqual({ mode: "full" });
     expect((await call(planner, "POST", `/sources/${id}/run`, { fullResync: true })).status).toBe(403);
   });
 
@@ -184,7 +196,7 @@ describe("unmatched spend", () => {
     expect(mapped.body).toMatchObject({ envelopeId, spend: 2, kpi: 0, projection: 0 });
     expect(await actions(requestId)).toEqual(["facts.mapped"]);
     // T-036 (§24.3 step 4): assigned by hand.
-    const methods = await owner.$queryRawUnsafe<Array<{ match_method: string }>>(`SELECT DISTINCT match_method FROM spend_fact WHERE workspace_id = $1::uuid AND envelope_id = $2::uuid AND dimension_values->>'country' = 'US'`, ws, envelopeId);
+    const methods = await asAdmin((tx) => tx.$queryRawUnsafe<Array<{ match_method: string }>>(`SELECT DISTINCT match_method FROM spend_fact WHERE workspace_id = $1::uuid AND envelope_id = $2::uuid AND dimension_values->>'country' = 'US'`, ws, envelopeId));
     expect(methods).toEqual([{ match_method: "manual" }]);
     expect((await call(dataAdmin, "GET", `/workspaces/${ws}/unmatched-spend`)).body).toEqual([]);
     expect((await call(dataAdmin, "POST", `/workspaces/${ws}/unmatched-spend/map`, { dimensionValues: { country: "US" }, envelopeId })).status).toBe(404);

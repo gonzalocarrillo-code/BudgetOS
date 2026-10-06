@@ -1,7 +1,7 @@
 import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
-import { outbox, withTenant } from "@budget/db";
-import { PrismaClient } from "@prisma/client";
+import { asOrgAdmin, outbox, withTenant } from "@budget/db";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { handleInApp } from "./in-app.js";
@@ -40,6 +40,11 @@ class FakeSlack implements SlackClient {
   }
 }
 
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read/write below (all scoped to this org's
+// workspace) needs the same org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, orgId);
+}
 /** Writes the event through the real outbox helper and returns it as a Pub/Sub push body. */
 async function event(topic: string, payload: Record<string, unknown>) {
   await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t021-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic, payload }));
@@ -49,31 +54,35 @@ async function event(topic: string, payload: Record<string, unknown>) {
   // dedupe key onto an earlier delivery, so the handler never reran and posts/notifications stayed
   // empty — intermittent only because it depends on where this workspace's ids land in the shared
   // bigserial sequence (itself a function of non-deterministic test file ordering).
-  const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
+  const [row] = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws));
   return { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic }, messageId: randomUUID() }, subscription: "notify-worker" };
 }
-const notifications = (userId: string) => owner.$queryRawUnsafe<Array<{ kind: string }>>(`SELECT kind FROM notification WHERE workspace_id = $1::uuid AND user_id = $2::uuid ORDER BY created_at`, ws, userId);
+const notifications = (userId: string) => asOwner((tx) => tx.$queryRawUnsafe<Array<{ kind: string }>>(`SELECT kind FROM notification WHERE workspace_id = $1::uuid AND user_id = $2::uuid ORDER BY created_at`, ws, userId));
 
 async function alert(ruleId: string, severity: string): Promise<string> {
   const id = randomUUID();
-  // One open alert per rule and envelope (T-018's unique index): close the previous one first.
-  await owner.alert.updateMany({ where: { ruleId, envelopeId, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } }, data: { status: "RESOLVED", resolvedAt: new Date() } });
-  await owner.alert.create({ data: { id, workspaceId: ws, ruleId, envelopeId, severity, metricValue: "1.3", threshold: "1.25", context: { budget: "1000.00", actual: "700.00", evaluatedFor: "2026-08-15" }, ownerId: u.owner } });
+  await asOwner(async (tx) => {
+    // One open alert per rule and envelope (T-018's unique index): close the previous one first.
+    await tx.alert.updateMany({ where: { ruleId, envelopeId, status: { in: ["OPEN", "ACKNOWLEDGED", "SNOOZED"] } }, data: { status: "RESOLVED", resolvedAt: new Date() } });
+    await tx.alert.create({ data: { id, workspaceId: ws, ruleId, envelopeId, severity, metricValue: "1.3", threshold: "1.25", context: { budget: "1000.00", actual: "700.00", evaluatedFor: "2026-08-15" }, ownerId: u.owner } });
+  });
   return id;
 }
 async function request(currentStep = 0): Promise<string> {
   const id = randomUUID();
   const versionId = randomUUID();
-  await owner.envelopeVersion.create({ data: { id: versionId, envelopeId, versionNo: 1 + Math.floor(Math.random() * 1e6), amount: "1150.00", amountReporting: "1150.00", status: "PENDING", createdBy: u.planner } });
-  await owner.approvalRequest.create({
-    data: { id, workspaceId: ws, entityType: "envelope_version", entityId: versionId, policyId: randomUUID(), policyVersion: 1, policySnapshot: { policyName: "Standard", chain: [{ role: "APPROVER" }, { role: "FINANCE" }], blockSelfApproval: true, allowExternalEvidence: false, conditions: {} }, currentStep, summary: "BR Meta: 1000.00 → 1150.00", requestedBy: u.planner, dueAt: new Date("2026-09-26T10:00:00Z") },
+  await asOwner(async (tx) => {
+    await tx.envelopeVersion.create({ data: { id: versionId, envelopeId, versionNo: 1 + Math.floor(Math.random() * 1e6), amount: "1150.00", amountReporting: "1150.00", status: "PENDING", createdBy: u.planner } });
+    await tx.approvalRequest.create({
+      data: { id, workspaceId: ws, entityType: "envelope_version", entityId: versionId, policyId: randomUUID(), policyVersion: 1, policySnapshot: { policyName: "Standard", chain: [{ role: "APPROVER" }, { role: "FINANCE" }], blockSelfApproval: true, allowExternalEvidence: false, conditions: {} }, currentStep, summary: "BR Meta: 1000.00 → 1150.00", requestedBy: u.planner, dueAt: new Date("2026-09-26T10:00:00Z") },
+    });
   });
   return id;
 }
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t021" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t021-${ws}`, name: "T-021", reportingCurrency: "USD", settings: { slack: { defaultChannel: "#budget-ops" } } } });
+  await asOwner((tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t021-${ws}`, name: "T-021", reportingCurrency: "USD", settings: { slack: { defaultChannel: "#budget-ops" } } } }));
   await owner.user.createMany({ data: Object.entries(u).map(([k, id]) => ({ id, orgId, email: `${k}-${id}@t021.test`, name: `Name ${k}`, googleSub: `g-${id}` })) });
   await owner.roleAssignment.createMany({
     data: [
@@ -81,21 +90,25 @@ beforeAll(async () => {
       { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: u.planner, role: "PLANNER", createdBy: u.planner },
     ],
   });
-  await owner.$executeRawUnsafe(
-    `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, owner_id, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'BR Meta', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, $4::uuid, now())`,
-    envelopeId,
-    ws,
-    u.owner,
-    u.planner,
-  );
-  const rule = (id: string, name: string, delivery: object) => ({ id, workspaceId: ws, name, metric: "kpi_vs_target_pct", comparator: "gt", threshold: "1.25", severity: "warning", delivery });
-  await owner.pacingRule.createMany({ data: [rule(ruleIds.critical, "CPA far over target", { inApp: true }), rule(ruleIds.channel, "Over-pace", { inApp: true, slackChannel: "#latam-pacing" }), rule(ruleIds.quiet, "Quiet", { inApp: true })] });
+  await asOwner(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, owner_id, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'BR Meta', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, $4::uuid, now())`,
+      envelopeId,
+      ws,
+      u.owner,
+      u.planner,
+    );
+    const rule = (id: string, name: string, delivery: object) => ({ id, workspaceId: ws, name, metric: "kpi_vs_target_pct", comparator: "gt", threshold: "1.25", severity: "warning", delivery });
+    await tx.pacingRule.createMany({ data: [rule(ruleIds.critical, "CPA far over target", { inApp: true }), rule(ruleIds.channel, "Over-pace", { inApp: true, slackChannel: "#latam-pacing" }), rule(ruleIds.quiet, "Quiet", { inApp: true })] });
+  });
 });
 
 afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -119,7 +132,7 @@ describe("Slack delivery (fake client)", () => {
     const id = await request();
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "PENDING" }));
-    await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "reject", comment: "Not this quarter" } });
+    await asOwner((tx) => tx.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "reject", comment: "Not this quarter" } }));
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.reject", status: "REJECTED", comment: "Not this quarter" }));
     expect(slack.posts).toEqual([
       { channel: "#budget-ops", text: "📝 Approval requested: BR Meta" },
@@ -131,8 +144,10 @@ describe("Slack delivery (fake client)", () => {
     const slack = new FakeSlack();
     const threadId = randomUUID();
     const commentId = randomUUID();
-    await owner.thread.create({ data: { id: threadId, workspaceId: ws, anchorType: "envelope", anchorId: envelopeId, title: "Pacing check", createdBy: u.planner } });
-    await owner.comment.create({ data: { id: commentId, threadId, authorId: u.planner, bodyMd: `@[user:${u.owner}] @[user:${u.approver}] @[user:${u.planner}] is this right?` } });
+    await asOwner(async (tx) => {
+      await tx.thread.create({ data: { id: threadId, workspaceId: ws, anchorType: "envelope", anchorId: envelopeId, title: "Pacing check", createdBy: u.planner } });
+      await tx.comment.create({ data: { id: commentId, threadId, authorId: u.planner, bodyMd: `@[user:${u.owner}] @[user:${u.approver}] @[user:${u.planner}] is this right?` } });
+    });
     const mentions = [u.owner, u.approver, u.planner].map((id) => ({ type: "user", id }));
     await handleSlackEvent(app, slack, await event("thread.changed", { threadId, commentId, action: "comment.added", actorId: u.planner, anchorType: "envelope", anchorId: envelopeId, mentions }));
     expect(slack.posts).toEqual([{ channel: "U-OWNER", text: "Name planner mentioned you on BR Meta" }]); // the approver has no Slack account
@@ -207,10 +222,10 @@ const actionIds = (blocks: unknown[]) => JSON.stringify(blocks).match(/"action_i
 
 describe("Slack bot: buttons, routing and keeping messages current (feedback 2026-09-28)", () => {
   beforeAll(async () => {
-    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], teamId: "T0TEST" } } } });
+    await asOwner((tx) => tx.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", alertChannel: "#alerts", alertSeverities: ["warning", "critical"], teamId: "T0TEST" } } } }));
   });
   afterAll(async () => {
-    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops" } } } });
+    await asOwner((tx) => tx.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops" } } } }));
   });
 
   it("an alert posts with Acknowledge / Snooze / Resolve; when it changes, the same message is edited", async () => {
@@ -220,8 +235,10 @@ describe("Slack bot: buttons, routing and keeping messages current (feedback 202
     expect(slack.sent.map((m) => m.channel)).toEqual(["C-alerts"]);
     expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"alert.acknowledge"', '"action_id":"alert.snooze"', '"action_id":"alert.resolve"', '"action_id":"open_alert"', '"action_id":"open_envelope"']);
 
-    await owner.alert.update({ where: { id }, data: { status: "ACKNOWLEDGED" } });
-    await owner.$executeRawUnsafe(`INSERT INTO audit_event (id, workspace_id, actor_id, actor_type, action, entity_type, entity_id, after, request_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', 'alert.acknowledged', 'alert', $4::uuid, '{}'::jsonb, 'slack-test')`, randomUUID(), ws, u.owner, id);
+    await asOwner(async (tx) => {
+      await tx.alert.update({ where: { id }, data: { status: "ACKNOWLEDGED" } });
+      await tx.$executeRawUnsafe(`INSERT INTO audit_event (id, workspace_id, actor_id, actor_type, action, entity_type, entity_id, after, request_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', 'alert.acknowledged', 'alert', $4::uuid, '{}'::jsonb, 'slack-test')`, randomUUID(), ws, u.owner, id);
+    });
     const res = await handleSlackEvent(app, slack, await event("alert.changed", { alertId: id, status: "ACKNOWLEDGED" }));
     expect(res.posted).toEqual([]);
     expect(slack.edits.map((e) => [e.channel, e.ts])).toEqual([[slack.sent[0]?.channel, slack.sent[0]?.ts]]);
@@ -234,7 +251,7 @@ describe("Slack bot: buttons, routing and keeping messages current (feedback 202
     const id = await request();
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
     expect(actionIds(slack.sent[0]?.blocks ?? [])).toEqual(['"action_id":"approval.approve"', '"action_id":"approval.changes"', '"action_id":"approval.reject"', '"action_id":"open_approval"']);
-    await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "approve" } });
+    await asOwner((tx) => tx.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 1, decidedBy: u.approver, decision: "approve" } }));
     const res = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
     expect(res.posted).toEqual([]);
     expect(slack.edits).toHaveLength(1);
@@ -286,9 +303,9 @@ class DmSlack implements SlackClient {
 
 describe("direct messages to approvers and requesters (S-004)", () => {
   const more = { approver2: randomUUID(), finance: randomUUID() };
-  const recorded = (requestId: string) => owner.$queryRawUnsafe<Array<{ channel: string }>>(`SELECT channel FROM slack_message WHERE entity_id = $1::uuid ORDER BY channel`, requestId);
+  const recorded = (requestId: string) => asOwner((tx) => tx.$queryRawUnsafe<Array<{ channel: string }>>(`SELECT channel FROM slack_message WHERE entity_id = $1::uuid ORDER BY channel`, requestId));
   beforeAll(async () => {
-    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST" } } } });
+    await asOwner((tx) => tx.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST" } } } }));
     await owner.user.createMany({ data: Object.entries(more).map(([k, id]) => ({ id, orgId, email: `${k}-${id}@t021.test`, name: `Name ${k}`, googleSub: `g-${id}` })) });
     await owner.roleAssignment.createMany({
       data: [
@@ -298,7 +315,7 @@ describe("direct messages to approvers and requesters (S-004)", () => {
     });
   });
   afterAll(async () => {
-    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops" } } } });
+    await asOwner((tx) => tx.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops" } } } }));
   });
 
   it("a new request goes to the channel and to each approver of its step, and its outcome edits them all and tells the requester", async () => {
@@ -309,9 +326,11 @@ describe("direct messages to approvers and requesters (S-004)", () => {
     expect(JSON.stringify(slack.sent.find((m) => m.channel === "D-U-approver")?.blocks)).toContain('"action_id":"approval.approve"');
     expect((await recorded(id)).map((r) => r.channel)).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
 
-    await owner.approvalRequest.update({ where: { id }, data: { status: "APPROVED" } });
-    await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 0, decidedBy: u.approver, decision: "approve" } });
-    await owner.$executeRawUnsafe(`INSERT INTO audit_event (id, workspace_id, actor_id, actor_type, action, entity_type, entity_id, after, request_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', 'approval.approve', 'approval_request', $4::uuid, '{}'::jsonb, 's004')`, randomUUID(), ws, u.approver, id);
+    await asOwner(async (tx) => {
+      await tx.approvalRequest.update({ where: { id }, data: { status: "APPROVED" } });
+      await tx.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 0, decidedBy: u.approver, decision: "approve" } });
+      await tx.$executeRawUnsafe(`INSERT INTO audit_event (id, workspace_id, actor_id, actor_type, action, entity_type, entity_id, after, request_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'user', 'approval.approve', 'approval_request', $4::uuid, '{}'::jsonb, 's004')`, randomUUID(), ws, u.approver, id);
+    });
     const outcome = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
     expect(slack.edits.map((e) => e.channel).sort()).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
     expect(slack.edits.every((e) => e.text === "✅ Approved: BR Meta")).toBe(true);
@@ -323,7 +342,7 @@ describe("direct messages to approvers and requesters (S-004)", () => {
     const slack = new DmSlack();
     const id = await request();
     await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
-    await owner.approvalRequest.update({ where: { id }, data: { currentStep: 1 } });
+    await asOwner((tx) => tx.approvalRequest.update({ where: { id }, data: { currentStep: 1 } }));
     const advanced = await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.approve", status: "PENDING", step: 0 }));
     expect(advanced.posted.map((o) => o.channel)).toEqual(["D-U-finance"]);
     expect(slack.edits.map((e) => e.channel).sort()).toEqual(["C-budget-ops", "D-U-approver", "D-U-approver2"]);
@@ -343,20 +362,20 @@ describe("direct messages to approvers and requesters (S-004)", () => {
   });
 
   it("with direct messages turned off, only the channel hears of it", async () => {
-    await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST", dms: false } } } });
+    await asOwner((tx) => tx.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST", dms: false } } } }));
     try {
       const slack = new DmSlack();
       const id = await request();
       await handleSlackEvent(app, slack, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
       expect(slack.sent.map((m) => m.channel)).toEqual(["C-budget-ops"]);
     } finally {
-      await owner.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST" } } } });
+      await asOwner((tx) => tx.workspace.update({ where: { id: ws }, data: { settings: { slack: { defaultChannel: "#budget-ops", teamId: "T0TEST" } } } }));
     }
   });
 
   it("in the app too: the next step's approvers when a step completes, and the approvers again on a reminder", async () => {
     const id = await request();
-    await owner.approvalRequest.update({ where: { id }, data: { currentStep: 1 } });
+    await asOwner((tx) => tx.approvalRequest.update({ where: { id }, data: { currentStep: 1 } }));
     await handleInApp(app, await event("approval.changed", { requestId: id, action: "approval.approve", status: "PENDING", step: 0 }));
     expect((await notifications(more.finance)).map((n) => n.kind)).toEqual(["approval_requested"]);
     const second = await request();

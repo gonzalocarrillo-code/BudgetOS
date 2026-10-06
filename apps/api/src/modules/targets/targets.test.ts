@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { QueryRequest } from "@budget/domain";
-import { withTenant } from "@budget/db";
+import { asOrgAdmin, withTenant, type Tx } from "@budget/db";
 import { compileQuery } from "@budget/query-planner";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import { Decimal } from "decimal.js";
@@ -33,6 +33,9 @@ const X = { "x-workspace-id": ws };
 let seq = 0;
 const rid = () => `t015-${++seq}-${orgId}`;
 const env: Record<string, string> = {};
+// W0-6: the owner has no BYPASSRLS; every owner.* call below needs the same org-admin tenant
+// context real reads/writes get from withTenant, scoped to this suite's single org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 
 type Res = { status: number; body: Record<string, unknown> };
 async function call(user: TestUser, method: "GET" | "POST" | "PATCH", url: string, body?: unknown, requestId = rid()): Promise<Res> {
@@ -42,11 +45,11 @@ const createTarget = (user: TestUser, body: Record<string, unknown>, requestId?:
 const submit = (user: TestUser, targetId: string, versionId: string) => call(user, "POST", `/targets/${targetId}/submit`, { versionId });
 
 async function auditActions(requestId: string): Promise<string[]> {
-  const rows = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId);
+  const rows = await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId));
   return rows.map((r) => r.action);
 }
 async function outboxCount(topic: string, targetId: string): Promise<number> {
-  const rows = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = $2 AND payload->>'targetId' = $3`, ws, topic, targetId);
+  const rows = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = $2 AND payload->>'targetId' = $3`, ws, topic, targetId));
   return Number(rows[0]?.n ?? 0);
 }
 
@@ -61,7 +64,32 @@ async function approvedEnvelope(name: string, dimensionValues: Record<string, st
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t015" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t015-${ws}`, name: "T-015", reportingCurrency: "USD" } });
+  // W0-6: workspace, the org-wide dimension/dimension_value rows and the approval policies need
+  // the org-admin tenant context real writes get from withTenant; registry_read/write also needs
+  // an exact app.org_id match, which admin() sets alongside is_org_admin.
+  await admin(async (tx) => {
+    await tx.workspace.create({ data: { id: ws, orgId, slug: `t015-${ws}`, name: "T-015", reportingCurrency: "USD" } });
+    await tx.$executeRawUnsafe(
+      `INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $3::uuid, NULL, 'region', 'Region', 'ENUM', $4::uuid), ($2::uuid, $3::uuid, NULL, 'platform', 'Platform', 'ENUM', $4::uuid)`,
+      region,
+      platform,
+      orgId,
+      orgAdmin.id,
+    );
+    const ids: Record<string, string> = {};
+    for (const [code, dim, parent] of [["latam", region, null], ["br", region, "latam"], ["mx", region, "latam"], ["emea", region, null], ["de", region, "emea"], ["meta", platform, null]] as const) {
+      ids[code] = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, $3, $3, $4::uuid)`, ids[code], dim, code, parent ? ids[parent] : null);
+    }
+    // Envelopes auto-approve; a target change under 10% auto-approves, any other needs an APPROVER.
+    await tx.approvalPolicy.createMany({
+      data: [
+        { id: randomUUID(), workspaceId: ws, name: "Envelopes auto", priority: 1, conditions: { entityType: "envelope_version" }, chain: [], blockSelfApproval: true },
+        { id: randomUUID(), workspaceId: ws, name: "Target tweak", priority: 2, conditions: { entityType: "target_version", deltaPct: { lt: 0.1 } }, chain: [], blockSelfApproval: true },
+        { id: randomUUID(), workspaceId: ws, name: "Target change", priority: 3, conditions: { entityType: "target_version" }, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true },
+      ],
+    });
+  });
   await owner.user.createMany({ data: [planner, approver, scopedOwner, viewer, orgAdmin].map((u) => ({ id: u.id, orgId, email: u.email, name: u.email, googleSub: `g-${u.sub}` })) });
   const latam = { logic: "and", children: [{ field: { kind: "dimension", key: "region" }, op: "descends_from", value: "latam" }] };
   await owner.roleAssignment.createMany({
@@ -71,26 +99,6 @@ beforeAll(async () => {
       { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: scopedOwner.id, role: "BUDGET_OWNER", scope: latam, createdBy: orgAdmin.id },
       { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: viewer.id, role: "VIEWER", createdBy: orgAdmin.id },
       { id: randomUUID(), workspaceId: null, principalType: "user", principalId: orgAdmin.id, role: "ORG_ADMIN", createdBy: orgAdmin.id },
-    ],
-  });
-  await owner.$executeRawUnsafe(
-    `INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $3::uuid, NULL, 'region', 'Region', 'ENUM', $4::uuid), ($2::uuid, $3::uuid, NULL, 'platform', 'Platform', 'ENUM', $4::uuid)`,
-    region,
-    platform,
-    orgId,
-    orgAdmin.id,
-  );
-  const ids: Record<string, string> = {};
-  for (const [code, dim, parent] of [["latam", region, null], ["br", region, "latam"], ["mx", region, "latam"], ["emea", region, null], ["de", region, "emea"], ["meta", platform, null]] as const) {
-    ids[code] = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, parent_value_id) VALUES ($1::uuid, $2::uuid, $3, $3, $4::uuid)`, ids[code], dim, code, parent ? ids[parent] : null);
-  }
-  // Envelopes auto-approve; a target change under 10% auto-approves, any other needs an APPROVER.
-  await owner.approvalPolicy.createMany({
-    data: [
-      { id: randomUUID(), workspaceId: ws, name: "Envelopes auto", priority: 1, conditions: { entityType: "envelope_version" }, chain: [], blockSelfApproval: true },
-      { id: randomUUID(), workspaceId: ws, name: "Target tweak", priority: 2, conditions: { entityType: "target_version", deltaPct: { lt: 0.1 } }, chain: [], blockSelfApproval: true },
-      { id: randomUUID(), workspaceId: ws, name: "Target change", priority: 3, conditions: { entityType: "target_version" }, chain: [{ role: "APPROVER", minApprovals: 1, timeoutHours: 48 }], blockSelfApproval: true },
     ],
   });
   h = await startHarness();
@@ -104,12 +112,16 @@ afterAll(async () => {
   await h?.close();
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM metric_definition WHERE org_id = $1::uuid`, orgId);
-  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform); // W3-11 (I-32): self-ref FK
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: { in: [planner.id, approver.id, scopedOwner.id, viewer.id, orgAdmin.id] } } });
+  await admin(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM metric_definition WHERE org_id = $1::uuid`, orgId);
+    await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform); // W3-11 (I-32): self-ref FK
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, region, platform);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -168,14 +180,14 @@ describe("targets: versions, approval, concurrency", () => {
     expect((await call(planner, "POST", `/approvals/${requestId}/decisions`, { decision: "approve" })).status).toBe(403); // not an APPROVER, and the author
     const d = await call(approver, "POST", `/approvals/${requestId}/decisions`, { decision: "approve" });
     expect(d.body, JSON.stringify(d.body)).toMatchObject({ status: "APPROVED" });
-    const target = await owner.target.findUniqueOrThrow({ where: { id: parentTarget } });
+    const target = await admin((tx) => tx.target.findUniqueOrThrow({ where: { id: parentTarget } }));
     expect(target.currentVersionId).toBe(v1);
     expect(target.draftVersionId).toBeNull();
-    expect((await owner.targetVersion.findUniqueOrThrow({ where: { id: v1 } })).status).toBe("APPROVED");
+    expect((await admin((tx) => tx.targetVersion.findUniqueOrThrow({ where: { id: v1 } }))).status).toBe("APPROVED");
   });
 
   it("a stale basedOnVersionId is 409 with currentVersionId; a small change auto-approves as a new version", async () => {
-    const current = (await owner.target.findUniqueOrThrow({ where: { id: parentTarget } })).currentVersionId as string;
+    const current = (await admin((tx) => tx.target.findUniqueOrThrow({ where: { id: parentTarget } }))).currentVersionId as string;
     const stale = await call(planner, "PATCH", `/targets/${parentTarget}/draft`, { basedOnVersionId: null, value: "21" });
     expect(stale.status).toBe(409);
     expect((stale.body["details"] as { currentVersionId: string }).currentVersionId).toBe(current);
@@ -195,17 +207,17 @@ describe("targets: versions, approval, concurrency", () => {
   });
 
   it("a rejected change leaves the current version in place and closes the draft (never deleted)", async () => {
-    const current = (await owner.target.findUniqueOrThrow({ where: { id: parentTarget } })).currentVersionId as string;
+    const current = (await admin((tx) => tx.target.findUniqueOrThrow({ where: { id: parentTarget } }))).currentVersionId as string;
     const v3 = await call(planner, "PATCH", `/targets/${parentTarget}/draft`, { basedOnVersionId: current, value: "35" });
     const s = await submit(planner, parentTarget, String(v3.body["id"]));
     expect(s.body["autoApproved"]).toBe(false);
     expect((await call(planner, "PATCH", `/targets/${parentTarget}/draft`, { basedOnVersionId: String(v3.body["id"]), value: "36" })).status).toBe(409); // pending
     const d = await call(approver, "POST", `/approvals/${String(s.body["requestId"])}/decisions`, { decision: "reject", comment: "too loose" });
     expect(d.body["status"]).toBe("REJECTED");
-    const t = await owner.target.findUniqueOrThrow({ where: { id: parentTarget } });
+    const t = await admin((tx) => tx.target.findUniqueOrThrow({ where: { id: parentTarget } }));
     expect(t.currentVersionId).toBe(current);
     expect(t.draftVersionId).toBeNull();
-    expect((await owner.targetVersion.findUniqueOrThrow({ where: { id: String(v3.body["id"]) } })).status).toBe("REJECTED");
+    expect((await admin((tx) => tx.targetVersion.findUniqueOrThrow({ where: { id: String(v3.body["id"]) } }))).status).toBe("REJECTED");
   });
 });
 

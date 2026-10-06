@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { LIVE_LEAVES, QueryRequest, type FilterGroupT } from "@budget/domain";
-import { GOLDEN_ASSERTIONS, GOLDEN_EXPERIMENT, withTenant } from "@budget/db";
+import { GOLDEN_ASSERTIONS, GOLDEN_EXPERIMENT, asOrgAdmin, withTenant } from "@budget/db";
 import { compileQuery, compileTotals } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -28,6 +29,11 @@ async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string
   return h.call(method, `/api/v1${url}`, token, { headers: { "x-workspace-id": golden.workspaceId, "x-request-id": requestId }, ...(body === undefined ? {} : { body }) });
 }
 const scope = (dims: Record<string, string>): FilterGroupT => ({ logic: "and", children: Object.entries(dims).map(([key, value]) => ({ field: { kind: "dimension", key }, op: "eq", value })) });
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read below (all scoped to the golden
+// workspace/org) needs the same org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, golden.orgId);
+}
 
 beforeAll(async () => {
   golden = await seedGolden(app, owner, { slug });
@@ -84,7 +90,9 @@ describe("experiments (T-038)", () => {
   it("the TEST envelope is tagged `experiment`; search `experiment:running` finds it and the experiment; the timeline shows the lane", async () => {
     const testEnvelope = golden.envelopeIds.get(GOLDEN_EXPERIMENT.linkTest) as string;
     const controlEnvelope = golden.envelopeIds.get(GOLDEN_EXPERIMENT.linkControl) as string;
-    const tags = await owner.$queryRawUnsafe<Array<{ entity_id: string }>>(`SELECT tg.entity_id::text FROM taggable tg JOIN tag t ON t.id = tg.tag_id WHERE t.workspace_id = $1::uuid AND t.name = 'experiment' AND t.kind = 'system'`, golden.workspaceId);
+    const tags = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ entity_id: string }>>(`SELECT tg.entity_id::text FROM taggable tg JOIN tag t ON t.id = tg.tag_id WHERE t.workspace_id = $1::uuid AND t.name = 'experiment' AND t.kind = 'system'`, golden.workspaceId),
+    );
     expect(tags.map((t) => t.entity_id)).toEqual([testEnvelope]);
     const found = await as("planner", "GET", `/workspaces/${golden.workspaceId}/search?q=${encodeURIComponent("experiment:running")}`);
     expect(found.status, JSON.stringify(found.body).slice(0, 400)).toBe(200);
@@ -148,16 +156,20 @@ describe("experiments (T-038)", () => {
     expect(threads.map((t) => t.envelopeId).sort()).toEqual(leaves.map(([, e]) => e).sort());
     // One thread per linked envelope, the decision as its comment, in the envelope's Decision Timeline.
     for (const t of threads) {
-      const [row] = await owner.$queryRawUnsafe<Array<{ anchor_type: string; anchor_id: string; body_md: string }>>(`SELECT th.anchor_type, th.anchor_id::text, c.body_md FROM thread th JOIN comment c ON c.thread_id = th.id WHERE th.id = $1::uuid`, t.threadId);
+      const [row] = await asOwner((tx) =>
+        tx.$queryRawUnsafe<Array<{ anchor_type: string; anchor_id: string; body_md: string }>>(`SELECT th.anchor_type, th.anchor_id::text, c.body_md FROM thread th JOIN comment c ON c.thread_id = th.id WHERE th.id = $1::uuid`, t.threadId),
+      );
       expect(row).toMatchObject({ anchor_type: "envelope", anchor_id: t.envelopeId });
       expect(row?.body_md).toContain(decision);
     }
     const timeline = await as("planner", "GET", `/envelopes/${threads[0]?.envelopeId ?? ""}/timeline`);
     expect(JSON.stringify(timeline.body)).toContain(decision);
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY action`, requestId);
+    const audits = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY action`, requestId));
     expect(audits.filter((a) => a.action === "experiment.concluded")).toHaveLength(1);
     expect(audits.filter((a) => a.action === "thread.created")).toHaveLength(threads.length);
-    const outbox = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'experiment.changed' AND payload->>'experimentId' = $2`, golden.workspaceId, id);
+    const outbox = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'experiment.changed' AND payload->>'experimentId' = $2`, golden.workspaceId, id),
+    );
     expect(Number(outbox[0]?.n)).toBe(2 + leaves.length + 1 + 1); // created, updated, links, started, concluded
 
     expect((await as("planner", "POST", `/experiments/${id}/abandon`)).status).toBe(409);

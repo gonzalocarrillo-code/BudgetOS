@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { newId, type Role } from "@budget/domain";
-import { assertLocalDatabase, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_HISTORY, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
+import { assertLocalDatabase, asOrgAdmin, GOLDEN_CLOSURE, GOLDEN_COLLAB, GOLDEN_HISTORY, GOLDEN_EXPERIMENT, GOLDEN_MANUAL_ENTRY, GOLDEN_NAMING, GOLDEN_CUSTOM_DIMENSIONS, GOLDEN_EXPORT, GOLDEN_SAVED_VIEW, GOLDEN_FACTS, GOLDEN_FILTER_TARGET, GOLDEN_FY, GOLDEN_PACING, GOLDEN_PENDING_BULK, GOLDEN_ROUNDS, GOLDEN_SPLIT, GOLDEN_TARGET_POLICY, splitAmounts, GOLDEN_TEMPLATES, goldenFactsCsv, goldenPlan, goldenTagLeaves, goldenTargets, markOutboxDelivered, withTenant, type PlannedEnvelope, type TenantContext } from "@budget/db";
 import { LIVE_LEAVES, MemoryObjectStore, evaluateWorkspace, rebuildWorkspace, reindexWorkspace, runExport, runIngest, uploadBucket } from "@budget/workers";
 import { PrismaClient } from "@prisma/client";
 import { clock } from "../common/clock.js";
@@ -107,7 +107,16 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   };
   const concurrency = opts.concurrency ?? 8;
 
-  const existing = await owner.workspace.findFirst({ where: { slug }, select: { id: true, orgId: true } });
+  // W0-6: a plain owner.workspace.findFirst silently returns nothing under FORCE RLS (no session
+  // context), which looked idempotent locally only because the old superuser owner bypassed RLS.
+  // workspace has no owner_bootstrap policy (only organization/app_user/role_assignment do), so
+  // the org must be known before an org-admin context can see it; organization.name is this
+  // slug's deterministic name, and organization itself IS owner_bootstrap, so look the org up
+  // first and only then look up its workspace under that org's context.
+  const existingOrg = await owner.organization.findFirst({ where: { name: `Golden (${slug})` }, select: { id: true } });
+  const existing = existingOrg
+    ? await asOrgAdmin(owner, (tx) => tx.workspace.findFirst({ where: { slug }, select: { id: true, orgId: true } }), existingOrg.id)
+    : null;
   if (existing) {
     log(`golden: workspace '${slug}' already exists (${existing.id}); nothing to do. Use pnpm db:reset for a fresh one.`);
     return { orgId: existing.orgId, workspaceId: existing.id, users: {} as Record<Persona, string>, envelopeIds: new Map(), ingest: null, created: false, elapsedMs: performance.now() - started };
@@ -118,7 +127,16 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   const workspaceId = newId();
   const users = Object.fromEntries(Object.keys(PERSONAS).map((p) => [p, newId()])) as Record<Persona, string>;
   await owner.organization.create({ data: { id: orgId, name: `Golden (${slug})` } });
-  await owner.workspace.create({ data: { id: workspaceId, orgId, slug, name: "Golden", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  // Unlike organization/app_user/role_assignment (owner_bootstrap policies, migration
+  // 20261010050000 — there is no org yet to authorize those under their ordinary policies),
+  // workspace's org_admin_write policy only checks the session's org id and is_org_admin flag
+  // (20260924030000_rls_identity_tables), which this trusted bootstrap context can set directly,
+  // same as apps/api/src/deploy/bootstrap.ts's comment notes for workspace/metric_definition. No
+  // owner policy needed: this runs through the app role under a synthetic org-admin tenant
+  // context instead of the raw owner connection (W0-6: the owner has no BYPASSRLS to fall back on).
+  await withTenant(app, { workspaceId, orgId, userId: users.orgAdmin, isOrgAdmin: true, actorType: "system", requestId: `golden-${slug}-bootstrap-workspace` }, (tx) =>
+    tx.workspace.create({ data: { id: workspaceId, orgId, slug, name: "Golden", reportingCurrency: "USD", fiscalYearStartMonth: 1 } }),
+  );
   await owner.user.createMany({
     data: (Object.keys(PERSONAS) as Persona[]).map((p) => ({ id: users[p], orgId, email: `${p.toLowerCase()}@${slug}.golden.test`, name: `Golden ${p}`, googleSub: `golden-${slug}-${p}` })),
   });

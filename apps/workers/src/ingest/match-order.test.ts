@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
+import { asOrgAdmin } from "@budget/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { MemoryObjectStore } from "./object-store.js";
@@ -22,47 +23,57 @@ const tenant = { workspaceId: ws, orgId };
 const store = new MemoryObjectStore();
 const deps = (): IngestDeps => ({ prisma: app, store, reportBucket: "t036-reports" });
 const env: Record<string, string> = {};
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read/write below (all scoped to this org's
+// workspace, plus dimension/dimension_value which need an exact org_id match) needs the same
+// org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, orgId);
+}
 
 async function source(name: string, csv: string, mapping: unknown, parsePattern: string | null = null): Promise<string> {
   const id = randomUUID();
   const uri = `gs://t036-uploads/uploads/${ws}/${id}.csv`;
   await store.write(uri, csv, "text/csv");
-  await owner.dataSource.create({ data: { id, workspaceId: ws, kind: "csv", name, config: { kind: "csv", uri }, mapping: mapping as object, parsePattern } });
+  await asOwner((tx) => tx.dataSource.create({ data: { id, workspaceId: ws, kind: "csv", name, config: { kind: "csv", uri }, mapping: mapping as object, parsePattern } }));
   return id;
 }
 async function run(sourceId: string) {
   const runId = randomUUID();
-  await owner.ingestRun.create({ data: { id: runId, sourceId, status: "queued" } });
+  await asOwner((tx) => tx.ingestRun.create({ data: { id: runId, sourceId, status: "queued" } }));
   return { runId, result: await runIngest(deps(), tenant, runId) };
 }
 const methods = async (runId: string) =>
-  owner.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null; amount: string }>>(`SELECT envelope_id::text, match_method, amount::text FROM spend_fact WHERE source_run_id = $1::uuid ORDER BY amount DESC`, runId);
+  asOwner((tx) =>
+    tx.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null; amount: string }>>(`SELECT envelope_id::text, match_method, amount::text FROM spend_fact WHERE source_run_id = $1::uuid ORDER BY amount DESC`, runId),
+  );
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "t036" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `t036-${ws}`, name: "T-036", reportingCurrency: "USD" } });
+  await asOwner((tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t036-${ws}`, name: "T-036", reportingCurrency: "USD" } }));
   await owner.user.create({ data: { id: userId, orgId, email: `${userId}@t036.test`, name: "T-036", googleSub: `g-${userId}` } });
-  for (const [key, codes] of [["country", ["BR", "MX"]], ["platform", ["meta", "google_ads"]]] as const) {
-    const dim = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, $3, $3, 'ENUM', $4::uuid)`, dim, orgId, key, userId);
-    for (const code of codes) {
-      const ext = key === "platform" && code === "meta" ? { meta_account_id: "act_123" } : {};
-      await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, external_ids) VALUES ($1::uuid, $2::uuid, $3, $3, $4::jsonb)`, randomUUID(), dim, code, JSON.stringify(ext));
+  await asOwner(async (tx) => {
+    for (const [key, codes] of [["country", ["BR", "MX"]], ["platform", ["meta", "google_ads"]]] as const) {
+      const dim = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, $3, $3, 'ENUM', $4::uuid)`, dim, orgId, key, userId);
+      for (const code of codes) {
+        const ext = key === "platform" && code === "meta" ? { meta_account_id: "act_123" } : {};
+        await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label, external_ids) VALUES ($1::uuid, $2::uuid, $3, $3, $4::jsonb)`, randomUUID(), dim, code, JSON.stringify(ext));
+      }
     }
-  }
-  for (const [k, dims, key] of [["brMeta", { country: "BR", platform: "meta" }, "br_meta"], ["mxGoogle", { country: "MX", platform: "google_ads" }, "mx_google_ads"]] as const) {
-    env[k] = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, match_key)
-       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now(), $6)`,
-      env[k],
-      ws,
-      k,
-      JSON.stringify(dims),
-      userId,
-      key,
-    );
-  }
+    for (const [k, dims, key] of [["brMeta", { country: "BR", platform: "meta" }, "br_meta"], ["mxGoogle", { country: "MX", platform: "google_ads" }, "mx_google_ads"]] as const) {
+      env[k] = randomUUID();
+      await tx.$executeRawUnsafe(
+        `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, match_key)
+         VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now(), $6)`,
+        env[k],
+        ws,
+        k,
+        JSON.stringify(dims),
+        userId,
+        key,
+      );
+    }
+  });
 });
 
 afterAll(async () => {
@@ -70,10 +81,14 @@ afterAll(async () => {
   // itself, including envelope_dimension, which references dimension_value) in the same order
   // `purgeWorkspace` validates against production — before the org-level dimension cleanup below,
   // which would otherwise violate envelope_dimension_value_id_fkey.
-  await deleteWorkspaceForTests(owner, ws);
-  await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
-  await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
-  await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context (asOwner wraps the rest the same way).
+  await deleteWorkspaceForTests(owner, ws, orgId);
+  await asOwner(async (tx) => {
+    await tx.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
+    await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
+    await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);
+  });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
@@ -90,7 +105,7 @@ describe("matching order (T-036, spec §24.3)", () => {
       { envelope_id: null, match_method: null, amount: "20.00" }, // BR / google_ads: no envelope
     ]);
     expect(result.coverage).toMatchObject({ matchCoverage: "0.777778", byMethod: { external_id: { rows: 1, spend: "40.00" }, tuple: { rows: 1, spend: "30.00" } } });
-    const summary = (await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } })).summary as { byMethod: unknown; matchCoverage: string };
+    const summary = (await asOwner((tx) => tx.ingestRun.findUniqueOrThrow({ where: { id: runId } }))).summary as { byMethod: unknown; matchCoverage: string };
     expect(summary.byMethod).toEqual({ external_id: { rows: 1, spend: "40.00" }, tuple: { rows: 1, spend: "30.00" } });
   });
 

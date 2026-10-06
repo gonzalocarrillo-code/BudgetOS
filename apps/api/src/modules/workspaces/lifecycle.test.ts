@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { asOrgAdmin } from "@budget/db";
 import { deleteWorkspaceForTests, purgeWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseRetentionDays } from "./lifecycle.js";
@@ -26,18 +27,26 @@ async function call(user: TestUser, method: Method, url: string, body?: unknown,
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "lifecycle" } });
-  await owner.workspace.createMany({ data: [
-    { id: ws, orgId, slug: `life-${ws.slice(0, 8)}`, name: "Acme LATAM", reportingCurrency: "USD" },
-    { id: other, orgId, slug: `other-${other.slice(0, 8)}`, name: "Other", reportingCurrency: "USD" },
-  ] });
   for (const u of [superadmin, admin, planner]) await owner.user.create({ data: { id: u.id, orgId, email: u.email, name: u.sub, googleSub: `g-${u.sub}` } });
+  // W0-6: workspace and tag have no owner_bootstrap policy; they need the org-admin tenant context
+  // real writes get from withTenant, with the real org id for workspace's exact org_id match.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.workspace.createMany({ data: [
+        { id: ws, orgId, slug: `life-${ws.slice(0, 8)}`, name: "Acme LATAM", reportingCurrency: "USD" },
+        { id: other, orgId, slug: `other-${other.slice(0, 8)}`, name: "Other", reportingCurrency: "USD" },
+      ] });
+      await tx.tag.create({ data: { id: randomUUID(), workspaceId: ws, name: "doomed", color: "#1868d8", createdBy: admin.id } });
+    },
+    orgId,
+  );
   await owner.roleAssignment.createMany({ data: [
     { id: randomUUID(), workspaceId: null, principalType: "user", principalId: superadmin.id, role: "ORG_ADMIN", createdBy: superadmin.id },
     { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: admin.id, role: "WORKSPACE_ADMIN", createdBy: superadmin.id },
     { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: planner.id, role: "PLANNER", createdBy: superadmin.id },
     { id: randomUUID(), workspaceId: other, principalType: "user", principalId: admin.id, role: "PLANNER", createdBy: superadmin.id },
   ] });
-  await owner.tag.create({ data: { id: randomUUID(), workspaceId: ws, name: "doomed", color: "#1868d8", createdBy: admin.id } });
   h = await startHarness();
 }, 60_000);
 
@@ -46,7 +55,9 @@ afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves), in the same order `purgeWorkspace` validates against production (ws may already
   // be purged by the test above; every statement here is a no-op for rows already gone).
-  await deleteWorkspaceForTests(owner, [ws, other]);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, [ws, other], orgId);
   await owner.roleAssignment.deleteMany({ where: { principalId: superadmin.id } });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.deleteMany({ where: { id: orgId } });
@@ -89,7 +100,7 @@ describe("workspace lifecycle (ADR-052)", () => {
 
     expect((await call(superadmin, "PATCH", `/workspaces/${ws}`, { status: "ACTIVE" })).status).toBe(200);
     expect((await call(planner, "GET", `/workspaces/${ws}/tags`)).status).toBe(200);
-    const audit = await owner.$queryRawUnsafe<Array<{ action: string; actor_context: string | null }>>(`SELECT action, actor_context FROM audit_event WHERE workspace_id = $1::uuid AND action LIKE 'workspace.%' ORDER BY occurred_at`, ws);
+    const audit = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ action: string; actor_context: string | null }>>(`SELECT action, actor_context FROM audit_event WHERE workspace_id = $1::uuid AND action LIKE 'workspace.%' ORDER BY occurred_at`, ws), orgId);
     expect(audit).toEqual([{ action: "workspace.archived", actor_context: "superadmin" }, { action: "workspace.restored", actor_context: "superadmin" }]);
   });
 
@@ -103,16 +114,16 @@ describe("workspace lifecycle (ADR-052)", () => {
     expect(((await call(superadmin, "GET", "/workspaces", undefined, null)).body["workspaces"] as Array<{ id: string }>).map((w) => w.id)).not.toContain(ws);
 
     expect((await call(superadmin, "POST", `/workspaces/${ws}/undelete`)).status).toBe(200);
-    const back = await owner.workspace.findUniqueOrThrow({ where: { id: ws } });
+    const back = await asOrgAdmin(owner, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: ws } }), orgId);
     expect(back).toMatchObject({ status: "ARCHIVED", deletedAt: null, slug: `life-${ws.slice(0, 8)}` });
 
     await call(superadmin, "DELETE", `/workspaces/${ws}`, { confirmName: "Acme LATAM", reason: "Contract over" });
     const counts = await purgeWorkspace(app, { workspaceId: ws, orgId });
     expect(counts["tag"]).toBe(1);
     expect(counts["role_assignment"]).toBe(2);
-    expect(await owner.tag.count({ where: { workspaceId: ws } })).toBe(0);
-    expect((await owner.workspace.findUniqueOrThrow({ where: { id: ws } })).purgedAt).not.toBeNull();
-    const kept = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid`, ws);
+    expect(await asOrgAdmin(owner, (tx) => tx.tag.count({ where: { workspaceId: ws } }), orgId)).toBe(0);
+    expect((await asOrgAdmin(owner, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: ws } }), orgId)).purgedAt).not.toBeNull();
+    const kept = await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid`, ws), orgId);
     expect(Number(kept[0]?.n)).toBeGreaterThan(4);
     expect((await call(superadmin, "POST", `/workspaces/${ws}/undelete`)).status).toBe(409); // purged: no way back
     expect(await owner.roleAssignment.count({ where: { workspaceId: other } })).toBe(1); // the other workspace is untouched

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -25,6 +25,9 @@ async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string
   return h.call(method, url, token, { headers: { "x-workspace-id": golden.workspaceId, ...(requestId ? { "x-request-id": requestId } : {}) }, ...(body === undefined ? {} : { body }) });
 }
 const id = (key: string) => golden.envelopeIds.get(key) as string;
+// W0-6: the owner has no BYPASSRLS; every owner.* call below needs the same org-admin tenant
+// context real reads/writes get from withTenant, scoped to the golden workspace's org.
+const admin = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, golden.orgId);
 const kids = (key: string) => plan.filter((e) => e.parentKey === key).map((e) => id(e.key));
 interface EnvView {
   status: string;
@@ -38,7 +41,7 @@ interface EnvView {
 }
 const env = async (envelopeId: string) => (await as("admin", "GET", `/api/v1/envelopes/${envelopeId}`)).body as unknown as EnvView;
 const phasing = async (versionId: string) =>
-  (await owner.$queryRawUnsafe<Array<{ month: string; amount: string }>>(`SELECT month::text AS month, amount::text AS amount FROM envelope_phasing WHERE version_id = $1::uuid ORDER BY month`, versionId));
+  (await admin((tx) => tx.$queryRawUnsafe<Array<{ month: string; amount: string }>>(`SELECT month::text AS month, amount::text AS amount FROM envelope_phasing WHERE version_id = $1::uuid ORDER BY month`, versionId)));
 /** Two months off the end: 31 Dec becomes 31 Oct. */
 const twoMonthsEarlier = (d: string) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 2, 0)).toISOString().slice(0, 10);
 
@@ -104,10 +107,10 @@ describe("change a budget's dates (R9-002)", () => {
     expect(res.body).toMatchObject({ applied: false, autoApproved: false });
     const waiting = await env(id(parentKey));
     expect(waiting).toMatchObject({ status: "PENDING", endDate: parent.endDate, pendingKind: "dates" });
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId);
+    const audits = await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId));
     // The date change, and (S-003) the request it waits in, announced like every other request.
     expect(audits.map((a) => a.action).sort()).toEqual(["approval.requested", "envelope.dates_requested"]);
-    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'dates' AND payload->>'requestId' = $2`, golden.workspaceId, String(res.body["requestId"]));
+    const out = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload->>'kind' = 'dates' AND payload->>'requestId' = $2`, golden.workspaceId, String(res.body["requestId"])));
     expect(Number(out[0]?.n)).toBe(1);
 
     // The admin's approval is final (ADR-048): every budget gets its dates and a re-phased version with the same amount.
@@ -169,7 +172,7 @@ describe("change a budget's dates (R9-002)", () => {
     const months = await phasing(after.draftVersionId as string);
     expect(months.every((m) => m.month <= endDate)).toBe(true);
     expect(months.reduce((s, m) => s.plus(m.amount), new Decimal(0)).toFixed(2)).toBe("1200.00");
-    const audits = await owner.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId);
+    const audits = await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1`, requestId));
     expect(audits.map((a) => a.action)).toContain("envelope.dates_changed");
 
     const approved = await env(parentId);
@@ -202,13 +205,13 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
   };
   /** The request went back with the reason: status, blocking thread, one audit row and one outbox row. */
   async function expectSentBack(requestId: string, reason: string) {
-    expect((await owner.approvalRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe("CHANGES_REQUESTED");
-    const audits = await owner.$queryRawUnsafe<Array<{ after: { stale?: { reason?: string } } }>>(`SELECT after FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.request_changes'`, requestId);
+    expect((await admin((tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId } }))).status).toBe("CHANGES_REQUESTED");
+    const audits = await admin((tx) => tx.$queryRawUnsafe<Array<{ after: { stale?: { reason?: string } } }>>(`SELECT after FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.request_changes'`, requestId));
     expect(audits).toHaveLength(1);
     expect(audits[0]?.after.stale?.reason).toBe(reason);
-    const [out] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1 AND payload->>'action' = 'approval.request_changes'`, requestId);
+    const [out] = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1 AND payload->>'action' = 'approval.request_changes'`, requestId));
     expect(Number(out?.n)).toBe(1);
-    const thread = await owner.thread.findFirstOrThrow({ where: { anchorType: "approval_request", anchorId: requestId, isBlocking: true }, include: { comments: true } });
+    const thread = await admin((tx) => tx.thread.findFirstOrThrow({ where: { anchorType: "approval_request", anchorId: requestId, isBlocking: true }, include: { comments: true } }));
     expect(thread.comments[0]?.bodyMd).toContain("re-request the dates");
   }
 
@@ -220,8 +223,10 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
     // The interleaving of audit I-17: a move that went through while the dates waited (the hold now
     // refuses it, so it is written directly) put the budget under a parent that runs Q1 only.
     const shortParent = id("EMEA/FR/google_ads/awareness");
-    await owner.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-03-31' WHERE id = $1::uuid`, shortParent);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET parent_id = $2::uuid WHERE id = $1::uuid`, leaf, shortParent);
+    await admin(async (tx) => {
+      await tx.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-03-31' WHERE id = $1::uuid`, shortParent);
+      await tx.$executeRawUnsafe(`UPDATE envelope SET parent_id = $2::uuid WHERE id = $1::uuid`, leaf, shortParent);
+    });
 
     const res = await approve(requestId);
     expect(res.status, JSON.stringify(res.body)).toBe(409);
@@ -252,7 +257,7 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
     expect(moved.body["message"]).toBe(waiting);
 
     // The interleaving of audit I-17: the child was re-dated at once (it has no approved amount).
-    await owner.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-09-30', row_version = row_version + 1 WHERE id = $1::uuid`, childId);
+    await admin((tx) => tx.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-09-30', row_version = row_version + 1 WHERE id = $1::uuid`, childId));
     const res = await approve(requestId);
     expect(res.status, JSON.stringify(res.body)).toBe(409);
     expect(res.body["details"]).toMatchObject({ envelopeId: childId, reason: "redated" });
@@ -267,7 +272,7 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
     const parent = await env(id(parentKey));
     const requestId = await request(id(parentKey), twoMonthsEarlier(parent.endDate), true);
     // The new parent is not held: a budget can still move under it, here one that runs the whole year.
-    await owner.envelope.update({ where: { id: id(parentKey) }, data: { allowOverAllocation: true } });
+    await admin((tx) => tx.envelope.update({ where: { id: id(parentKey) }, data: { allowOverAllocation: true } }));
     const stray = kids("EMEA/FR/tiktok/consideration")[0] as string;
     const moved = await as("planner", "POST", `/api/v1/envelopes/${stray}/move`, { parentId: id(parentKey), rowVersion: (await env(stray)).rowVersion });
     expect(moved.status, JSON.stringify(moved.body)).toBe(201);
@@ -297,16 +302,16 @@ describe("a dates approval re-validates the tree (W3-5)", () => {
     expect(edited.status, JSON.stringify(edited.body)).toBeLessThan(300);
     expect((await env(childId)).status).toBe("PENDING");
 
-    const [mark] = await owner.$queryRawUnsafe<Array<{ id: bigint }>>(`SELECT coalesce(max(id), 0) AS id FROM outbox`);
+    const [mark] = await admin((tx) => tx.$queryRawUnsafe<Array<{ id: bigint }>>(`SELECT coalesce(max(id), 0) AS id FROM outbox`));
     const xRequestId = `dates-approve-${randomUUID()}`;
     const res = await approve(requestId, xRequestId);
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body["status"]).toBe("APPROVED");
     for (const l of lines) {
       expect(await env(l)).toMatchObject({ status: l === childId ? "DRAFT" : "APPROVED", endDate });
-      const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1 AND entity_type = 'envelope' AND entity_id = $2::uuid`, xRequestId, l);
+      const [a] = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1 AND entity_type = 'envelope' AND entity_id = $2::uuid`, xRequestId, l));
       expect(Number(a?.n), `audit for ${l}`).toBe(1);
-      const [o] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE id > $1 AND topic = 'budget.changed' AND payload->>'envelopeId' = $2`, mark?.id ?? 0n, l);
+      const [o] = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE id > $1 AND topic = 'budget.changed' AND payload->>'envelopeId' = $2`, mark?.id ?? 0n, l));
       expect(Number(o?.n), `outbox for ${l}`).toBe(1);
     }
   }, 120_000);

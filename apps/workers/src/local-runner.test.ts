@@ -1,8 +1,8 @@
 import "./test-support/env.js";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { outbox, withTenant, type TenantContext } from "@budget/db";
-import { PrismaClient } from "@prisma/client";
+import { asOrgAdmin, outbox, withTenant, type TenantContext } from "@budget/db";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handleExportRequested } from "./export/export.js";
 import { handleIngestRequested } from "./ingest/worker.js";
@@ -51,8 +51,13 @@ const realHandlers: RunnerHandlers = {
 };
 const baseDeps: RunnerDeps = { app, publisher, store, slack: null, maxAttempts: MAX_ATTEMPTS, handlers: realHandlers };
 
+// W0-6: the owner has no BYPASSRLS; every raw owner.* read/write below (all scoped to this org's
+// workspace) needs the same org-admin tenant context real writes get from withTenant.
+function asOwner<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return asOrgAdmin(owner, fn, orgId);
+}
 async function insertOutbox(topic: string, payload: unknown): Promise<string> {
-  const rows = await owner.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, $2, $3::jsonb) RETURNING id::text AS id`, ws, topic, JSON.stringify(payload));
+  const rows = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, $2, $3::jsonb) RETURNING id::text AS id`, ws, topic, JSON.stringify(payload)));
   return rows[0]?.id as string;
 }
 interface Row {
@@ -63,14 +68,14 @@ interface Row {
   next_attempt_at: Date | null;
 }
 async function outboxRow(id: string): Promise<Row> {
-  const rows = await owner.$queryRawUnsafe<Row[]>(`SELECT published_at, attempts, last_error, failed_at, next_attempt_at FROM outbox WHERE id = $1::bigint`, id);
+  const rows = await asOwner((tx) => tx.$queryRawUnsafe<Row[]>(`SELECT published_at, attempts, last_error, failed_at, next_attempt_at FROM outbox WHERE id = $1::bigint`, id));
   return rows[0] as Row;
 }
 async function clearBackoff(id: string): Promise<void> {
-  await owner.$executeRawUnsafe(`UPDATE outbox SET next_attempt_at = NULL WHERE id = $1::bigint`, id);
+  await asOwner((tx) => tx.$executeRawUnsafe(`UPDATE outbox SET next_attempt_at = NULL WHERE id = $1::bigint`, id));
 }
 async function processed(consumer: string, id: string): Promise<boolean> {
-  const rows = await owner.$queryRawUnsafe<Array<{ ok: number }>>(`SELECT 1 AS ok FROM processed_event WHERE consumer = $1 AND outbox_id = $2::bigint`, consumer, id);
+  const rows = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ ok: number }>>(`SELECT 1 AS ok FROM processed_event WHERE consumer = $1 AND outbox_id = $2::bigint`, consumer, id));
   return rows.length === 1;
 }
 const failWith =
@@ -81,14 +86,16 @@ const failWith =
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "w1-2" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug, name: "W1-2", reportingCurrency: "USD", fiscalYearStartMonth: 1 } });
+  await asOwner((tx) => tx.workspace.create({ data: { id: ws, orgId, slug, name: "W1-2", reportingCurrency: "USD", fiscalYearStartMonth: 1 } }));
   await owner.user.create({ data: { id: userId, orgId, email: `${userId}@w1-2.test`, name: "W1-2", googleSub: `g-${userId}` } });
 });
 
 afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  // W0-6: the owner has no BYPASSRLS; pass orgId so deleteWorkspaceForTests runs under org-admin
+  // tenant context.
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect(), publisher.$disconnect()]);
@@ -136,11 +143,11 @@ describe("local-runner pass() (W1-2 done-when)", () => {
       await tx.exportJob.create({ data: { id: jobId, workspaceId: ws, kind: "csv", query: { workspaceId: ws, period: { kind: "range", start: "2026-01-01", end: "2026-12-31" } }, filename: "w12-export", createdBy: userId } });
       await outbox(tx, { workspaceId: ws, topic: "export.requested", payload: { jobId } });
     });
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text AS id FROM outbox WHERE workspace_id = $1::uuid AND topic = 'export.requested' ORDER BY id DESC LIMIT 1`, ws);
+    const [row] = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text AS id FROM outbox WHERE workspace_id = $1::uuid AND topic = 'export.requested' ORDER BY id DESC LIMIT 1`, ws));
     const outboxId = row?.id as string;
     const n = await pass(baseDeps);
     expect(n).toBeGreaterThan(0);
-    const job = await owner.exportJob.findUniqueOrThrow({ where: { id: jobId } });
+    const job = await asOwner((tx) => tx.exportJob.findUniqueOrThrow({ where: { id: jobId } }));
     expect(job).toMatchObject({ status: "done", rowCount: 0 });
     expect(store.objects.has(`gs://budget-os-uploads/exports/${ws}/${jobId}.csv`)).toBe(true);
     expect((await outboxRow(outboxId)).published_at).not.toBeNull();

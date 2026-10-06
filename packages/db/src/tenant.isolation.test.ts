@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, expect, it } from "vitest";
 import { audit, outbox, readDataVersion, type Tx } from "./sql.js";
-import { withTenant, type TenantContext } from "./tenant.js";
+import { asOrgAdmin, withTenant, type TenantContext } from "./tenant.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -138,13 +138,22 @@ it("writes audit and outbox in one tenant transaction; the outbox row moves the 
   const orgId = randomUUID();
   const workspaceId = randomUUID();
   const entityId = randomUUID();
-  await prisma.$executeRaw`DELETE FROM outbox WHERE payload->>'entityId' = ${entityId}`;
-  await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
-  await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
-  await prisma.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 't004')`;
-  await prisma.$executeRaw`
-    INSERT INTO workspace (id, org_id, slug, name, reporting_currency)
-    VALUES (${workspaceId}::uuid, ${orgId}::uuid, 't004', 'T004', 'USD')`;
+  // W0-6: the owner has no BYPASSRLS; workspace (unlike organization) has no owner_bootstrap
+  // policy, so setup and the final assertions/cleanup below need the org-admin tenant context
+  // real writes get from withTenant.
+  await asOrgAdmin(
+    prisma,
+    async (tx) => {
+      await tx.$executeRaw`DELETE FROM outbox WHERE payload->>'entityId' = ${entityId}`;
+      await tx.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+      await tx.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
+      await tx.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 't004')`;
+      await tx.$executeRaw`
+        INSERT INTO workspace (id, org_id, slug, name, reporting_currency)
+        VALUES (${workspaceId}::uuid, ${orgId}::uuid, 't004', 'T004', 'USD')`;
+    },
+    orgId,
+  );
 
   try {
     const ctx: TenantContext = {
@@ -177,10 +186,16 @@ it("writes audit and outbox in one tenant transaction; the outbox row moves the 
     versions.push(await readDataVersion(prisma, workspaceId));
     expect(versions).toEqual([0, 1]);
 
-    const auditRows = await prisma.$queryRaw<Array<{ n: number }>>`
-      SELECT count(*)::int AS n FROM audit_event WHERE entity_type = 'envelope' AND entity_id = ${entityId}::uuid AND action = 'envelope.version.created'`;
-    const outboxRows = await prisma.$queryRaw<Array<{ n: number }>>`
-      SELECT count(*)::int AS n FROM outbox WHERE topic = 'budget.changed' AND payload->>'entityId' = ${entityId}`;
+    const [auditRows, outboxRows] = await asOrgAdmin(
+      prisma,
+      async (tx) => [
+        await tx.$queryRaw<Array<{ n: number }>>`
+          SELECT count(*)::int AS n FROM audit_event WHERE entity_type = 'envelope' AND entity_id = ${entityId}::uuid AND action = 'envelope.version.created'`,
+        await tx.$queryRaw<Array<{ n: number }>>`
+          SELECT count(*)::int AS n FROM outbox WHERE topic = 'budget.changed' AND payload->>'entityId' = ${entityId}`,
+      ],
+      orgId,
+    );
     expect(Number(auditRows[0]?.n)).toBe(1);
     expect(Number(outboxRows[0]?.n)).toBe(1);
   } finally {
@@ -190,12 +205,20 @@ it("writes audit and outbox in one tenant transaction; the outbox row moves the 
     // @budget/workers — that would be circular — so it stays inline here). audit_event is
     // append-only (audit_event_immutable trigger); the trigger is disabled for this test cleanup
     // only, the same way migration 20261010030000's one-time backfill does.
-    await prisma.$executeRaw`DELETE FROM outbox WHERE payload->>'entityId' = ${entityId}`;
-    await prisma.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
-    await prisma.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ${workspaceId}::uuid`;
-    await prisma.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
-    await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
-    await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
+    // W0-6: the owner has no BYPASSRLS, so every statement below needs the org-admin tenant
+    // context real writes get from withTenant.
+    await asOrgAdmin(
+      prisma,
+      async (tx) => {
+        await tx.$executeRaw`DELETE FROM outbox WHERE payload->>'entityId' = ${entityId}`;
+        await tx.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+        await tx.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ${workspaceId}::uuid`;
+        await tx.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
+        await tx.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+        await tx.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
+      },
+      orgId,
+    );
   }
 });
 

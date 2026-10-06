@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Tx } from "./sql.js";
-import { withIdentity, withTenant, type TenantContext } from "./tenant.js";
+import { asOrgAdmin, withIdentity, withTenant, type TenantContext } from "./tenant.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -80,6 +80,13 @@ const users = new Map<string, string>([
 // role_assignment id → workspace id, or `org:<org id>` for an org-wide ORG_ADMIN row.
 const assignments = new Map<string, string>();
 const allDims = (): string[] => [...orgDims.values(), ...wsDims.values()];
+const workspaceOrg = new Map(workspaces.map((w) => [w.id, w.org]));
+// Which org a dimension (org-wide or workspace-scoped) belongs to, so fixture writes below can
+// set app.org_id correctly before touching it (W0-6: registry_read requires an exact org match).
+const dimOrg = new Map<string, string>([
+  ...[...orgDims.entries()].map(([org, id]): [string, string] => [id, org]),
+  ...[...wsDims.entries()].map(([wsId, id]): [string, string] => [id, workspaceOrg.get(wsId) as string]),
+]);
 const groups = new Map<string, string>([
   [orgA, randomUUID()],
   [orgB, randomUUID()],
@@ -208,109 +215,133 @@ async function visible(tx: Tx): Promise<Visible> {
 
 const sorted = (xs: string[]): string[] => [...xs].sort();
 
+// W0-6: the owner has no BYPASSRLS, so this fixture (spanning two orgs) needs an explicit tenant
+// context for every statement, the same as real code gets from withTenant. is_org_admin=true
+// alone satisfies every generic `tenant_isolation`-style policy (no org_id check); `workspace`,
+// `metric_definition`, `app_group` and `app_group_member` additionally require app.org_id to match
+// the row's own org, so orgCtx() below re-points it per iteration within the one transaction.
 beforeAll(async () => {
-  await owner.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgA}::uuid, 'rls-org-a'), (${orgB}::uuid, 'rls-org-b')`;
-  for (const w of workspaces) {
-    await owner.$executeRaw`
-      INSERT INTO workspace (id, org_id, slug, name, reporting_currency)
-      VALUES (${w.id}::uuid, ${w.org}::uuid, ${`rls-${w.id}`}, 'rls', 'USD')`;
-    await owner.$executeRaw`
-      INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, created_by, updated_at)
-      VALUES (${env(w.id)}::uuid, ${w.id}::uuid, 'rls', '{}'::jsonb, DATE '2026-01-01', DATE '2026-12-31', 'USD', ${actorId}::uuid, now())`;
-    await owner.$executeRaw`
-      INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, created_by)
-      VALUES (${versions.get(w.id)}::uuid, ${env(w.id)}::uuid, 1, 10.00, 10.00, ${actorId}::uuid)`;
-    // audit_event is append-only; these rows stay behind, keyed to a workspace that is deleted.
-    await owner.$executeRaw`
-      INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
-      VALUES (${w.id}::uuid, 'system', 'rls.test', 'envelope', ${audits.get(w.id)}::uuid)`;
-    await owner.$executeRaw`
-      INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by)
-      VALUES (${wsDims.get(w.id)}::uuid, ${w.org}::uuid, ${w.id}::uuid, 'rls_ws', 'rls', 'ENUM', ${actorId}::uuid)`;
-  }
-  for (const [org, id] of orgDims) {
-    await owner.$executeRaw`
-      INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by)
-      VALUES (${id}::uuid, ${org}::uuid, NULL, 'rls_org', 'rls', 'ENUM', ${actorId}::uuid)`;
-  }
-  for (const dimensionId of [...orgDims.values(), ...wsDims.values()]) {
-    await owner.$executeRaw`
-      INSERT INTO dimension_value (id, dimension_id, code, label, path)
-      VALUES (${randomUUID()}::uuid, ${dimensionId}::uuid, 'v', 'V', 'v')`;
-  }
-  for (const w of workspaces) {
-    const [row] = await owner.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO outbox (workspace_id, topic, payload) VALUES (${w.id}::uuid, 'rls.test', '{}'::jsonb)
-      RETURNING id::text AS id`;
-    const outboxId = row?.id ?? "";
-    outboxWorkspace.set(outboxId, w.id);
-    await owner.$executeRaw`
-      INSERT INTO processed_event (consumer, outbox_id) VALUES (${consumer}, ${outboxId}::bigint)`;
-    await owner.$executeRaw`
-      INSERT INTO data_source (id, workspace_id, kind, name, config, mapping)
-      VALUES (${sources.get(w.id)}::uuid, ${w.id}::uuid, 'csv', 'rls', '{}'::jsonb, '{}'::jsonb)`;
-    await owner.$executeRaw`
-      INSERT INTO ingest_run (id, source_id) VALUES (${randomUUID()}::uuid, ${sources.get(w.id)}::uuid)`;
-  }
-  for (const dimensionId of allDims()) {
-    await owner.$executeRaw`
-      INSERT INTO value_constraint (id, dimension_id, when_dimension_key, when_value_code)
-      VALUES (${randomUUID()}::uuid, ${dimensionId}::uuid, 'rls', 'v')`;
-  }
-  for (const [org, userId] of users) {
-    await owner.$executeRaw`
-      INSERT INTO metric_definition (id, org_id, key, label, numerator, direction, format)
-      VALUES (${randomUUID()}::uuid, ${org}::uuid, 'rls', 'rls', 'spend', 'lower_is_better', 'money')`;
-    await owner.$executeRaw`
-      INSERT INTO app_user (id, org_id, email, name, google_sub)
-      VALUES (${userId}::uuid, ${org}::uuid, ${`${userId}@rls.test`}, 'rls', ${sub(userId)})`;
-    await owner.$executeRaw`
-      INSERT INTO app_group (id, org_id, google_group, name) VALUES (${groups.get(org)}::uuid, ${org}::uuid, 'rls@rls.test', 'rls')`;
-    await owner.$executeRaw`
-      INSERT INTO app_group_member (group_id, user_id) VALUES (${groups.get(org)}::uuid, ${userId}::uuid)`;
-    const orgWide = randomUUID();
-    assignments.set(orgWide, `org:${org}`);
-    await owner.$executeRaw`
-      INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
-      VALUES (${orgWide}::uuid, NULL, 'user', ${userId}::uuid, 'ORG_ADMIN', ${actorId}::uuid)`;
-    for (const w of workspaces.filter((x) => x.org === org)) {
-      const id = randomUUID();
-      assignments.set(id, w.id);
-      await owner.$executeRaw`
-        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
-        VALUES (${id}::uuid, ${w.id}::uuid, 'user', ${userId}::uuid, 'VIEWER', ${actorId}::uuid)`;
+  await asOrgAdmin(owner, async (tx) => {
+    const orgCtx = (org: string) => tx.$executeRaw`SELECT set_config('app.org_id', ${org}::text, true)`;
+    await tx.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgA}::uuid, 'rls-org-a'), (${orgB}::uuid, 'rls-org-b')`;
+    for (const w of workspaces) {
+      await orgCtx(w.org);
+      await tx.$executeRaw`
+        INSERT INTO workspace (id, org_id, slug, name, reporting_currency)
+        VALUES (${w.id}::uuid, ${w.org}::uuid, ${`rls-${w.id}`}, 'rls', 'USD')`;
+      await tx.$executeRaw`
+        INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, created_by, updated_at)
+        VALUES (${env(w.id)}::uuid, ${w.id}::uuid, 'rls', '{}'::jsonb, DATE '2026-01-01', DATE '2026-12-31', 'USD', ${actorId}::uuid, now())`;
+      await tx.$executeRaw`
+        INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, created_by)
+        VALUES (${versions.get(w.id)}::uuid, ${env(w.id)}::uuid, 1, 10.00, 10.00, ${actorId}::uuid)`;
+      // audit_event is append-only; these rows stay behind, keyed to a workspace that is deleted.
+      await tx.$executeRaw`
+        INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
+        VALUES (${w.id}::uuid, 'system', 'rls.test', 'envelope', ${audits.get(w.id)}::uuid)`;
+      await tx.$executeRaw`
+        INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by)
+        VALUES (${wsDims.get(w.id)}::uuid, ${w.org}::uuid, ${w.id}::uuid, 'rls_ws', 'rls', 'ENUM', ${actorId}::uuid)`;
     }
-  }
+    for (const [org, id] of orgDims) {
+      await orgCtx(org);
+      await tx.$executeRaw`
+        INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by)
+        VALUES (${id}::uuid, ${org}::uuid, NULL, 'rls_org', 'rls', 'ENUM', ${actorId}::uuid)`;
+    }
+    for (const dimensionId of [...orgDims.values(), ...wsDims.values()]) {
+      await orgCtx(dimOrg.get(dimensionId) as string);
+      await tx.$executeRaw`
+        INSERT INTO dimension_value (id, dimension_id, code, label, path)
+        VALUES (${randomUUID()}::uuid, ${dimensionId}::uuid, 'v', 'V', 'v')`;
+    }
+    for (const w of workspaces) {
+      await orgCtx(w.org);
+      const [row] = await tx.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO outbox (workspace_id, topic, payload) VALUES (${w.id}::uuid, 'rls.test', '{}'::jsonb)
+        RETURNING id::text AS id`;
+      const outboxId = row?.id ?? "";
+      outboxWorkspace.set(outboxId, w.id);
+      await tx.$executeRaw`
+        INSERT INTO processed_event (consumer, outbox_id) VALUES (${consumer}, ${outboxId}::bigint)`;
+      await tx.$executeRaw`
+        INSERT INTO data_source (id, workspace_id, kind, name, config, mapping)
+        VALUES (${sources.get(w.id)}::uuid, ${w.id}::uuid, 'csv', 'rls', '{}'::jsonb, '{}'::jsonb)`;
+      await tx.$executeRaw`
+        INSERT INTO ingest_run (id, source_id) VALUES (${randomUUID()}::uuid, ${sources.get(w.id)}::uuid)`;
+    }
+    for (const dimensionId of allDims()) {
+      await orgCtx(dimOrg.get(dimensionId) as string);
+      await tx.$executeRaw`
+        INSERT INTO value_constraint (id, dimension_id, when_dimension_key, when_value_code)
+        VALUES (${randomUUID()}::uuid, ${dimensionId}::uuid, 'rls', 'v')`;
+    }
+    for (const [org, userId] of users) {
+      await orgCtx(org);
+      await tx.$executeRaw`
+        INSERT INTO metric_definition (id, org_id, key, label, numerator, direction, format)
+        VALUES (${randomUUID()}::uuid, ${org}::uuid, 'rls', 'rls', 'spend', 'lower_is_better', 'money')`;
+      await tx.$executeRaw`
+        INSERT INTO app_user (id, org_id, email, name, google_sub)
+        VALUES (${userId}::uuid, ${org}::uuid, ${`${userId}@rls.test`}, 'rls', ${sub(userId)})`;
+      await tx.$executeRaw`
+        INSERT INTO app_group (id, org_id, google_group, name) VALUES (${groups.get(org)}::uuid, ${org}::uuid, 'rls@rls.test', 'rls')`;
+      await tx.$executeRaw`
+        INSERT INTO app_group_member (group_id, user_id) VALUES (${groups.get(org)}::uuid, ${userId}::uuid)`;
+      const orgWide = randomUUID();
+      assignments.set(orgWide, `org:${org}`);
+      await tx.$executeRaw`
+        INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+        VALUES (${orgWide}::uuid, NULL, 'user', ${userId}::uuid, 'ORG_ADMIN', ${actorId}::uuid)`;
+      for (const w of workspaces.filter((x) => x.org === org)) {
+        const id = randomUUID();
+        assignments.set(id, w.id);
+        await tx.$executeRaw`
+          INSERT INTO role_assignment (id, workspace_id, principal_type, principal_id, role, created_by)
+          VALUES (${id}::uuid, ${w.id}::uuid, 'user', ${userId}::uuid, 'VIEWER', ${actorId}::uuid)`;
+      }
+    }
+  });
 });
 
 afterAll(async () => {
   const ws = workspaces.map((w) => w.id);
   const orgs = [orgA, orgB];
-  await owner.$executeRaw`DELETE FROM envelope_version WHERE envelope_id = ANY(${[...envelopes.values()]}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM envelope WHERE workspace_id = ANY(${ws}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM role_assignment WHERE principal_id = ANY(${[...users.values()]}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM app_user WHERE org_id = ANY(${orgs}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM app_group_member WHERE group_id IN (SELECT id FROM app_group WHERE org_id = ANY(${orgs}::uuid[]))`;
-  await owner.$executeRaw`DELETE FROM app_group WHERE org_id = ANY(${orgs}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM metric_definition WHERE org_id = ANY(${orgs}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM value_constraint WHERE dimension_id = ANY(${allDims()}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM ingest_run WHERE source_id = ANY(${[...sources.values()]}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM data_source WHERE workspace_id = ANY(${ws}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM processed_event WHERE consumer = ${consumer}`;
-  await owner.$executeRaw`DELETE FROM outbox WHERE workspace_id = ANY(${ws}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM dimension_value WHERE dimension_id = ANY(${[...orgDims.values(), ...wsDims.values()]}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM dimension WHERE org_id = ANY(${orgs}::uuid[])`;
-  // W3-11 (audit I-32): outbox.workspace_id and dimension.workspace_id are FKs to workspace(id)
-  // now too (deleted above, before workspace); audit_event.workspace_id is a FK as well.
-  // @budget/workers's deleteWorkspaceForTests mirrors this same order for apps/api and
-  // apps/workers fixtures; @budget/db cannot import @budget/workers (circular), so it stays
-  // inline here. audit_event is append-only (audit_event_immutable trigger); disabled here for
-  // cleanup only, the same way migration 20261010030000's one-time backfill does.
-  await owner.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
-  await owner.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ANY(${ws}::uuid[])`;
-  await owner.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
-  await owner.$executeRaw`DELETE FROM workspace WHERE org_id = ANY(${orgs}::uuid[])`;
-  await owner.$executeRaw`DELETE FROM organization WHERE id = ANY(${orgs}::uuid[])`;
+  await asOrgAdmin(owner, async (tx) => {
+    // W3-11 (audit I-32): outbox.workspace_id, dimension.workspace_id and audit_event.workspace_id
+    // are FKs to workspace(id) now too, so all three are deleted below before workspace.
+    // @budget/workers's deleteWorkspaceForTests mirrors this same order for apps/api and
+    // apps/workers fixtures; @budget/db cannot import @budget/workers (circular), so it stays
+    // inline here. audit_event is append-only (audit_event_immutable trigger); disabled here for
+    // cleanup only, the same way migration 20261010030000's one-time backfill does.
+    await tx.$executeRaw`ALTER TABLE audit_event DISABLE TRIGGER audit_event_immutable`;
+    // app_group / app_group_member / app_user / metric_definition / workspace have no
+    // app_is_org_admin() fallback — only an exact app.org_id match — so an ANY(orgs) delete only
+    // ever reaches one org's rows per statement; looping both orgs clears both. The other
+    // statements below are workspace- or dimension-scoped (is_org_admin alone satisfies them) and
+    // are safely idempotent on a second pass (nothing left to delete).
+    for (const org of orgs) {
+      await tx.$executeRaw`SELECT set_config('app.org_id', ${org}::text, true)`;
+      await tx.$executeRaw`DELETE FROM envelope_version WHERE envelope_id = ANY(${[...envelopes.values()]}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM envelope WHERE workspace_id = ANY(${ws}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM role_assignment WHERE principal_id = ANY(${[...users.values()]}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM app_user WHERE org_id = ${org}::uuid`;
+      await tx.$executeRaw`DELETE FROM app_group_member WHERE group_id IN (SELECT id FROM app_group WHERE org_id = ${org}::uuid)`;
+      await tx.$executeRaw`DELETE FROM app_group WHERE org_id = ${org}::uuid`;
+      await tx.$executeRaw`DELETE FROM metric_definition WHERE org_id = ${org}::uuid`;
+      await tx.$executeRaw`DELETE FROM value_constraint WHERE dimension_id = ANY(${allDims()}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM ingest_run WHERE source_id = ANY(${[...sources.values()]}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM data_source WHERE workspace_id = ANY(${ws}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM processed_event WHERE consumer = ${consumer}`;
+      await tx.$executeRaw`DELETE FROM outbox WHERE workspace_id = ANY(${ws}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM audit_event WHERE workspace_id = ANY(${ws}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM dimension_value WHERE dimension_id = ANY(${[...orgDims.values(), ...wsDims.values()]}::uuid[])`;
+      await tx.$executeRaw`DELETE FROM dimension WHERE org_id = ${org}::uuid`;
+      await tx.$executeRaw`DELETE FROM workspace WHERE org_id = ${org}::uuid`;
+    }
+    await tx.$executeRaw`ALTER TABLE audit_event ENABLE TRIGGER audit_event_immutable`;
+    await tx.$executeRaw`DELETE FROM organization WHERE id = ANY(${orgs}::uuid[])`;
+  });
   await owner.$disconnect();
   await app.$disconnect();
   await mcp.$disconnect();
@@ -555,8 +586,11 @@ describe("audit_event insert policy is bound to the tenant (W2-4, audit S-4)", (
         INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
         VALUES (NULL, 'user', 'rls.test', 'organization', ${entityId}::uuid)`,
     );
-    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
-      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    const [row] = await asOrgAdmin(
+      owner,
+      (tx) => tx.$queryRaw<Array<{ orgId: string | null }>>`SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+      orgA,
+    );
     expect(row?.orgId, "org_id defaults from the session even for a non-admin").toBe(orgA);
 
     const forAnotherOrg = withTenant(app, ctx({ orgId: orgA, workspaceId: wsA1 }), (tx) =>
@@ -574,8 +608,11 @@ describe("audit_event insert policy is bound to the tenant (W2-4, audit S-4)", (
         INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
         VALUES (NULL, 'user', 'rls.test', 'organization', ${entityId}::uuid)`,
     );
-    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
-      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    const [row] = await asOrgAdmin(
+      owner,
+      (tx) => tx.$queryRaw<Array<{ orgId: string | null }>>`SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+      orgA,
+    );
     expect(row?.orgId, "org_id defaults from the session's app.org_id (no caller change needed)").toBe(orgA);
 
     const mismatchedOrgId = withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
@@ -596,8 +633,11 @@ describe("audit_event insert policy is bound to the tenant (W2-4, audit S-4)", (
         INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
         VALUES (${wsA1}::uuid, 'mcp', 'mcp.test', 'envelope', ${entityId}::uuid)`,
     );
-    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
-      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    const [row] = await asOrgAdmin(
+      owner,
+      (tx) => tx.$queryRaw<Array<{ orgId: string | null }>>`SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+      orgA,
+    );
     expect(row?.orgId, "org_id defaults from the session even for budget_mcp").toBe(orgA);
 
     const forAWorkspaceItCannotSee = withTenant(mcp, session, (tx) =>
@@ -620,16 +660,22 @@ describe("audit_event insert policy is bound to the tenant (W2-4, audit S-4)", (
         INSERT INTO audit_event (workspace_id, actor_type, action, entity_type, entity_id)
         VALUES (NULL, 'mcp', 'mcp.list_workspaces', 'mcp_call', ${entityId}::uuid)`,
     );
-    const [row] = await owner.$queryRaw<Array<{ orgId: string | null }>>`
-      SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`;
+    const [row] = await asOrgAdmin(
+      owner,
+      (tx) => tx.$queryRaw<Array<{ orgId: string | null }>>`SELECT org_id::text AS "orgId" FROM audit_event WHERE entity_id = ${entityId}::uuid`,
+      orgA,
+    );
     expect(row?.orgId).toBe(orgA);
   });
 
   it("an org admin reads its own org's org-level audit rows, and not another org's", async () => {
     const entityId = randomUUID();
-    await owner.$executeRaw`
-      INSERT INTO audit_event (workspace_id, org_id, actor_type, action, entity_type, entity_id)
-      VALUES (NULL, ${orgA}::uuid, 'system', 'rls.org-level.test', 'organization', ${entityId}::uuid)`;
+    await asOrgAdmin(
+      owner,
+      (tx) => tx.$executeRaw`INSERT INTO audit_event (workspace_id, org_id, actor_type, action, entity_type, entity_id)
+        VALUES (NULL, ${orgA}::uuid, 'system', 'rls.org-level.test', 'organization', ${entityId}::uuid)`,
+      orgA,
+    );
     const seenByOwnAdmin = await withTenant(app, ctx({ orgId: orgA, isOrgAdmin: true }), (tx) =>
       tx.$queryRaw<Array<{ id: string }>>`
         SELECT entity_id::text AS id FROM audit_event WHERE entity_id = ${entityId}::uuid`,

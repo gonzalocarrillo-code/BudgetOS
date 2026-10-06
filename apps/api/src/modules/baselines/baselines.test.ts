@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { goldenPlan } from "@budget/db";
+import { asOrgAdmin, goldenPlan } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -42,9 +42,16 @@ describe("snapshots (Phase E)", () => {
     const saved = await as("admin", "POST", `/api/v1/workspaces/${ws}/baselines`, { name: "Q4 plan", kind: "plan", periodKey: "2026-Q4" });
     expect(saved.status, JSON.stringify(saved.body)).toBe(201);
     const snap = saved.body as { id: string; rowCount: number; total: string };
-    expect(snap.rowCount).toBe(await owner.envelope.count({ where: { workspaceId: ws, status: { not: "ARCHIVED" } } }));
+    // W0-6: the owner has no BYPASSRLS; envelope/audit_event need the org-admin tenant context.
+    expect(snap.rowCount).toBe(await asOrgAdmin(owner, (tx) => tx.envelope.count({ where: { workspaceId: ws, status: { not: "ARCHIVED" } } }), golden.orgId));
     // One audit row for this save (the golden seed saves its own plan snapshot, GOLDEN_HISTORY).
-    expect(Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'baseline.saved' AND entity_id = $2::uuid`, ws, snap.id))[0]?.n)).toBe(1);
+    expect(
+      Number(
+        (
+          await asOrgAdmin(owner, (tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'baseline.saved' AND entity_id = $2::uuid`, ws, snap.id), golden.orgId)
+        )[0]?.n,
+      ),
+    ).toBe(1);
 
     // Change a leaf's amount (an admin's change applies directly) and move another budget.
     const leafKey = plan.find((e) => e.level === 4)?.key as string;
@@ -57,17 +64,17 @@ describe("snapshots (Phase E)", () => {
     const submit = await as("admin", "POST", `/api/v1/envelopes/${leaf}/submit`, { versionId: draftId, rationale: "snapshot test" });
     expect(submit.status, JSON.stringify(submit.body)).toBeLessThan(300);
 
-    const row = await owner.budgetBaselineRow.findUniqueOrThrow({ where: { baselineId_envelopeId: { baselineId: snap.id, envelopeId: leaf } } });
+    const row = await asOrgAdmin(owner, (tx) => tx.budgetBaselineRow.findUniqueOrThrow({ where: { baselineId_envelopeId: { baselineId: snap.id, envelopeId: leaf } } }), golden.orgId);
     expect(row.amount.toFixed(2)).toBe(new Decimal(before.current.amount).toFixed(2));
     expect(row.versionId).toBe(before.currentVersionId);
 
     // An approved move and rename (structure is not versioned): the snapshot keeps where and what it was.
     const other = plan.find((e) => e.level === 4 && e.key.split("/")[0] === leafKey.split("/")[0] && e.key.split("/").slice(0, 3).join("/") !== leafKey.split("/").slice(0, 3).join("/"));
     expect(other).toBeDefined();
-    const was = await owner.envelope.findUniqueOrThrow({ where: { id: leaf } });
-    const newParent = (await owner.envelope.findUniqueOrThrow({ where: { id: id(other?.key as string) } })).parentId;
-    await owner.envelope.update({ where: { id: leaf }, data: { parentId: newParent, name: `${was.name} (moved)` } });
-    const frozen = await owner.budgetBaselineRow.findUniqueOrThrow({ where: { baselineId_envelopeId: { baselineId: snap.id, envelopeId: leaf } } });
+    const was = await asOrgAdmin(owner, (tx) => tx.envelope.findUniqueOrThrow({ where: { id: leaf } }), golden.orgId);
+    const newParent = (await asOrgAdmin(owner, (tx) => tx.envelope.findUniqueOrThrow({ where: { id: id(other?.key as string) } }), golden.orgId)).parentId;
+    await asOrgAdmin(owner, (tx) => tx.envelope.update({ where: { id: leaf }, data: { parentId: newParent, name: `${was.name} (moved)` } }), golden.orgId);
+    const frozen = await asOrgAdmin(owner, (tx) => tx.budgetBaselineRow.findUniqueOrThrow({ where: { baselineId_envelopeId: { baselineId: snap.id, envelopeId: leaf } } }), golden.orgId);
     expect(frozen.parentId).toBe(was.parentId);
     expect(frozen.name).toBe(was.name);
 
@@ -128,7 +135,7 @@ describe("snapshots (Phase E)", () => {
     const renamed = await as("planner", "PATCH", `/api/v1/baselines/${snap.id}`, { name: "EMEA as agreed", archived: true });
     expect(renamed.body).toMatchObject({ name: "EMEA as agreed" });
     expect((renamed.body as { archivedAt: string | null }).archivedAt).not.toBeNull();
-    expect(await owner.budgetBaselineRow.count({ where: { baselineId: snap.id } })).toBe(snap.rowCount);
+    expect(await asOrgAdmin(owner, (tx) => tx.budgetBaselineRow.count({ where: { baselineId: snap.id } }), golden.orgId)).toBe(snap.rowCount);
     const listRes = await as("budgetOwner", "GET", `/api/v1/workspaces/${ws}/baselines`);
     expect(listRes.status, JSON.stringify(listRes.body)).toBe(200);
     const listed = listRes.body as { baselines: Array<{ id: string }> };

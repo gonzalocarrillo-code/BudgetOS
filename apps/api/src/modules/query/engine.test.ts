@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { QueryRequest } from "@budget/domain";
+import { asOrgAdmin } from "@budget/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthContext } from "../../common/tenant.js";
 import { outbox, withTenant } from "@budget/db";
@@ -33,22 +34,39 @@ class FakeWarehouse implements Warehouse {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "engine" } });
-  await owner.workspace.create({ data: { id: ws, orgId, slug: `engine-${ws}`, name: "Engine", reportingCurrency: "USD" } });
+  // W0-6: the owner has no BYPASSRLS; workspace and the raw envelope rows need the org-admin
+  // tenant context real writes get from withTenant.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.workspace.create({ data: { id: ws, orgId, slug: `engine-${ws}`, name: "Engine", reportingCurrency: "USD" } });
+      const env = randomUUID();
+      const v = randomUUID();
+      await tx.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'Leaf', '{}'::jsonb, '2025-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`, env, ws, user.id);
+      await tx.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, 1000, 1000, 'APPROVED', $3::uuid, '2025-01-01T00:00:00Z')`, v, env, user.id);
+      await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, env, v);
+    },
+    orgId,
+  );
   await owner.user.create({ data: { id: user.id, orgId, email: user.email, name: user.sub, googleSub: `g-${user.sub}` } });
-  const env = randomUUID();
-  const v = randomUUID();
-  await owner.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'Leaf', '{}'::jsonb, '2025-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`, env, ws, user.id);
-  await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, 1000, 1000, 'APPROVED', $3::uuid, '2025-01-01T00:00:00Z')`, v, env, user.id);
-  await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, env, v);
 });
 
 afterAll(async () => {
-  await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
-  await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+  // W0-6: all tenant tables below need the org-admin context; workspace.deleteMany must come
+  // after the rows referencing it are gone, so it stays last inside the same asOrgAdmin call.
+  // workspace_data_version cascades (ON DELETE CASCADE) when the workspace row goes.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+      await tx.workspace.deleteMany({ where: { orgId } });
+    },
+    orgId,
+  );
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });
@@ -105,7 +123,7 @@ describe("query routing", () => {
 
 describe("fact retention routing (D-002)", () => {
   it("a period before factsPrunedBefore runs on the warehouse when it can, and is refused when it cannot", async () => {
-    await owner.$executeRawUnsafe(`UPDATE workspace SET settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{factsPrunedBefore}', '"2025-06-01"') WHERE id = $1::uuid`, ws);
+    await asOrgAdmin(owner, (tx) => tx.$executeRawUnsafe(`UPDATE workspace SET settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{factsPrunedBefore}', '"2025-06-01"') WHERE id = $1::uuid`, ws), orgId);
     try {
       const old = { kind: "range", start: "2025-03-01", end: "2025-03-31" };
       const warehouse = new FakeWarehouse();
@@ -118,7 +136,7 @@ describe("fact retention routing (D-002)", () => {
       const hot = { kind: "range", start: "2025-06-01", end: "2025-06-30" };
       expect((await runQuery(app, auth(), body(hot), now, { cache: null, warehouse: null })).engine).toBe("postgres");
     } finally {
-      await owner.$executeRawUnsafe(`UPDATE workspace SET settings = settings - 'factsPrunedBefore' WHERE id = $1::uuid`, ws);
+      await asOrgAdmin(owner, (tx) => tx.$executeRawUnsafe(`UPDATE workspace SET settings = settings - 'factsPrunedBefore' WHERE id = $1::uuid`, ws), orgId);
     }
   });
 });
@@ -155,61 +173,77 @@ describe("demo exclusion (T-5)", () => {
 
   beforeAll(async () => {
     await owner.organization.create({ data: { id: demoOrgId, name: "engine-demo" } });
-    await owner.workspace.create({ data: { id: demoWs, orgId: demoOrgId, slug: `engine-demo-${demoWs}`, name: "Engine Demo", reportingCurrency: "USD" } });
-    await owner.workspace.create({ data: { id: pureWs, orgId: demoOrgId, slug: `engine-demo-pure-${pureWs}`, name: "Engine Demo Pure", reportingCurrency: "USD" } });
+    // W0-6: the owner has no BYPASSRLS; workspace and the raw envelope/spend_fact rows need the
+    // org-admin tenant context real writes get from withTenant.
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.workspace.create({ data: { id: demoWs, orgId: demoOrgId, slug: `engine-demo-${demoWs}`, name: "Engine Demo", reportingCurrency: "USD" } });
+        await tx.workspace.create({ data: { id: pureWs, orgId: demoOrgId, slug: `engine-demo-pure-${pureWs}`, name: "Engine Demo Pure", reportingCurrency: "USD" } });
+
+        const real = randomUUID();
+        const realV = randomUUID();
+        await tx.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Real', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), false)`, real, demoWs, demoUser.id);
+        await tx.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 1000, 1000, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', false)`, realV, real, demoUser.id);
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, real, realV);
+        await tx.$executeRawUnsafe(
+          `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 100, 100, 'fixture', $3::uuid, $4, false)`,
+          demoWs,
+          real,
+          randomUUID(),
+          randomUUID(),
+        );
+
+        const demoEnv = randomUUID();
+        const demoV = randomUUID();
+        await tx.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Demo', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), true)`, demoEnv, demoWs, demoUser.id);
+        await tx.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 500, 500, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', true)`, demoV, demoEnv, demoUser.id);
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, demoEnv, demoV);
+        await tx.$executeRawUnsafe(
+          `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 50, 50, 'fixture', $3::uuid, $4, true)`,
+          demoWs,
+          demoEnv,
+          randomUUID(),
+          randomUUID(),
+        );
+
+        // A second, pure-demo workspace (the Slack sandbox / a fresh onboarding workspace): no real
+        // budget at all. Demo rows must show up here with no includeDemo plumbing from the caller.
+        const pureDemoEnv = randomUUID();
+        const pureDemoV = randomUUID();
+        await tx.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Demo', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), true)`, pureDemoEnv, pureWs, demoUser.id);
+        await tx.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 500, 500, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', true)`, pureDemoV, pureDemoEnv, demoUser.id);
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, pureDemoEnv, pureDemoV);
+        await tx.$executeRawUnsafe(
+          `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 50, 50, 'fixture', $3::uuid, $4, true)`,
+          pureWs,
+          pureDemoEnv,
+          randomUUID(),
+          randomUUID(),
+        );
+      },
+      demoOrgId,
+    );
     await owner.user.create({ data: { id: demoUser.id, orgId: demoOrgId, email: demoUser.email, name: demoUser.sub, googleSub: `g-${demoUser.sub}` } });
-
-    const real = randomUUID();
-    const realV = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Real', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), false)`, real, demoWs, demoUser.id);
-    await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 1000, 1000, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', false)`, realV, real, demoUser.id);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, real, realV);
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 100, 100, 'fixture', $3::uuid, $4, false)`,
-      demoWs,
-      real,
-      randomUUID(),
-      randomUUID(),
-    );
-
-    const demoEnv = randomUUID();
-    const demoV = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Demo', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), true)`, demoEnv, demoWs, demoUser.id);
-    await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 500, 500, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', true)`, demoV, demoEnv, demoUser.id);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, demoEnv, demoV);
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 50, 50, 'fixture', $3::uuid, $4, true)`,
-      demoWs,
-      demoEnv,
-      randomUUID(),
-      randomUUID(),
-    );
-
-    // A second, pure-demo workspace (the Slack sandbox / a fresh onboarding workspace): no real
-    // budget at all. Demo rows must show up here with no includeDemo plumbing from the caller.
-    const pureDemoEnv = randomUUID();
-    const pureDemoV = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo) VALUES ($1::uuid, $2::uuid, 'Demo', '{}'::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now(), true)`, pureDemoEnv, pureWs, demoUser.id);
-    await owner.$executeRawUnsafe(`INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at, demo) VALUES ($1::uuid, $2::uuid, 1, 500, 500, 'APPROVED', $3::uuid, '2026-01-01T00:00:00Z', true)`, pureDemoV, pureDemoEnv, demoUser.id);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, pureDemoEnv, pureDemoV);
-    await owner.$executeRawUnsafe(
-      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo) VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-02-01', 'USD', 50, 50, 'fixture', $3::uuid, $4, true)`,
-      pureWs,
-      pureDemoEnv,
-      randomUUID(),
-      randomUUID(),
-    );
   });
 
   afterAll(async () => {
-    for (const w of [demoWs, pureWs]) {
-      await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, w);
-      await owner.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, w);
-      await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, w);
-      await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, w);
-    }
+    // W0-6: all tenant tables below need the org-admin context; workspace.deleteMany must come
+    // after the rows referencing it are gone, so it stays last inside the same asOrgAdmin call.
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        for (const w of [demoWs, pureWs]) {
+          await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, w);
+          await tx.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, w);
+          await tx.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN (SELECT id FROM envelope WHERE workspace_id = $1::uuid)`, w);
+          await tx.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, w);
+        }
+        await tx.workspace.deleteMany({ where: { orgId: demoOrgId } });
+      },
+      demoOrgId,
+    );
     await owner.user.deleteMany({ where: { orgId: demoOrgId } });
-    await owner.workspace.deleteMany({ where: { orgId: demoOrgId } });
     await owner.organization.delete({ where: { id: demoOrgId } });
   });
 
