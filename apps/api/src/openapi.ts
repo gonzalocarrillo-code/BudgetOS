@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  CreateMatchRuleInput,
+  MatchCoverageResponse,
+  MatchRuleWriteResponse,
+  MatchRulesResponse,
+  RematchResult,
   BaselineReport,
   BudgetImportCommitInput,
   BudgetImportInput,
@@ -442,6 +447,28 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/unmatched-spend/map": {
         post: { operationId: "mapUnmatchedSpend", parameters: [workspaceParam], requestBody: json(MapUnmatchedInput), responses: { "201": { description: "Facts assigned to the envelope, per fact table" } } },
+      },
+      "/api/v1/workspaces/{ws}/match-rules": {
+        get: { operationId: "listMatchRules", parameters: [workspaceParam], responses: { "200": { description: "Live match rules (EX-1, ADR-0085), newest first", ...json(MatchRulesResponse) } } },
+        post: { operationId: "createMatchRule", parameters: [workspaceParam], requestBody: json(CreateMatchRuleInput), responses: { "201": { description: "The rule, and what re-matching the facts it covers changed (closed periods are left alone)", ...json(MatchRuleWriteResponse) }, "409": { description: "The same rule already exists, or the envelope is archived" } } },
+      },
+      "/api/v1/workspaces/{ws}/match-rules/rematch": {
+        post: { operationId: "rematchFacts", parameters: [workspaceParam], responses: { "201": { description: "Every live fact not pinned by hand and outside closed periods matched again: manual > rules > tuple, ties ambiguous", ...json(RematchResult) } } },
+      },
+      "/api/v1/match-rules/{id}": {
+        delete: { operationId: "deleteMatchRule", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Rule soft-deleted; the facts it covered matched again without it", ...json(MatchRuleWriteResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/match-coverage": {
+        get: {
+          operationId: "getMatchCoverage",
+          parameters: [
+            workspaceParam,
+            { name: "from", in: "query", required: false, schema: { type: "string", format: "date" } },
+            { name: "to", in: "query", required: false, schema: { type: "string", format: "date" } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 1000 } },
+          ],
+          responses: { "200": { description: "Live spend matched / unmatched / ambiguous (reporting currency, Decimal strings, and row counts), by source and by campaign; unmatched and ambiguous campaigns largest first", ...json(MatchCoverageResponse) } },
+        },
       },
       "/api/v1/uploads": {
         post: { operationId: "createUpload", parameters: [workspaceHeader], requestBody: json(CreateUploadInput), responses: { "201": { description: "gs:// URI and a URL to PUT the CSV to" } } },

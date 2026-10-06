@@ -1088,6 +1088,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/match-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listMatchRules"];
+        put?: never;
+        post: operations["createMatchRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/match-rules/rematch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rematchFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/match-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteMatchRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/match-coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMatchCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads": {
         parameters: {
             query?: never;
@@ -6224,6 +6288,303 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listMatchRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live match rules (EX-1, ADR-0085), newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rules: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            envelopeId: string;
+                            envelopeName: string;
+                            predicate: {
+                                /** @enum {string} */
+                                logic: "and" | "or";
+                                not?: boolean;
+                                children: ({
+                                    field: {
+                                        /** @enum {string} */
+                                        kind: "dimension";
+                                        key: string;
+                                    };
+                                    /** @enum {string} */
+                                    op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty";
+                                    value?: string | string[];
+                                } | unknown)[];
+                            };
+                            startDate: string | null;
+                            endDate: string | null;
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    createMatchRule: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    envelopeId: string;
+                    predicate: unknown;
+                    startDate?: string;
+                    endDate?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The rule, and what re-matching the facts it covers changed (closed periods are left alone) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rule: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            envelopeId: string;
+                            envelopeName: string;
+                            predicate: {
+                                /** @enum {string} */
+                                logic: "and" | "or";
+                                not?: boolean;
+                                children: ({
+                                    field: {
+                                        /** @enum {string} */
+                                        kind: "dimension";
+                                        key: string;
+                                    };
+                                    /** @enum {string} */
+                                    op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty";
+                                    value?: string | string[];
+                                } | unknown)[];
+                            };
+                            startDate: string | null;
+                            endDate: string | null;
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        };
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        };
+                    };
+                };
+            };
+            /** @description The same rule already exists, or the envelope is archived */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rematchFacts: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every live fact not pinned by hand and outside closed periods matched again: manual > rules > tuple, ties ambiguous */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        spend: number;
+                        kpi: number;
+                        projection: number;
+                        envelopeIds: string[];
+                    };
+                };
+            };
+        };
+    };
+    deleteMatchRule: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rule soft-deleted; the facts it covered matched again without it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rule: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            envelopeId: string;
+                            envelopeName: string;
+                            predicate: {
+                                /** @enum {string} */
+                                logic: "and" | "or";
+                                not?: boolean;
+                                children: ({
+                                    field: {
+                                        /** @enum {string} */
+                                        kind: "dimension";
+                                        key: string;
+                                    };
+                                    /** @enum {string} */
+                                    op: "eq" | "neq" | "in" | "nin" | "contains" | "starts_with" | "is_empty" | "not_empty";
+                                    value?: string | string[];
+                                } | unknown)[];
+                            };
+                            startDate: string | null;
+                            endDate: string | null;
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        };
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getMatchCoverage: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live spend matched / unmatched / ambiguous (reporting currency, Decimal strings, and row counts), by source and by campaign; unmatched and ambiguous campaigns largest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        from: string | null;
+                        to: string | null;
+                        currency: string;
+                        totals: {
+                            total: string;
+                            matched: string;
+                            unmatched: string;
+                            ambiguous: string;
+                            totalRows: number;
+                            matchedRows: number;
+                            unmatchedRows: number;
+                            ambiguousRows: number;
+                        };
+                        bySource: {
+                            total: string;
+                            matched: string;
+                            unmatched: string;
+                            ambiguous: string;
+                            totalRows: number;
+                            matchedRows: number;
+                            unmatchedRows: number;
+                            ambiguousRows: number;
+                            /** Format: uuid */
+                            sourceId: string | null;
+                            sourceName: string | null;
+                            sourceSystem: string;
+                        }[];
+                        byCampaign: {
+                            total: string;
+                            matched: string;
+                            unmatched: string;
+                            ambiguous: string;
+                            totalRows: number;
+                            matchedRows: number;
+                            unmatchedRows: number;
+                            ambiguousRows: number;
+                            campaign: string | null;
+                            label: string | null;
+                        }[];
+                        open: {
+                            campaign: string | null;
+                            label: string | null;
+                            /** @enum {string} */
+                            status: "unmatched" | "ambiguous";
+                            amount: string;
+                            rows: number;
+                            firstDate: string;
+                            lastDate: string;
+                            candidates: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                            }[];
+                        }[];
+                    };
+                };
             };
         };
     };
