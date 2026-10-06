@@ -39,6 +39,15 @@ describe("compileAggregateBq", () => {
     expect(totals.sql).toMatch(/COUNT\(\*\) AS leaf_count FROM m$/);
   });
 
+  it("excludes demo envelopes and demo facts once the workspace has a real budget, unless includeDemo (T-5)", () => {
+    const excluded = compileAggregateBq(q({ groupBy: ["country"], filter: leaves() }), period, "2026-06-30", "budget_os_dev");
+    expect(excluded.sql).toMatch(/demo_mode AS \(\s*SELECT NOT EXISTS \(SELECT 1 FROM `budget_os_dev\.envelope` r WHERE r\.workspace_id = @p1 AND NOT r\.demo AND r\.status <> 'ARCHIVED'\) AS pure\s*\)/);
+    expect(excluded.sql).toMatch(/AND \(NOT e\.demo OR \(SELECT pure FROM demo_mode\)\) AND \(/);
+    expect(excluded.sql).toMatch(/AND \(NOT sf\.demo OR \(SELECT pure FROM demo_mode\)\)\s*GROUP BY/);
+    const included = compileAggregateBq(q({ groupBy: ["country"], filter: leaves(), includeDemo: true }), period, "2026-06-30", "budget_os_dev");
+    expect(included.sql).not.toMatch(/\.demo|demo_mode/);
+  });
+
   it("refuses what BigQuery does not answer and a dataset that is not an identifier", () => {
     expect(bigQuerySupported(q({ groupBy: ["country"], filter: { logic: "and", children: [{ field: { kind: "attr", key: "tag" }, op: "eq", value: "q4" }] } }))).toBe(false);
     expect(bigQuerySupported(q({ groupBy: ["country"], asOf: "2026-01-01T00:00:00.000Z" }))).toBe(false);

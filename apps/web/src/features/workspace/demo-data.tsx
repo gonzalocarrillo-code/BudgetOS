@@ -3,10 +3,9 @@ import { t } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
-import { z } from "zod";
 import { Card } from "../../components/page.js";
 import { api, unwrap } from "../../lib/api.js";
-import { meQuery } from "../../lib/queries.js";
+import { demoStatusQuery, meQuery } from "../../lib/queries.js";
 
 /**
  * Settings › General › Demo data (T-040, R11-004): how many demo budgets and targets this workspace
@@ -17,11 +16,12 @@ export function DemoData({ ws }: { ws: string }): ReactElement {
   const client = useQueryClient();
   const { data: me } = useQuery(meQuery);
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
-  const { data: demo } = useQuery({ queryKey: ["demo-data", ws], queryFn: async () => z.object({ envelopes: z.number(), targets: z.number() }).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/demo-data", { params: { path: { ws } } }))) });
+  const { data: demo } = useQuery(demoStatusQuery(ws));
   const [confirm, setConfirm] = useState(false);
   const purge = useMutation({
     meta: { success: t("toast.demoRemoved") },
-    mutationFn: async () => unwrap(api.POST("/api/v1/workspaces/{ws}/demo-data/purge", { params: { path: { ws } } })),
+    // I-3: the server refuses to purge without confirmation.
+    mutationFn: async () => unwrap(api.POST("/api/v1/workspaces/{ws}/demo-data/purge", { params: { path: { ws } }, body: { confirm: true } })),
     onSuccess: async () => {
       setConfirm(false);
       await client.invalidateQueries();

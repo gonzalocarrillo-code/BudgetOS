@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { TOP_LEVEL, LIVE_LEAVES } from "@budget/domain";
-import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS } from "@budget/db";
+import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS, matchRunFacts } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -69,6 +69,8 @@ describe("workspace templates (T-040)", () => {
     expect(templatesThere.find((t) => t.isDefault)?.name).toBe("Default");
     expect(await owner.approvalPolicy.count({ where: { workspaceId: ws } })).toBe(DEFAULT_POLICIES.length);
     expect(await owner.savedView.count({ where: { workspaceId: ws, visibility: "shared" } })).toBe(1);
+    // T-5: a fresh demo workspace holds only demo budgets (no real ones yet, demoStatus below
+    // confirms hasRealBudgets is false), so /query includes them with no includeDemo needed.
     const query = async () => as("orgAdmin", "POST", `/workspaces/${ws}/query`, { workspaceId: ws, period: { kind: "relative", preset: "current_year" }, filter: { logic: "and", children: LIVE_LEAVES }, measures: ["budget", "actual"], limit: 1 }, ws);
     const q = await query();
     expect(q.status, JSON.stringify(q.body).slice(0, 300)).toBe(201);
@@ -77,13 +79,16 @@ describe("workspace templates (T-040)", () => {
     expect(Date.now() - started).toBeLessThan(perfBudgetMs(60_000));
     const tours = await as("orgAdmin", "GET", "/tours?all=true", undefined, ws);
     expect((tours.body as unknown as Array<{ role: string; isDefault: boolean }>).map((t) => [t.role, t.isDefault]).sort()).toEqual(DEFAULT_TOURS.map((t) => [t.role, false]).sort());
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3 });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false });
+
+    // I-3: purging without confirming is refused.
+    expect((await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, {}, ws)).status).toBe(422);
 
     // Purge: one call removes every demo row; the template's configuration stays.
-    const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, undefined, ws);
+    const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
     expect(purged.status, JSON.stringify(purged.body)).toBe(201);
-    expect(purged.body).toMatchObject({ envelopes: 9, targets: 3 });
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0 });
+    expect(purged.body).toMatchObject({ envelopes: 9, targets: 3, detachedFacts: 0 });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0, hasRealBudgets: false });
     expect(await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid`, ws)).toEqual([{ n: 0n }]);
     expect((await query()).body["totals"]).toMatchObject({ leafCount: "0" });
     expect(await owner.approvalPolicy.count({ where: { workspaceId: ws } })).toBe(DEFAULT_POLICIES.length);
@@ -91,6 +96,93 @@ describe("workspace templates (T-040)", () => {
     expect(audits.map((a) => a.action)).toEqual(["workspace.created", "workspace.demo_seeded", "workspace.demo_purged"]);
     expect((await as("planner", "POST", "/workspaces", { name: "Nope", templateId: agency?.id }, null)).status).toBe(403);
   }, 90_000);
+});
+
+/** A fresh demo workspace (same template as above), for the purge-safety tests. */
+async function demoWorkspace(name: string): Promise<string> {
+  const templates = await as("orgAdmin", "GET", "/workspace-templates", undefined, null);
+  const agency = (templates.body as unknown as Array<{ id: string; key: string }>).find((t) => t.key === "default_agency");
+  const res = await as("orgAdmin", "POST", "/workspaces", { name, templateId: agency?.id, withDemoData: true }, null);
+  expect(res.status, JSON.stringify(res.body)).toBe(201);
+  const ws = String(res.body["id"]);
+  created.push(ws);
+  return ws;
+}
+
+describe("demo purge safety (I-3)", () => {
+  it("purging without confirm is refused (422)", async () => {
+    const ws = await demoWorkspace("Purge No Confirm");
+    expect((await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, {}, ws)).status).toBe(422);
+    expect((await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: false }, ws)).status).toBe(422);
+  });
+
+  it("a non-demo target on a demo envelope refuses the whole purge (409)", async () => {
+    const ws = await demoWorkspace("Purge Real Target");
+    const leaf = await owner.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } } });
+    const targetId = randomUUID();
+    await owner.$executeRawUnsafe(
+      `INSERT INTO target (id, workspace_id, scope_type, envelope_id, metric_key, start_date, end_date, demo) VALUES ($1::uuid, $2::uuid, 'envelope', $3::uuid, 'cpa', '2026-01-01', '2026-12-31', false)`,
+      targetId,
+      ws,
+      leaf.id,
+    );
+    const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
+    expect(purged.status, JSON.stringify(purged.body)).toBe(409);
+    expect((purged.body["details"] as { targetIds: string[] })?.targetIds).toEqual([targetId]);
+    // Refused atomically: nothing purged.
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toMatchObject({ envelopes: 9 });
+  });
+
+  it("a real fact matched onto a demo envelope is detached (not deleted) by the purge, and re-matches on its next load", async () => {
+    const ws = await demoWorkspace("Purge Detach Rematch");
+    const leaf = await owner.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } } });
+    const tuple = leaf.dimensionValues as Record<string, string>;
+    const runId = randomUUID();
+    const rowHash = `real:${runId}`;
+    // A real run's spend landed on the demo envelope (same bug as a real ingest run, I-3).
+    await owner.$executeRawUnsafe(
+      `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, demo, match_method)
+       VALUES ($1::uuid, $2::uuid, $3::jsonb, '2026-02-01', 'USD', 42, 42, 'csv', $4::uuid, $5, false, 'tuple')`,
+      ws,
+      leaf.id,
+      JSON.stringify(tuple),
+      runId,
+      rowHash,
+    );
+    // A real budget for the same segment, narrower than the demo leaf's full tuple, so it is the
+    // only match left once the demo envelopes are gone.
+    const realEnvelopeId = randomUUID();
+    const realTuple = { region: tuple["region"], country: tuple["country"] };
+    await owner.$executeRawUnsafe(
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, demo)
+       VALUES ($1::uuid, $2::uuid, 'Real budget', $3::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $4::uuid, now(), false)`,
+      realEnvelopeId,
+      ws,
+      JSON.stringify(realTuple),
+      golden.users.orgAdmin,
+    );
+
+    const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
+    expect(purged.status, JSON.stringify(purged.body)).toBe(201);
+    expect((purged.body as { detachedFacts: number }).detachedFacts).toBeGreaterThanOrEqual(1);
+
+    const detached = await owner.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null }>>(
+      `SELECT envelope_id::text AS envelope_id, match_method FROM spend_fact WHERE workspace_id = $1::uuid AND source_row_hash = $2`,
+      ws,
+      rowHash,
+    );
+    expect(detached).toEqual([{ envelope_id: null, match_method: null }]);
+
+    // The next load of that row (matchRunFacts for its source_run_id) re-matches it — here, to the
+    // real envelope now that the demo envelopes it used to tie with are gone.
+    await matchRunFacts(owner, ws, runId);
+    const rematched = await owner.$queryRawUnsafe<Array<{ envelope_id: string | null; match_method: string | null }>>(
+      `SELECT envelope_id::text AS envelope_id, match_method FROM spend_fact WHERE workspace_id = $1::uuid AND source_row_hash = $2`,
+      ws,
+      rowHash,
+    );
+    expect(rematched).toEqual([{ envelope_id: realEnvelopeId, match_method: "tuple" }]);
+  });
 });
 
 describe("tours (T-040)", () => {

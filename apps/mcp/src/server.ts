@@ -99,6 +99,7 @@ export function buildServer(deps: McpDeps): McpServer {
     period: QueryRequest.shape.period.describe("{ kind: 'relative', preset: 'current_year'|'current_quarter'|… } or { kind: 'fiscal', key: 'FY2026'|'2026-Q3'|'2026-09' } or { kind: 'range', start, end }."),
     compareTo: QueryRequest.shape.compareTo.describe("{ baselineId } from list_baselines, or { asOf }: adds budget_baseline and the change measures."),
     subtree: QueryRequest.shape.subtree.describe("true: each row's spend includes everything under it (use with parent_id is_empty for the workspace's headline)."),
+    includeDemo: QueryRequest.shape.includeDemo.describe("Demo budgets and demo facts (spec §27) are included automatically while the workspace has no real budget; true always includes them."),
   };
   const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 

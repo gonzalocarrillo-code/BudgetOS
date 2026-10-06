@@ -93,7 +93,7 @@ export type { DefaultTourSeed } from "../seed/defaults.tours.js";
 export { DEFAULT_TEMPLATE_KEY, defaultAgencyTemplate, ensureDefaultTemplate, ensureDefaultTours } from "./templates.js";
 export { purgeDemoData, seedDemoData } from "./demo.js";
 export { setMyName, setMySlackSettings, workspaceSetup } from "./people.js";
-export type { DemoSummary } from "./demo.js";
+export type { DemoSummary, PurgeSummary } from "./demo.js";
 export { baselineTree, captureBaselineRows, comparedRows, snapshotIntegrity, subtreeIds } from "./baselines.js";
 export { FACT_TABLES, deleteFactMonth, factMonthTotals, factMonthsBefore, lastFactDate } from "./retention.js";
 export { importEnvelopesById, importEnvelopesByTuple, liveChildrenApproved } from "./budget-import.js";

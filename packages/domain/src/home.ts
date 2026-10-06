@@ -51,6 +51,10 @@ export function tourRolesFor(roles: readonly Role[]): TourRole[] {
 // ---- Workspace templates ------------------------------------------------------------------------
 
 /** POST /workspaces (org admins): a workspace from a template, optionally with the demo dataset. */
+/** POST /workspaces/:ws/demo-data/purge (I-3): a destructive action with no undo needs saying so. */
+export const PurgeDemoInput = z.object({ confirm: z.literal(true) });
+export type PurgeDemoInput = z.infer<typeof PurgeDemoInput>;
+
 export const CreateWorkspaceInput = z.object({
   name: z.string().trim().min(1).max(120),
   slug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/).optional(),

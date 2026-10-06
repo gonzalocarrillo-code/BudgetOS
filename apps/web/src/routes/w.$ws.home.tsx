@@ -5,12 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Bell, CircleCheck, Database, Plus, Sparkles, Users, Wallet } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
-import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { Desk } from "../features/home/desk.js";
 import { TourInvite } from "../features/home/tour-launcher.js";
 import { api, unwrap } from "../lib/api.js";
-import { meQuery } from "../lib/queries.js";
+import { demoStatusQuery, meQuery } from "../lib/queries.js";
 
 /**
  * Home (spec §27, plan §11.7 "a to-do list, not a feed", docs/HOME_OVERVIEW_PLAN.md §3.1): the
@@ -37,7 +36,7 @@ function HomePage(): ReactElement {
   const { ws } = Route.useParams();
   const { data: me } = useQuery(meQuery);
   const { data: home, isPending, error } = useQuery(homeQuery(ws));
-  const { data: demo } = useQuery({ queryKey: ["demo-data", ws], queryFn: async () => z.object({ envelopes: z.number() }).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/demo-data", { params: { path: { ws } } }))) });
+  const { data: demo } = useQuery(demoStatusQuery(ws));
   const name = firstName(me?.user.name, me?.user.email);
   const today = new Date();
   const dateLine = today.toLocaleDateString("en", { weekday: "long", day: "numeric", month: "long" });
