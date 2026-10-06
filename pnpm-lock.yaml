@@ -118,9 +118,18 @@ importers:
       lz-string:
         specifier: 1.5.0
         version: 1.5.0
+      nestjs-pino:
+        specifier: 5.3.1
+        version: 5.3.1(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.6(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
       nestjs-zod:
         specifier: 5.5.0
         version: 5.5.0(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.7(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.6(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@3.25.76)
+      pino:
+        specifier: 10.3.1
+        version: 10.3.1
+      pino-http:
+        specifier: 11.0.0
+        version: 11.0.0
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
@@ -4573,6 +4582,16 @@ packages:
     resolution: {integrity: sha512-NMPBRMJgiQHjbd8phG3Vebdx4kZ1H121rbl5IkMqeOsahptB9BKo/d7oJ3zTXqTgagn2bWlNSXkh0QUGM31RYg==}
     engines: {node: '>=18'}
 
+  nestjs-pino@5.3.1:
+    resolution: {integrity: sha512-tL3fFSY38Wuv3VS4dCo+zlHVt1xU7+RSXnlgenyTvfy74GLBLgisqvG+76983ilf2C2uFkPe68qUapXCYnoSoA==}
+    engines: {node: '>=22.12.0'}
+    peerDependencies:
+      '@nestjs/common': ^11.0.8 || ^12.0.2
+      '@nestjs/core': ^11.0.8 || ^12.0.2
+      pino: ^10.0.0
+      pino-http: ^11.0.0
+      rxjs: ^7.1.0
+
   nestjs-zod@5.5.0:
     resolution: {integrity: sha512-V0WMtmICygYE2RoMKk8ExEeoetkC7PoUmUlZNP4JNk1YgrnUnG1vgkRn2DBNqsDi+Obv3c9AOssmXe/k/AvBOg==}
     peerDependencies:
@@ -4843,6 +4862,9 @@ packages:
 
   pino-abstract-transport@3.0.0:
     resolution: {integrity: sha512-wlfUczU+n7Hy/Ha5j9a/gZNy7We5+cXp8YL+X+PG8S0KXxw7n/JXA3c46Y0zQznIJ83URJiwy7Lh56WLokNuxg==}
+
+  pino-http@11.0.0:
+    resolution: {integrity: sha512-wqg5XIAGRRIWtTk8qPGxkbrfiwEWz1lgedVLvhLALudKXvg1/L2lTFgTGPJ4Z2e3qcRmxoFxDuSdMdMGNM6I1g==}
 
   pino-std-serializers@7.1.0:
     resolution: {integrity: sha512-BndPH67/JxGExRgiX1dX0w1FvZck5Wa4aal9198SrRhZjH3GxKQUKIBnYJTdj2HDN3UQAS06HlfcSbQj2OHmaw==}
@@ -10118,6 +10140,14 @@ snapshots:
     dependencies:
       content-type: 2.1.0
 
+  nestjs-pino@5.3.1(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.6(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2):
+    dependencies:
+      '@nestjs/common': 11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 11.2.6(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      pino: 10.3.1
+      pino-http: 11.0.0
+      rxjs: 7.8.2
+
   nestjs-zod@5.5.0(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.7(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.6(@nestjs/common@11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@3.25.76):
     dependencies:
       '@nestjs/common': 11.2.6(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -10347,6 +10377,13 @@ snapshots:
   pino-abstract-transport@3.0.0:
     dependencies:
       split2: 4.2.0
+
+  pino-http@11.0.0:
+    dependencies:
+      get-caller-file: 2.0.5
+      pino: 10.3.1
+      pino-std-serializers: 7.1.0
+      process-warning: 5.1.0
 
   pino-std-serializers@7.1.0: {}
 

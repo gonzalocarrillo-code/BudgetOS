@@ -305,6 +305,7 @@ const ROUTES: RouteCase[] = [
 ];
 
 function allowed(role: Role | "OUTSIDER", permission: RoutePermission): boolean {
+  if (permission === "public") return true;
   if (permission === "authenticated") return true;
   // Slack's routes take Slack's signature, never a JWT: every role is refused without one.
   if (permission === "slack.signed") return false;

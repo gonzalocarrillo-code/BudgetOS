@@ -86,6 +86,9 @@ export async function authenticateVerifiedEmail(deps: Pick<AuthDeps, "access" | 
 
 /** The route's (or tool's) declared permission, against the caller's roles in the workspace. */
 export function authorize(auth: AuthContext, permission: RoutePermission): void {
+  // The interceptor never calls authorize() for a "public" route (it returns before
+  // authenticating at all), but the branch keeps this function total over RoutePermission.
+  if (permission === "public") return;
   if (permission === "authenticated") return;
   // Signed Slack requests never reach here (the interceptor verifies them without a JWT).
   if (permission === "slack.signed") throw new DomainError("FORBIDDEN", "Slack routes take no JWT");

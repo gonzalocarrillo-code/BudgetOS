@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { topicsFor } from "@budget/domain";
 import {
@@ -248,10 +248,19 @@ async function pacingPass(): Promise<void> {
   log.info({ workspaces: result.length }, "pacing pass finished");
 }
 
+/** Cloud Run's probe only (M-7, audit M-7): every other path is 404, not an implicit "ok". */
+export function healthRequestListener(req: IncomingMessage, res: ServerResponse): void {
+  if (req.url === "/health") {
+    res.writeHead(200).end("ok");
+  } else {
+    res.writeHead(404).end();
+  }
+}
+
 async function main(): Promise<void> {
   await ensureBucket();
   const port = Number(process.env["PORT"] ?? 4799);
-  const server = createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, process.env["LISTEN_HOST"] ?? "127.0.0.1");
+  const server = createServer(healthRequestListener).listen(port, process.env["LISTEN_HOST"] ?? "127.0.0.1");
   log.info({ port, prefix, orgFrom, slack: slack !== null, maxAttempts: MAX_ATTEMPTS }, "local runner up");
   for (const warning of slackConfigWarnings()) log.warn(warning);
   for (const sig of ["SIGTERM", "SIGINT"] as const) {

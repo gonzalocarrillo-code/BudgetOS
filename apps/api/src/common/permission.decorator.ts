@@ -11,8 +11,12 @@ import { SetMetadata } from "@nestjs/common";
  *   against the target entity in the service with `assertInScope` (scope.guard.ts).
  * - `slack.signed`: no JWT; the request carries Slack's signature (SLACK_SIGNING_SECRET). The
  *   handler acts as the Slack user's Budget OS account, with that account's permissions.
+ * - `public`: no JWT, no tenant (W5-1): the same exemption `/health` gets by never entering Nest's
+ *   router at all, but expressed as a route so the global interceptor can still see it declared
+ *   (fail-closed stays intact) instead of special-casing a path. Reserve this for probes with
+ *   nothing to protect, e.g. `GET /ready` — never a route that reads or writes tenant data.
  */
-export type RoutePermission = Action | "workspace.member" | "authenticated" | "org.admin" | "slack.signed";
+export type RoutePermission = Action | "workspace.member" | "authenticated" | "org.admin" | "slack.signed" | "public";
 
 export const PERMISSION_KEY = "budget:permission";
 export const Permission = (permission: RoutePermission) => SetMetadata(PERMISSION_KEY, permission);
