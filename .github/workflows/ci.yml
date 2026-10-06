@@ -67,7 +67,10 @@ jobs:
       # apps/api's suites assumes; every such assertion scales through test-support/perf.ts.
       # Product gates (e.g. T-006's 60 s) are unchanged locally and in `pnpm bench`.
       PERF_BUDGET_SCALE: "3"
-      VITEST_MAX_WORKERS: "3"
+      # apps/api only: 3 workers still exceed interactive-transaction timeouts on CI runners
+      # (run 37528756016, P2028). The partition deadlock (W3-10) is fixed; raising this is a
+      # separate speed item, not a correctness one.
+      VITEST_MAX_WORKERS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
