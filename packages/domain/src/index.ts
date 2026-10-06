@@ -97,7 +97,7 @@ export {
 
 export { OutboxEventAttributes, OutboxId, PubSubPush } from "./events.js";
 
-export { CLOSURE_STALE_MINUTES, CloseInput, ClosureStatus, ClosureView, CreatePeriodInput, FiscalPeriodKey, GeneratePeriodsInput, PeriodKind, PeriodRow, RestateInput, RunSourceInput, UpdatePeriodInput, fiscalPeriodKind } from "./closures.js";
+export { CLOSURE_STALE_MINUTES, CloseInput, ClosureBasis, ClosureStatus, ClosureView, CreatePeriodInput, FiscalPeriodKey, GeneratePeriodsInput, PeriodKind, PeriodRow, RestateInput, RunSourceInput, UpdatePeriodInput, fiscalPeriodKind } from "./closures.js";
 
 export { CreateExportInput, EXPORT_MAX_ROWS, ExportJobView, ExportKind, ExportRequested, ExportStatus } from "./exports.js";
 

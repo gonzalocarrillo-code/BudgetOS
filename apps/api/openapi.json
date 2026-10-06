@@ -16007,6 +16007,24 @@
                       "lockedEnvelopes": {
                         "type": "integer"
                       },
+                      "basis": {
+                        "type": "object",
+                        "properties": {
+                          "budget": {
+                            "type": "string",
+                            "enum": [
+                              "live_leaves"
+                            ]
+                          },
+                          "note": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "budget",
+                          "note"
+                        ]
+                      },
                       "error": {
                         "type": "string",
                         "nullable": true
@@ -16128,6 +16146,24 @@
                     },
                     "lockedEnvelopes": {
                       "type": "integer"
+                    },
+                    "basis": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "enum": [
+                            "live_leaves"
+                          ]
+                        },
+                        "note": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "budget",
+                        "note"
+                      ]
                     },
                     "error": {
                       "type": "string",
@@ -16299,6 +16335,24 @@
                     },
                     "lockedEnvelopes": {
                       "type": "integer"
+                    },
+                    "basis": {
+                      "type": "object",
+                      "properties": {
+                        "budget": {
+                          "type": "string",
+                          "enum": [
+                            "live_leaves"
+                          ]
+                        },
+                        "note": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "budget",
+                        "note"
+                      ]
                     },
                     "error": {
                       "type": "string",

@@ -33,6 +33,18 @@ export type ClosureStatus = z.infer<typeof ClosureStatus>;
 /** A `closing` closure older than this is stale: POST /closures/:id/abandon may fail it. */
 export const CLOSURE_STALE_MINUTES = 15;
 
+/**
+ * D-1 (audit T-12, ADR-0076): which "budget" a closure's report counted, recorded at close time so
+ * a frozen report stays legible after the basis a later closure uses changes. `live_leaves` is the
+ * only basis closures have ever used (ADR-059's "Unchanged" note); closures from before this field
+ * existed carry none.
+ */
+export const ClosureBasis = z.object({
+  budget: z.literal("live_leaves"),
+  note: z.string(),
+});
+export type ClosureBasis = z.infer<typeof ClosureBasis>;
+
 export const ClosureView = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -46,6 +58,8 @@ export const ClosureView = z.object({
    */
   table: z.string(),
   lockedEnvelopes: z.number().int(),
+  /** D-1: absent on closures written before this field existed. */
+  basis: ClosureBasis.optional(),
   /** Why a `failed` closure failed; null otherwise. */
   error: z.string().nullable(),
 });

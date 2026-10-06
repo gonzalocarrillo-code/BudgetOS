@@ -229,6 +229,10 @@ async function startClose(prisma: PrismaClient, auth: AuthContext, workspaceId: 
           totals: totals === null ? null : { ...totals, variance: actual.minus(budget).toFixed(2), variancePct: budget.isZero() ? null : actual.minus(budget).div(budget).toDecimalPlaces(4).toString() },
           months: [...monthly].map(([month, m]) => ({ month, actual: m.actual.toFixed(2), projected: m.projected.toFixed(2) })),
           byTemplate,
+          // D-1 (audit T-12, ADR-0076, ADR-059): `templateNodes` above is called with no `unallocated`
+          // option, so its budget is the sum of live leaves, not the holdings basis Budgets/tree use.
+          // Recorded here so the frozen report stays legible after readers forget which basis is current.
+          basis: { budget: "live_leaves" as const, note: "Sum of approved leaf budgets live in the period; Budgets/tree use holdings (ADR-059), which also count unsplit parent money." },
         };
         await tx.periodClosure.update({ where: { id: closure.id }, data: { varianceSummary: summary as Prisma.InputJsonObject } });
         await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "closure.started", entityType: "period_closure", entityId: closure.id, after: { status: "closing", periodKey: period.key, table, lockedEnvelopes: locked.length, rows: rows.length }, requestId: auth.ctx.requestId });

@@ -1,3 +1,4 @@
+import { ClosureBasis } from "@budget/domain";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, unwrap } from "../../lib/api.js";
@@ -69,6 +70,8 @@ export const Closure = z.object({
   /** Why a failed close failed (W3-1). */
   error: z.string().nullable().optional(),
   lockedEnvelopes: z.number(),
+  /** D-1 (audit T-12): which "budget" basis the closure's report used; absent on older closures. */
+  basis: ClosureBasis.optional(),
 });
 export type Closure = z.infer<typeof Closure>;
 
@@ -89,6 +92,8 @@ export const ClosureReport = z.object({
       totals: z.object({ budget: Money, actual: Money, projected: Money, remaining: Money, variance: z.string(), variancePct: z.string().nullable() }).nullable().optional(),
       months: z.array(z.object({ month: z.string(), actual: z.string(), projected: z.string() })).optional(),
       byTemplate: z.array(z.object({ templateId: z.string(), name: z.string(), nodes: z.number(), top: z.array(z.object({ nodePath: z.string(), budget: z.string(), actual: z.string(), variance: z.string(), variancePct: z.string().nullable() })) })).optional(),
+      /** D-1 (audit T-12): which "budget" basis this frozen report used; absent on older closures. */
+      basis: ClosureBasis.optional(),
     })
     .passthrough(),
 });
