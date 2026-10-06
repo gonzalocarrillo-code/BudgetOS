@@ -276,3 +276,21 @@ export {
 } from "./budget-import.js";
 
 export { ApiEnv, McpEnv, WorkerEnv, parseEnv } from "./env.js";
+export {
+  CAMPAIGN_DIMENSION,
+  CoverageAmounts,
+  CreateMatchRuleInput,
+  MatchCandidate,
+  MatchCoverageQuery,
+  MatchCoverageResponse,
+  MatchRuleCondition,
+  MatchRuleOp,
+  MatchRulePredicate,
+  MatchRuleView,
+  MatchRuleWriteResponse,
+  MatchRulesResponse,
+  OpenCampaign,
+  RematchResult,
+  equalsPredicate,
+} from "./matching.js";
+export type { MatchRuleGroupT } from "./matching.js";

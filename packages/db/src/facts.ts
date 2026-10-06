@@ -18,7 +18,7 @@ export interface SpendFactInput {
 }
 
 export type MatchHint = "external_id" | "match_key";
-export type MatchMethod = MatchHint | "tuple" | "manual";
+export type MatchMethod = MatchHint | "tuple" | "manual" | "rule";
 
 export interface KpiFactInput {
   dimensionValues: Record<string, string>;
@@ -128,38 +128,150 @@ export async function insertProjectionFacts(tx: Tx, load: FactLoad, rows: Projec
 }
 
 /**
- * Spec §24.3 (replacing §14 step 5), for each fact table: an unmatched fact of this run goes to the most specific
- * live envelope whose tuple is a subset of the fact's tuple and whose dates cover the fact's date.
- * Returns the envelopes that gained facts.
+ * EX-1 (ADR-0085), which facts a matching pass decides. A run's pass (`runId`) takes that run's
+ * facts with no envelope (unmatched or ambiguous); a re-match takes every live fact that is not
+ * pinned by hand (`manual`), optionally only those satisfying `predicate` (a match rule's), and
+ * never facts dated inside `keep` ranges (closed periods: their actuals are frozen).
+ */
+export interface MatchScope {
+  runId?: string;
+  predicate?: unknown;
+  keep?: Array<{ start: string; end: string }>;
+}
+
+export interface MatchPass {
+  /** Facts whose envelope, method or ambiguity changed, per table. */
+  spend: number;
+  kpi: number;
+  projection: number;
+  /** Envelopes that gained or lost facts (their roll-ups must be recomputed). */
+  envelopeIds: string[];
+  /** Envelopes that gained facts. */
+  gained: string[];
+}
+
+/** An `eq` at the top of an AND predicate becomes a jsonb containment the GIN index on dimension_values can serve. */
+function containmentHint(predicate: unknown): string | null {
+  const g = predicate as { logic?: string; not?: boolean; children?: Array<{ field?: { kind?: string; key?: string }; op?: string; value?: unknown }> } | undefined;
+  if (!g || g.logic !== "and" || g.not || !Array.isArray(g.children)) return null;
+  const eq = g.children.find((c) => c.field?.kind === "dimension" && c.op === "eq" && typeof c.value === "string" && typeof c.field.key === "string");
+  return eq?.field?.key ? JSON.stringify({ [eq.field.key]: eq.value }) : null;
+}
+
+const FACT_TABLES = [
+  ["spend", "spend_fact"],
+  ["kpi", "kpi_fact"],
+  ["projection", "projection_fact"],
+] as const;
+
+/**
+ * Spec §24.3 as amended by EX-1 (ADR-0085). For each fact in scope, in order:
+ * 1. a manual pin is never touched (it is out of scope);
+ * 2. match rules: the distinct live, date-covering envelopes of every live rule whose predicate the
+ *    fact satisfies (and whose own window covers the fact's date);
+ * 3. otherwise the tuple: the live, date-covering envelopes whose non-empty tuple is a subset of
+ *    the fact's, at the highest key count.
+ * The first level with candidates decides: exactly one → assigned (`rule`, or `tuple` / the
+ * normalizer's `external_id` / `match_key`); more than one → `ambiguous`, no envelope, candidates
+ * kept; none → unmatched. Never tie-broken by id. One statement per fact table.
+ */
+export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope): Promise<MatchPass> {
+  const out: MatchPass = { spend: 0, kpi: 0, projection: 0, envelopeIds: [], gained: [] };
+  const touched = new Set<string>();
+  const gained = new Set<string>();
+  const predicate = scope.predicate === undefined ? null : JSON.stringify(scope.predicate);
+  const hint = scope.predicate === undefined ? null : containmentHint(scope.predicate);
+  const keep = scope.keep ?? [];
+  for (const [key, table] of FACT_TABLES) {
+    const rows = await tx.$queryRawUnsafe<Array<{ old_env: string | null; new_env: string | null }>>(
+      `WITH f AS (
+         SELECT f.id, f.period_date, f.dimension_values, f.envelope_id AS old_env, f.match_method AS old_method,
+                f.match_status AS old_status, f.match_candidates AS old_cands
+         FROM ${table} f
+         WHERE f.workspace_id = $1::uuid AND f.superseded_at IS NULL
+           AND ($2::uuid IS NULL OR (f.source_run_id = $2::uuid AND f.envelope_id IS NULL))
+           AND ($2::uuid IS NOT NULL OR f.match_method IS DISTINCT FROM 'manual')
+           AND ($4::jsonb IS NULL OR f.dimension_values @> $4::jsonb)
+           AND ($3::jsonb IS NULL OR match_rule_matches($3::jsonb, f.dimension_values))
+           AND NOT EXISTS (SELECT 1 FROM unnest($5::date[], $6::date[]) AS k(s, e) WHERE f.period_date BETWEEN k.s AND k.e)
+       ),
+       rc AS (
+         SELECT f.id, f.period_date, array_agg(DISTINCT r.envelope_id ORDER BY r.envelope_id) AS envs
+         FROM f
+         JOIN match_rule r ON r.workspace_id = $1::uuid AND r.deleted_at IS NULL
+          AND (r.start_date IS NULL OR f.period_date >= r.start_date) AND (r.end_date IS NULL OR f.period_date <= r.end_date)
+         JOIN envelope e ON e.id = r.envelope_id AND e.status <> 'ARCHIVED' AND f.period_date BETWEEN e.start_date AND e.end_date
+         WHERE match_rule_matches(r.predicate, f.dimension_values)
+         GROUP BY f.id, f.period_date
+       ),
+       tc AS (
+         SELECT x.id, x.period_date, array_agg(x.envelope_id ORDER BY x.envelope_id) AS envs
+         FROM (
+           SELECT f.id, f.period_date, e.id AS envelope_id,
+                  rank() OVER (PARTITION BY f.id, f.period_date ORDER BY (SELECT count(*) FROM jsonb_object_keys(e.dimension_values)) DESC) AS rk
+           FROM f JOIN envelope e
+             ON e.workspace_id = $1::uuid
+            AND f.period_date BETWEEN e.start_date AND e.end_date
+            AND e.dimension_values <@ f.dimension_values
+            AND e.dimension_values <> '{}'::jsonb
+            AND e.status <> 'ARCHIVED'
+           WHERE NOT EXISTS (SELECT 1 FROM rc WHERE rc.id = f.id AND rc.period_date = f.period_date)
+         ) x
+         WHERE x.rk = 1
+         GROUP BY x.id, x.period_date
+       ),
+       d AS (
+         SELECT f.id, f.period_date, f.old_env, f.old_method, f.old_status, f.old_cands,
+                rc.envs IS NOT NULL AS by_rule, coalesce(rc.envs, tc.envs) AS envs
+         FROM f
+         LEFT JOIN rc ON rc.id = f.id AND rc.period_date = f.period_date
+         LEFT JOIN tc ON tc.id = f.id AND tc.period_date = f.period_date
+       ),
+       n AS (
+         SELECT d.id, d.period_date, d.old_env, d.old_method, d.old_status, d.old_cands,
+                CASE WHEN cardinality(d.envs) = 1 THEN d.envs[1] END AS new_env,
+                CASE WHEN cardinality(d.envs) = 1 THEN
+                  CASE WHEN d.by_rule THEN 'rule' WHEN d.old_method IN ('external_id', 'match_key') THEN d.old_method ELSE 'tuple' END
+                END AS new_method,
+                CASE WHEN cardinality(d.envs) > 1 THEN 'ambiguous' END AS new_status,
+                CASE WHEN cardinality(d.envs) > 1 THEN d.envs END AS new_cands
+         FROM d
+       )
+       UPDATE ${table} t
+       SET envelope_id = n.new_env, match_method = n.new_method, match_status = n.new_status, match_candidates = n.new_cands
+       FROM n
+       WHERE t.workspace_id = $1::uuid AND t.id = n.id AND t.period_date = n.period_date
+         AND (n.old_env IS DISTINCT FROM n.new_env OR n.old_method IS DISTINCT FROM n.new_method
+              OR n.old_status IS DISTINCT FROM n.new_status OR n.old_cands IS DISTINCT FROM n.new_cands)
+       RETURNING n.old_env::text AS old_env, n.new_env::text AS new_env`,
+      workspaceId,
+      scope.runId ?? null,
+      predicate,
+      hint,
+      keep.map((k) => k.start),
+      keep.map((k) => k.end),
+    );
+    out[key] = rows.length;
+    for (const r of rows) {
+      if (r.old_env === r.new_env) continue;
+      if (r.old_env) touched.add(r.old_env);
+      if (r.new_env) {
+        touched.add(r.new_env);
+        gained.add(r.new_env);
+      }
+    }
+  }
+  out.envelopeIds = [...touched].sort();
+  out.gained = [...gained].sort();
+  return out;
+}
+
+/**
+ * The ingest pipeline's matching pass over one run's facts (see matchFacts). Returns the envelopes
+ * that gained facts.
  */
 export async function matchRunFacts(tx: Tx, workspaceId: string, runId: string): Promise<string[]> {
-  const matched = new Set<string>();
-  for (const table of ["spend_fact", "kpi_fact", "projection_fact"] as const) {
-    const rows = await tx.$queryRawUnsafe<Array<{ envelope_id: string }>>(
-      // external_id / match_key resolved the fact's tuple before the upsert (the normalizer); the
-      // tuple match finds the envelope and keeps that method, else records `tuple`.
-      `UPDATE ${table} f SET envelope_id = m.envelope_id, match_method = coalesce(f.match_method, 'tuple')
-       FROM (
-         SELECT f2.id, f2.period_date, e.id AS envelope_id,
-                row_number() OVER (PARTITION BY f2.id, f2.period_date ORDER BY (SELECT count(*) FROM jsonb_object_keys(e.dimension_values)) DESC, e.id) AS rn
-         FROM ${table} f2 JOIN envelope e
-           ON e.workspace_id = f2.workspace_id
-          AND f2.period_date BETWEEN e.start_date AND e.end_date
-          AND e.dimension_values <@ f2.dimension_values
-          AND e.dimension_values <> '{}'::jsonb
-          AND e.status <> 'ARCHIVED'
-         WHERE f2.workspace_id = $1::uuid AND f2.source_run_id = $2::uuid AND f2.envelope_id IS NULL AND f2.superseded_at IS NULL
-       ) m
-       WHERE f.id = m.id AND f.period_date = m.period_date AND m.rn = 1
-       RETURNING f.envelope_id::text AS envelope_id`,
-      workspaceId,
-      runId,
-    );
-    for (const r of rows) matched.add(r.envelope_id);
-    // A provisional method on a fact that matched nothing is not a match method.
-    await tx.$executeRawUnsafe(`UPDATE ${table} SET match_method = NULL WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid AND envelope_id IS NULL AND match_method IS NOT NULL`, workspaceId, runId);
-  }
-  return [...matched].sort();
+  return (await matchFacts(tx, workspaceId, { runId })).gained;
 }
 
 export interface RunCoverage {
@@ -311,7 +423,7 @@ export async function assignUnmatched(
   const d = JSON.stringify(dimensionValues);
   for (const [key, table] of [["spend", "spend_fact"], ["kpi", "kpi_fact"], ["projection", "projection_fact"]] as const) {
     out[key] = await tx.$executeRawUnsafe(
-      `UPDATE ${table} SET envelope_id = $2::uuid, match_method = 'manual'
+      `UPDATE ${table} SET envelope_id = $2::uuid, match_method = 'manual', match_status = NULL, match_candidates = NULL
        WHERE workspace_id = $1::uuid AND envelope_id IS NULL AND superseded_at IS NULL AND dimension_values = $3::jsonb AND period_date BETWEEN $4::date AND $5::date`,
       workspaceId,
       envelope.id,
