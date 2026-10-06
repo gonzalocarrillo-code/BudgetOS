@@ -7,7 +7,7 @@ import { app, closePools, owner, runAsApp, type Row } from "./test-support/db.js
 import { PERIOD, TODAY, cleanupOrg, createOrg, createWorkspace, insertEnvelope, seedNamedFixture, type FixtureOrg, type NamedFixture } from "./test-support/fixtures.js";
 
 /**
- * Projection measures (ADR-030): the latest run per envelope, summed over the period, read by one
+ * Projection measures (ADR-0078): the latest run per envelope, summed over the period, read by one
  * lateral per envelope; nothing read when no measure needs it or the workspace has no projections.
  */
 

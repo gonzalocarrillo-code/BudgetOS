@@ -27,7 +27,7 @@ import { runPacing } from "./pacing/main.js";
 import { handleSearchEvent, reindexWorkspace } from "./search-indexer/indexer.js";
 
 /**
- * budgetos-worker (ADR-065): an always-on Cloud Run service running this loop. It polls the outbox
+ * budgetos-worker (ADR-0080): an always-on Cloud Run service running this loop. It polls the outbox
  * for the ingest, roll-up, notify and export topics (@budget/domain topicsFor) in its own
  * workspaces — every workspace of the org of the workspace slugged LOCAL_ORG_FROM (the local stack:
  * "local"), else slug prefix LOCAL_WORKSPACE_PREFIX ("e2e-" by default, the Playwright stack) —
@@ -37,7 +37,7 @@ import { handleSearchEvent, reindexWorkspace } from "./search-indexer/indexer.js
  * off (`next_attempt_at`, exponential, capped) and dead-letters after OUTBOX_MAX_ATTEMPTS attempts
  * (`failed_at`), listed and replayed per docs/runbooks/worker.md.
  *
- * Decision D-3 (2026-10-05, ADR-010, ADR-065): this poll loop IS the production design for the
+ * Decision D-3 (2026-10-05, ADR-010, ADR-0080): this poll loop IS the production design for the
  * single-org deployment, not a stand-in for a Pub/Sub path that happens not to be deployed yet. The
  * at-least-once publisher/push path (outbox-publisher.ts, consumer.ts's handleOnce under a Pub/Sub
  * push subscription) stays available and typechecked for the multi-tenant design (spec §19) but is

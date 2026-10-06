@@ -35,13 +35,13 @@ docs/               plan, spec, adr/, runbooks/
 | Command | Purpose |
 |---|---|
 | `pnpm install` | Node 22 (`.nvmrc`), pnpm 9 |
-| `pnpm dev` | docker compose (postgres:16, redis:7) + migrate + seed small golden + api + web |
+| `pnpm dev` | turbo run dev --parallel: starts api, mcp, web (requires docker compose running first) |
 | `pnpm typecheck` · `pnpm lint` · `pnpm test` | must be green before every commit; CI (`.github/workflows/ci.yml`) runs the full suite with Postgres, Redis and the GCS emulator on every push and PR, and `main` only deploys once that run is green |
 | `pnpm test:acceptance` | epic-level acceptance suites; run before marking an epic done |
 | `pnpm test:e2e` | Playwright against `pnpm dev` |
 | `pnpm bench` | grid / timeline / planner benchmarks vs `bench/baseline.json`; fails on > 10% regression |
 | `pnpm license-check` | fails on any dependency outside `MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;Unlicense` |
-| `pnpm db:migrate` · `pnpm db:seed [--size small\|large]` · `pnpm db:reset` | database |
+| `pnpm db:migrate` · `pnpm db:seed` · `pnpm db:reset` | database |
 | `pnpm --filter @budget/db prisma migrate dev --name <task-id>` | new Prisma migration; hand-written SQL goes in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql`, idempotent (`IF NOT EXISTS`) |
 
 ## 4. Non-negotiables

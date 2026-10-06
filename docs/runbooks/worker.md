@@ -1,4 +1,4 @@
-# Runbook: the worker (`budgetos-worker`, W1-2, ADR-010 Decision D-3, ADR-065)
+# Runbook: the worker (`budgetos-worker`, W1-2, ADR-010 Decision D-3, ADR-0080)
 
 ## What it is
 
@@ -7,7 +7,7 @@
 the production design for the single-org deployment** — not a stand-in for the at-least-once
 Pub/Sub publisher/push path spec §19 describes (`outbox-publisher.ts`, `consumer.ts`'s push
 subscriptions). That path stays in the codebase, typechecked, for the multi-tenant design, but is
-not deployed; ADR-010 and ADR-065 both record this as Decision D-3 (2026-10-05).
+not deployed; ADR-010 and ADR-0080 both record this as Decision D-3 (2026-10-05).
 
 The loop polls the `outbox` table once a second (or immediately while a poll found rows) for every
 workspace in its scope — the org of the workspace slugged `LOCAL_ORG_FROM`, else every workspace

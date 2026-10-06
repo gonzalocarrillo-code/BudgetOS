@@ -3,7 +3,7 @@
 ## What runs
 
 - `POST /api/v1/exports` queues an `export_job` and an `export.requested` outbox row.
-- `export-worker` (`apps/workers/src/export/main.ts`, Cloud Run push subscriber) builds the CSV/XLSX and writes it to `gs://$UPLOAD_BUCKET/exports/<workspace>/<job>.<csv|xlsx>`.
+- The polling worker (`apps/workers/src/local-runner.ts`, Cloud Run service `budgetos-worker`, W1-2) subscribed to `export.requested` events builds the CSV/XLSX and writes it to `gs://$UPLOAD_BUCKET/exports/<workspace>/<job>.<csv|xlsx>`.
 - `GET /api/v1/exports/:jobId` returns the job and a 15-minute download URL once `status = done`.
 
 Locally, objects go to the GCS emulator when `GCS_EMULATOR_HOST` is set, and to memory otherwise.
@@ -29,7 +29,7 @@ UPDATE export_job SET status = 'failed', error = 'worker stopped; start a new ex
 
 ## Cleaning up
 
-Export objects are deleted by the bucket's lifecycle rule (7 days, Terraform phase 20). `export_job` rows are never deleted.
+Export objects are deleted by the bucket's lifecycle rule (7 days, defined in `infra/modules/cloudsql/bucket.tf`, W0-2). `export_job` rows are never deleted.
 
 ## BigQuery curated views
 

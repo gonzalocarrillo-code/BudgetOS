@@ -28,7 +28,7 @@ export function checkSecretsStatus(env: NodeJS.ProcessEnv = process.env): { ok: 
 }
 
 /**
- * The deployment's one-time setup (ADR-065), run by the `budgetos-migrate` Cloud Run job after
+ * The deployment's one-time setup (ADR-0080), run by the `budgetos-migrate` Cloud Run job after
  * `prisma migrate deploy`, as the owner role. Idempotent: every run leaves the same state.
  *
  * - The owner role never holds BYPASSRLS (W2-3, audit S-2, S-3, S-21; ADR-005 addendum). It is a

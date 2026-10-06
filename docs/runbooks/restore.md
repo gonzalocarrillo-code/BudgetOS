@@ -1,4 +1,4 @@
-# Restore (B-1, ADR-065 "Backups and recovery")
+# Restore (B-1, ADR-0080 "Backups and recovery")
 
 Cloud SQL `budgetos-db` (Postgres 16, `dmus-gonzalo`) is the only system of record; everything else
 (BigQuery `budgetos_closures`, the search index, `rollup_cache`) is derived and can be rebuilt. This

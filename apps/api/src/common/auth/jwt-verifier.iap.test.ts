@@ -4,7 +4,7 @@ import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { IAP_HEADER, JwtVerifier } from "./jwt-verifier.js";
 
-/** ADR-065: behind IAP the caller is IAP's ES256 assertion header; a bearer token is ignored. */
+/** ADR-0080: behind IAP the caller is IAP's ES256 assertion header; a bearer token is ignored. */
 const AUDIENCE = "/projects/123/locations/us-central1/services/budgetos-app";
 let server: Server;
 let key: Awaited<ReturnType<typeof generateKeyPair>>["privateKey"];

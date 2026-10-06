@@ -11,7 +11,7 @@ import { McpOAuth, type OAuthStore } from "./common/auth/mcp-oauth.js";
 import { SESSION_COOKIE, cookie, googleLoginFromEnv, loginCallback, loginRedirect, logoutCookie, verifySession, type SessionSink } from "./common/auth/google-login.js";
 
 /**
- * Deployed hosting (ADR-065). WEB_DIST: the API also serves the built SPA, so the web and the API
+ * Deployed hosting (ADR-0080). WEB_DIST: the API also serves the built SPA, so the web and the API
  * share one origin behind IAP (no CORS, one sign-in); a path outside /api that is not a file gets
  * index.html (client-side routes). PUBLIC_ROUTES=slack: the public service answers only the signed
  * Slack routes and /health (Cloud Run reserves /healthz); everything else is 404, so nothing but Slack's callbacks is reachable

@@ -31,7 +31,7 @@ class LiveSessionCache {
 
 /** Google's public keys for Identity Platform (securetoken) ID tokens. */
 const IDENTITY_PLATFORM_JWKS = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
-/** Identity-Aware Proxy's signing keys and issuer (ADR-065). */
+/** Identity-Aware Proxy's signing keys and issuer (ADR-0080). */
 const IAP_JWKS = "https://www.gstatic.com/iap/verify/public_key-jwk";
 const IAP_ISSUER = "https://cloud.google.com/iap";
 /** The header IAP adds to every request it lets through. */
@@ -47,7 +47,7 @@ export interface VerifiedIdentity {
 }
 
 export interface AuthConfig {
-  /** `identity-platform` (a bearer ID token), `iap` (the IAP assertion header, ADR-065), or `session` (Budget OS's own Google sign-in cookie, ADR-067). */
+  /** `identity-platform` (a bearer ID token), `iap` (the IAP assertion header, ADR-0080), or `session` (Budget OS's own Google sign-in cookie, ADR-067). */
   mode: "identity-platform" | "iap" | "session";
   /** session mode: the key sessions are signed with. */
   sessionKey?: string;
@@ -183,7 +183,7 @@ function googleIdentity(payload: JWTPayload): string | null {
 }
 
 /**
- * IAP's keys, fetched with Node's fetch and cached for an hour (ADR-065). On Cloud Run jose's
+ * IAP's keys, fetched with Node's fetch and cached for an hour (ADR-0080). On Cloud Run jose's
  * remote key set failed to parse gstatic's response ("Failed to parse the JSON Web Key Set HTTP
  * response as JSON") although the same URL parses everywhere else; an unknown `kid` refetches.
  * S-20: that unknown-`kid` refetch is throttled to once per 60 s, so a burst of assertions signed
