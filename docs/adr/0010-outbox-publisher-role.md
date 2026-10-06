@@ -48,3 +48,30 @@ Subscribers need the org as well as the workspace to open `withTenant()`, becaus
 
   `PubSubPublisher` is typechecked but not called in tests.
 - Rows with a NULL `workspace_id` can't be published and fail the pass. `budget_app` can't write them, because RLS `WITH CHECK` requires a visible workspace.
+
+## Decision D-3 (2026-10-05)
+
+The owner decided: for the single-org deployment, `apps/workers/src/local-runner.ts` (Cloud Run
+service `budgetos-worker`, ADR-065) **is the production design**, not a stand-in for this ADR's
+publisher/push path while phase 20 is pending. The publisher and `consumer.ts`'s push subscriptions
+stay in the codebase, typechecked, for the multi-tenant design this ADR describes, but are not
+deployed and are not on a critical path to being deployed. I-10 ("no dead-letter, max-attempt or
+backoff anywhere") and I-11 (outbox-publisher head-of-line blocking) are closed as "not deployed":
+they describe the push path above, not the local runner.
+
+The local runner needed its own version of what this ADR gives the push path — delivery that
+survives a handler failure, with backoff and a dead-letter an operator can see — because polling
+`UPDATE outbox SET published_at = now()` unconditionally after every attempt (its behavior before
+W1-2) silently dropped events on failure (I-1) instead of ever retrying them (`processed_event`'s
+exactly-once-per-consumer guarantee above only helps once a row is *redelivered*; a local-runner row
+marked published regardless of outcome never is). W1-2 added, directly on `outbox`:
+`attempts`, `last_error`, `failed_at`, `next_attempt_at`, with `budget_publisher` (this ADR's role)
+granted `UPDATE` on all four alongside its existing `UPDATE (published_at)`, so a later move of the
+local runner's own DB connection to that role (W2-3) needs no second migration. The runner (not this
+ADR's publisher) claims by those columns, runs each consumer family in its own `try`, and on any
+family failing backs the row off exponentially and dead-letters it after `OUTBOX_MAX_ATTEMPTS`
+(default 8) — see `docs/runbooks/worker.md` for the mechanics, the backoff table, and how to list
+and replay a dead-lettered row. Families that already succeeded on an earlier attempt are not
+re-run on a later one: `handleOnce`'s `processed_event` dedupe above is per `(consumer, outbox_id)`,
+and a row's outbox id never changes across retries, so this ADR's exactly-once guarantee is exactly
+what makes the local runner's per-row, per-family retries safe to re-attempt.

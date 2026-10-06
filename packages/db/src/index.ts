@@ -16,8 +16,10 @@ export { MONTHLY_GRACE_DAYS, STALE_AFTER_DAYS, coverage, dataAsOf, endOfMonth, p
 export type { DataAsOf } from "./data-as-of.js";
 export { descendantIds, envelopeLineage, failedRuns, recentActivity, unsentDrafts, unsettledInPeriod } from "./desk.js";
 export type { Activity, FailedRun, LineageStep, UnsentDraft } from "./desk.js";
-export { claimOutbox, markOutboxDelivered, markOutboxPublished, markProcessed } from "./outbox.js";
-export type { OutboxRow } from "./outbox.js";
+export { claimLocalOutbox, claimOutbox, markLocalFailure, markLocalPublished, markOutboxDelivered, markOutboxPublished, markProcessed } from "./outbox.js";
+export type { LocalOutboxRow, LocalScope, OutboxRow, RawReader, RawWriter } from "./outbox.js";
+export { localActiveOrgs, localAllOrgs, localOrgsPendingPurge, localWorkspacesForReindex } from "./runner.js";
+export type { ReindexCandidate } from "./runner.js";
 export { insertNotification, listNotifications, markNotificationsRead } from "./notifications.js";
 export type { NotificationRow } from "./notifications.js";
 export { mergeTag, setSubscription, subscribers } from "./collab.js";

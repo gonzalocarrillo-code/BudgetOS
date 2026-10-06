@@ -1,5 +1,5 @@
 import { envelopePaths, lastActorId, loadBulkChange, type Tx } from "@budget/db";
-import { threadPath } from "@budget/domain";
+import { parseOutboxPayload, threadPath } from "@budget/domain";
 import { WebClient } from "@slack/web-api";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce, type OutboxEvent } from "../consumer.js";
@@ -334,7 +334,10 @@ export async function handleSlackEvent(prisma: PrismaClient, slack: SlackClient 
   const edited: Array<{ channel: string; ts: string }> = [];
   const outcome = await handleOnce(prisma, SLACK_CONSUMER, event, async (tx) => {
     if (slack === null) return;
-    const p = (event.payload ?? {}) as Record<string, unknown>;
+    // I-29: a malformed payload fails the handler (attempts/backoff in local-runner.ts) instead of
+    // reaching Prisma as `undefined`. Parsed only once a Slack client exists, so a mute delivery
+    // (no SLACK_BOT_TOKEN) still acknowledges rather than failing on data nothing here will read.
+    const p = parseOutboxPayload(event.topic, event.payload);
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: event.workspaceId }, select: { settings: true } });
     const own: SlackSettings = ((ws.settings ?? {}) as Settings).slack ?? {};
     // R11-002: the org's linked team links every workspace (buttons need a linked team).

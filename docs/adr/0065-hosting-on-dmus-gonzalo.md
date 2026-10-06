@@ -53,3 +53,31 @@ rollback procedure, and a drill log — empty until the first drill is actually 
   above happens, since it assumes a VPC-peered Cloud SQL instance.
 - The restore runbook's drill table has one open row ("pending — first drill"); scheduling that
   drill is tracked separately, not by this change.
+
+## Decision D-3 (2026-10-05)
+
+The owner decided: `budgetos-worker`'s poll loop (`local-runner.ts`) **is the production design**
+for this single-org deployment, not a temporary substitute for the Pub/Sub publisher/push path
+(ADR-010) while phase 20 (Terraform topics, push authentication, the Cloud Run publisher service)
+is pending. It is not on a critical path to being replaced; this deployment stays on it.
+
+W1-2 hardened the loop to match (I-1, I-7, M-7, audit `docs/STACK_AUDIT_2026-10-04.md`):
+- A row's consumer families (ingest, roll-up, search, notify in-app, notify Slack, export) each run
+  in their own `try`. A row is marked published only once every family that applies to it has
+  succeeded; previously the loop published every row regardless of outcome, so a transient failure
+  silently dropped the event (I-1) with no record beyond a log line.
+- A row that fails stays unpublished, backs off exponentially, and dead-letters
+  (`failed_at`) after `OUTBOX_MAX_ATTEMPTS` (default 8) attempts, listed and replayed per
+  `docs/runbooks/worker.md`.
+- `export.requested` is now one of the loop's subscribed topics (`topicsFor("export")`), using the
+  same object store the standalone `export-worker` entrypoint would. Before this, exports queued by
+  `POST /api/v1/exports` never ran in this deployment (I-2): nothing subscribed to the topic here.
+- Roll-up and search-indexer consumers that rebuild a whole workspace (a registry change, a display
+  naming change) now get a 300s transaction budget instead of the 15s default, which could abort
+  mid-rebuild on a workspace with real history (I-7).
+- `SIGTERM`/`SIGINT` (Cloud Run's stop signal) sets a draining flag: the row in flight finishes, no
+  new row is claimed, and the health check keeps answering through the drain (M-7). Previously the
+  loop had no signal handling at all.
+
+See ADR-010's own Decision D-3 for how this reuses that ADR's `budget_publisher` role and
+`processed_event` exactly-once-per-consumer guarantee.

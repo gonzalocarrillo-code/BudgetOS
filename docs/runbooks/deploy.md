@@ -26,7 +26,9 @@ Deploys happen only after `.github/workflows/ci.yml` succeeds on `main` (the `de
 
 ## When something fails
 - **Migrations:** `gcloud run jobs executions list --job budgetos-migrate --region us-central1 --project dmus-gonzalo`, then the execution's logs. For a partial failure or a rollback, see `docs/runbooks/restore.md` (d).
-- **Worker:** logs of `budgetos-worker`. It must stay at one instance.
+- **Worker:** logs of `budgetos-worker`. It must stay at one instance. See `docs/runbooks/worker.md`
+  for how the poll loop retries, backs off and dead-letters a failing outbox row, and how to list
+  and replay one (W1-2, ADR-010 Decision D-3: this loop is the production design, not a stand-in).
 - **"Unknown or inactive user" for the superadmin:** re-run the workflow. The bootstrap is idempotent.
 
 ## Before a risky migration

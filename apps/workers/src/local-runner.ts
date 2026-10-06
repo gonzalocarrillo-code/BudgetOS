@@ -1,11 +1,24 @@
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import { topicsFor } from "@budget/domain";
+import {
+  claimLocalOutbox,
+  localActiveOrgs,
+  localAllOrgs,
+  localOrgsPendingPurge,
+  localWorkspacesForReindex,
+  markLocalFailure,
+  markLocalPublished,
+  type LocalOutboxRow,
+  type LocalScope,
+} from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { handleIngestRequested } from "./ingest/worker.js";
 import { handleRollupEvent } from "./rollup/rollup.js";
 import { handleInApp } from "./notify/in-app.js";
-import { handleSlackEvent, slackConfigWarnings, slackFromEnv } from "./notify/slack.js";
-import { objectStoreFromEnv, uploadBucket } from "./ingest/object-store.js";
+import { handleSlackEvent, slackConfigWarnings, slackFromEnv, type SlackClient } from "./notify/slack.js";
+import { handleExportRequested } from "./export/export.js";
+import { objectStoreFromEnv, uploadBucket, type ObjectStore } from "./ingest/object-store.js";
 import { log } from "./log.js";
 import { purgeDueWorkspaces } from "./purge/purge.js";
 import { retentionFromEnv, runRetention } from "./retention/retention.js";
@@ -14,30 +27,54 @@ import { runPacing } from "./pacing/main.js";
 import { handleSearchEvent, reindexWorkspace } from "./search-indexer/indexer.js";
 
 /**
- * Local stand-in for Pub/Sub + the ingest, roll-up and notify workers (T-032, ADR-038), for the
- * Playwright stack and the local stack only. It polls the outbox for their topics in its own
- * workspaces — every workspace of the org of the workspace slugged LOCAL_ORG_FROM (the local
- * stack: "local", so a workspace created in the app is served too), else slug prefix
- * LOCAL_WORKSPACE_PREFIX ("e2e-" by default) — never another test's rows. Each row goes to the real
- * push handlers in-process, then is marked published. The roll-up worker keeps the cache the
- * Explorer's tree reads; the notify worker writes in-app notifications and posts to Slack when
- * SLACK_BOT_TOKEN is set. It also creates the uploads bucket in the GCS emulator.
- * The single-org deployment (ADR-065) runs this same loop as an always-on Cloud Run service:
- * LISTEN_HOST=0.0.0.0 for Cloud Run's port, and PACING_EVERY_MS evaluates the pacing rules of the
- * org on that schedule (off by default, as locally). The multi-tenant design (outbox publisher,
- * Pub/Sub push, Cloud Scheduler) stays spec §19.
+ * budgetos-worker (ADR-065): an always-on Cloud Run service running this loop. It polls the outbox
+ * for the ingest, roll-up, notify and export topics (@budget/domain topicsFor) in its own
+ * workspaces — every workspace of the org of the workspace slugged LOCAL_ORG_FROM (the local stack:
+ * "local"), else slug prefix LOCAL_WORKSPACE_PREFIX ("e2e-" by default, the Playwright stack) —
+ * never another deployment's rows. Each row's consumer families run in-process against the real
+ * push handlers, each isolated in its own try (I-1): a row is marked published only once every
+ * family that applies to it has succeeded; a row with a failure keeps its unpublished rows, backs
+ * off (`next_attempt_at`, exponential, capped) and dead-letters after OUTBOX_MAX_ATTEMPTS attempts
+ * (`failed_at`), listed and replayed per docs/runbooks/worker.md.
+ *
+ * Decision D-3 (2026-10-05, ADR-010, ADR-065): this poll loop IS the production design for the
+ * single-org deployment, not a stand-in for a Pub/Sub path that happens not to be deployed yet. The
+ * at-least-once publisher/push path (outbox-publisher.ts, consumer.ts's handleOnce under a Pub/Sub
+ * push subscription) stays available and typechecked for the multi-tenant design (spec §19) but is
+ * not wired into deploy.yml; nothing here should be read as "temporary". LISTEN_HOST=0.0.0.0 binds
+ * Cloud Run's port; PACING_EVERY_MS evaluates the pacing rules of the org on that schedule (off by
+ * default, as locally).
  */
+
+export const MAX_ATTEMPTS = Number(process.env["OUTBOX_MAX_ATTEMPTS"] ?? 8);
+const CLAIM_LIMIT = 50;
+
 const prefix = process.env["LOCAL_WORKSPACE_PREFIX"] ?? "e2e-";
 const orgFrom = process.env["LOCAL_ORG_FROM"] ?? null;
+const scope: LocalScope = { prefix, orgFrom };
 /** The workers' subscriptions, from the one list in @budget/domain (spec §19). approval.changed goes to both roll-up and notify. */
 const INGEST: string[] = topicsFor("ingest");
 const ROLLUP: string[] = topicsFor("rollup");
 const NOTIFY: string[] = topicsFor("notify");
-const TOPICS = [...new Set([...INGEST, ...ROLLUP, ...NOTIFY])];
+const EXPORT: string[] = topicsFor("export");
+const TOPICS = [...new Set([...INGEST, ...ROLLUP, ...NOTIFY, ...EXPORT])];
 const slack = slackFromEnv();
 const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
 const app = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
 const store = objectStoreFromEnv();
+
+/**
+ * SIGTERM/SIGINT (M-7): set once, checked between rows and between passes, never cleared. The
+ * current row always finishes; nothing new is claimed after. The health server and its Prisma
+ * clients stay open through this: shutdown() only flips the flag, main()'s loop does the draining.
+ */
+let stopping = false;
+export function shutdown(): void {
+  stopping = true;
+}
+export function isStopping(): boolean {
+  return stopping;
+}
 
 async function ensureBucket(): Promise<void> {
   const emulator = process.env["GCS_EMULATOR_HOST"];
@@ -46,66 +83,104 @@ async function ensureBucket(): Promise<void> {
   if (!res.ok && res.status !== 409) throw new Error(`creating bucket ${uploadBucket()}: ${res.status}`);
 }
 
-async function pass(): Promise<number> {
-  const rows = await owner.$queryRawUnsafe<Array<{ id: string; workspace_id: string; org_id: string; topic: string; payload: unknown }>>(
-    `SELECT o.id::text AS id, o.workspace_id::text AS workspace_id, w.org_id::text AS org_id, o.topic, o.payload
-       FROM outbox o JOIN workspace w ON w.id = o.workspace_id
-      WHERE o.topic = ANY($2::text[]) AND o.published_at IS NULL
-        AND ($3::text IS NULL AND w.slug LIKE $1 OR w.org_id = (SELECT org_id FROM workspace WHERE slug = $3::text))
-        -- ADR-052: an archived or deleted workspace is frozen; its events wait, unapplied.
-        AND w.status = 'ACTIVE' AND w.deleted_at IS NULL
-      ORDER BY w.created_at DESC, o.id LIMIT 50`,
-    `${prefix}%`,
-    TOPICS,
-    orgFrom,
-  );
-  // Newest workspace first: a workspace a crashed run left behind never starves the live one.
-  for (const row of rows) {
-    const push = (subscription: string) => ({
-      message: { data: Buffer.from(JSON.stringify(row.payload)).toString("base64"), attributes: { outboxId: row.id, workspaceId: row.workspace_id, orgId: row.org_id, topic: row.topic }, messageId: `local-${row.id}` },
-      subscription: `projects/local/subscriptions/${subscription}`,
-    });
+/** Every consumer family the loop can run for a row, swappable in tests so one family can be made to fail while the rest run for real. */
+export interface RunnerHandlers {
+  ingest: typeof handleIngestRequested;
+  rollup: typeof handleRollupEvent;
+  search: typeof handleSearchEvent;
+  inApp: typeof handleInApp;
+  slackNotify: typeof handleSlackEvent;
+  exportRequested: typeof handleExportRequested;
+}
+
+export interface RunnerDeps {
+  app: PrismaClient;
+  owner: PrismaClient;
+  store: ObjectStore;
+  slack: SlackClient | null;
+  maxAttempts: number;
+  handlers: RunnerHandlers;
+}
+
+const defaultHandlers: RunnerHandlers = {
+  ingest: handleIngestRequested,
+  rollup: handleRollupEvent,
+  search: handleSearchEvent,
+  inApp: handleInApp,
+  slackNotify: handleSlackEvent,
+  exportRequested: handleExportRequested,
+};
+
+/** The real dependencies main() runs against; a test builds its own RunnerDeps instead of mutating this one. */
+export const defaultDeps: RunnerDeps = { app, owner, store, slack, maxAttempts: MAX_ATTEMPTS, handlers: defaultHandlers };
+
+const push = (row: LocalOutboxRow, subscription: string) => ({
+  message: { data: Buffer.from(JSON.stringify(row.payload)).toString("base64"), attributes: { outboxId: row.id, workspaceId: row.workspaceId, orgId: row.orgId, topic: row.topic }, messageId: `local-${row.id}` },
+  subscription: `projects/local/subscriptions/${subscription}`,
+});
+
+/**
+ * Runs one outbox row's consumer families, each in its own try (I-1): an ingest, roll-up or notify
+ * failure never skips the others. Consumers that already succeeded on an earlier attempt are not
+ * re-run on this redelivery — handleOnce's processed_event dedupe (consumer.ts) returns "duplicate"
+ * and does nothing, per consumer, keyed on this row's outbox id, which never changes across
+ * retries. A row is published once every family that applies to it has succeeded this pass (which,
+ * thanks to that dedupe, includes families that merely succeeded on a prior pass).
+ */
+async function runRow(deps: RunnerDeps, row: LocalOutboxRow): Promise<void> {
+  const failures: Array<{ consumer: string; error: unknown }> = [];
+  const attempt = async (consumer: string, fn: () => Promise<unknown>) => {
     try {
-      if (INGEST.includes(row.topic)) {
-        const result = await handleIngestRequested(app, { prisma: app, store, reportBucket: uploadBucket() }, push("ingest-worker"));
-        log.info({ outboxId: row.id, workspaceId: row.workspace_id, topic: row.topic, result }, "local ingest run");
-      }
-      if (ROLLUP.includes(row.topic)) {
-        const result = await handleRollupEvent(app, push("rollup-worker"));
-        log.info({ outboxId: row.id, workspaceId: row.workspace_id, topic: row.topic, result }, "local roll-up refresh");
-      }
-      // The search indexer takes every topic (spec §12.1) and decides what each one touched.
-      const indexed = await handleSearchEvent(app, push("search-indexer"));
-      if (indexed.upserted || indexed.deleted) log.info({ outboxId: row.id, topic: row.topic, ...indexed }, "local search index");
-      if (NOTIFY.includes(row.topic)) {
-        await handleInApp(app, push("notify-worker"));
-        const result = await handleSlackEvent(app, slack, push("notify-worker"));
-        if (result.posted.length) log.info({ outboxId: row.id, topic: row.topic, posted: result.posted.length }, "local Slack delivery");
-      }
-    } catch (err) {
-      log.error({ err, outboxId: row.id, workspaceId: row.workspace_id, topic: row.topic }, "local worker run failed");
+      await fn();
+    } catch (error) {
+      failures.push({ consumer, error });
+      log.error({ err: error, outboxId: row.id, workspaceId: row.workspaceId, topic: row.topic, consumer }, "local worker consumer failed");
     }
-    await owner.$executeRawUnsafe(`UPDATE outbox SET published_at = now() WHERE id = $1::bigint`, row.id);
+  };
+  if (INGEST.includes(row.topic)) await attempt("ingest", () => deps.handlers.ingest(deps.app, { prisma: deps.app, store: deps.store, reportBucket: uploadBucket() }, push(row, "ingest-worker")));
+  if (ROLLUP.includes(row.topic)) await attempt("rollup", () => deps.handlers.rollup(deps.app, push(row, "rollup-worker")));
+  // The search indexer takes every topic (spec §12.1) and decides what each one touched.
+  await attempt("search", () => deps.handlers.search(deps.app, push(row, "search-indexer")));
+  if (NOTIFY.includes(row.topic)) {
+    await attempt("notify-in-app", () => deps.handlers.inApp(deps.app, push(row, "notify-worker")));
+    await attempt("notify-slack", () => deps.handlers.slackNotify(deps.app, deps.slack, push(row, "notify-worker")));
+  }
+  if (EXPORT.includes(row.topic)) await attempt("export", () => deps.handlers.exportRequested(deps.app, deps.store, push(row, "export-worker")));
+
+  if (failures.length === 0) {
+    await markLocalPublished(deps.owner, row.id);
+    return;
+  }
+  const first = failures[0] as { consumer: string; error: unknown };
+  const message = first.error instanceof Error ? first.error.message : String(first.error);
+  await markLocalFailure(deps.owner, row.id, message, { maxAttempts: deps.maxAttempts });
+  log.error(
+    { outboxId: row.id, workspaceId: row.workspaceId, topic: row.topic, attempts: row.attempts + 1, failedConsumers: failures.map((f) => f.consumer) },
+    "outbox row failed; consumers that succeeded are kept (processed_event dedupe), the rest retry with backoff",
+  );
+}
+
+/**
+ * One poll: claims up to CLAIM_LIMIT claimable rows (unpublished, not dead-lettered, past their
+ * backoff) and runs each. Checked for shutdown before every row, so a signal mid-pass finishes the
+ * row in flight and leaves the rest of the batch — and the next poll — unclaimed.
+ */
+export async function pass(deps: RunnerDeps = defaultDeps): Promise<number> {
+  const rows = await claimLocalOutbox(deps.owner, scope, TOPICS, CLAIM_LIMIT);
+  for (const row of rows) {
+    if (stopping) break;
+    await runRow(deps, row);
   }
   return rows.length;
 }
 
-await ensureBucket();
-const port = Number(process.env["PORT"] ?? 4799);
-createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, process.env["LISTEN_HOST"] ?? "127.0.0.1");
-log.info({ port, prefix, orgFrom, slack: slack !== null }, "local runner up");
-for (const warning of slackConfigWarnings()) log.warn(warning);
 // ADR-052: deleted workspaces past their retention window are purged, checked once a minute.
 let lastPurge = 0;
 async function purgePass(): Promise<void> {
   if (Date.now() - lastPurge < 60_000) return;
   lastPurge = Date.now();
-  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
-    `SELECT DISTINCT org_id::text FROM workspace WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
-    `${prefix}%`,
-    orgFrom,
-  );
-  if (orgs.length) await purgeDueWorkspaces(app, orgs.map((o) => o.org_id));
+  const orgs = await localOrgsPendingPurge(owner, scope);
+  if (orgs.length) await purgeDueWorkspaces(app, orgs);
 }
 
 // D-002: fact and raw-file retention, once a day, only with FACT_RETENTION_ENABLED=true (and facts
@@ -115,12 +190,8 @@ async function retentionPass(): Promise<void> {
   const deps = retentionFromEnv(store);
   if (!deps.enabled || Date.now() - lastRetention < 86_400_000) return;
   lastRetention = Date.now();
-  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
-    `SELECT DISTINCT org_id::text FROM workspace WHERE deleted_at IS NULL AND ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
-    `${prefix}%`,
-    orgFrom,
-  );
-  if (orgs.length) await runRetention(app, orgs.map((o) => o.org_id), deps);
+  const orgs = await localActiveOrgs(owner, scope);
+  if (orgs.length) await runRetention(app, orgs, deps);
 }
 
 // D-015: the snapshot integrity check, once a week (SNAPSHOT_INTEGRITY=off disables it). Read-only.
@@ -128,12 +199,8 @@ let lastIntegrity = 0;
 async function integrityPass(): Promise<void> {
   if (process.env["SNAPSHOT_INTEGRITY"] === "off" || Date.now() - lastIntegrity < 7 * 86_400_000) return;
   lastIntegrity = Date.now();
-  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
-    `SELECT DISTINCT org_id::text FROM workspace WHERE ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
-    `${prefix}%`,
-    orgFrom,
-  );
-  if (orgs.length) await checkSnapshotIntegrity(app, orgs.map((o) => o.org_id));
+  const orgs = await localAllOrgs(owner, scope);
+  if (orgs.length) await checkSnapshotIntegrity(app, orgs);
 }
 
 // Search (R11-001): workspaces whose index is empty are indexed on the first pass (a deployment
@@ -143,14 +210,9 @@ let checkedEmpty = false;
 async function reindexPass(): Promise<void> {
   const full = Date.now() - lastFullReindex > 86_400_000;
   if (!full && checkedEmpty) return;
-  const rows = await owner.$queryRawUnsafe<Array<{ id: string; org_id: string; empty: boolean }>>(
-    `SELECT w.id::text AS id, w.org_id::text AS org_id, NOT EXISTS (SELECT 1 FROM search_document d WHERE d.workspace_id = w.id) AS empty
-       FROM workspace w WHERE w.deleted_at IS NULL AND w.status = 'ACTIVE' AND ($2::text IS NULL AND w.slug LIKE $1 OR w.org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
-    `${prefix}%`,
-    orgFrom,
-  );
+  const rows = await localWorkspacesForReindex(owner, scope);
   const due = rows.filter((r) => full || r.empty);
-  for (const w of due) await reindexWorkspace(app, { workspaceId: w.id, orgId: w.org_id });
+  for (const w of due) await reindexWorkspace(app, { workspaceId: w.id, orgId: w.orgId });
   checkedEmpty = true;
   if (full) lastFullReindex = Date.now();
   if (due.length) log.info({ workspaces: due.length, full }, "search reindex pass finished");
@@ -162,23 +224,48 @@ async function pacingPass(): Promise<void> {
   const every = Number(process.env["PACING_EVERY_MS"] ?? 0);
   if (!every || Date.now() - lastPacing < every) return;
   lastPacing = Date.now();
-  const orgs = await owner.$queryRawUnsafe<Array<{ org_id: string }>>(
-    `SELECT DISTINCT org_id::text FROM workspace WHERE deleted_at IS NULL AND ($2::text IS NULL AND slug LIKE $1 OR org_id = (SELECT org_id FROM workspace WHERE slug = $2::text))`,
-    `${prefix}%`,
-    orgFrom,
-  );
+  const orgs = await localActiveOrgs(owner, scope);
   if (orgs.length === 0) return;
   const now = new Date();
-  const result = await runPacing(app, orgs.map((o) => o.org_id), now.toISOString().slice(0, 10), now);
+  const result = await runPacing(app, orgs, now.toISOString().slice(0, 10), now);
   log.info({ workspaces: result.length }, "pacing pass finished");
 }
 
-for (;;) {
-  await reindexPass().catch((err: unknown) => log.error({ err }, "search reindex pass failed"));
-  await pacingPass().catch((err: unknown) => log.error({ err }, "pacing pass failed"));
-  await integrityPass().catch((err: unknown) => log.error({ err }, "local integrity pass failed"));
-  await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
-  await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
-  const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));
-  if (n === 0) await new Promise((r) => setTimeout(r, 1000));
+async function main(): Promise<void> {
+  await ensureBucket();
+  const port = Number(process.env["PORT"] ?? 4799);
+  const server = createServer((_, res) => void res.writeHead(200).end("ok")).listen(port, process.env["LISTEN_HOST"] ?? "127.0.0.1");
+  log.info({ port, prefix, orgFrom, slack: slack !== null, maxAttempts: MAX_ATTEMPTS }, "local runner up");
+  for (const warning of slackConfigWarnings()) log.warn(warning);
+  for (const sig of ["SIGTERM", "SIGINT"] as const) {
+    process.once(sig, () => {
+      log.info({ signal: sig }, "local runner draining: finishing the current row, then stopping (health stays up meanwhile)");
+      shutdown();
+    });
+  }
+
+  while (!isStopping()) {
+    await reindexPass().catch((err: unknown) => log.error({ err }, "search reindex pass failed"));
+    if (isStopping()) break;
+    await pacingPass().catch((err: unknown) => log.error({ err }, "pacing pass failed"));
+    if (isStopping()) break;
+    await integrityPass().catch((err: unknown) => log.error({ err }, "local integrity pass failed"));
+    if (isStopping()) break;
+    await retentionPass().catch((err: unknown) => log.error({ err }, "local retention pass failed"));
+    if (isStopping()) break;
+    await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
+    if (isStopping()) break;
+    const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));
+    if (n === 0 && !isStopping()) await new Promise((r) => setTimeout(r, 1000));
+  }
+  log.info("local runner drained; closing Prisma connections");
+  server.close();
+  await Promise.all([owner.$disconnect(), app.$disconnect()]);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    log.fatal({ err: error }, "local runner crashed");
+    process.exit(1);
+  });
 }

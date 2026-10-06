@@ -1,4 +1,4 @@
-import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
+import { LIVE_LEAVES, QueryRequest, elapsedFraction, groupRatios, parseOutboxPayload, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
 import { cachedPeriods, deleteRollupNodes, loadBulkChange, deleteRollupNodesExcept, envelopesByTuple, envelopesUnderPrefixes, hasProjections, lockRollup, recomputeNames, rollupChildren, rollupRoot, upsertRollupNodes, withTenant, type RollupNode, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { NONE_SEGMENT, ROOT_PATH, compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -16,6 +16,11 @@ import { targetsFor } from "../search-indexer/indexer.js";
  */
 
 export const ROLLUP_CONSUMER = "rollup-worker";
+/** I-7: registry.changed and budget.changed(kind=granularities|moved) rebuild every template for
+ * every cached period inside this transaction; withTenant()'s 15s default aborts a workspace with
+ * any real history, which local-runner mode then loses outright (I-1) and push mode redelivers
+ * forever with no DLQ. The explicit full-rebuild path already gives itself 300s; match it here. */
+const ROLLUP_TIMEOUT = { timeoutMs: 300_000 };
 type Row = Record<string, unknown>;
 
 export { LIVE_LEAVES } from "@budget/domain";
@@ -325,25 +330,27 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
   const ctx: Ctx = { workspaceId: event.workspaceId, orgId: event.orgId, today };
   let result: { templates: number; upserted: number; deleted: number; rebuilt: boolean; renamed?: number } = { templates: 0, upserted: 0, deleted: 0, rebuilt: false };
   const outcome = await handleOnce(prisma, ROLLUP_CONSUMER, event, async (tx) => {
+    // I-29: a malformed payload fails the handler (attempts/backoff in local-runner.ts) instead of
+    // reaching Prisma as `undefined`.
+    const payload = parseOutboxPayload(event.topic, event.payload);
     await lockRollup(tx, event.workspaceId);
     // T-036 (§24.2): a naming or registry change renames every envelope (labels, codes, templates).
     if (event.topic === "naming.changed" || event.topic === "registry.changed") result.renamed = await recomputeNames(tx, event.workspaceId);
     if (!(ROLLUP_TOPICS as readonly string[]).includes(event.topic)) return;
     // T-034: a draft changes no cached measure. The cache holds approved budgets, spend,
     // projections and pending counts; a draft is unapproved, and a pending envelope takes no draft.
-    if (event.topic === "budget.changed" && (event.payload as { kind?: unknown } | null)?.kind === "draft") return;
+    if (event.topic === "budget.changed" && payload["kind"] === "draft") return;
     const templates = await tx.hierarchyTemplate.findMany({ where: { workspaceId: event.workspaceId } });
     result.templates = templates.length;
     // A budget's granularities changed: it left one path for another in every template, so rebuild.
     // A move changes what its old parent holds (ADR-059), and the event names only the new one.
-    const kind = (event.payload as { kind?: unknown } | null)?.kind;
+    const kind = payload["kind"];
     if (event.topic === "registry.changed" || (event.topic === "budget.changed" && (kind === "granularities" || kind === "moved"))) {
       // Values merged or re-parented, templates saved: rebuild (spec §19).
       for (const t of templates) for (const p of await periodsFor(tx, ctx, t.id, [])) result.upserted += await buildTemplate(tx, ctx, t, p);
       result = { ...result, rebuilt: true };
       return;
     }
-    const payload = (event.payload ?? {}) as Record<string, unknown>;
     const envelopeIds = event.topic === "budget.changed" || event.topic === "facts.loaded" ? ((await targetsFor(tx, event.topic, payload)).envelope ?? []) : await statusEnvelopes(tx, event.topic, payload);
     if (envelopeIds.length === 0) return;
     for (const t of templates) {
@@ -360,6 +367,6 @@ export async function handleRollupEvent(prisma: PrismaClient, body: unknown, tod
         result.deleted += r.deleted;
       }
     }
-  });
+  }, ROLLUP_TIMEOUT);
   return { outcome, ...result };
 }
