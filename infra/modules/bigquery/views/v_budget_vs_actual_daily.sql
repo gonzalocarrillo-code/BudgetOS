@@ -1,7 +1,19 @@
 -- Per envelope and day with matched spend: the day's actual, actual to date and what remains of
 -- the current budget, all in the workspace reporting currency. Unmatched spend (envelope_id NULL)
--- is not here; KPIs are derived by the reader from spend and kpi facts, never stored. Superseded
--- facts (ADR-071) are history, not spend: readers of the replica's fact tables filter them the same way.
+-- is not here; KPIs are derived by the reader from spend and kpi facts, never stored.
+--
+-- v_budget_current is already deduped (it is a view, not a raw replicated table); spend_fact is
+-- read directly, so it needs the same append-only de-dup as the other base views (ADR-054
+-- addendum, audit I-8). The DATASTREAM_DEDUP markers let the Postgres parity check
+-- (bigquery-views.test.ts) strip the BigQuery-only clause: Postgres's live table is already
+-- exactly one current row per primary key.
+WITH spend_fact AS (
+  SELECT * FROM `${project}.${dataset}.spend_fact`
+  -- DATASTREAM_DEDUP_START
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY datastream_metadata.source_timestamp DESC) = 1
+    AND datastream_metadata.change_type != 'DELETE'
+  -- DATASTREAM_DEDUP_END
+)
 SELECT
   b.workspace_id,
   b.envelope_id,
@@ -17,7 +29,7 @@ SELECT
 FROM `${project}.${dataset}.v_budget_current` b
 JOIN (
   SELECT s.envelope_id, s.period_date, SUM(s.amount_reporting) AS actual_reporting
-  FROM `${project}.${dataset}.spend_fact` s
-  WHERE s.envelope_id IS NOT NULL AND s.superseded_at IS NULL
+  FROM spend_fact s
+  WHERE s.envelope_id IS NOT NULL
   GROUP BY s.envelope_id, s.period_date
 ) f ON f.envelope_id = b.envelope_id

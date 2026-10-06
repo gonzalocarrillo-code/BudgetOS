@@ -19,8 +19,10 @@ const app = new PrismaClient({ datasources: { db: { url: url("APP_DATABASE_URL")
 const orgId = randomUUID();
 const wsA = randomUUID();
 const wsB = randomUUID();
+const wsC = randomUUID();
 const envA = randomUUID();
 const envB = randomUUID();
+const envC = randomUUID();
 const user = randomUUID();
 const NOW = new Date("2026-09-28T12:00:00Z");
 const ctx = (workspaceId: string) => ({ workspaceId, orgId, userId: null, isOrgAdmin: false, actorType: "system" as const, requestId: `t-${workspaceId}` });
@@ -44,9 +46,9 @@ class PostgresReplica implements ReplicaTotals {
 
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "retention" } });
-  for (const [id, slug] of [[wsA, "a"], [wsB, "b"]] as const) await owner.workspace.create({ data: { id, orgId, slug: `retention-${slug}-${id}`, name: `Retention ${slug}`, reportingCurrency: "USD" } });
+  for (const [id, slug] of [[wsA, "a"], [wsB, "b"], [wsC, "c"]] as const) await owner.workspace.create({ data: { id, orgId, slug: `retention-${slug}-${id}`, name: `Retention ${slug}`, reportingCurrency: "USD" } });
   await owner.user.create({ data: { id: user, orgId, email: `${user}@retention.test`, name: "r", googleSub: user } });
-  for (const [id, ws] of [[envA, wsA], [envB, wsB]] as const) {
+  for (const [id, ws] of [[envA, wsA], [envB, wsB], [envC, wsC]] as const) {
     await owner.$executeRawUnsafe(
       `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at) VALUES ($1::uuid, $2::uuid, 'e', '{}', '2024-01-01', '2026-12-31', 'USD', 'APPROVED', $3::uuid, now())`,
       id, ws, user,
@@ -55,10 +57,11 @@ beforeAll(async () => {
   await withTenant(owner, ctx(wsA), (tx) => ensurePartitions(tx, "2024-01-01", "2025-12-01"));
   for (const [d, a] of [["2024-01-10", "100.00"], ["2024-01-20", "50.00"], ["2024-02-05", "70.00"], ["2025-09-03", "30.00"]] as const) await spend(wsA, envA, d, a);
   await spend(wsB, envB, "2024-01-15", "999.00");
+  await spend(wsC, envC, "2024-01-12", "200.00");
 });
 
 afterAll(async () => {
-  for (const t of ["spend_fact", "spend_month", "outbox", "data_source", "envelope"]) await owner.$executeRawUnsafe(`DELETE FROM ${t} WHERE workspace_id = ANY($1::uuid[])`, [wsA, wsB]);
+  for (const t of ["spend_fact", "spend_month", "outbox", "data_source", "envelope"]) await owner.$executeRawUnsafe(`DELETE FROM ${t} WHERE workspace_id = ANY($1::uuid[])`, [wsA, wsB, wsC]);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
@@ -112,6 +115,38 @@ describe("fact retention (D-002)", () => {
     const r = await runRetention(app, [orgId], { enabled: true, replica: null, store, now: NOW });
     expect(r.facts).toEqual([]);
     expect(await monthsLeft(wsB)).toEqual(["2024-01"]);
+  });
+
+  it("I-13: a restatement landing between the compare and the delete aborts the month — nothing deleted, nothing audited", async () => {
+    const replica = new PostgresReplica();
+    // The hook runs after the compare transaction (which counted 1 row, 200.00) and before the
+    // delete transaction starts: exactly the race the audit describes.
+    const r = await pruneWorkspaceFacts(app, { workspaceId: wsC, orgId }, replica, {
+      now: NOW,
+      beforeDelete: async (month) => {
+        if (month === "2024-01-01") await spend(wsC, envC, "2024-01-18", "999.00");
+      },
+    });
+
+    expect(r.pruned).toEqual([]);
+    expect(r.held).toMatchObject({ month: "2024-01-01", reason: "changed-before-delete" });
+    expect(r.held?.postgres.find((x) => x.table === "spend_fact")).toMatchObject({ rows: 2, amount: "1199.00" });
+    expect(await monthsLeft(wsC)).toEqual(["2024-01"]); // nothing deleted, the restated row included
+
+    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsC);
+    const out = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsC);
+    expect([Number(audits[0]?.n), Number(out[0]?.n)]).toEqual([0, 0]);
+    const settings = (await owner.workspace.findUniqueOrThrow({ where: { id: wsC } })).settings as { factsPrunedBefore?: string };
+    expect(settings.factsPrunedBefore).toBeUndefined();
+
+    // The normal path: run again with no race — the compare and the delete now agree, so it prunes and audits.
+    const second = await pruneWorkspaceFacts(app, { workspaceId: wsC, orgId }, new PostgresReplica(), { now: NOW });
+    expect(second.pruned.map((p) => p.month)).toEqual(["2024-01-01"]);
+    expect(second.held).toBeNull();
+    expect(await monthsLeft(wsC)).toEqual([]);
+    const auditsAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'facts.pruned'`, wsC);
+    const outAfter = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND topic = 'facts.pruned'`, wsC);
+    expect([Number(auditsAfter[0]?.n), Number(outAfter[0]?.n)]).toEqual([1, 1]);
   });
 });
 
