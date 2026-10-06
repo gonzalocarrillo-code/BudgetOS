@@ -87,11 +87,17 @@ export async function withIdentity<T>(
  * `role_assignment`), which have their own unconditional `owner_bootstrap` policy
  * (`20261010050000_owner_bootstrap_policies`) because bootstrap.ts must write them before any org
  * exists to set a context for.
+ *
+ * `opts.timeoutMs` (default 30s, Prisma's own default) raises the interactive transaction's
+ * timeout for a caller whose `fn` does genuinely more work than that — e.g. `deleteWorkspaceForTests`
+ * hard-deleting a 10k-row bulk-perf fixture — rather than every caller inheriting a cap sized for
+ * the common case.
  */
 export async function asOrgAdmin<T>(
   prisma: PrismaClient,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   orgId?: string | null,
+  opts?: { timeoutMs?: number },
 ): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
@@ -101,6 +107,6 @@ export async function asOrgAdmin<T>(
       );
       return fn(tx);
     },
-    { timeout: 30_000 },
+    { timeout: opts?.timeoutMs ?? 30_000 },
   );
 }

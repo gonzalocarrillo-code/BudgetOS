@@ -130,6 +130,12 @@ export async function purgeWorkspace(prisma: PrismaClient, ws: { workspaceId: st
  * surrounding `ALTER TABLE ... DISABLE/ENABLE TRIGGER` pair atomic with the deletes between them.
  * `audit_event` is append-only (the `audit_event_immutable` trigger); it is disabled around the
  * delete, test cleanup only, same as the real purge keeps it on but this never runs outside a test.
+ *
+ * W0-6: bundling every statement into one interactive transaction (for the org-admin context) is
+ * new here — before, these ran as separate auto-committed statements with no shared deadline. A
+ * large fixture (bulk.perf.test.ts's 10k envelopes and everything that cascades from them) can
+ * genuinely take longer than Prisma's 30s default, so this raises it rather than risk a timeout
+ * on every caller's much smaller case.
  */
 export async function deleteWorkspaceForTests(prisma: PrismaClient, workspaceIds: string | readonly string[], orgId: string): Promise<void> {
   const ids = Array.isArray(workspaceIds) ? workspaceIds : [workspaceIds];
@@ -152,6 +158,7 @@ export async function deleteWorkspaceForTests(prisma: PrismaClient, workspaceIds
       await tx.$executeRawUnsafe(`DELETE FROM workspace WHERE id = ANY($1::uuid[])`, ids);
     },
     orgId,
+    { timeoutMs: 90_000 },
   );
 }
 

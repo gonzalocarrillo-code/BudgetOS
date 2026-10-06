@@ -48,9 +48,9 @@ afterAll(async () => {
     for (const sql of [`DELETE FROM search_document WHERE workspace_id = $1::uuid`, `DELETE FROM search_term WHERE workspace_id = $1::uuid`, `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`, `DELETE FROM outbox WHERE workspace_id = $1::uuid`]) await tx.$executeRawUnsafe(sql, ws);
     await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id = $1::uuid`, country);
     await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE id = $1::uuid`, country);
+    await tx.roleAssignment.deleteMany({ where: { workspaceId: ws } });
     await tx.workspace.deleteMany({ where: { orgId } });
   });
-  await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

@@ -24,7 +24,9 @@ let ids: string[] = [];
 beforeAll(async () => {
   await owner.organization.create({ data: { id: orgId, name: "bulk-perf" } });
   // W0-6: the owner has no BYPASSRLS; workspace and the bulk envelope/version/phasing inserts need
-  // the same org-admin tenant context real writes get from withTenant.
+  // the same org-admin tenant context real writes get from withTenant. 10k envelopes plus their
+  // versions and 12 months of phasing each can run past Prisma's 30s default transaction timeout,
+  // so this raises it.
   await asOrgAdmin(
     owner,
     async (tx) => {
@@ -64,13 +66,14 @@ beforeAll(async () => {
       ids = (await tx.envelope.findMany({ where: { workspaceId: ws }, select: { id: true } })).map((e) => e.id);
     },
     orgId,
+    { timeoutMs: 150_000 }, // comfortably under this hook's own 180_000ms vitest timeout below
   );
   await owner.user.create({ data: { id: planner.id, orgId, email: planner.email, name: planner.email, googleSub: `g-${planner.sub}` } });
   await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: planner.id, role: "PLANNER", createdBy: planner.id } });
   const ctx: TenantContext = { workspaceId: ws, orgId, userId: planner.id, isOrgAdmin: false, actorType: "user", requestId: `perf-seed-${ws}` };
   await seedDefaultPolicies(app, ctx);
   h = await startHarness();
-}, 120_000);
+}, 180_000); // margin over the seed's own 150s cap plus harness startup overhead
 
 afterAll(async () => {
   await h?.close();
@@ -82,7 +85,7 @@ afterAll(async () => {
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
-}, 120_000);
+}, 180_000); // margin over deleteWorkspaceForTests's own 90s cap plus app-shutdown/connection overhead
 
 it(`commits a ${ROWS}-row bulk edit in under 10 seconds`, async () => {
   expect(ids).toHaveLength(ROWS);
