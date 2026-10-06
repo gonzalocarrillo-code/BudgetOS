@@ -121,13 +121,28 @@ it("budget_app cannot read another workspace's envelope", async () => {
 
     // W3-11 (audit I-32): envelope.workspace_id is now a FK to workspace(id), which needs an
     // organization. Idempotent (ON CONFLICT DO NOTHING) so a rerun after an aborted previous run
-    // does not fail on the pre-existing rows. These two inserts are unconditional (owner_bootstrap
-    // / no FORCE RLS gap the owner hits here) and need no tenant context.
+    // does not fail on the pre-existing rows. The organization insert is unconditional
+    // (owner_bootstrap; no FORCE RLS gap the owner hits here) and needs no tenant context.
     await owner.query("INSERT INTO organization (id, name) VALUES ($1::uuid, 'rls-envelope-a'), ($2::uuid, 'rls-envelope-b') ON CONFLICT (id) DO NOTHING", [orgA, orgB]);
-    await owner.query(
-      "INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES ($1::uuid, $2::uuid, 'rls-envelope-a', 'RLS A', 'USD'), ($3::uuid, $4::uuid, 'rls-envelope-b', 'RLS B', 'USD') ON CONFLICT (id) DO NOTHING",
-      [workspaceA, orgA, workspaceB, orgB],
-    );
+    // W0-6: the owner has no BYPASSRLS. workspace has no owner_bootstrap policy; its
+    // org_admin_write policy needs app.is_org_admin plus the exact app.org_id, and these two rows
+    // are in different orgs, so (unlike organization above) this needs one statement — and one
+    // transaction, since set_config's third argument, true, is transaction-local — per row.
+    for (const [wsId, org, label] of [[workspaceA, orgA, "rls-envelope-a"], [workspaceB, orgB, "rls-envelope-b"]] as const) {
+      await owner.query("BEGIN");
+      try {
+        await owner.query("SELECT set_config('app.is_org_admin', 'true', true)");
+        await owner.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        await owner.query(
+          "INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES ($1::uuid, $2::uuid, $3, 'RLS', 'USD') ON CONFLICT (id) DO NOTHING",
+          [wsId, org, label],
+        );
+        await owner.query("COMMIT");
+      } catch (err) {
+        await owner.query("ROLLBACK");
+        throw err;
+      }
+    }
     // W0-6: the owner has no BYPASSRLS. Even though a real `workspace` row now backs each id
     // (above, for the FK), these two rows are in different orgs and the org-admin bypass only
     // carries one app.org_id per statement — simplest is setting app.workspace_id directly, the

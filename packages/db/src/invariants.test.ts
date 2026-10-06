@@ -248,8 +248,16 @@ describe("CHECK constraints (audit I-34)", () => {
 
 describe("NOT NULL (audit I-35)", () => {
   it("outbox.workspace_id cannot be null (a NULL row could never be published — ADR-010)", async () => {
+    // W0-6: outbox's tenant_isolation WITH CHECK is `workspace_id = ANY(app_visible_workspace_ids())`
+    // (20260924000000_rls_org_scoped_admin); app_visible_workspace_ids() never returns NULL
+    // (array_remove strips it), so `NULL = ANY(...)` is NULL — never satisfied — under any tenant
+    // context, admin or not, for the owner or any other role. The owner has no BYPASSRLS, so this
+    // now fails the RLS check before Postgres reaches the column's own NOT NULL check (empirically:
+    // the same INSERT as the literal superuser, which bypasses RLS entirely, raises 23502 as
+    // expected). RLS rejecting it first is a strictly stronger proof of the same invariant this
+    // test asserts — a NULL-workspace row can never land in outbox — so both errors are accepted.
     await expect(withTenant(owner, adminCtx, (tx) => tx.$executeRaw`INSERT INTO outbox (workspace_id, topic, payload) VALUES (NULL, 'test.topic', '{}'::jsonb)`)).rejects.toThrow(
-      /23502|null value in column "workspace_id"|violates not-null constraint/i, // 23502 = Postgres not_null_violation
+      /23502|null value in column "workspace_id"|violates not-null constraint|new row violates row-level security policy/i,
     );
   });
 });
