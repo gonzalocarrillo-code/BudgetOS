@@ -254,17 +254,29 @@ describe("NOT NULL (audit I-35)", () => {
   });
 });
 
-describe("DEFAULT partitions (audit I-37)", () => {
-  it("a fact row for a date far outside every explicit month partition still inserts, into the default partition", async () => {
+describe("partition coverage (audit I-37)", () => {
+  // No DEFAULT partition (tried in this migration and reverted): PostgreSQL 16 takes an ACCESS
+  // EXCLUSIVE lock on a DEFAULT partition, and scans it, every time a sibling range partition is
+  // attached, which deadlocked concurrent partition creation against ordinary readers (the W3-10
+  // deadlock class). ensure_fact_partitions keeps month partitions six months ahead instead
+  // (migrate time, the ingest pipeline, the pacing evaluator, and local-runner.ts's daily
+  // partitionPass — all calling this same function); this proves a fact five months out, which
+  // none of the golden seed's fixed dates would otherwise cover, inserts cleanly right after it.
+  it("a fact dated five months ahead inserts fine once ensure_fact_partitions has covered that month", async () => {
+    const target = new Date();
+    target.setUTCMonth(target.getUTCMonth() + 5, 15);
+    const periodDate = target.toISOString().slice(0, 10);
+    const expectedPartition = `spend_fact_${target.getUTCFullYear()}${String(target.getUTCMonth() + 1).padStart(2, "0")}`;
+    await owner.$executeRaw`SELECT ensure_fact_partitions(CURRENT_DATE, 6)`;
     const hash = randomUUID();
     await withTenant(owner, ctx, (tx) => tx.$executeRaw`
       INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
-      VALUES (${workspaceId}::uuid, NULL, '{}'::jsonb, '2099-06-15'::date, 'USD', 1.00, 1.00, 'invariants-test', ${randomUUID()}::uuid, ${hash})
+      VALUES (${workspaceId}::uuid, NULL, '{}'::jsonb, ${periodDate}::date, 'USD', 1.00, 1.00, 'invariants-test', ${randomUUID()}::uuid, ${hash})
     `);
     const rows = await withTenant(owner, ctx, (tx) => tx.$queryRaw<Array<{ partition: string }>>`
       SELECT (SELECT relname FROM pg_class WHERE oid = s.tableoid) AS partition FROM spend_fact s WHERE source_row_hash = ${hash}
     `);
-    expect(rows[0]?.partition).toBe("spend_fact_default");
+    expect(rows[0]?.partition).toBe(expectedPartition);
     await withTenant(owner, ctx, (tx) => tx.$executeRaw`DELETE FROM spend_fact WHERE source_row_hash = ${hash}`);
   });
 });

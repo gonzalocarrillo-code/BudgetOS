@@ -154,10 +154,17 @@ is `SECURITY DEFINER`, owned by the migration role; `budget_app` holds `EXECUTE`
 migration `20260924080000`) to keep `spend_fact`, `kpi_fact`, `projection_fact` and `audit_event`
 partitioned six months ahead. This is a backstop, not the primary mechanism — migrate-time
 (`SELECT ensure_fact_partitions(current_date, 6)` in `0002_platform`), the ingest pipeline and the
-pacing evaluator already extend partitions as they go. Each of the four tables also has a `DEFAULT`
-partition (`spend_fact_default` etc., migration `20261012000000_schema_invariants`) with no
-privileges for `budget_app` or `PUBLIC`, same as every month partition (`rls.org-admin.test.ts`
-checks this for partitions old and new): a write for a date outside every explicit month partition
-lands in the default instead of failing with "no partition of relation found for row", but stays
-there — unindexed by month — until the next partition pass or migrate run creates the explicit one
-and future writes for that month go there instead.
+pacing evaluator already extend partitions as they go; between the four, a write for a date within
+six months stays covered even if one caller stalls.
+
+**No `DEFAULT` partition**: one was tried in `20261012000000_schema_invariants` and reverted.
+PostgreSQL 16 takes an `ACCESS EXCLUSIVE` lock on a table's `DEFAULT` partition (and scans it)
+every time a new range partition is attached to the same parent, so the three concurrent partition
+creators above started deadlocking against ordinary readers holding a `RowShareLock` on the same
+relation — the same deadlock class W3-10 fixed elsewhere, and exactly what the Postgres docs warn
+against for a `DEFAULT` partition on a table this hot. A write outside every explicit month
+partition fails with "no partition of relation found for row" instead of silently landing
+somewhere unindexed; `ensure_fact_partitions`'s own advisory-style table lock (`LOCK TABLE ... IN
+SHARE UPDATE EXCLUSIVE MODE`, taken before any `CREATE TABLE`, migration `20260924100000`) keeps
+concurrent creators from racing each other, and `packages/db/src/invariants.test.ts` proves a fact
+five months out inserts cleanly right after one `ensure_fact_partitions` call.

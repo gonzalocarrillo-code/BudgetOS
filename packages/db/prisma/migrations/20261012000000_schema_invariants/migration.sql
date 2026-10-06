@@ -1,8 +1,10 @@
 -- W3-11 (audit I-32, I-34, I-35, I-37, I-38; plan docs/STACK_HARDENING_PLAN.md). Database-enforced
 -- invariants the application already assumes but Postgres never checked: foreign keys on every
 -- tenant table's workspace_id and on the pointer columns I-32 names, CHECKs for date order,
--- currency shape and the text status enums (I-34), two NOT NULL fixes (I-35), DEFAULT partitions on
--- the fact/audit tables (I-37), and the missing hot-path indexes (I-38).
+-- currency shape and the text status enums (I-34), two NOT NULL fixes (I-35), partition coverage
+-- on the fact/audit tables via a daily worker pass rather than a DEFAULT partition, which
+-- deadlocks concurrent partition creation on PostgreSQL 16 (I-37; see the comment below), and the
+-- missing hot-path indexes (I-38).
 --
 -- Expand-only, safe against a running production on the previous code:
 --   * Every FK and CHECK is added NOT VALID then VALIDATE CONSTRAINT in the same migration, so the
@@ -21,7 +23,6 @@
 --   DROP INDEX IF EXISTS notification_user_read, subscription_entity, comment_live_thread,
 --     pacing_rule_live_ws, approval_decision_request_decider;
 --   ALTER TABLE spend_fact DROP CONSTRAINT IF EXISTS spend_fact_workspace_id_fkey; (repeat per table/column below)
---   DROP TABLE IF EXISTS spend_fact_default, kpi_fact_default, projection_fact_default, audit_event_default;
 --   ALTER TABLE outbox ALTER COLUMN workspace_id DROP NOT NULL;
 --   ALTER TABLE dimension ALTER COLUMN allowed_parents DROP NOT NULL, ALTER COLUMN allowed_parents DROP DEFAULT;
 --   (same for dimension_value.aliases, hierarchy_template.path, value_constraint.allowed_value_codes)
@@ -30,21 +31,21 @@
 --   (drop every other CHECK/FK added below by name)
 
 -- =========================================================================================
--- 1. DEFAULT partitions (I-37): a write for a date outside every explicit month partition used
---    to fail with "no partition of relation found for row". ensure_fact_partitions (migrate time,
---    pacing, ingest) keeps creating explicit month partitions ahead of writes; this is the safety
---    net for when that falls behind. Same REVOKE-from-budget_app treatment as every other partition
---    (20260924080000): only the parent is RLS-protected, so a direct SELECT/INSERT on the default
---    partition must be refused the same way (the guard test rls.org-admin.test.ts checks this for
---    every partition of these four parents, default or not).
--- =========================================================================================
-CREATE TABLE IF NOT EXISTS spend_fact_default PARTITION OF spend_fact DEFAULT;
-CREATE TABLE IF NOT EXISTS kpi_fact_default PARTITION OF kpi_fact DEFAULT;
-CREATE TABLE IF NOT EXISTS projection_fact_default PARTITION OF projection_fact DEFAULT;
-CREATE TABLE IF NOT EXISTS audit_event_default PARTITION OF audit_event DEFAULT;
-
-REVOKE ALL ON spend_fact_default, kpi_fact_default, projection_fact_default, audit_event_default FROM budget_app, PUBLIC;
-
+-- 1. I-37 (partition coverage): a write for a date outside every explicit month partition fails
+--    with "no partition of relation found for row". A DEFAULT partition was tried here and
+--    reverted: PostgreSQL 16 takes an ACCESS EXCLUSIVE lock on the DEFAULT partition (and scans
+--    it) every time a new range partition is attached to the same parent, so concurrent partition
+--    creation (ingest + pacing + the daily pass below, all calling ensure_fact_partitions) starts
+--    deadlocking against readers holding a RowShareLock on the same relation — the exact W3-10
+--    deadlock class, and precisely what the Postgres docs warn DEFAULT partitions on a hot,
+--    frequently-repartitioned table invite. Lifted in PG17 (ALTER TABLE ... DETACH PARTITION
+--    CONCURRENTLY-adjacent work); not available on postgres:16 (spec §2). The answer stays what it
+--    already was before this migration: ensure_fact_partitions keeps every table's explicit month
+--    partitions ahead of writes — at migrate time (+6 months, 0002_platform), from the ingest
+--    pipeline and the pacing evaluator as they go, and now also once a day from local-runner.ts's
+--    partitionPass() (below), so a stall in any one of those still leaves six months of headroom
+--    from the others. packages/db/src/invariants.test.ts proves a fact five months out inserts
+--    fine right after one ensure_fact_partitions call, matching partitionPass()'s own call.
 -- =========================================================================================
 -- 2. Array columns (I-35): nullable with no default, although the application always writes '{}'
 --    for "none". A NULL here reads the same as empty to every query that already guards with
