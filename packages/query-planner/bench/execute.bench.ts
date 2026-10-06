@@ -10,7 +10,7 @@ import { PERIOD, TODAY, cleanupOrg, createOrg, createWorkspace, type FixtureOrg 
 
 /**
  * Executes planner SQL as budget_app over 2,000 envelopes × 30 spend days; gates p50 / DB-calibration p50 vs baseline.
- * `ws` has no projection facts; `projWs` is the same workspace plus two projection runs per envelope (ADR-030).
+ * `ws` has no projection facts; `projWs` is the same workspace plus two projection runs per envelope (ADR-0078).
  */
 const ENVELOPES = 2_000;
 const SPEND_DAYS = 30;

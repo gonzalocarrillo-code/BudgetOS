@@ -1,4 +1,4 @@
-# ADR-034: Golden seed speed: fewer round trips, same commands, same data
+# ADR-0079: Golden seed speed: fewer round trips, same commands, same data
 
 ## Status
 
@@ -45,7 +45,7 @@ Two different causes:
 
 - **Considered and not done:**
   - **Batching approvals per level** (create a level, submit all, then decide step by step for all). It issues the same number of transactions as the per-envelope walk and would change the order of audit events. It gains nothing without a batch decide command, and the spec has none.
-  - **`m AS MATERIALIZED` in the planner.** The `budget` and `actual` scalar subqueries are copied into every `m2` expression that reads them, which is ADR-030's problem 1 for the other measures: the pacing plan held 14 aggregate subplans per row. Materializing halves that query on a bloated database, but it stops the outer filter from being pushed into `m`, so a 5-envelope filter would compute every envelope of the workspace. The fix is ADR-030's lateral approach for `budget` and `actual`. That is planner work with its own bench gate, so it is left out of this PR.
+  - **`m AS MATERIALIZED` in the planner.** The `budget` and `actual` scalar subqueries are copied into every `m2` expression that reads them, which is ADR-0078's problem 1 for the other measures: the pacing plan held 14 aggregate subplans per row. Materializing halves that query on a bloated database, but it stops the outer filter from being pushed into `m`, so a 5-envelope filter would compute every envelope of the workspace. The fix is ADR-0078's lateral approach for `budget` and `actual`. That is planner work with its own bench gate, so it is left out of this PR.
   - **Lazy scope targets.** `envelopeScopeTarget()` costs three queries per call even when every assignment of the caller is unscoped, as with all seed personas. Skipping it needs a change at about 60 call sites. It is a follow-up.
   - **Raising the seed's concurrency above 8.** It helps alone, but three test files seed at once under the suite on an 8-core laptop. It is not reliable.
   - **Parallel rollup templates, or pacing work in batches.** On a healthy database those phases are under 1–2 s each.

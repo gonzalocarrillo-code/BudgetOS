@@ -1,4 +1,4 @@
-# Runbook: deployment on dmus-gonzalo (ADR-065)
+# Runbook: deployment on dmus-gonzalo (ADR-0080)
 
 Deploys happen only after `.github/workflows/ci.yml` succeeds on `main` (the `deploy` workflow triggers on that run's completion and checks `conclusion == success`); `.github/workflows/deploy.yml` then builds the image, runs `budgetos-migrate`, and deploys `budgetos-app`, `budgetos-slack` and `budgetos-worker`. Actions → deploy → Run workflow still redeploys by hand (`workflow_dispatch`), independent of CI state.
 
@@ -144,7 +144,7 @@ The deployer may update only `budgetos-*` resources and never changes access, so
   ```
   `terraform apply` is a deliberate decision for the project owner, not part of this setup step —
   see `infra/modules/cloudsql/README.md` and `docs/runbooks/restore.md`.
-- **Accounts and GitHub:** service accounts `budgetos-runtime` and `budgetos-deployer` with their grants (ADR-065), and the workload identity pool `budgetos-github` with repository variables `GCP_WIF_PROVIDER` and `GCP_DEPLOYER_SA`.
+- **Accounts and GitHub:** service accounts `budgetos-runtime` and `budgetos-deployer` with their grants (ADR-0080), and the workload identity pool `budgetos-github` with repository variables `GCP_WIF_PROVIDER` and `GCP_DEPLOYER_SA`.
 - **First creation:** `budgetos-migrate`, `budgetos-app`, `budgetos-slack` and `budgetos-worker`, with the flags in `deploy.yml`.
 - **Access:**
   - `gcloud beta run services update budgetos-app --iap`;

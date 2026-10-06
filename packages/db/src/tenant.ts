@@ -30,7 +30,7 @@ export async function withTenant<T>(
 ): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
-      // One statement for the four settings: every command pays this per transaction (ADR-034).
+      // One statement for the four settings: every command pays this per transaction (ADR-0079).
       await tx.$executeRawUnsafe(
         `SELECT set_config('app.workspace_id', $1, true), set_config('app.org_id', $2, true), set_config('app.user_id', $3, true), set_config('app.is_org_admin', $4, true), set_config('app.acting_as', $5, true)`,
         ctx.workspaceId ?? "",

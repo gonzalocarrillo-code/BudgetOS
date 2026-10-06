@@ -51,7 +51,7 @@ export async function metricLibrary(tx: Tx, orgId: string): Promise<Map<string, 
   return new Map(rows.map((m) => [m.key, { numerator: m.numerator, denominator: m.denominator, multiplier: m.multiplier.toString() }]));
 }
 
-/** Whether the workspace has any spend projection; without one the planner skips projection_fact (ADR-030). */
+/** Whether the workspace has any spend projection; without one the planner skips projection_fact (ADR-0078). */
 export async function hasProjections(tx: Tx, workspaceId: string): Promise<boolean> {
   const [row] = await tx.$queryRaw<Array<{ has: boolean }>>`SELECT EXISTS (SELECT 1 FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid AND metric = 'spend' AND superseded_at IS NULL) AS has`;
   return row?.has === true;

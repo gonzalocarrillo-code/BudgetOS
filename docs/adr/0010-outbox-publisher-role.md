@@ -52,7 +52,7 @@ Subscribers need the org as well as the workspace to open `withTenant()`, becaus
 ## Decision D-3 (2026-10-05)
 
 The owner decided: for the single-org deployment, `apps/workers/src/local-runner.ts` (Cloud Run
-service `budgetos-worker`, ADR-065) **is the production design**, not a stand-in for this ADR's
+service `budgetos-worker`, ADR-0080) **is the production design**, not a stand-in for this ADR's
 publisher/push path while phase 20 is pending. The publisher and `consumer.ts`'s push subscriptions
 stay in the codebase, typechecked, for the multi-tenant design this ADR describes, but are not
 deployed and are not on a critical path to being deployed. I-10 ("no dead-letter, max-attempt or

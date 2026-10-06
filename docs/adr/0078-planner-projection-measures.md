@@ -1,4 +1,4 @@
-# ADR-030: Projection measures in the planner: one lateral per envelope, after the page when possible
+# ADR-0078: Projection measures in the planner: one lateral per envelope, after the page when possible
 
 ## Status
 

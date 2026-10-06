@@ -29,7 +29,7 @@ Budgets and the Timeline only ever grouped the live *leaves* by a hierarchy temp
 - **Planner.**
   - `QueryRequest.subtree`: each flat row's `actual` and `projected` are its own plus every live envelope under it, walked by parent links (`WITH RECURSIVE`). `budget` stays the row's own approved amount, the cap. Rows carry `childCount` and `parentId`.
   - A new filter attribute, `parent_id` (`eq`, `in`, `is_empty`, `not_empty`).
-  - The projection tail (ADR-030) is off for subtree queries.
+  - The projection tail (ADR-0078) is off for subtree queries.
 - **Default view.** Budgets opens on **Budget structure** (no `templateId` in the URL): top-level budgets, then each budget's children, every row one budget. The hierarchy picker still offers the templates, which regroup the leaves by granularities as before (roll-up cache and all).
 - **Timeline.** `GET /timeline?structure=true` lists every live budget, parents included, nested by parent links and ordered depth-first. It's used whenever Budget structure is picked.
 
