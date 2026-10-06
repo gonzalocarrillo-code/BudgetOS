@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
 import { appDb, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
+import { paceOf, percent, wholeMoney } from "./blocks/format.js";
 import { resetSlackReplayCache, signSlackBody } from "./signature.js";
 import { setSlackResponder } from "./respond.js";
 import { setCommandDeadline } from "./slash/index.js";
@@ -203,6 +204,36 @@ describe("Slack requests", () => {
     expect(JSON.stringify(budget.body)).toMatch(/Which “brazil”\?|\*Budget\*/);
     const nobody = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-stranger" });
     expect(String(nobody.body["text"])).toContain("No BudgetOS workspace");
+  });
+
+  it("/budget search and /budget list <text> show the same numbers as the one query path (T-8, audit)", async () => {
+    // T-014's split part: a live, distinctively-named budget with its own approved amount and spend.
+    const hit = await owner.envelope.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, status: "APPROVED", name: { contains: "Walmart" } }, select: { id: true } });
+    const direct = (await as(
+      "admin",
+      "POST",
+      `/workspaces/${golden.workspaceId}/query`,
+      { workspaceId: golden.workspaceId, filter: { logic: "and", children: [{ field: { kind: "attr", key: "id" }, op: "in", value: [hit.id] }] }, period: { kind: "relative", preset: "current_year" }, measures: ["budget", "actual", "spend_to_date_pct", "pace_index"], limit: 1 },
+    )).body as { rows: Array<{ envelopeId: string; measures: Record<string, string | null> }> };
+    const row = direct.rows.find((r) => r.envelopeId === hit.id);
+    expect(row, "the direct /query call finds the same budget").toBeDefined();
+    const m = row?.measures ?? {};
+
+    // /budget search Walmart: the plain-text numbers (money(), pct() in slash/index.ts).
+    const money = (v: string | null | undefined) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("en", { maximumFractionDigits: 0 }));
+    const pct = (v: string | null | undefined) => (v === null || v === undefined || v === "" ? "—" : `${Math.round(Number(v) * 100)}%`);
+    const search = await slack("commands", { text: "search Walmart", team_id: TEAM, user_id: "U-admin" });
+    const searchText = JSON.stringify(search.body);
+    expect(searchText).toContain(`budget ${money(m["budget"])}, spent ${money(m["actual"])}`);
+    if (m["spend_to_date_pct"] !== null && m["spend_to_date_pct"] !== undefined) expect(searchText).toContain(`(${pct(m["spend_to_date_pct"])})`);
+    if (m["pace_index"] !== null && m["pace_index"] !== undefined) expect(searchText).toContain(`pace ${Number(m["pace_index"]).toFixed(2)}`);
+
+    // /budget list Walmart: the card-formatted numbers (wholeMoney(), percent(), paceOf()).
+    const list = await slack("commands", { text: "list Walmart", team_id: TEAM, user_id: "U-admin" });
+    const listText = JSON.stringify(list.body);
+    expect(listText).toContain(wholeMoney(m["budget"], "USD"));
+    expect(listText).toContain(`spent ${percent(m["spend_to_date_pct"])}`);
+    expect(listText).toContain(`pace ${paceOf(m["pace_index"])}`);
   });
 });
 

@@ -69,6 +69,18 @@ export async function dataAsOf(tx: Tx, workspaceId: string, today: string): Prom
   return coverage(lastFactDate, sources.map((s) => s.format), today);
 }
 
+/**
+ * T-9 (audit, ADR-062 addendum): `CompileOptions.elapsedThrough` for a `QueryRequest.elapsedThrough`
+ * choice. `"data"` (the default) resolves to the workspace's data coverage date, the same day Home
+ * and the Overview already use; `"today"` keeps counting to the calendar day (no override, so the
+ * planner's own `elapsedDay` falls back to today).
+ */
+export async function resolveElapsedThrough(tx: Tx, workspaceId: string, today: string, requested: "today" | "data"): Promise<string | undefined> {
+  if (requested === "today") return undefined;
+  const asOf = await dataAsOf(tx, workspaceId, today);
+  return asOf.through ?? undefined;
+}
+
 /** The latest projection load (HO-012): when, and from which source; null without projections. */
 export async function projectionFreshness(tx: Tx, workspaceId: string): Promise<{ loadedAt: string; source: string | null } | null> {
   const [r] = await tx.$queryRaw<Array<{ at: Date; source: string | null }>>`

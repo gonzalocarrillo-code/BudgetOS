@@ -1,5 +1,5 @@
 import { DomainError, QueryRequest, factsPrunedBefore, readScopeFilter, readsPrunedFacts, resolvePeriod, todayIso, type FilterGroupT, type QueryResponse } from "@budget/domain";
-import { envelopePaths, envelopesByTuple, plannerOptions, withTenant, fiscalCalendar } from "@budget/db";
+import { envelopePaths, envelopesByTuple, plannerOptions, resolveElapsedThrough, withTenant, fiscalCalendar } from "@budget/db";
 import { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq, compileQuery, compileTotals, pageOf, sanitize } from "@budget/query-planner";
 import { HEAVY_MONTHS, HEAVY_ROWS, QUERY_CACHE_TTL_SECONDS, cacheKey, engineFromEnv, maxPlanRows, monthsSpanned, type QueryEngine } from "./engine.js";
 import { Decimal } from "decimal.js";
@@ -27,8 +27,9 @@ export function scopedQuery(auth: AuthContext, raw: unknown): QueryRequest {
 }
 
 /**
- * Server-side options no HTTP caller sets. `elapsedThrough` (ADR-062): Home and the Overview count
- * time gone through the last day the actuals cover, which they resolve once for all their queries.
+ * Server-side options no HTTP caller sets. `elapsedThrough` (ADR-062): Home and the Overview resolve
+ * the day actuals cover once for all their queries and pass it here, overriding `QueryRequest.elapsedThrough`
+ * (T-9) so they never run that lookup twice.
  */
 export interface RunQueryOptions {
   elapsedThrough?: string | undefined;
@@ -46,9 +47,13 @@ export async function runQuery(prisma: PrismaClient, auth: AuthContext, raw: unk
     }
     const today = todayIso(now);
     const period = resolvePeriod(q.period, today, ws.fiscalYearStartMonth, await fiscalCalendar(tx, q.workspaceId));
-    const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period)), ...(internal.elapsedThrough === undefined ? {} : { elapsedThrough: internal.elapsedThrough }) };
+    // T-9 (audit, ADR-062 addendum): `internal.elapsedThrough` (Home, the Overview) wins when set, so
+    // those callers never resolve coverage twice; everyone else gets `q.elapsedThrough`'s choice
+    // ("data" by default), the same pace Overview reads for the same budget.
+    const elapsedThrough = internal.elapsedThrough ?? (await resolveElapsedThrough(tx, q.workspaceId, today, q.elapsedThrough));
+    const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId: q.workspaceId }, q.targets, period)), ...(elapsedThrough === undefined ? {} : { elapsedThrough }) };
     const dataVersion = Number((ws.settings as { dataVersion?: number } | null)?.dataVersion ?? 0);
-    const key = engine.cache ? cacheKey(q, dataVersion, today, internal.elapsedThrough) : null;
+    const key = engine.cache ? cacheKey(q, dataVersion, today, elapsedThrough) : null;
     if (key && engine.cache) {
       const hit = await engine.cache.get(key);
       if (hit) return { ...(JSON.parse(hit) as QueryResponse), engine: "cache" as const, elapsedMs: Math.round(performance.now() - started) };

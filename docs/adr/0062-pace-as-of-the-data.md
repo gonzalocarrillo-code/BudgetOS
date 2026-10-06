@@ -50,3 +50,24 @@ The plan's decisions G2 (count time gone as of the data) and G7 (when data is st
 - While actuals lag, Budgets' pace column and the Overview can differ for the same budget. The Overview labels its pace with the day it is read at.
 - A follow-up can offer the option on `/query` as a request field, so Budgets and pacing rules use it too. Pacing rules would then stop raising under-pace alerts for data that is only late.
 - A monthly feed stored with a daily date format reads as daily, because its mapping says so.
+
+## Addendum (2026-10-06): `elapsedThrough` becomes a request option (T-9, audit)
+
+The "where it applies" list above left `/query`, Budgets, the roll-up cache, pacing rules, the
+timeline and MCP counting to today, on the theory that only Home and the Overview needed the data's
+own coverage. In practice that meant two paces for the same budget on the same day: the Overview read
+on plan while Budgets, `/pacing` and `query_budgets` read it over or under pace on nothing but late
+data, and the default pacing rules opened real alerts on that gap (audit T-9).
+
+**Decision.** `QueryRequest` gains `elapsedThrough?: "today" | "data"`, default `"data"`. `runQuery`
+resolves `"data"` to the workspace's coverage date via `resolveElapsedThrough` (`packages/db`, wraps
+`dataAsOf`) and passes it as the planner's `CompileOptions.elapsedThrough`, the same mechanism Home
+and the Overview already used through `internal.elapsedThrough` — which still wins when a caller sets
+it, so those two never resolve coverage twice. `"today"` resolves to `undefined` (no override, today
+as before). Every caller that builds a `QueryRequest` and does not set the field now gets `"data"`
+by default: `GET /pacing`, the pacing evaluator (`apps/workers/src/pacing/evaluate.ts`), MCP's
+`query_budgets` (via `runQuery`), and the Budgets grid.
+
+**Consequence.** Pacing rules now raise on real under- or over-spending, not on a source that is
+merely a few days behind. A workspace that wants the literal calendar day everywhere can ask for it
+by passing `elapsedThrough: "today"` on that request; nothing in this codebase does, today.

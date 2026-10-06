@@ -79,6 +79,14 @@ function filterReads(g: FilterGroupT, keys: ReadonlySet<string>): boolean {
   return g.children.some((c) => (isPredicate(c) ? c.field.kind === "measure" && keys.has(c.field.key) : filterReads(c, keys)));
 }
 
+/**
+ * T-11 (audit): whether the filter itself says anything about `status` — the caller is making its
+ * own choice about archived envelopes, so the planner's default exclusion (below) does not apply.
+ */
+function mentionsStatus(g: FilterGroupT): boolean {
+  return g.children.some((c) => (isPredicate(c) ? c.field.kind === "attr" && c.field.key === "status" : mentionsStatus(c)));
+}
+
 interface Base {
   b: SqlBuilder;
   measuresCte: string;
@@ -283,10 +291,17 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
   ctx.targetSql = targetSql;
 
   const own = onlyIds ? `(${compileFilter(filter, b, ctx)})${onlyIds}` : compileFilter(filter, b, ctx);
+  // T-11 (audit): archived envelopes are excluded unless the caller's own filter says something
+  // about status (e.g. `status eq ARCHIVED`, or ADR-016's `status neq ARCHIVED`) — the default for
+  // GET /pacing, MCP's query_budgets and any other caller that never thought about archived rows.
+  // `status` is a present-tense column (archiving never rewrites history), so an `asOf` read — a
+  // reconstruction of what a budget looked like then — is exempt: an envelope archived after `asOf`
+  // still counts for that instant, exactly as its archived-at-zero version does for `budgetOf`.
+  const archivedClause = mentionsStatus(filter) || q.asOf !== undefined ? "" : " AND e.status <> 'ARCHIVED'";
   // A parent that has split all of its amount and has no spend of its own holds nothing: no row.
   const where = !held
-    ? own
-    : `(${own}) AND NOT (m.child_count > 0 AND coalesce(m.budget, 0) = 0${compare === undefined ? "" : " AND coalesce(m.budget_baseline, 0) = 0"} AND m.actual = 0 AND m.projected = 0)`;
+    ? `(${own})${archivedClause}`
+    : `((${own})${archivedClause}) AND NOT (m.child_count > 0 AND coalesce(m.budget, 0) = 0${compare === undefined ? "" : " AND coalesce(m.budget_baseline, 0) = 0"} AND m.actual = 0 AND m.projected = 0)`;
   const leafCount = held ? "sum(CASE WHEN m.child_count = 0 THEN 1 ELSE 0 END)" : "count(*)";
   const measures = [...new Set(q.measures)];
   const measureAgg = measures
@@ -385,7 +400,14 @@ export function compileQuery(q: QueryRequest, period: { start: string; end: stri
 /** One row of totals over every envelope the filter selects; same measure semantics as a group. */
 export function compileTotals(q: QueryRequest, period: { start: string; end: string }, today: string, opts: CompileOptions = {}): CompiledQuery {
   const { b, measuresCte, where, measureAgg, kpiAgg, leafCount } = compileBase(q, period, today, opts);
-  const sql = `WITH ${measuresCte} SELECT ${measureAgg}${kpiAgg}, ${leafCount} AS leaf_count FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where}`;
+  // T-10 (audit): with `subtree`, each matched row already sums everything under it, so a filter
+  // that matches both a parent and one of its children would otherwise count the child twice: once
+  // on its own row, again inside the parent's subtree. A matched row whose immediate parent is also
+  // matched contributes nothing further here — `matched` is exactly the same row set `where` picks.
+  const subtree = q.subtree === true;
+  const matchedCte = subtree ? `, matched AS (SELECT e.id FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where})` : "";
+  const subtreeGuard = subtree ? " AND NOT EXISTS (SELECT 1 FROM matched x WHERE x.id = e.parent_id)" : "";
+  const sql = `WITH ${measuresCte}${matchedCte} SELECT ${measureAgg}${kpiAgg}, ${leafCount} AS leaf_count FROM envelope e JOIN m2 m ON m.envelope_id = e.id WHERE ${where}${subtreeGuard}`;
   return { sql, values: b.values, orderKeys: [] };
 }
 

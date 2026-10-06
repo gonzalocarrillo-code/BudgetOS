@@ -10,7 +10,7 @@ import { slackResponder } from "../respond.js";
 import { slackApi } from "../slack-api.js";
 import { messageOf, reply } from "../views.js";
 import { approvalsReply, decisionCommand, decisionTarget, requestCard } from "./approvals.js";
-import { budgetReply, listReply } from "./budgets.js";
+import { budgetReply, listReply, numbersForIds } from "./budgets.js";
 import { requestReply } from "./request.js";
 import { summaryReply } from "./summary.js";
 import { workspaceReply } from "./workspace.js";
@@ -122,15 +122,20 @@ async function answer(prisma: PrismaClient, deps: SlackDeps, body: Record<string
         authorize(auth, "workspace.member"); // GET /workspaces/:ws/search
         if (cmd.text === "") return reply(HELP);
         const res = await search(prisma, auth, { q: cmd.text, limit: "5" });
-        const groups = res.groups as Array<{ type: string; count: number; hits: Array<{ title: string; path: string | null; deepLink: string; facets?: Record<string, unknown> | null }> }>;
+        const groups = res.groups as Array<{ type: string; count: number; hits: Array<{ id: string; title: string; path: string | null; deepLink: string }> }>;
         if (groups.length === 0) return reply(`Nothing matches “${cmd.text}”.${footer}`);
+        // T-8 (audit): a budget hit's numbers come from the one query path (`id in […]`, the same
+        // measures as Budgets and Home), not the search index's numeric facets — those are kept for
+        // ranking only and were recomputing `% spent` as a float on a lagging refresh.
+        const envelopeIds = groups.find((g) => g.type === "envelope")?.hits.map((h) => h.id) ?? [];
+        const numbers = await numbersForIds(prisma, auth, ws, envelopeIds);
         const lines = groups.flatMap((g) =>
           g.hits.map((h) => {
-            const f = h.facets ?? {};
-            const numbers = g.type === "envelope" ? ` — budget ${money(f["budget"])}, spent ${money(f["actual"])}${f["budget"] ? ` (${pct(Number(f["actual"] ?? 0) / Number(f["budget"]))})` : ""}${f["pace_index"] !== undefined && f["pace_index"] !== null ? `, pace ${Number(f["pace_index"]).toFixed(2)}` : ""}` : "";
+            const n = g.type === "envelope" ? (numbers.get(h.id) ?? null) : null;
+            const numbersText = n ? ` — budget ${money(n.budget)}, spent ${money(n.actual)}${n.spentPct !== null ? ` (${pct(n.spentPct)})` : ""}${n.paceIndex !== null ? `, pace ${Number(n.paceIndex).toFixed(2)}` : ""}` : "";
             // Say what each hit is, so a comment or a registry value is not taken for a budget.
             const kind = g.type === "envelope" ? "" : `${KIND[g.type] ?? g.type.replace(/_/g, " ")}: `;
-            return `• ${kind}<${appUrl()}${h.deepLink}|${esc(h.title)}>${h.path ? ` _${esc(h.path)}_` : ""}${numbers}`;
+            return `• ${kind}<${appUrl()}${h.deepLink}|${esc(h.title)}>${h.path ? ` _${esc(h.path)}_` : ""}${numbersText}`;
           }),
         );
         return reply(`Results for “${cmd.text}”${footer}`, [{ type: "section", text: { type: "mrkdwn", text: `*Search: ${cmd.text}*${footer}\n${lines.join("\n")}`.slice(0, 2900) } }]);

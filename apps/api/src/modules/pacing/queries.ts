@@ -1,5 +1,5 @@
 import { DomainError, FilterGroup, ListAlertsQuery, OPEN_ALERT_STATUSES, PeriodSpec, QueryRequest, canInScope, readScopeFilter, resolvePeriod, todayIso, type FilterGroupT } from "@budget/domain";
-import { descendantIds, plannerOptions, withTenant, type Tx, fiscalCalendar } from "@budget/db";
+import { descendantIds, plannerOptions, resolveElapsedThrough, withTenant, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, compileTotals, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
@@ -151,7 +151,10 @@ export async function pacingView(prisma: PrismaClient, auth: AuthContext, query:
       limit,
       ...(query.cursor ? { cursor: query.cursor } : {}),
     });
-    const opts = await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, q.targets, period);
+    // T-9 (audit, ADR-062 addendum): `q.elapsedThrough` defaults to "data", so /pacing reads the same
+    // pace as Overview for the same budget instead of counting late actuals as under-spending.
+    const elapsedThrough = await resolveElapsedThrough(tx, workspaceId, day, q.elapsedThrough);
+    const opts = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, q.targets, period)), ...(elapsedThrough === undefined ? {} : { elapsedThrough }) };
     const hasCpa = opts.metrics?.has("cpa") ?? false;
     const req = hasCpa ? q : { ...q, targets: [] };
     const c = compileQuery(req, period, day, opts);

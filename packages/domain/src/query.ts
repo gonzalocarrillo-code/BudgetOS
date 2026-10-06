@@ -57,6 +57,14 @@ export const QueryRequest = z.object({
    * plumbing needed. `true` forces them in unconditionally regardless of real budgets.
    */
   includeDemo: z.boolean().default(false),
+  /**
+   * T-9 (audit, ADR-062 addendum): the day elapsed time is counted to for `pace_index` and the
+   * other measures derived from time gone. `"data"` (default) counts through the workspace's data
+   * coverage date, as Home and the Overview do (late actuals never read as under-spending); `"today"`
+   * keeps counting to the calendar day, the previous behaviour. Filters and relative periods always
+   * use today either way.
+   */
+  elapsedThrough: z.enum(["today", "data"]).default("data"),
 });
 export type QueryRequest = z.infer<typeof QueryRequest>;
 

@@ -176,7 +176,10 @@ describe("is_leaf (T-022 roll-ups count live leaves only)", () => {
     await owner.query(`UPDATE envelope SET status = 'ARCHIVED' WHERE name = 'Archived child' AND workspace_id = $1`, [ws]);
     const names = async (value: boolean) =>
       (await run(request(ws, { filter: where({ field: { kind: "attr", key: "is_leaf" }, op: "eq", value }) }))).map((r) => String(r["name"])).sort();
-    expect(await names(true)).toEqual(["Archived child", "Child", "Lonely parent"]);
+    // T-11 (audit): a filter that says nothing about status no longer counts archived envelopes —
+    // "Archived child" is excluded here even though it is itself a leaf; "Lonely parent" is still a
+    // leaf because its only child is archived (is_leaf's own EXISTS already excludes archived children).
+    expect(await names(true)).toEqual(["Child", "Lonely parent"]);
     expect(await names(false)).toEqual(["Parent"]);
     expect(() => compileQuery(request(ws, { filter: where({ field: { kind: "attr", key: "is_leaf" }, op: "neq", value: true }) }), PERIOD, TODAY)).toThrow(/is_leaf/);
   });

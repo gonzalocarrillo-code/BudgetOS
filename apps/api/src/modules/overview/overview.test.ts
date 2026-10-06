@@ -203,6 +203,19 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(home.asOf).toMatchObject({ lastFactDate: "2026-08-01", through, grain: "month", elapsed: gone.toDecimalPlaces(4).toString() });
   });
 
+  it("GET /pacing reads the same pace as the Overview for the same budgets, by default (T-9, ADR-062 addendum)", async () => {
+    const overviewRes = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=current_year`);
+    expect(overviewRes.status, JSON.stringify(overviewRes.body).slice(0, 300)).toBe(200);
+    const overview = overviewRes.body as { totals: Record<string, string> };
+    // Same population as the heatmap (ADR-016 live leaves), same period: GET /pacing no longer counts
+    // time gone to today while the Overview counts it to the last day the actuals cover.
+    const filter = encodeURIComponent(JSON.stringify({ logic: "and", children: LIVE_LEAVES }));
+    const pacingRes = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/pacing?filter=${filter}&period=current_year&limit=1`);
+    expect(pacingRes.status, JSON.stringify(pacingRes.body).slice(0, 300)).toBe(200);
+    const pacing = pacingRes.body as { totals: Record<string, string> };
+    expect(new Decimal(pacing.totals["pace_index"] ?? 0).toDecimalPlaces(4).toString()).toBe(new Decimal(overview.totals["pace_index"] ?? 0).toDecimalPlaces(4).toString());
+  });
+
   it("rejects an unknown period, and needs envelope.read", async () => {
     expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=forever`)).status).toBe(422);
     expect((await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?period=fiscal:nope`)).status).toBe(422);

@@ -111,6 +111,16 @@ describe("MCP tools over the golden workspace (T-025 done-when)", () => {
     expect(res.dataVersion).toBeGreaterThan(0);
   });
 
+  it("query_budgets excludes archived budgets by default, and includes them when the filter asks for them (T-11, audit)", async () => {
+    // The golden's one archived envelope (T-014): the split source, archived at zero with lineage.
+    const archivedId = golden.envelopeIds.get(A.split.sourceKey) as string;
+    const byId = (...more: unknown[]) => ({ logic: "and", children: [{ field: { kind: "attr", key: "id" }, op: "in", value: [archivedId] }, ...more] });
+    const byDefault = (await counted("query_budgets", { filter: byId(), measures: ["budget"], period, limit: 10 })) as { rows: unknown[] };
+    expect(byDefault.rows).toHaveLength(0);
+    const asked = (await counted("query_budgets", { filter: byId({ field: { kind: "attr", key: "status" }, op: "eq", value: "ARCHIVED" }), measures: ["budget"], period, limit: 10 })) as { rows: Array<{ envelopeId: string }> };
+    expect(asked.rows.map((r) => r.envelopeId)).toEqual([archivedId]);
+  });
+
   it("get_pacing and list_alerts", async () => {
     const pacing = (await counted("get_pacing", { filter: live(), period })) as { totals: Record<string, string> };
     expect(pacing.totals).toMatchObject({ budget: A.rollup.rootBudget, actual: A.rollup.rootActual });

@@ -68,6 +68,8 @@ export const AttrKey = z.enum([
   "is_ended",
   /** The envelope's parent (ADR-050): eq / in an envelope id, or is_empty for top-level budgets. */
   "parent_id",
+  /** T-8 (audit): the envelope's own id, eq or in a set — callers who already resolved ids (search hits) read them back through the one query path instead of re-deriving numbers. */
+  "id",
   /** T-038: linked to an experiment. Value: a status (RUNNING), an experiment id, or `<id>:TEST` / `<id>:CONTROL`. */
   "experiment",
 ]);

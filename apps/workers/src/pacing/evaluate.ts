@@ -1,5 +1,5 @@
 import { FilterGroup, QueryRequest, RuleMetricArgs, newId, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { audit, lockWorkspacePacing, openAlert, outbox, plannerOptions, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { audit, lockWorkspacePacing, openAlert, outbox, plannerOptions, resolveElapsedThrough, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PacingRule, PrismaClient } from "@prisma/client";
@@ -120,7 +120,11 @@ async function rowsFor(tx: Tx, tenant: { workspaceId: string; orgId: string }, r
     children.push({ field: { kind: "attr", key: "end_date" }, op: "gte", value: today });
     children.push({ field: { kind: "attr", key: "end_date" }, op: "lt", value: addDays(today, args.daysRemainingLt) });
   }
-  const opts = await plannerOptions(tx, tenant, targets, period);
+  // T-9 (audit, ADR-062 addendum): pacing rules now read the same pace Home and the Overview do by
+  // default (`QueryRequest.elapsedThrough` defaults to "data"), so under-pace rules stop opening on
+  // actuals that are merely late.
+  const elapsedThrough = await resolveElapsedThrough(tx, tenant.workspaceId, today, "data");
+  const opts = { ...(await plannerOptions(tx, tenant, targets, period)), ...(elapsedThrough === undefined ? {} : { elapsedThrough }) };
   const out: Row[] = [];
   let cursor: string | null = null;
   do {
