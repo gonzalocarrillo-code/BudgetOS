@@ -176,7 +176,7 @@ describe("targets: versions, approval, concurrency", () => {
       createTarget(planner, { scope: { type: "envelope", envelopeId: env["de"] }, metricKey: "cpa", value: "7" }),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
-    const rows = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM target WHERE envelope_id = $1::uuid AND metric_key = 'cpa' AND status = 'active'`, env["de"]);
+    const rows = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM target WHERE envelope_id = $1::uuid AND metric_key = 'cpa' AND status = 'active'`, env["de"]));
     expect(Number(rows[0]?.n)).toBe(1);
   });
 
