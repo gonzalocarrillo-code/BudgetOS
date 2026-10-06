@@ -38,6 +38,8 @@ model Workspace {
   deletedAt            DateTime?    @map("deleted_at") @db.Timestamptz
   purgeAfter           DateTime?    @map("purge_after") @db.Timestamptz
   purgedAt             DateTime?    @map("purged_at") @db.Timestamptz
+  /// W1-5 (ADR-0072): previews are ephemeral staging; they cascade when the workspace is deleted.
+  bulkPreviews         BulkPreview[]
 
   @@unique([orgId, slug])
   @@map("workspace")
@@ -972,13 +974,14 @@ model BudgetBaselineRow {
 /// consumes it atomically; expired rows are swept opportunistically on the next `put` of their
 /// workspace. Never read outside its own request's tenant transaction.
 model BulkPreview {
-  id          String   @id
-  workspaceId String   @map("workspace_id") @db.Uuid
-  authorId    String   @map("author_id") @db.Uuid
+  id          String    @id
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  authorId    String    @map("author_id") @db.Uuid
   kind        String
   payload     Json
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
 
   @@index([workspaceId, expiresAt])
   @@map("bulk_preview")

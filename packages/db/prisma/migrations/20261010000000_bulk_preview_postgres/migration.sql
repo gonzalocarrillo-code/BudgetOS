@@ -10,7 +10,7 @@
 -- Reverse: REVOKE SELECT ON bulk_preview FROM budget_mcp; DROP TABLE bulk_preview;
 CREATE TABLE IF NOT EXISTS bulk_preview (
   id text PRIMARY KEY,
-  workspace_id uuid NOT NULL REFERENCES workspace (id),
+  workspace_id uuid NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
   author_id uuid NOT NULL,
   kind text NOT NULL,
   payload jsonb NOT NULL,
