@@ -117,6 +117,20 @@ describe("rules", () => {
     expect(list.map((r) => r.id)).toEqual([ruleId]);
   });
 
+  // W3-3 (audit I-19): insertRule()'s name "clash" check is SELECT-then-INSERT; two concurrent
+  // creates of a brand-new name both pass it. pacing_rule_workspace_live_name
+  // (20261013030000_partial_unique_constraints) refuses the second live row; rules.ts maps the
+  // resulting P2002 to the same 409 the sequential check above already gives.
+  it("W3-3 (audit I-19): two concurrent creates of the same new rule name make exactly one rule", async () => {
+    const name = `Race rule ${randomUUID()}`;
+    const [a, b] = await Promise.all([
+      call(budgetOwner, "POST", `/workspaces/${ws}/rules`, { ...overPace, name }),
+      call(budgetOwner, "POST", `/workspaces/${ws}/rules`, { ...overPace, name }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(await owner.pacingRule.count({ where: { workspaceId: ws, name, deletedAt: null } })).toBe(1);
+  });
+
   it("PATCH updates the rule with before/after in the audit row", async () => {
     const requestId = rid();
     const res = await call(budgetOwner, "PATCH", `/rules/${ruleId}`, { threshold: "1.15", severity: "critical" }, requestId);

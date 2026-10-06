@@ -1,7 +1,7 @@
 import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { runSweeper } from "./sweeper.js";
 
@@ -41,6 +41,14 @@ afterAll(async () => {
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
+});
+
+// W3-3 (audit I-19): every ingest test below shares one fixture source, and ingest_run_source_open_run
+// (20261013030000_partial_unique_constraints) now allows at most one queued-or-running row per
+// source at a time. Without this, a run queued by one test outlives it and blocks the next test's
+// own queueIngest() call for the same source.
+afterEach(async () => {
+  await owner.ingestRun.deleteMany({ where: { sourceId } });
 });
 
 /** `leaseAgoMs` > 0 sets a lease already in the past (stale); < 0 sets one still in the future (fresh); null leaves it unset. */

@@ -19,17 +19,27 @@ export async function assignRole(prisma: PrismaClient, auth: AuthContext, raw: u
       select: { id: true },
     });
     if (duplicate !== null) throw new DomainError("CONFLICT", "Role already assigned", { roleAssignmentId: duplicate.id });
-    const row = await tx.roleAssignment.create({
-      data: {
-        id: newId(),
-        workspaceId,
-        principalType: input.principalType,
-        principalId: input.principalId,
-        role: input.role,
-        scope: input.scope as Prisma.InputJsonObject,
-        createdBy: auth.user.id,
-      },
-    });
+    let row;
+    try {
+      row = await tx.roleAssignment.create({
+        data: {
+          id: newId(),
+          workspaceId,
+          principalType: input.principalType,
+          principalId: input.principalId,
+          role: input.role,
+          scope: input.scope as Prisma.InputJsonObject,
+          createdBy: auth.user.id,
+        },
+      });
+    } catch (e) {
+      // W3-3 (audit I-19): the `duplicate` check above is SELECT-then-INSERT; two concurrent
+      // assignments of the same (workspace, principal, role) both pass it, and
+      // role_assignment_unique_scoped / role_assignment_unique_org_wide
+      // (20261013030000_partial_unique_constraints) refuse the second row.
+      if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "Role already assigned");
+      throw e;
+    }
     const after = { principalType: row.principalType, principalId: row.principalId, role: row.role, scope: input.scope };
     await audit(tx, {
       workspaceId,

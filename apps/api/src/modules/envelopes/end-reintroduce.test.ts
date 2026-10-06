@@ -190,4 +190,25 @@ describe("reintroduce a budget (H-012)", () => {
     expect(successor.current?.amount).toBe(amount);
     expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: leaf, toEnvelopeId: successorId, kind: "continues" } })).toBe(1);
   });
+
+  // W3-3 (audit I-28): reintroduceIn() read the source with no lock, so two concurrent reintroduces
+  // of the same ended budget both passed the `endedAt !== null` check and both created a successor.
+  // It now locks the source row (lockEnvelope, FOR UPDATE) before checking, and
+  // envelope_lineage_continues_source (20261013030000_partial_unique_constraints) is the database
+  // backstop: exactly one `continues` row per source, ever.
+  it("W3-3 (audit I-28): two concurrent reintroduces of the same ended budget make exactly one successor", async () => {
+    const leaf = id(leafKeys("EMEA/FR/meta/conversion")[0] as string);
+    const { e, body } = await endBody(leaf);
+    expect((await as("admin", "POST", `/api/v1/envelopes/${leaf}/end`, body)).status).toBe(201);
+    const released = new Decimal(e.current?.amount ?? 0).minus(body.finalAmount);
+    const start = new Date(`${body.endDate}T00:00:00Z`);
+    start.setUTCDate(start.getUTCDate() + 1);
+    const reintroduceBody = { startDate: start.toISOString().slice(0, 10), endDate: e.endDate, amount: released.toFixed(2), rationale: "race" };
+    const [a, b] = await Promise.all([
+      as("admin", "POST", `/api/v1/envelopes/${leaf}/reintroduce`, reintroduceBody),
+      as("admin", "POST", `/api/v1/envelopes/${leaf}/reintroduce`, reintroduceBody),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: leaf, kind: "continues" } })).toBe(1);
+  });
 });

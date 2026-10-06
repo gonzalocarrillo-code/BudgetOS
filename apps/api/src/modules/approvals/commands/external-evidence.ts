@@ -23,9 +23,18 @@ export async function recordExternalEvidence(prisma: PrismaClient, auth: AuthCon
     for (const t of targets.scopes) assertInScope(auth, r.entityType === "target_version" ? "target.submit" : "envelope.submit", t);
     const snapshot = snapshotOf(r);
     const evidence = { gcsUri: input.gcsUri, sha256: input.sha256, approverName: input.approverName, approvedOn: input.approvedOn };
-    await tx.approvalDecision.create({
-      data: { id: newId(), requestId: r.id, stepIndex: r.currentStep, decidedBy: auth.user.id, decision: "external_evidence", comment: input.comment ?? null, evidence, channel: "external_upload" },
-    });
+    try {
+      await tx.approvalDecision.create({
+        data: { id: newId(), requestId: r.id, stepIndex: r.currentStep, decidedBy: auth.user.id, decision: "external_evidence", comment: input.comment ?? null, evidence, channel: "external_upload" },
+      });
+    } catch (e) {
+      // W3-3 (audit I-18): this path had no duplicate check at all -- the same requester uploading
+      // evidence twice wrote two rows, and countedApprovals (engine.ts) counted both. The unique
+      // index approval_decision_request_step_decider (20261013030000_partial_unique_constraints)
+      // refuses the second row for the same (request, step, decider).
+      if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "You already recorded external evidence for this step");
+      throw e;
+    }
     const counts = snapshot.allowExternalEvidence;
     const advanced = counts ? await advanceIfComplete(tx, auth.ctx, r, snapshot) : "waiting";
     const status = advanced === "approved" ? "APPROVED" : advanced === "advanced" ? "PENDING" : r.status;

@@ -121,6 +121,19 @@ describe("sources", () => {
     expect(runs).toEqual([expect.objectContaining({ id: res.body["runId"], status: "queued" })]);
   });
 
+  // W3-3 (audit I-19): queueRun()'s "is a run already open" check is SELECT-then-INSERT; a fresh
+  // source with no run yet lets two concurrent calls both pass it. ingest_run_source_open_run
+  // (20261013030000_partial_unique_constraints) refuses the second queued row; sources.ts maps the
+  // resulting P2002 to the same 409 the sequential check above already gives.
+  it("W3-3 (audit I-19): two concurrent 'run now' calls for the same source queue exactly one run", async () => {
+    const created = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "race source", config: { kind: "csv", uri: uri(ws, "race.csv") }, mapping });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = String(created.body["id"]);
+    const [a, b] = await Promise.all([call(dataAdmin, "POST", `/sources/${id}/run`), call(dataAdmin, "POST", `/sources/${id}/run`)]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(await owner.ingestRun.count({ where: { sourceId: id, status: { in: ["queued", "running"] } } })).toBe(1);
+  });
+
   it("an incremental source must map a row_id; a full resync is queued as a full run (ADR-071)", async () => {
     const config = { kind: "bigquery", projectId: "budget-test", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" };
     const bad = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "warehouse", config, mapping });
