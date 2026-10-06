@@ -237,7 +237,14 @@ it("W3-8 (ADR-0084): an outbox row written by a SECURITY DEFINER function, calle
   const workspaceId = randomUUID();
   const fn = `w38_rpc_${workspaceId.replace(/-/g, "")}`;
   await prisma.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 'w38-rpc')`;
-  await prisma.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`w38-${workspaceId}`}, 'W38', 'USD')`;
+  // W0-6: the owner has no BYPASSRLS; workspace has no owner_bootstrap policy (only
+  // organization/app_user/role_assignment do), so its org_admin_write policy needs the org-admin
+  // tenant context real writes get from withTenant.
+  await asOrgAdmin(
+    prisma,
+    (tx) => tx.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`w38-${workspaceId}`}, 'W38', 'USD')`,
+    orgId,
+  );
   await prisma.$executeRawUnsafe(
     `CREATE FUNCTION ${fn}(p_ws uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$ INSERT INTO outbox (workspace_id, topic, payload) VALUES (p_ws, 'w38.rpc', '{}'::jsonb) $$`,
   );
@@ -250,8 +257,14 @@ it("W3-8 (ADR-0084): an outbox row written by a SECURITY DEFINER function, calle
   } finally {
     await app.$disconnect();
     await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${fn}(uuid)`);
-    await prisma.$executeRaw`DELETE FROM outbox WHERE workspace_id = ${workspaceId}::uuid`;
-    await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+    await asOrgAdmin(
+      prisma,
+      async (tx) => {
+        await tx.$executeRaw`DELETE FROM outbox WHERE workspace_id = ${workspaceId}::uuid`;
+        await tx.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+      },
+      orgId,
+    );
     await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
   }
 });
