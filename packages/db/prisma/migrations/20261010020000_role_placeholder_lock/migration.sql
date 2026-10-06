@@ -19,6 +19,12 @@
 -- EXECUTE on the function is revoked from PUBLIC so only the owner role (the one migrations and
 -- bootstrap run as) can invoke it.
 --
+-- 0001_roles' ALTER DEFAULT PRIVILEGES grants budget_app SELECT/INSERT/UPDATE/DELETE on every
+-- new table as it's created, so app_role_state needs an explicit REVOKE: it is owner-only
+-- bookkeeping, not something budget_app, budget_publisher or budget_mcp ever reads or writes
+-- (apps/mcp/src/readonly.test.ts, T-025, checks budget_mcp reads everything budget_app reads —
+-- the fix is to grant neither, not to add budget_mcp to the exception).
+--
 -- Reverse: REVOKE ALL ON FUNCTION app_lock_placeholder_logins() FROM PUBLIC (no-op, kept for
 --          symmetry); DROP FUNCTION IF EXISTS app_lock_placeholder_logins();
 --          DROP TABLE IF EXISTS app_role_state;
@@ -27,6 +33,8 @@ CREATE TABLE IF NOT EXISTS app_role_state (
   placeholder boolean NOT NULL DEFAULT true,
   rotated_at timestamptz
 );
+
+REVOKE ALL ON app_role_state FROM budget_app, budget_publisher, budget_mcp;
 
 INSERT INTO app_role_state (role_name)
 VALUES ('budget_app'), ('budget_publisher'), ('budget_mcp')
