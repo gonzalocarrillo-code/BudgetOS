@@ -48,6 +48,15 @@ module "cloudsql" {
   region     = var.region
 }
 
+# --- Cloud Monitoring alerting (audit M-7 alerting half; plan W5-8) -----------------------------
+# Worker consumer failures, outbox dead-letters, API 5xx, migrate job failure, Cloud SQL backup
+# failure, and the worker dropping to zero instances; one email notification channel. Unlike
+# cloudsql above, every resource here is new (nothing to import) — see infra/modules/alerting/README.md.
+module "alerting" {
+  source     = "../../modules/alerting"
+  project_id = var.project_id
+}
+
 # `import` blocks are only valid in the root module (Terraform refuses them inside a child module),
 # so they live here rather than in infra/modules/cloudsql, and reach into the module's resources by
 # their module-qualified address. This is what makes the first `terraform plan` an adoption of the

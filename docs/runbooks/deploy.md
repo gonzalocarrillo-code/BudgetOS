@@ -86,6 +86,27 @@ log store to begin with. `LOG_LEVEL` (`.env.example`) controls verbosity; defaul
 
 Take an extra backup first, on top of the daily one: `gcloud sql backups create --instance budgetos-db --project dmus-gonzalo`. See `docs/runbooks/restore.md` for how to recover if it goes wrong.
 
+## Alerts (audit M-7, plan W5-8)
+
+`infra/modules/alerting`, instantiated from `infra/envs/dmus-gonzalo/main.tf`, defines one email
+notification channel (the owner's address, same as `SUPERADMIN_EMAIL` above) and six Cloud
+Monitoring alert policies. Like `infra/modules/cloudsql`, a project owner runs `terraform init &&
+terraform plan && terraform apply` in `infra/envs/dmus-gonzalo` to turn these on; nothing here
+applies itself. Each auto-closes after 7 days if it stops matching.
+
+| Policy | Fires when | Do |
+|---|---|---|
+| Worker: consumer failures | > 0 `local worker consumer failed` / `outbox row failed` ERROR lines from `budgetos-worker` in 10 min | See `docs/runbooks/worker.md` — a consumer family (ingest/roll-up/search/notify/export) threw; it retries with backoff unless already dead-lettered |
+| Worker: outbox dead-letters | > 0 rows that just hit `OUTBOX_MAX_ATTEMPTS` in 1 h | `docs/runbooks/worker.md` "Listing dead-lettered rows" / "Replaying a dead-lettered row" — check `last_error` before replaying |
+| API: 5xx responses | > 5 `httpRequest.status >= 500` from `budgetos-app` in 5 min | Pull the shared `requestId` and grep Cloud Logging, per "Logs" above |
+| Migrate job: failure | > 0 ERROR+ lines from `budgetos-migrate` in 5 min | See "When something fails" → Migrations, above |
+| Cloud SQL: backup failure | > 0 ERROR+ audit log lines mentioning `backup` for `budgetos-db` in 1 h | Check Cloud SQL → Backups; take a manual one (`gcloud sql backups create …`, above) until the automated one is confirmed healthy |
+| Worker: zero instances | `budgetos-worker`'s instance-count metric reports no data for 15 min | It must always run exactly one instance (ADR-0080 Decision D-3) — the outbox stops draining entirely while this is true. Check the service's revisions/recent deploys |
+
+Details, the exact log filters, and the known gap (no outbox-backlog gauge yet — the worker only
+alerts on failures and dead-letters, not on simply falling behind) are in
+`infra/modules/alerting/README.md`.
+
 ## Roles and passwords (S-9)
 
 The migrations that create `budget_app`, `budget_publisher` and `budget_mcp` (`0001_roles`,
