@@ -198,3 +198,37 @@ it("writes audit and outbox in one tenant transaction; the outbox row moves the 
     await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
   }
 });
+
+it("W3-8 (ADR-0084): an outbox row written by a SECURITY DEFINER function, called as budget_app, moves the data version", async () => {
+  // No migration's RPC writes outbox today; this stands in for one. Locally the owner is a
+  // superuser, so the second assertion proves the trigger path through a definer function and the
+  // first that production's non-BYPASSRLS owner has the policy it needs under FORCE RLS.
+  const owner = await prisma.$queryRaw<Array<{ owner: string }>>`SELECT tableowner::text AS owner FROM pg_tables WHERE tablename = 'workspace_data_version'`;
+  const policy = await prisma.$queryRaw<Array<{ roles: string[] }>>`
+    SELECT array(SELECT rolname::text FROM pg_roles WHERE oid = ANY(polroles)) AS roles FROM pg_policy
+    WHERE polrelid = 'workspace_data_version'::regclass AND polname = 'owner_rpc' AND polcmd = '*'`;
+  expect(policy[0]?.roles).toEqual([owner[0]?.owner]);
+
+  const app = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
+  const orgId = randomUUID();
+  const workspaceId = randomUUID();
+  const fn = `w38_rpc_${workspaceId.replace(/-/g, "")}`;
+  await prisma.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 'w38-rpc')`;
+  await prisma.$executeRaw`INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${workspaceId}::uuid, ${orgId}::uuid, ${`w38-${workspaceId}`}, 'W38', 'USD')`;
+  await prisma.$executeRawUnsafe(
+    `CREATE FUNCTION ${fn}(p_ws uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$ INSERT INTO outbox (workspace_id, topic, payload) VALUES (p_ws, 'w38.rpc', '{}'::jsonb) $$`,
+  );
+  await prisma.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${fn}(uuid) TO budget_app`);
+  try {
+    const ctx: TenantContext = { workspaceId, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: "w38-rpc" };
+    const before = await readDataVersion(prisma, workspaceId);
+    await withTenant(app, ctx, (tx) => tx.$executeRawUnsafe(`SELECT ${fn}($1::uuid)`, workspaceId));
+    expect(await readDataVersion(prisma, workspaceId)).toBe(before + 1);
+  } finally {
+    await app.$disconnect();
+    await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${fn}(uuid)`);
+    await prisma.$executeRaw`DELETE FROM outbox WHERE workspace_id = ${workspaceId}::uuid`;
+    await prisma.$executeRaw`DELETE FROM workspace WHERE id = ${workspaceId}::uuid`;
+    await prisma.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
+  }
+});

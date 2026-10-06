@@ -14,7 +14,12 @@
 -- SECURITY INVOKER: the inserting session (budget_app) passes this table's tenant policy for the
 -- same workspace_id the outbox row's own tenant policy already accepted.
 --
+-- A SECURITY DEFINER function that inserts outbox runs the deferred trigger as the owner, which in
+-- production has no BYPASSRLS and is under FORCE RLS here: `owner_rpc` lets it bump the counter
+-- (same pattern as 20261010050000_owner_bootstrap_policies).
+--
 -- Reverse:
+--   DROP POLICY IF EXISTS owner_rpc ON workspace_data_version;
 --   DROP TRIGGER IF EXISTS outbox_bump_data_version ON outbox;
 --   DROP FUNCTION IF EXISTS bump_workspace_data_version();
 --   DROP TABLE IF EXISTS workspace_data_version;
@@ -31,6 +36,8 @@ DROP POLICY IF EXISTS tenant_isolation ON workspace_data_version;
 CREATE POLICY tenant_isolation ON workspace_data_version
   USING (workspace_id = ANY ((SELECT app_visible_workspace_ids())::uuid[]))
   WITH CHECK (workspace_id = ANY ((SELECT app_visible_workspace_ids())::uuid[]));
+DROP POLICY IF EXISTS owner_rpc ON workspace_data_version;
+CREATE POLICY owner_rpc ON workspace_data_version FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
 
 -- budget_app: read it, and the trigger's upsert (DELETE for the workspace purge). budget_mcp: read it
 -- (MCP results carry dataVersion). budget_publisher: nothing.
