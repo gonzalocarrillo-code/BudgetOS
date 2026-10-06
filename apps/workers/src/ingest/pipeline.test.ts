@@ -124,7 +124,7 @@ afterAll(async () => {
   // itself, including envelope_dimension, which references dimension_value) in the same order
   // `purgeWorkspace` validates against production — before the org-level dimension cleanup below,
   // which would otherwise violate envelope_dimension_value_id_fkey.
-  await deleteWorkspaceForTests(owner, ws);
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.$executeRawUnsafe(`UPDATE dimension_value SET parent_value_id = NULL, merged_into_id = NULL WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId); // W3-11 (I-32): self-ref FK
   await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN (SELECT id FROM dimension WHERE org_id = $1::uuid)`, orgId);
   await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE org_id = $1::uuid`, orgId);

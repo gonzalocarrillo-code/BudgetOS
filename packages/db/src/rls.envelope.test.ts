@@ -79,6 +79,31 @@ async function visibleEnvelopeIds(app: Client, workspaceId: string): Promise<str
 
 it("budget_app cannot read another workspace's envelope", async () => {
   await withClient(ownerUrl, async (owner) => {
+    // W0-6: the owner has no BYPASSRLS; envelope's tenant_isolation policy needs app.workspace_id,
+    // and workspace has no owner_bootstrap policy (only organization/app_user/role_assignment do)
+    // so its org_admin_write policy needs app.is_org_admin plus the exact app.org_id. Each
+    // workspace is a different org, so this loops per workspace/org pair, one transaction each
+    // (set_config's third argument, true, is transaction-local). Without this, FORCE RLS silently
+    // deletes zero rows (no WITH CHECK to raise on a DELETE) and both rows leak permanently.
+    // A named function (not an inline try/catch) so a rollback's rethrow is never a `throw`
+    // directly inside the `finally` block below (eslint no-unsafe-finally).
+    async function deleteEnvelopeWorkspaceAndOrg(): Promise<void> {
+      for (const [wsId, org] of [[workspaceA, orgA], [workspaceB, orgB]] as const) {
+        await owner.query("BEGIN");
+        try {
+          await owner.query("SELECT set_config('app.workspace_id', $1, true)", [wsId]);
+          await owner.query("SELECT set_config('app.is_org_admin', 'true', true)");
+          await owner.query("SELECT set_config('app.org_id', $1, true)", [org]);
+          await owner.query("DELETE FROM envelope WHERE workspace_id = $1::uuid", [wsId]);
+          await owner.query("DELETE FROM workspace WHERE id = $1::uuid", [wsId]);
+          await owner.query("COMMIT");
+        } catch (err) {
+          await owner.query("ROLLBACK");
+          throw err;
+        }
+      }
+      await owner.query("DELETE FROM organization WHERE id IN ($1::uuid, $2::uuid)", [orgA, orgB]);
+    }
     for (const relation of tenantRelations) {
       const found = await owner.query<{ ok: boolean }>("SELECT to_regclass($1) IS NOT NULL AS ok", [
         `public.${relation}`,
@@ -148,27 +173,7 @@ it("budget_app cannot read another workspace's envelope", async () => {
         expect(asB).not.toContain(envelopeA);
       });
     } finally {
-      // W0-6: the owner has no BYPASSRLS; envelope's tenant_isolation policy needs app.workspace_id,
-      // and workspace has no owner_bootstrap policy (only organization/app_user/role_assignment do)
-      // so its org_admin_write policy needs app.is_org_admin plus the exact app.org_id. Each
-      // workspace is a different org, so this loops per workspace/org pair, one transaction each
-      // (set_config's third argument, true, is transaction-local). Without this, FORCE RLS silently
-      // deletes zero rows here (no WITH CHECK to raise on a DELETE) and both rows leak permanently.
-      for (const [wsId, org] of [[workspaceA, orgA], [workspaceB, orgB]] as const) {
-        await owner.query("BEGIN");
-        try {
-          await owner.query("SELECT set_config('app.workspace_id', $1, true)", [wsId]);
-          await owner.query("SELECT set_config('app.is_org_admin', 'true', true)");
-          await owner.query("SELECT set_config('app.org_id', $1, true)", [org]);
-          await owner.query("DELETE FROM envelope WHERE workspace_id = $1::uuid", [wsId]);
-          await owner.query("DELETE FROM workspace WHERE id = $1::uuid", [wsId]);
-          await owner.query("COMMIT");
-        } catch (err) {
-          await owner.query("ROLLBACK");
-          throw err;
-        }
-      }
-      await owner.query("DELETE FROM organization WHERE id IN ($1::uuid, $2::uuid)", [orgA, orgB]);
+      await deleteEnvelopeWorkspaceAndOrg();
     }
   });
 });

@@ -47,7 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
   // itself), in the same order `purgeWorkspace` validates against production.
-  await deleteWorkspaceForTests(owner, ws);
+  await deleteWorkspaceForTests(owner, ws, orgId);
   await owner.user.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);

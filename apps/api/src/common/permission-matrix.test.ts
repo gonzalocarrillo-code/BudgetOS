@@ -93,7 +93,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await h?.close();
-  const wss = [wsA, wsB, wsC];
   const orgs = [orgA, orgB];
   // W3-11 (audit I-32): deletes every row that FKs to these workspaces (and the workspace rows
   // themselves), in the same order `purgeWorkspace` validates against production.
