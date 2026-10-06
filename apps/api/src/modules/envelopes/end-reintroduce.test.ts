@@ -211,6 +211,6 @@ describe("reintroduce a budget (H-012)", () => {
       as("admin", "POST", `/api/v1/envelopes/${leaf}/reintroduce`, reintroduceBody),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
-    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: leaf, kind: "continues" } })).toBe(1);
+    expect(await admin((tx) => tx.envelopeLineage.count({ where: { fromEnvelopeId: leaf, kind: "continues" } }))).toBe(1);
   });
 });

@@ -142,7 +142,7 @@ describe("rules", () => {
       call(budgetOwner, "POST", `/workspaces/${ws}/rules`, { ...overPace, name }),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
-    expect(await owner.pacingRule.count({ where: { workspaceId: ws, name, deletedAt: null } })).toBe(1);
+    expect(await asAdmin((tx) => tx.pacingRule.count({ where: { workspaceId: ws, name, deletedAt: null } }))).toBe(1);
   });
 
   it("PATCH updates the rule with before/after in the audit row", async () => {
