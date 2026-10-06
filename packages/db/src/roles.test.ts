@@ -63,8 +63,16 @@ function urlFor(role: string, password: string): string {
 // S-9 (docs/STACK_AUDIT_2026-10-04.md): migration 20261010020000_role_placeholder_lock adds
 // app_role_state and app_lock_placeholder_logins(). Both this migration and bootstrap.ts's
 // behaviour are covered here.
+//
+// Note: this suite shares one Postgres database with every other package's test run in the same
+// worktree (AGENT_BRIEF), including apps/api/src/deploy/bootstrap.test.ts (W2-3), which calls the
+// real bootstrap() — and bootstrap() rotates the literal budget_app/budget_publisher/budget_mcp
+// rows in app_role_state by name, regardless of which role connection it's called through. So
+// this test cannot assume the three roles are still in their never-rotated, freshly-migrated
+// state (another suite may legitimately have rotated them first); it checks the schema contract
+// and the placeholder/rotated_at invariant instead of a specific snapshot of mutable state.
 describe("role placeholder lock (S-9)", () => {
-  it("after migrations, the three login roles exist and app_role_state tracks them as placeholder", async () => {
+  it("the three login roles exist and app_role_state tracks each one consistently", async () => {
     await withClient(ownerUrl, async (owner) => {
       const roles = await owner.query<{ rolname: string; rolcanlogin: boolean }>(
         "SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname = ANY($1::text[])",
@@ -72,6 +80,9 @@ describe("role placeholder lock (S-9)", () => {
       );
       expect(roles.rows.map((r) => r.rolname).sort()).toEqual([...builtinRoles].sort());
       for (const row of roles.rows) {
+        // True whether the role is still on the placeholder or bootstrap.ts has already rotated
+        // it: rotation always re-enables LOGIN, so only an explicit, unfinished lock (never
+        // committed by any real bootstrap run) could leave this false.
         expect(row.rolcanlogin, row.rolname).toBe(true);
       }
 
@@ -81,8 +92,15 @@ describe("role placeholder lock (S-9)", () => {
       );
       expect(state.rows.map((r) => r.role_name)).toHaveLength(3);
       for (const row of state.rows) {
-        expect(row.placeholder, row.role_name).toBe(true);
-        expect(row.rotated_at, row.role_name).toBeNull();
+        // The invariant bootstrap.ts maintains, regardless of whether rotation has happened yet
+        // in this shared database: still a placeholder means never rotated (rotated_at is null);
+        // rotated means rotated_at is set.
+        expect(typeof row.placeholder, row.role_name).toBe("boolean");
+        if (row.placeholder) {
+          expect(row.rotated_at, row.role_name).toBeNull();
+        } else {
+          expect(row.rotated_at, row.role_name).not.toBeNull();
+        }
       }
 
       const fn = await owner.query<{ prosecdef: boolean }>(
@@ -95,6 +113,21 @@ describe("role placeholder lock (S-9)", () => {
         "SELECT count(*)::text AS count FROM information_schema.routine_privileges WHERE routine_name = 'app_lock_placeholder_logins' AND grantee = 'PUBLIC'",
       );
       expect(grants.rows[0]?.count, "EXECUTE on app_lock_placeholder_logins is revoked from PUBLIC").toBe("0");
+    });
+  });
+
+  it("a freshly seeded role row defaults to placeholder = true with no rotated_at (migration seed contract)", async () => {
+    await withClient(ownerUrl, async (owner) => {
+      const col = await owner.query<{ column_default: string | null; is_nullable: string }>(
+        `SELECT column_default, is_nullable FROM information_schema.columns
+         WHERE table_name = 'app_role_state' AND column_name = 'placeholder'`,
+      );
+      expect(col.rows[0]?.column_default).toMatch(/true/);
+      const rotated = await owner.query<{ is_nullable: string }>(
+        `SELECT is_nullable FROM information_schema.columns
+         WHERE table_name = 'app_role_state' AND column_name = 'rotated_at'`,
+      );
+      expect(rotated.rows[0]?.is_nullable).toBe("YES");
     });
   });
 
