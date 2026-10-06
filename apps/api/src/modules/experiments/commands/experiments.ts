@@ -3,10 +3,14 @@ import {
   CreateExperimentInput,
   CreateThreadInput,
   DomainError,
+  EXPERIMENT_ALWAYS_EDITABLE,
   EXPERIMENT_TRANSITIONS,
+  ExperimentScopeKind,
   LinkEnvelopeInput,
   UpdateExperimentInput,
+  experimentSideValid,
   newId,
+  type FilterGroupT,
 } from "@budget/domain";
 import { audit, metricLibrary, outbox, withTenant, type Tx } from "@budget/db";
 import type { Experiment, Prisma, PrismaClient } from "@prisma/client";
@@ -26,6 +30,7 @@ import { experimentView } from "../queries/experiments.js";
  */
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
+const iso = (d: Date) => d.toISOString().slice(0, 10);
 const FINAL = new Set(["CONCLUDED", "ABANDONED"]);
 export const EXPERIMENT_TAG = "experiment";
 
@@ -65,6 +70,8 @@ export async function createExperiment(prisma: PrismaClient, auth: AuthContext, 
         startDate: new Date(input.startDate),
         endDate: new Date(input.endDate),
         ownerId: input.ownerId ?? auth.user.id,
+        testScopeKind: input.testScopeKind,
+        controlScopeKind: input.controlScopeKind,
       },
     });
     await record(tx, auth, x, "experiment.created", null);
@@ -72,20 +79,29 @@ export async function createExperiment(prisma: PrismaClient, auth: AuthContext, 
   });
 }
 
-/** PATCH /experiments/:id — while PLANNED, RUNNING or EVALUATING. */
+/**
+ * PATCH /experiments/:id — any field while PLANNED, RUNNING or EVALUATING. EX-2: the dates stay
+ * editable in every status; a concluded or abandoned experiment takes nothing else. Moving a
+ * concluded experiment's dates also posts a system comment on every linked budget, beside its decision.
+ */
 export async function updateExperiment(prisma: PrismaClient, auth: AuthContext, rawId: string, raw: unknown) {
   const input = parseInput(UpdateExperimentInput, raw);
   return withTenant(prisma, auth.ctx, async (tx) => {
     const before = await load(tx, rawId);
-    if (FINAL.has(before.status)) throw new DomainError("CONFLICT", `A ${before.status.toLowerCase()} experiment cannot be edited`);
+    const locked = Object.keys(input).filter((k) => !EXPERIMENT_ALWAYS_EDITABLE.has(k));
+    if (FINAL.has(before.status) && locked.length > 0) throw new DomainError("CONFLICT", `A ${before.status.toLowerCase()} experiment cannot be edited, except its dates`, { fields: locked });
     await checkMetricAndOwner(tx, auth, input.primaryMetric, input.ownerId);
-    const start = input.startDate ?? before.startDate.toISOString().slice(0, 10);
-    const end = input.endDate ?? before.endDate.toISOString().slice(0, 10);
-    if (start > end) throw new DomainError("VALIDATION", "startDate after endDate");
+    const start = input.startDate ?? iso(before.startDate);
+    const end = input.endDate ?? iso(before.endDate);
+    if (start > end) throw new DomainError("VALIDATION", "startDate after endDate", { startDate: start, endDate: end });
     const criterion = input.criterion ?? (before.criterion as { vs: string });
     const control = input.controlFilter === undefined ? before.controlFilter : input.controlFilter;
     const hasControlLinks = (await tx.experimentEnvelope.count({ where: { experimentId: before.id, role: "CONTROL" } })) > 0;
     if (criterion.vs === "control" && control === null && !hasControlLinks) throw new DomainError("VALIDATION", "A vs-control criterion needs a control scope or a CONTROL envelope");
+    const testKind = input.testScopeKind ?? ExperimentScopeKind.parse(before.testScopeKind);
+    const controlKind = input.controlScopeKind ?? ExperimentScopeKind.parse(before.controlScopeKind);
+    if (!experimentSideValid(testKind, (input.testFilter ?? before.testFilter) as FilterGroupT)) throw new DomainError("VALIDATION", "A fact-scoped test side needs dimension predicates only", { side: "test" });
+    if (control !== null && !experimentSideValid(controlKind, control as FilterGroupT)) throw new DomainError("VALIDATION", "A fact-scoped control side needs dimension predicates only", { side: "control" });
     const x = await tx.experiment.update({
       where: { id: before.id },
       data: {
@@ -99,9 +115,23 @@ export async function updateExperiment(prisma: PrismaClient, auth: AuthContext, 
         ...(input.startDate !== undefined ? { startDate: new Date(input.startDate) } : {}),
         ...(input.endDate !== undefined ? { endDate: new Date(input.endDate) } : {}),
         ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}),
+        ...(input.testScopeKind !== undefined ? { testScopeKind: input.testScopeKind } : {}),
+        ...(input.controlScopeKind !== undefined ? { controlScopeKind: input.controlScopeKind } : {}),
       },
     });
-    await record(tx, auth, x, "experiment.updated", experimentView(before));
+    const range = (a: Date, b: Date) => `${iso(a)} – ${iso(b)}`;
+    const moved = range(before.startDate, before.endDate) !== range(x.startDate, x.endDate);
+    const comments: Array<{ envelopeId: string; threadId: string }> = [];
+    if (before.status === "CONCLUDED" && moved) {
+      const links = await tx.experimentEnvelope.findMany({ where: { experimentId: x.id }, orderBy: { envelopeId: "asc" } });
+      for (const link of links) {
+        const body = `**Experiment dates changed after its decision:** ${range(before.startDate, before.endDate)} → ${range(x.startDate, x.endDate)}. The read-out now covers the new window; the decision stands as recorded.`;
+        const t = await createThreadIn(tx, auth, x.workspaceId, CreateThreadInput.parse({ anchorType: "envelope", anchorId: link.envelopeId, title: `Experiment dates changed: ${x.name}`, firstComment: { bodyMd: body } }));
+        comments.push({ envelopeId: link.envelopeId, threadId: t.id });
+      }
+    }
+    await audit(tx, { workspaceId: x.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "experiment.updated", entityType: "experiment", entityId: x.id, before: experimentView(before), after: { ...experimentView(x), ...(comments.length ? { comments } : {}) }, requestId: auth.ctx.requestId });
+    await outbox(tx, { workspaceId: x.workspaceId, topic: "experiment.changed", payload: { experimentId: x.id, action: "experiment.updated", status: x.status, envelopeIds: comments.map((c) => c.envelopeId) } });
     return experimentView(x);
   });
 }
@@ -157,7 +187,10 @@ export async function concludeExperiment(prisma: PrismaClient, auth: AuthContext
     const before = await load(tx, rawId);
     if (!rule.from.includes(before.status)) throw new DomainError("CONFLICT", `Cannot conclude a ${before.status.toLowerCase()} experiment`, { status: before.status, allowedFrom: rule.from });
     const links = await tx.experimentEnvelope.findMany({ where: { experimentId: before.id }, orderBy: { envelopeId: "asc" } });
-    if (links.length === 0) throw new DomainError("VALIDATION", "Link at least one envelope before concluding: the decision is posted on the linked envelopes");
+    // EX-2: an experiment whose sides are all fact-scoped (campaign vs campaign) may have no budget
+    // to post on; its decision is kept on the experiment and in the audit trail.
+    const factOnly = before.testScopeKind === "fact" && (before.controlFilter === null || before.controlScopeKind === "fact");
+    if (links.length === 0 && !factOnly) throw new DomainError("VALIDATION", "Link at least one envelope before concluding: the decision is posted on the linked envelopes");
     const x = await tx.experiment.update({ where: { id: before.id }, data: { status: rule.to, decision: input.decision, decidedBy: auth.user.id, decidedAt: clock.now() } });
     const threads: Array<{ envelopeId: string; threadId: string; commentId: string }> = [];
     for (const link of links) {
@@ -175,3 +208,32 @@ export async function concludeExperiment(prisma: PrismaClient, auth: AuthContext
   });
 }
 
+
+/**
+ * DELETE /experiments/:id (EX-2, ADR-086) — permanent and irreversible: the experiment and its
+ * envelope links are hard-deleted, and the `experiment` tag comes off budgets no other experiment
+ * still tests. Only the experiment's owner or a workspace (or org) admin. The audit trail is kept
+ * (one `experiment.deleted` row holding the deleted experiment and its links) and one outbox row lets
+ * search drop it. Threads posted on budgets at conclusion stay: they belong to those budgets.
+ */
+export async function deleteExperiment(prisma: PrismaClient, auth: AuthContext, rawId: string) {
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const x = await load(tx, rawId);
+    const admin = auth.isOrgAdmin || auth.roles.includes("WORKSPACE_ADMIN") || auth.roles.includes("ORG_ADMIN");
+    if (!admin && x.ownerId !== auth.user.id) throw new DomainError("FORBIDDEN", "Only the experiment's owner or a workspace admin can delete it", { ownerId: x.ownerId });
+    const links = await tx.experimentEnvelope.findMany({ where: { experimentId: x.id }, orderBy: { envelopeId: "asc" } });
+    await tx.experimentEnvelope.deleteMany({ where: { experimentId: x.id } });
+    const tested = links.filter((l) => l.role === "TEST").map((l) => l.envelopeId);
+    let untagged: string[] = [];
+    if (tested.length > 0) {
+      const still = new Set((await tx.experimentEnvelope.findMany({ where: { envelopeId: { in: tested }, role: "TEST" }, select: { envelopeId: true } })).map((l) => l.envelopeId));
+      untagged = tested.filter((id) => !still.has(id));
+      const tag = await tx.tag.findUnique({ where: { workspaceId_name: { workspaceId: x.workspaceId, name: EXPERIMENT_TAG } } });
+      if (tag !== null && untagged.length > 0) await tx.taggable.deleteMany({ where: { tagId: tag.id, entityType: "envelope", entityId: { in: untagged } } });
+    }
+    await tx.experiment.delete({ where: { id: x.id } });
+    await audit(tx, { workspaceId: x.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "experiment.deleted", entityType: "experiment", entityId: x.id, before: { ...experimentView(x), envelopes: links.map((l) => ({ envelopeId: l.envelopeId, role: l.role })), untagged }, after: null, requestId: auth.ctx.requestId });
+    await outbox(tx, { workspaceId: x.workspaceId, topic: "experiment.changed", payload: { experimentId: x.id, action: "experiment.deleted", status: x.status, envelopeIds: links.map((l) => l.envelopeId) } });
+    return { id: x.id, deleted: true as const };
+  });
+}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FilterGroup } from "./filter-ast.js";
+import { FilterGroup, isPredicate, type FilterGroupT } from "./filter-ast.js";
 
 /**
  * Experiments (spec §25, plan §4.12): a test budget with a question attached. Test envelopes are
@@ -16,6 +16,22 @@ export const ExperimentStatus = z.enum(["PLANNED", "RUNNING", "EVALUATING", "CON
 export type ExperimentStatus = z.infer<typeof ExperimentStatus>;
 export const ExperimentRole = z.enum(["TEST", "CONTROL"]);
 export type ExperimentRole = z.infer<typeof ExperimentRole>;
+
+/**
+ * EX-2 (ADR-086): what a side's filter is evaluated on. `envelope` (the default, spec §25): the
+ * budgets the filter selects, plus the envelopes linked in that role. `fact`: the spend / KPI facts
+ * whose own `dimension_values` match (e.g. `campaign = A`), independent of budgets.
+ */
+export const ExperimentScopeKind = z.enum(["envelope", "fact"]);
+export type ExperimentScopeKind = z.infer<typeof ExperimentScopeKind>;
+
+const FACT_OPS = new Set(["eq", "neq", "in", "nin", "is_empty", "not_empty", "contains", "starts_with"]);
+/** A fact scope filters on fact dimensions only (no measures, targets or envelope attributes). */
+export function isFactScope(g: FilterGroupT): boolean {
+  return g.children.every((c) => (isPredicate(c) ? c.field.kind === "dimension" && FACT_OPS.has(c.op) : isFactScope(c)));
+}
+const factSideOk = (kind: ExperimentScopeKind | undefined, filter: FilterGroupT | null | undefined) => kind !== "fact" || (filter !== null && filter !== undefined && filter.children.length > 0 && isFactScope(filter));
+const FACT_SIDE_MESSAGE = "A fact-scoped side needs at least one dimension predicate (eq, neq, in, nin, is_empty, not_empty, contains, starts_with)";
 
 /**
  * Success criterion: the test's primary metric `comparator` the control's (vs control), or a fixed
@@ -42,19 +58,32 @@ const Fields = {
   startDate: IsoDate,
   endDate: IsoDate,
   ownerId: z.string().uuid(),
+  testScopeKind: ExperimentScopeKind,
+  controlScopeKind: ExperimentScopeKind,
 };
 
 /** POST /workspaces/:ws/experiments. The owner defaults to the caller; a control scope is optional. */
 export const CreateExperimentInput = z
-  .object({ ...Fields, controlFilter: Fields.controlFilter.default(null), ownerId: Fields.ownerId.optional() })
+  .object({ ...Fields, controlFilter: Fields.controlFilter.default(null), ownerId: Fields.ownerId.optional(), testScopeKind: ExperimentScopeKind.default("envelope"), controlScopeKind: ExperimentScopeKind.default("envelope") })
   .refine((v) => v.startDate <= v.endDate, { message: "startDate after endDate", path: ["endDate"] })
-  .refine((v) => v.criterion.vs === "absolute" || v.controlFilter !== null, { message: "A vs-control criterion needs a control scope", path: ["controlFilter"] });
+  .refine((v) => v.criterion.vs === "absolute" || v.controlFilter !== null, { message: "A vs-control criterion needs a control scope", path: ["controlFilter"] })
+  .refine((v) => factSideOk(v.testScopeKind, v.testFilter), { message: FACT_SIDE_MESSAGE, path: ["testFilter"] })
+  .refine((v) => v.controlFilter === null || factSideOk(v.controlScopeKind, v.controlFilter), { message: FACT_SIDE_MESSAGE, path: ["controlFilter"] });
 export type CreateExperimentInput = z.infer<typeof CreateExperimentInput>;
 
-/** PATCH /experiments/:id: any field while PLANNED or RUNNING; nothing once concluded or abandoned. */
+/**
+ * PATCH /experiments/:id: any field while PLANNED, RUNNING or EVALUATING. EX-2: the dates stay
+ * editable in every status (any start / end, past or future, end ≥ start); a concluded or abandoned
+ * experiment takes nothing else. The fact-side checks on the merged experiment are the command's.
+ */
 export const UpdateExperimentInput = z
   .object(Object.fromEntries(Object.entries(Fields).map(([k, v]) => [k, v.optional()])) as { [K in keyof typeof Fields]: z.ZodOptional<(typeof Fields)[K]> })
-  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" })
+  .refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "startDate after endDate", path: ["endDate"] });
+/** The fields a concluded or abandoned experiment still accepts. */
+export const EXPERIMENT_ALWAYS_EDITABLE: ReadonlySet<string> = new Set(["startDate", "endDate"]);
+/** Whether a side with this kind and filter is valid (a fact side needs dimension predicates). */
+export const experimentSideValid = factSideOk;
 export type UpdateExperimentInput = z.infer<typeof UpdateExperimentInput>;
 
 /** POST /experiments/:id/link */
@@ -91,6 +120,52 @@ export const ExperimentReadout = z.object({
   daysRunning: z.number().int(),
 });
 export type ExperimentReadout = z.infer<typeof ExperimentReadout>;
+
+/** GET /workspaces/:ws/experiments/scope-values: the values of a fact dimension found in spend facts in a window (the campaign picker). */
+export const ExperimentScopeValuesQuery = z
+  .object({
+    key: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).default("campaign"),
+    start: IsoDate,
+    end: IsoDate,
+    includeDemo: z.enum(["true", "false"]).optional(),
+  })
+  .refine((v) => v.start <= v.end, { message: "start after end", path: ["end"] });
+export type ExperimentScopeValuesQuery = z.infer<typeof ExperimentScopeValuesQuery>;
+export const ExperimentScopeValue = z.object({ code: z.string(), label: z.string().nullable(), spend: z.string().nullable(), days: z.number().int() });
+export type ExperimentScopeValue = z.infer<typeof ExperimentScopeValue>;
+
+/**
+ * EX-2: one day of a side. `hasData` false (no fact row for the side that day): every value is
+ * null — no data, never 0. With data, a value is still null when no fact of that metric exists.
+ */
+export const ExperimentDay = z.object({
+  date: IsoDate,
+  hasData: z.boolean(),
+  spend: z.string().nullable(),
+  /** Σ kpi_fact value per fact metric (conversions, revenue, …). */
+  kpis: z.record(z.string().nullable()),
+  /** Derived metrics from the metric library (CPA, ROAS, …), that day's Σnumerator / Σdenominator. */
+  metrics: z.record(z.string().nullable()),
+});
+export type ExperimentDay = z.infer<typeof ExperimentDay>;
+
+/** EX-2: one side's facts over [start, min(end, today)]: totals over the days with data, and the days. */
+export const ExperimentSide = z.object({
+  scopeKind: ExperimentScopeKind,
+  totals: z.object({
+    spend: z.string().nullable(),
+    kpis: z.record(z.string().nullable()),
+    /** Weighted over the days with data: Σnumerator / Σdenominator, never an average of daily ratios. */
+    metrics: z.record(z.string().nullable()),
+    daysWithData: z.number().int(),
+    daysInWindow: z.number().int(),
+  }),
+  days: z.array(ExperimentDay),
+});
+export type ExperimentSide = z.infer<typeof ExperimentSide>;
+
+export const ExperimentSides = z.object({ test: ExperimentSide, control: ExperimentSide.nullable() });
+export type ExperimentSides = z.infer<typeof ExperimentSides>;
 
 /** Allowed status moves (spec §25.3). CONCLUDED and ABANDONED are final. */
 export const EXPERIMENT_TRANSITIONS: Record<"start" | "evaluate" | "abandon" | "conclude", { from: ExperimentStatus[]; to: ExperimentStatus }> = {

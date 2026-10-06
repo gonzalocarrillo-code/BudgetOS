@@ -224,10 +224,17 @@ export type { LaneTarget } from "./timeline.js";
 export {
   ConcludeExperimentInput,
   CreateExperimentInput,
+  EXPERIMENT_ALWAYS_EDITABLE,
   EXPERIMENT_TRANSITIONS,
+  ExperimentDay,
   ExperimentKind,
   ExperimentReadout,
   ExperimentRole,
+  ExperimentScopeKind,
+  ExperimentScopeValue,
+  ExperimentScopeValuesQuery,
+  ExperimentSide,
+  ExperimentSides,
   ExperimentStatus,
   LinkEnvelopeInput,
   ListExperimentsQuery,
@@ -235,6 +242,8 @@ export {
   SuccessCriterion,
   UpdateExperimentInput,
   criterionMet,
+  experimentSideValid,
+  isFactScope,
 } from "./experiments.js";
 
 export {

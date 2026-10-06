@@ -4,7 +4,7 @@ import { Button } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactElement } from "react";
 import { Card, Page } from "../components/page.js";
 import { useExplorerLabels } from "../features/explorer/labels.js";
@@ -12,6 +12,7 @@ import { ExplorerRowSource } from "../features/explorer/row-source.js";
 import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { ConcludeDialog, CriterionBadge, LinkPicker, ReadoutCards, StatusBadge } from "../features/experiments/components.js";
 import { experimentQuery, type Experiment } from "../features/experiments/queries.js";
+import { DeleteExperimentDialog, SidesPanel } from "../features/experiments/sides.js";
 import { can } from "../features/ops/queries.js";
 import { DateRangeEditor } from "../features/dates/date-range-editor.js";
 import { api, unwrap } from "../lib/api.js";
@@ -21,6 +22,8 @@ import { meQuery } from "../lib/queries.js";
  * One experiment (spec §25, T-038): the hypothesis, status actions, the criterion badge, test vs
  * control read-out cards from the planner, the linked budgets (the Explorer's grid on a fixed
  * filter) and the recorded decision. Conclude needs a decision and posts it on every linked budget.
+ * EX-2: each side's facts (side-by-side totals, a daily chart with gaps, a day table with "No data"),
+ * dates editable in every status, and a permanent delete behind a typed-name confirmation.
  */
 export const Route = createFileRoute("/w/$ws/experiments/$id")({ component: ExperimentPage });
 
@@ -38,6 +41,8 @@ function ExperimentPage(): ReactElement {
   const { data: me } = useQuery(meQuery);
   const { data, isPending, error } = useQuery(experimentQuery(ws, id));
   const [concluding, setConcluding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
   const blocked = can(perms, me?.isOrgAdmin ?? false, "envelope.edit_draft") ? null : t("experiments.noPermission");
   const refresh = () => Promise.all([client.invalidateQueries({ queryKey: ["experiment", ws, id] }), client.invalidateQueries({ queryKey: ["experiments", ws] }), client.invalidateQueries({ queryKey: ["timeline", ws] })]);
@@ -48,9 +53,13 @@ function ExperimentPage(): ReactElement {
 
   if (error) return <Page title={t("page.experiment")}><p role="alert" className="text-sm text-destructive">{error.message}</p></Page>;
   if (isPending || !data) return <Page title={t("page.experiment")}><p className="text-sm text-muted-foreground">{t("shell.loading")}</p></Page>;
-  const { experiment: x, readout } = data;
+  const { experiment: x, readout, sides } = data;
   const final = x.status === "CONCLUDED" || x.status === "ABANDONED";
-  const concludeWhy = blocked ?? (!["RUNNING", "EVALUATING"].includes(x.status) ? t("experiments.conclude.notRunning") : x.envelopes.length === 0 ? t("experiments.conclude.noEnvelopes") : null);
+  // A campaign-vs-campaign experiment (every side fact-scoped) may conclude with no linked budget.
+  const factOnly = x.testScopeKind === "fact" && (x.controlFilter === null || x.controlScopeKind === "fact");
+  const concludeWhy = blocked ?? (!["RUNNING", "EVALUATING"].includes(x.status) ? t("experiments.conclude.notRunning") : x.envelopes.length === 0 && !factOnly ? t("experiments.conclude.noEnvelopes") : null);
+  const isAdmin = (me?.isOrgAdmin ?? false) || (me?.workspaces.find((w) => w.workspaceId === ws)?.roles ?? []).some((r) => r === "WORKSPACE_ADMIN" || r === "ORG_ADMIN");
+  const deleteWhy = blocked ?? (isAdmin || me?.user.id === x.ownerId ? null : t("experiments.delete.notAllowed"));
 
   return (
     <Page
@@ -77,6 +86,15 @@ function ExperimentPage(): ReactElement {
               {t("experiments.action.conclude")}
             </Button>
           )}
+          {deleteWhy ? (
+            <Button variant="ghost" disabled reason={deleteWhy} data-testid="experiment-delete" data-tour="experiment-delete">
+              <Trash2 className="size-4" aria-hidden /> {t("experiments.delete.action")}
+            </Button>
+          ) : (
+            <Button variant="ghost" className="text-destructive" onClick={() => setDeleting(true)} data-testid="experiment-delete" data-tour="experiment-delete">
+              <Trash2 className="size-4" aria-hidden /> {t("experiments.delete.action")}
+            </Button>
+          )}
         </>
       }
     >
@@ -94,7 +112,7 @@ function ExperimentPage(): ReactElement {
                 start={x.startDate}
                 end={x.endDate}
                 testId="experiment-dates"
-                locked={x.status === "CONCLUDED" || x.status === "ABANDONED" ? t("dates.experimentClosed") : null}
+                locked={blocked}
                 save={(range) => unwrap(api.PATCH("/api/v1/experiments/{id}", { params: { path: { id: x.id }, header: { "X-Workspace-Id": ws } }, body: range as never }))}
                 onSaved={() => void refresh()}
               />
@@ -108,6 +126,10 @@ function ExperimentPage(): ReactElement {
         </div>
       </Card>
       <ReadoutCards experiment={x} readout={readout} currency={CURRENCY} />
+      {x.status === "CONCLUDED" ? <p className="-mt-2 text-xs text-muted-foreground">{t("dates.experimentAfterDecision")}</p> : null}
+      <Card title={t("experiments.sides.title")}>
+        <SidesPanel ws={ws} experiment={x} sides={sides} currency={CURRENCY} />
+      </Card>
       {x.decision ? (
         <Card title={t("experiments.decision")}>
           <p className="whitespace-pre-wrap text-sm" data-testid="experiment-decision">
@@ -125,6 +147,20 @@ function ExperimentPage(): ReactElement {
           </div>
         </div>
       </Card>
+      {deleting ? (
+        <DeleteExperimentDialog
+          ws={ws}
+          experiment={x}
+          onClose={() => setDeleting(false)}
+          onDeleted={() => {
+            setDeleting(false);
+            client.removeQueries({ queryKey: ["experiment", ws, id] });
+            void client.invalidateQueries({ queryKey: ["experiments", ws] });
+            void client.invalidateQueries({ queryKey: ["timeline", ws] });
+            void navigate({ to: "/w/$ws/experiments", params: { ws } });
+          }}
+        />
+      ) : null}
       {concluding ? (
         <ConcludeDialog
           ws={ws}

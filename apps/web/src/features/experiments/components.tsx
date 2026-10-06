@@ -9,7 +9,7 @@ import { z } from "zod";
 import { FilterBar } from "../explorer/filter-bar.js";
 import { api, unwrap } from "../../lib/api.js";
 import type { Dimension } from "../../lib/queries.js";
-import { KINDS, metricsQuery, type Experiment } from "./queries.js";
+import { KINDS, metricsQuery, scopeValuesQuery, type Experiment } from "./queries.js";
 
 /**
  * Experiments UI pieces (spec §25): status and criterion badges, the side-by-side read-out, the
@@ -59,7 +59,7 @@ function SideCard({ side, title, set, metric, currency }: { side: "test" | "cont
       <div className="mb-4 flex items-center gap-2">
         <span className={cn("size-2.5 rounded-full", side === "test" ? "bg-primary" : "bg-subtle-foreground")} aria-hidden />
         <span className="text-sm font-semibold">{title}</span>
-        {set ? <span className="ml-auto text-xs text-muted-foreground">{t("experiments.readout.leaves", { count: set.leafCount })}</span> : null}
+        {set && set.leafCount > 0 ? <span className="ml-auto text-xs text-muted-foreground">{t("experiments.readout.leaves", { count: set.leafCount })}</span> : null}
       </div>
       {set ? (
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -132,6 +132,10 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
     minDays: "14",
     startDate: `${year}-01-01`,
     endDate: `${year}-03-31`,
+    testKind: "fact" as SideKind,
+    controlKind: "fact" as SideKind,
+    testCampaign: "",
+    controlCampaign: "",
   });
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }));
   const create = useMutation({
@@ -144,8 +148,10 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
               name: f.name,
               hypothesis: f.hypothesis,
               kind: f.kind,
-              testFilter: f.testFilter,
-              controlFilter: f.controlFilter.children.length ? f.controlFilter : null,
+              testScopeKind: f.testKind,
+              controlScopeKind: f.controlKind,
+              testFilter: f.testKind === "fact" ? campaignFilter(f.testCampaign) : f.testFilter,
+              controlFilter: f.controlKind === "fact" ? (f.controlCampaign ? campaignFilter(f.controlCampaign) : null) : f.controlFilter.children.length ? f.controlFilter : null,
               primaryMetric: f.primaryMetric,
               criterion: { comparator: f.comparator, vs: f.vs, ...(f.vs === "absolute" ? { value: f.value } : {}), ...(f.minDays ? { minDays: Number(f.minDays) } : {}) },
               startDate: f.startDate,
@@ -159,8 +165,10 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
   const why =
     !f.name.trim() ? t("experiments.form.needName")
     : !f.hypothesis.trim() ? t("experiments.form.needHypothesis")
-    : f.testFilter.children.length === 0 ? t("experiments.form.needTest")
-    : f.vs === "control" && f.controlFilter.children.length === 0 ? t("experiments.form.needControl")
+    : f.testKind === "fact" && !f.testCampaign ? t("experiments.form.needTestCampaign")
+    : f.testKind === "envelope" && f.testFilter.children.length === 0 ? t("experiments.form.needTest")
+    : f.vs === "control" && f.controlKind === "fact" && !f.controlCampaign ? t("experiments.form.needControlCampaign")
+    : f.vs === "control" && f.controlKind === "envelope" && f.controlFilter.children.length === 0 ? t("experiments.form.needControl")
     : f.vs === "absolute" && !/^-?\d+(\.\d{1,4})?$/.test(f.value) ? t("experiments.form.needValue")
     : f.startDate > f.endDate ? t("experiments.form.badDates")
     : create.isPending ? t("shell.loading")
@@ -213,18 +221,30 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
           </Select>
         </Label>
       </div>
-      <div className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium">{t("experiments.form.testScope")}</span>
-        <div data-testid="experiment-test-scope">
-          <FilterBar filter={f.testFilter} dimensions={dimensions} onChange={(testFilter) => set({ testFilter })} />
-        </div>
-      </div>
-      <div className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium">{t("experiments.form.controlScope")}</span>
-        <div data-testid="experiment-control-scope">
-          <FilterBar filter={f.controlFilter} dimensions={dimensions} onChange={(controlFilter) => set({ controlFilter })} />
-        </div>
-      </div>
+      <SideScope
+        ws={ws}
+        side="test"
+        kind={f.testKind}
+        onKind={(testKind) => set({ testKind })}
+        campaign={f.testCampaign}
+        onCampaign={(testCampaign) => set({ testCampaign })}
+        filter={f.testFilter}
+        onFilter={(testFilter) => set({ testFilter })}
+        dimensions={dimensions}
+        window={{ start: f.startDate, end: f.endDate }}
+      />
+      <SideScope
+        ws={ws}
+        side="control"
+        kind={f.controlKind}
+        onKind={(controlKind) => set({ controlKind })}
+        campaign={f.controlCampaign}
+        onCampaign={(controlCampaign) => set({ controlCampaign })}
+        filter={f.controlFilter}
+        onFilter={(controlFilter) => set({ controlFilter })}
+        dimensions={dimensions}
+        window={{ start: f.startDate, end: f.endDate }}
+      />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Label text={t("experiments.form.success")}>
           <Select className={field} value={`${f.vs}:${f.comparator}`} onChange={(e) => { const [vs, comparator] = e.target.value.split(":") as ["control" | "absolute", "lte" | "gte"]; set({ vs, comparator }); }} data-testid="experiment-criterion">
@@ -254,6 +274,58 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
       </div>
       {create.error ? <p role="alert" className="text-sm text-destructive">{create.error.message}</p> : null}
     </Dialog>
+  );
+}
+
+type SideKind = "fact" | "envelope";
+const campaignFilter = (code: string): FilterGroupT => ({ logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: code }] });
+
+/**
+ * EX-2: one side's scope in the create form — a campaign found in the spend data in the window
+ * (fact-scoped, independent of budgets), or budgets picked with the filter bar (envelope-scoped).
+ */
+function SideScope(props: {
+  ws: string;
+  side: "test" | "control";
+  kind: SideKind;
+  onKind: (k: SideKind) => void;
+  campaign: string;
+  onCampaign: (code: string) => void;
+  filter: FilterGroupT;
+  onFilter: (g: FilterGroupT) => void;
+  dimensions: Dimension[];
+  window: { start: string; end: string };
+}): ReactElement {
+  const { ws, side, kind, campaign, window } = props;
+  const { data: values = [], isFetching } = useQuery({ ...scopeValuesQuery(ws, window.start, window.end), enabled: kind === "fact" && window.start <= window.end && /^\d{4}-\d{2}-\d{2}$/.test(window.start) && /^\d{4}-\d{2}-\d{2}$/.test(window.end) });
+  return (
+    <div className="flex flex-col gap-1.5 text-sm" data-testid={`experiment-${side}-side`} data-tour={`experiment-${side}-scope`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{t(side === "test" ? "experiments.readout.test" : "experiments.readout.control")}</span>
+        <span className="text-muted-foreground">· {t("experiments.scope.kind")}</span>
+        <Select size="sm" value={kind} onChange={(e) => props.onKind(e.target.value as SideKind)} data-testid={`experiment-${side}-kind`}>
+          <option value="fact">{t("experiments.scope.fact")}</option>
+          <option value="envelope">{t("experiments.scope.envelope")}</option>
+        </Select>
+      </div>
+      {kind === "fact" ? (
+        <>
+          <Select className={field} value={campaign} onChange={(e) => props.onCampaign(e.target.value)} aria-label={t(side === "test" ? "experiments.scope.testCampaign" : "experiments.scope.controlCampaign")} data-testid={`experiment-${side}-campaign`}>
+            <option value="">{isFetching ? t("shell.loading") : values.length ? t("experiments.scope.pickCampaign", { count: values.length }) : t("experiments.scope.noCampaigns")}</option>
+            {values.map((v) => (
+              <option key={v.code} value={v.code}>
+                {t("experiments.scope.campaignOption", { name: v.label ?? v.code, spend: v.spend ? formatMoney(v.spend, "USD") : "—", days: v.days })}
+              </option>
+            ))}
+          </Select>
+          <span className="text-xs text-muted-foreground">{t("experiments.scope.campaignHelp")}</span>
+        </>
+      ) : (
+        <div data-testid={`experiment-${side}-scope`}>
+          <FilterBar filter={props.filter} dimensions={props.dimensions} onChange={props.onFilter} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -288,7 +360,7 @@ export function ConcludeDialog({ ws, experiment, onClose, onDone }: { ws: string
         </>
       }
     >
-      <p className="text-sm text-muted-foreground">{t("experiments.conclude.help", { count: experiment.envelopes.length })}</p>
+      <p className="text-sm text-muted-foreground">{experiment.envelopes.length === 0 ? t("experiments.conclude.factOnly") : t("experiments.conclude.help", { count: experiment.envelopes.length })}</p>
       <Textarea className={cn(field, "h-32 py-2")} value={decision} onChange={(e) => setDecision(e.target.value)} placeholder={t("experiments.conclude.placeholder")} autoFocus data-testid="conclude-decision" />
       {conclude.error ? <p role="alert" className="text-sm text-destructive">{conclude.error.message}</p> : null}
     </Dialog>

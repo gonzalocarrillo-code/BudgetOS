@@ -105,6 +105,8 @@ import {
   LinkEnvelopeInput,
   ConcludeExperimentInput,
   ExperimentReadout,
+  ExperimentScopeValue,
+  ExperimentSides,
   TimelineResponse,
   TreeRequest,
   TreeResponse,
@@ -533,8 +535,22 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "createExperiment", parameters: [workspaceParam], requestBody: json(CreateExperimentInput), responses: { "201": { description: "The experiment, PLANNED" } } },
       },
       "/api/v1/experiments/{id}": {
-        get: { operationId: "getExperiment", parameters: [idParam, workspaceHeader], responses: { "200": { description: "{ experiment, readout }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met", ...json(ExperimentReadout) } } },
-        patch: { operationId: "updateExperiment", parameters: [idParam, workspaceHeader], requestBody: json(UpdateExperimentInput), responses: { "200": { description: "Updated (not once concluded or abandoned)" } } },
+        get: { operationId: "getExperiment", parameters: [idParam, workspaceHeader], responses: { "200": { description: "{ experiment, readout, sides }: the planner's totals and weighted primary metric for test and control over the window, the delta and whether the criterion is met; `sides` (EX-2) is each side's facts per day to today (a day without facts is hasData false with null values) and its totals over the days with data", ...json(z.object({ experiment: z.record(z.unknown()), readout: ExperimentReadout, sides: ExperimentSides })) } } },
+        patch: { operationId: "updateExperiment", parameters: [idParam, workspaceHeader], requestBody: json(UpdateExperimentInput), responses: { "200": { description: "Updated. Dates are editable in every status (a concluded experiment's move also posts a system comment on its linked budgets); nothing else once concluded or abandoned (409)" } } },
+        delete: { operationId: "deleteExperiment", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Permanently deleted with its envelope links (irreversible); the audit trail is kept" }, "403": { description: "Not the experiment's owner nor a workspace admin" } } },
+      },
+      "/api/v1/workspaces/{ws}/experiments/scope-values": {
+        get: {
+          operationId: "listExperimentScopeValues",
+          parameters: [
+            workspaceParam,
+            { name: "key", in: "query", required: false, schema: { type: "string" }, description: "Fact dimension key (default campaign)" },
+            { name: "start", in: "query", required: true, schema: { type: "string", format: "date" } },
+            { name: "end", in: "query", required: true, schema: { type: "string", format: "date" } },
+            { name: "includeDemo", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] } },
+          ],
+          responses: { "200": { description: "The dimension's values found in spend facts in the window, largest spend first (the campaign picker)", ...json(z.array(ExperimentScopeValue)) } },
+        },
       },
       "/api/v1/experiments/{id}/link": {
         post: { operationId: "linkExperimentEnvelope", parameters: [idParam, workspaceHeader], requestBody: json(LinkEnvelopeInput), responses: { "201": { description: "Linked; a TEST envelope gets the system tag `experiment`" } } },
