@@ -177,3 +177,137 @@ describe("change a budget's dates (R9-002)", () => {
     expect(patch.status).toBe(422);
   });
 });
+
+/**
+ * W3-5 (audit I-17): the approval re-checks what the request checked. A budget moved, re-dated or
+ * ended while its dates wait, or a child that would fall outside them, sends the request back
+ * (CHANGES_REQUESTED, with the reason) instead of writing dates that break the tree. Every line of
+ * the request is held while it is open.
+ */
+describe("a dates approval re-validates the tree (W3-5)", () => {
+  const dims = (key: string) => ({ ...((plan.find((p) => p.key === key)?.dimensionValues ?? {}) as Record<string, string>) });
+  const request = async (envelopeId: string, endDate: string, trimChildren = false) => {
+    const e = await env(envelopeId);
+    const res = await as("planner", "POST", `/api/v1/envelopes/${envelopeId}/dates`, { startDate: e.startDate, endDate, basedOnVersionId: e.draftVersionId ?? e.currentVersionId, trimChildren, rationale: "W3-5" });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ applied: false, autoApproved: false });
+    return String(res.body["requestId"]);
+  };
+  const approve = (requestId: string, xRequestId?: string) => as("admin", "POST", `/api/v1/approvals/${requestId}/decisions`, { decision: "approve" }, xRequestId);
+  const draftChild = async (parentKey: string, name: string) => {
+    const parent = await env(id(parentKey));
+    const res = await as("admin", "POST", `/api/v1/workspaces/${golden.workspaceId}/envelopes`, { name, parentId: id(parentKey), dimensionValues: dims(parentKey), startDate: parent.startDate, endDate: parent.endDate, currency: "USD", amount: "900.00" });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return String(res.body["id"]);
+  };
+  /** The request went back with the reason: status, blocking thread, one audit row and one outbox row. */
+  async function expectSentBack(requestId: string, reason: string) {
+    expect((await owner.approvalRequest.findUniqueOrThrow({ where: { id: requestId } })).status).toBe("CHANGES_REQUESTED");
+    const audits = await owner.$queryRawUnsafe<Array<{ after: { stale?: { reason?: string } } }>>(`SELECT after FROM audit_event WHERE entity_id = $1::uuid AND action = 'approval.request_changes'`, requestId);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.after.stale?.reason).toBe(reason);
+    const [out] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'approval.changed' AND payload->>'requestId' = $1 AND payload->>'action' = 'approval.request_changes'`, requestId);
+    expect(Number(out?.n)).toBe(1);
+    const thread = await owner.thread.findFirstOrThrow({ where: { anchorType: "approval_request", anchorId: requestId, isBlocking: true }, include: { comments: true } });
+    expect(thread.comments[0]?.bodyMd).toContain("re-request the dates");
+  }
+
+  it("(a) a budget moved under a shorter parent while it waits: the approval sends the request back and writes no dates", async () => {
+    const leaf = kids("EMEA/FR/meta/awareness")[0] as string;
+    const before = await env(leaf);
+    const requestId = await request(leaf, twoMonthsEarlier(before.endDate));
+    expect((await env(leaf)).status).toBe("PENDING");
+    // The interleaving of audit I-17: a move that went through while the dates waited (the hold now
+    // refuses it, so it is written directly) put the budget under a parent that runs Q1 only.
+    const shortParent = id("EMEA/FR/google_ads/awareness");
+    await owner.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-03-31' WHERE id = $1::uuid`, shortParent);
+    await owner.$executeRawUnsafe(`UPDATE envelope SET parent_id = $2::uuid WHERE id = $1::uuid`, leaf, shortParent);
+
+    const res = await approve(requestId);
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body["details"]).toMatchObject({ envelopeId: leaf, reason: "moved" });
+    expect(String(res.body["message"])).toContain("re-request the dates");
+    await expectSentBack(requestId, "moved");
+    expect(await env(leaf)).toMatchObject({ status: "APPROVED", startDate: before.startDate, endDate: before.endDate, currentVersionId: before.currentVersionId });
+  }, 120_000);
+
+  it("(b) a never-approved child the request trims is held; a re-date that slipped through is not reverted", async () => {
+    const parentKey = "EMEA/FR/meta/consideration";
+    const parent = await env(id(parentKey));
+    const childId = await draftChild(parentKey, "W3-5 held draft");
+    const requestId = await request(id(parentKey), twoMonthsEarlier(parent.endDate), true);
+    const held = await env(childId);
+    expect(held.status).toBe("PENDING");
+
+    // Held: not re-dated (either route), moved or ended while the request is open.
+    const waiting = `Waiting for approval: request ${requestId}`;
+    const redate = await as("admin", "POST", `/api/v1/envelopes/${childId}/dates`, { startDate: held.startDate, endDate: "2026-09-30", basedOnVersionId: held.draftVersionId });
+    expect(redate.status, JSON.stringify(redate.body)).toBe(409);
+    expect(redate.body["message"]).toBe(waiting);
+    const patch = await as("admin", "PATCH", `/api/v1/envelopes/${childId}`, { rowVersion: held.rowVersion, endDate: "2026-09-30" });
+    expect(patch.status, JSON.stringify(patch.body)).toBe(409);
+    expect(patch.body["message"]).toBe(waiting);
+    const moved = await as("admin", "POST", `/api/v1/envelopes/${childId}/move`, { parentId: id("EMEA/FR/meta/conversion"), rowVersion: held.rowVersion });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(409);
+    expect(moved.body["message"]).toBe(waiting);
+
+    // The interleaving of audit I-17: the child was re-dated at once (it has no approved amount).
+    await owner.$executeRawUnsafe(`UPDATE envelope SET end_date = '2026-09-30', row_version = row_version + 1 WHERE id = $1::uuid`, childId);
+    const res = await approve(requestId);
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body["details"]).toMatchObject({ envelopeId: childId, reason: "redated" });
+    await expectSentBack(requestId, "redated");
+    expect(await env(childId)).toMatchObject({ status: "DRAFT", endDate: "2026-09-30" });
+    expect(await env(id(parentKey))).toMatchObject({ status: "APPROVED", endDate: parent.endDate, currentVersionId: parent.currentVersionId });
+    for (const k of kids(parentKey)) expect((await env(k)).status).toBe("APPROVED");
+  }, 120_000);
+
+  it("a budget moved under it meanwhile that falls outside the new dates sends the request back", async () => {
+    const parentKey = "EMEA/FR/tiktok/awareness";
+    const parent = await env(id(parentKey));
+    const requestId = await request(id(parentKey), twoMonthsEarlier(parent.endDate), true);
+    // The new parent is not held: a budget can still move under it, here one that runs the whole year.
+    await owner.envelope.update({ where: { id: id(parentKey) }, data: { allowOverAllocation: true } });
+    const stray = kids("EMEA/FR/tiktok/consideration")[0] as string;
+    const moved = await as("planner", "POST", `/api/v1/envelopes/${stray}/move`, { parentId: id(parentKey), rowVersion: (await env(stray)).rowVersion });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(201);
+
+    const res = await approve(requestId);
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body["details"]).toMatchObject({ envelopeId: id(parentKey), reason: "child_outside", childId: stray });
+    await expectSentBack(requestId, "child_outside");
+    expect((await env(id(parentKey))).endDate).toBe(parent.endDate);
+  }, 120_000);
+
+  it("the happy path still applies every line's dates, with one audit row and one outbox row per line", async () => {
+    const parentKey = "EMEA/GB/meta/awareness";
+    const parent = await env(id(parentKey));
+    const childId = await draftChild(parentKey, "W3-5 trimmed draft");
+    const endDate = twoMonthsEarlier(parent.endDate);
+    const requestId = await request(id(parentKey), endDate, true);
+    const lines = [id(parentKey), ...kids(parentKey), childId];
+    for (const l of lines) expect((await env(l)).status).toBe("PENDING");
+
+    // A rename and a draft amount edit while the dates wait change nothing the dates rule reads:
+    // the request is not sent back, and the edited budget stays held.
+    const renamed = await as("admin", "PATCH", `/api/v1/envelopes/${id(parentKey)}`, { rowVersion: (await env(id(parentKey))).rowVersion, name: "GB meta awareness (renamed while waiting)" });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    const draft = await env(childId);
+    const edited = await as("admin", "PATCH", `/api/v1/envelopes/${childId}/draft`, { amount: "950.00", basedOnVersionId: draft.draftVersionId });
+    expect(edited.status, JSON.stringify(edited.body)).toBeLessThan(300);
+    expect((await env(childId)).status).toBe("PENDING");
+
+    const [mark] = await owner.$queryRawUnsafe<Array<{ id: bigint }>>(`SELECT coalesce(max(id), 0) AS id FROM outbox`);
+    const xRequestId = `dates-approve-${randomUUID()}`;
+    const res = await approve(requestId, xRequestId);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body["status"]).toBe("APPROVED");
+    for (const l of lines) {
+      expect(await env(l)).toMatchObject({ status: l === childId ? "DRAFT" : "APPROVED", endDate });
+      const [a] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE request_id = $1 AND entity_type = 'envelope' AND entity_id = $2::uuid`, xRequestId, l);
+      expect(Number(a?.n), `audit for ${l}`).toBe(1);
+      const [o] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE id > $1 AND topic = 'budget.changed' AND payload->>'envelopeId' = $2`, mark?.id ?? 0n, l);
+      expect(Number(o?.n), `outbox for ${l}`).toBe(1);
+    }
+  }, 120_000);
+});

@@ -8,11 +8,13 @@ import {
   lockApprovalRequest,
   lockEnvelopes,
   lockParentCap,
+  lockTreeShape,
   outbox,
   recomputeNames,
   withTenant,
   type BulkEndPayload,
   type LockedEnvelopeRow,
+  type LockedRequestRow,
   type Tx,
 } from "@budget/db";
 import { Decimal } from "decimal.js";
@@ -21,17 +23,36 @@ import { parseId, parseInput, requireWorkspace } from "../../../common/parse-inp
 import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { computeDiff } from "../../approvals/diff.js";
-import { addHours, closeRequest, finalizeBulk, openBlockingThread, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
+import { OPEN_STATUSES, addHours, closeRequest, finalizeBulk, openBlockingThread, recordRequestChange, type PolicySnapshot } from "../../approvals/engine.js";
 import { matchPolicy, requesterOf } from "../../approvals/policy-matcher.js";
 import { rephase } from "../bulk/allocate.js";
 import { insertEnvelopeRow } from "./create-envelope.js";
-import { assertBasedOnHead, assertDraftNotPending, lockForWrite, recordEnvelopeChange, resolveFx, writeDraftVersion } from "./version-writer.js";
+import { assertBasedOnHead, assertDraftNotPending, assertNotHeld, lockForWrite, recordEnvelopeChange, resolveFx, writeDraftVersion } from "./version-writer.js";
 
 /**
  * Move / split / merge (spec §7.5, plan §4.3): lineage in envelope_lineage, caps re-validated,
  * `envelope.move` permission. Split and merge never edit an approved amount: each source gets a
  * zero-amount version and is archived once the change is approved, so its history and as_of reads
  * stay intact and the new siblings fit the parent's cap.
+ */
+
+/*
+ * Lock order (W3-5, audit I-15; ADR-039 addendum). Every write that touches the budget tree takes
+ * its locks in this order, and validates only once it holds them:
+ *
+ *   1. the tree lock of the workspace (`lockTreeShape`, an advisory lock) — moves only, so two
+ *      moves that would close a cycle together run one after the other;
+ *   2. the approval request (`lockApprovalRequest`) — a move finds the open request of the budget
+ *      with a plain read first, then locks it; a decision or a withdrawal starts with it;
+ *   3. envelopes, by id (`lockEnvelopes`): a move locks the budget, its old parent and its new
+ *      parent; a decision locks every budget of the request and their parents
+ *      (`lockRequestEnvelopes`); a date change locks the budget, its parent and its subtree;
+ *   4. the workspace row (`bumpDataVersion`), last.
+ *
+ * Re-locking a row already held is a no-op, so the per-row locks taken further down (lockForWrite,
+ * lockParentCap, approveVersion) never wait once the set above is held. Before W3-5 a move locked
+ * envelope → new parent → request while a decision locked request → parent → envelope, and a
+ * concurrent pair deadlocked (Postgres 40P01, a 500); so did cross-moves (A under B, B under A).
  */
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -46,16 +67,35 @@ export async function moveEnvelope(prisma: PrismaClient, auth: AuthContext, rawI
   return withTenant(prisma, auth.ctx, (tx) => moveIn(tx, auth, envelopeId, input));
 }
 
+/** The open single-version request of a budget, read without a lock (the lock comes in order, below). */
+async function openVersionRequestId(tx: Tx, envelopeId: string): Promise<string | null> {
+  const versionIds = (await tx.envelopeVersion.findMany({ where: { envelopeId }, select: { id: true } })).map((v) => v.id);
+  const open = await tx.approvalRequest.findFirst({ where: { entityType: "envelope_version", entityId: { in: versionIds }, status: { in: ["PENDING", "ESCALATED"] } }, select: { id: true } });
+  return open?.id ?? null;
+}
+
 export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, input: MoveEnvelopeInput) {
+  // Lock order (top of this file): tree, request, envelopes by id; then validate.
+  const before = await tx.envelope.findUnique({ where: { id: envelopeId }, select: { workspaceId: true, parentId: true } });
+  if (before === null) throw new DomainError("NOT_FOUND", "Envelope not found");
+  await lockTreeShape(tx, before.workspaceId);
+  const openId = await openVersionRequestId(tx, envelopeId);
+  const request = openId === null ? null : await lockApprovalRequest(tx, openId);
+  await lockEnvelopes(tx, [envelopeId, ...[before.parentId, input.parentId].filter((p): p is string => p !== null)]);
   const env = await lockForWrite(tx, auth, envelopeId, "envelope.move");
   if (input.rowVersion !== env.rowVersion) {
     throw new DomainError("CONFLICT", "Envelope changed since you loaded it", { currentRowVersion: env.rowVersion, currentVersionId: env.draftVersionId ?? env.currentVersionId });
   }
+  // The row version matched under the lock, so the parent read above is still the parent. A request
+  // submitted since the plain read is not the one locked above: refuse rather than lock it out of order.
+  if ((await openVersionRequestId(tx, envelopeId)) !== openId) throw new DomainError("CONFLICT", "Envelope changed since you loaded it", { currentRowVersion: env.rowVersion });
+  await assertNotHeld(tx, [envelopeId]); // W3-5: a budget in an open split, merge, end or date change stays put
   const row = await tx.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { parentId: true, name: true } });
   if (row.parentId === input.parentId) throw new DomainError("VALIDATION", "The envelope is already under that parent");
 
   if (input.parentId !== null) {
-    // No cycles: the new parent must not be the envelope or one of its descendants.
+    // No cycles: the new parent must not be the envelope or one of its descendants. The tree lock
+    // keeps every other move out while this walks up, so the walk sees the tree as it will commit.
     for (let p: string | null = input.parentId, depth = 0; p !== null && depth < 64; depth += 1) {
       if (p === envelopeId) throw new DomainError("VALIDATION", "An envelope cannot move under itself or its own descendant");
       p = (await tx.envelope.findUnique({ where: { id: p }, select: { parentId: true } }))?.parentId ?? null;
@@ -86,7 +126,7 @@ export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, inpu
   });
 
   // Re-route an open request if the move changes which policy it would match (spec §7.5).
-  const rerouted = await rerouteOpenRequest(tx, auth, envelopeId, row.name);
+  const rerouted = await rerouteOpenRequest(tx, auth, request, row.name);
   await recordEnvelopeChange(tx, auth, {
     workspaceId: env.workspaceId,
     envelopeId,
@@ -99,19 +139,16 @@ export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, inpu
   return { envelopeId, parentId: input.parentId, lineageId, reroutedRequestId: rerouted };
 }
 
-async function rerouteOpenRequest(tx: Tx, auth: AuthContext, envelopeId: string, name: string): Promise<string | null> {
-  const versionIds = (await tx.envelopeVersion.findMany({ where: { envelopeId }, select: { id: true } })).map((v) => v.id);
-  const open = await tx.approvalRequest.findFirst({ where: { entityType: "envelope_version", entityId: { in: versionIds }, status: { in: ["PENDING", "ESCALATED"] } } });
-  if (open === null) return null;
+/** `open`: the budget's open request, already locked by moveIn in lock order. */
+async function rerouteOpenRequest(tx: Tx, auth: AuthContext, open: LockedRequestRow | null, name: string): Promise<string | null> {
+  if (open === null || !(OPEN_STATUSES as readonly string[]).includes(open.status)) return null;
   const diff = await computeDiff(tx, open.entityId);
   // Re-matched without a requester: the mover is not who asked, so rules on who asks do not apply here (ADR-040).
   const policy = await matchPolicy(tx, open.workspaceId, diff.facts);
   if (policy !== null && policy.id === open.policyId && policy.version === open.policyVersion) return null;
-  const locked = await lockApprovalRequest(tx, open.id);
-  if (locked === null) return null;
-  await closeRequest(tx, locked, "CHANGES_REQUESTED");
+  await closeRequest(tx, open, "CHANGES_REQUESTED");
   const comment = `[system] ${name} was moved; the change now matches ${policy ? `policy "${policy.name}" v${policy.version}` : "no policy"} instead of the one this request was routed by. Resubmit to route it again.`;
-  const threadId = await openBlockingThread(tx, auth.ctx, locked, comment);
+  const threadId = await openBlockingThread(tx, auth.ctx, open, comment);
   await recordRequestChange(tx, auth.ctx, open, "approval.rerouted", { status: "CHANGES_REQUESTED", threadId, newPolicy: policy?.name ?? null });
   return open.id;
 }

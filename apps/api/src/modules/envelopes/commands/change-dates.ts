@@ -1,11 +1,11 @@
 import { ChangeDatesInput, DomainError, rephase, type DateChangeLine, type DateChangePreview } from "@budget/domain";
-import { applyDates, audit, bumpDataVersion, lockEnvelope, outbox, withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { applyDates, audit, bumpDataVersion, lockEnvelope, lockEnvelopes, outbox, withTenant, type BulkDatesLine, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { routeStructural } from "./structure.js";
-import { assertBasedOnHead, lockForWrite, writeDraftVersion, type PhasingRow } from "./version-writer.js";
+import { assertBasedOnHead, assertNotHeld, lockForWrite, writeDraftVersion, type PhasingRow } from "./version-writer.js";
 
 /**
  * Changing a budget's dates (ADR-060, product feedback 2026-09-29).
@@ -17,6 +17,8 @@ import { assertBasedOnHead, lockForWrite, writeDraftVersion, type PhasingRow } f
  * - A budget never approved changes at once.
  * - The new dates must fit inside the parent's. Children that would fall outside are listed first
  *   and trimmed only with `trimChildren`; a child entirely outside the new dates must move first.
+ * - W3-5: every budget the change moves is held until the request is decided, and the approval
+ *   checks all of the above again (approvals/revalidate-dates.ts) before it writes any date.
  */
 
 const DAY = 86_400_000;
@@ -71,9 +73,28 @@ async function lockNamed(tx: Tx, id: string) {
   return { ...env, name: row.displayName ?? row.name, parentId: row.parentId };
 }
 
+/**
+ * W3-5 lock order (structure.ts): the budget, its parent and every budget under it, by id, before
+ * any other lock, so a date change and a move or a decision on the same family wait for each other
+ * instead of deadlocking. A budget moved in after this read is locked when it is reached.
+ */
+async function lockFamily(tx: Tx, envelopeId: string): Promise<void> {
+  const root = await tx.envelope.findUnique({ where: { id: envelopeId }, select: { parentId: true } });
+  if (root === null) return; // lockForWrite says NOT_FOUND
+  const ids = [envelopeId, ...(root.parentId === null ? [] : [root.parentId])];
+  let frontier = [envelopeId];
+  for (let depth = 0; frontier.length > 0 && depth < 64; depth += 1) {
+    frontier = (await tx.envelope.findMany({ where: { parentId: { in: frontier }, status: { not: "ARCHIVED" } }, select: { id: true } })).map((k) => k.id);
+    ids.push(...frontier);
+  }
+  await lockEnvelopes(tx, [...new Set(ids)]);
+}
+
 async function planDates(tx: Tx, auth: AuthContext, envelopeId: string, input: ChangeDatesInput): Promise<Plan> {
+  await lockFamily(tx, envelopeId);
   const locked = await lockForWrite(tx, auth, envelopeId, "envelope.edit_draft");
   assertBasedOnHead(locked, input.basedOnVersionId);
+  await assertNotHeld(tx, [envelopeId]);
   const root = await lockNamed(tx, envelopeId);
   const to = { startDate: input.startDate, endDate: input.endDate };
   if (to.startDate === root.startDate && to.endDate === root.endDate) throw new DomainError("VALIDATION", "These are already the budget's dates");
@@ -106,6 +127,8 @@ async function planDates(tx: Tx, auth: AuthContext, envelopeId: string, input: C
       queue.push({ id: child.id, range: next });
     }
   }
+  // A child the change would trim, held by another open request, keeps its dates until that is decided.
+  if (lines.length > 1) await assertNotHeld(tx, lines.slice(1).map((l) => l.envelopeId));
   const oldDays = days(root.startDate, root.endDate);
   const newDays = days(to.startDate, to.endDate);
   const overlap = Math.max(0, days(later(root.startDate, to.startDate), earlier(root.endDate, to.endDate)));
@@ -162,7 +185,6 @@ export async function changeDatesIn(tx: Tx, auth: AuthContext, workspaceId: stri
   }
   const note = (l: Line) => `Dates ${l.from.startDate} – ${l.from.endDate} → ${l.to.startDate} – ${l.to.endDate}${input.rationale ? `: ${input.rationale}` : ""}`;
   const versionIds: string[] = [];
-  const held: string[] = [];
   let amountReporting = new Decimal(0);
   for (const l of plan.lines) {
     const draftStatus = await versionStatus(tx, l.env.draftVersionId);
@@ -177,7 +199,6 @@ export async function changeDatesIn(tx: Tx, auth: AuthContext, workspaceId: stri
       const phasing = respread(await phasingOf(tx, current.id), amount, l.to);
       const v = await writeDraftVersion(tx, auth, target, { amount, phasing, rationale: note(l), attachments: [] });
       versionIds.push(v.id);
-      held.push(l.envelopeId);
       amountReporting = amountReporting.plus(new Decimal(current.amountReporting.toString()));
     } else if (l.env.draftVersionId !== null) {
       // A budget never approved: its draft's phasing moves into the new dates in a new draft.
@@ -200,19 +221,22 @@ export async function changeDatesIn(tx: Tx, auth: AuthContext, workspaceId: stri
     return { envelopeId, applied: true, requestId: null, autoApproved: false, lines: view(plan).lines };
   }
 
+  // W3-5: each line's parent and dates as planned, so the approval can tell it was moved or re-dated meanwhile.
+  const requested: BulkDatesLine[] = plan.lines.map((l) => ({ envelopeId: l.envelopeId, startDate: l.to.startDate, endDate: l.to.endDate, parentId: l.env.parentId, from: l.from }));
   const routed = await routeStructural(tx, auth, {
     kind: "dates",
     workspaceId,
     versionIds,
     archiveIds: [],
     createdIds: [],
-    // Only budgets with a new version wait: a rejection gives each its status back through that version.
-    holdIds: held,
+    // Every budget the change moves waits (W3-5), with or without a new version: the hold refuses a
+    // move, a re-date or an end until the request is decided, and the decision gives the status back.
+    holdIds: plan.lines.map((l) => l.envelopeId),
     amountReporting: amountReporting.toDecimalPlaces(2),
     deltaAbs: amountReporting.mul(plan.movedShare).toDecimalPlaces(2),
     deltaPct: plan.movedShare,
     rationale: input.rationale || `Change the dates of ${plan.lines[0]?.name ?? "a budget"} to ${input.startDate} – ${input.endDate}`,
-    payload: { dates },
+    payload: { dates: requested },
   });
   await audit(tx, {
     workspaceId,

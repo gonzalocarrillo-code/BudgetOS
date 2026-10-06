@@ -1,5 +1,5 @@
 import { DomainError, newId, type Action } from "@budget/domain";
-import { audit, bumpDataVersion, lockEnvelope, outbox, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { audit, bumpDataVersion, lockEnvelope, outbox, structuralRequestHolding, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Prisma } from "@prisma/client";
 import { assertInScope, envelopeScopeTarget } from "../../../common/scope.guard.js";
@@ -35,6 +35,18 @@ export async function assertDraftNotPending(tx: Tx, env: LockedEnvelopeRow): Pro
   if (draft?.status === "PENDING") {
     throw new DomainError("CONFLICT", "A version of this envelope is awaiting approval", { currentVersionId: env.draftVersionId });
   }
+}
+
+/**
+ * W3-5 (audit I-17): a budget that is part of an open structural request (split, merge, end,
+ * reintroduce, dates) is held until the request is decided. Moving it, changing its dates, ending
+ * or reintroducing it would change what the approver is looking at, and the approval would then
+ * write onto a tree that no longer matches. Draft amount edits are a different kind of change and
+ * stay allowed (a draft under approval is still frozen by `assertDraftNotPending`).
+ */
+export async function assertNotHeld(tx: Tx, envelopeIds: string[]): Promise<void> {
+  const held = await structuralRequestHolding(tx, envelopeIds);
+  if (held !== null) throw new DomainError("CONFLICT", `Waiting for approval: request ${held.requestId}`, { requestId: held.requestId, kind: held.kind });
 }
 
 // FX lives beside the queries so reads can use it without importing a command (the MCP guard).
@@ -100,7 +112,8 @@ export async function writeDraftVersion(tx: Tx, auth: AuthContext, env: LockedEn
   }
   await tx.envelope.update({
     where: { id: env.id },
-    data: { draftVersionId: version.id, status: env.status === "APPROVED" ? "APPROVED" : "DRAFT", rowVersion: { increment: 1 } },
+    // A held budget (W3-5: a line of an open structural request) stays PENDING through a draft edit.
+    data: { draftVersionId: version.id, status: env.status === "APPROVED" || env.status === "PENDING" ? env.status : "DRAFT", rowVersion: { increment: 1 } },
   });
   return version;
 }

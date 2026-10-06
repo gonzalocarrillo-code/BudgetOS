@@ -4,21 +4,28 @@ import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { DIRECT_ROLES } from "../policy-matcher.js";
-import { advanceIfComplete, assertEnvelopeRequest, assertNotLocked, assertOpen, closeRequest, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
+import { advanceIfComplete, assertEnvelopeRequest, assertNotLocked, assertOpen, closeRequest, lockRequestEnvelopes, openBlockingThread, recordRequestChange, requestTargets, snapshotOf } from "../engine.js";
+import { STALE_REASON_TEXT, StaleRequestError } from "../revalidate-dates.js";
 
 /**
  * POST /approvals/:id/decisions (spec §9.3). Eligibility = SQL eligible_approver() (step role,
  * step group, blockSelfApproval vs the requester) AND the app check: the step role's scope covers
  * the envelope and the decider is not the version's author (spec §5.4). An admin's approval is
  * final: the request is approved, whatever steps remain (ADR-048).
+ *
+ * Lock order (W3-5; structure.ts has the whole order): the request, then every envelope the
+ * decision may write, by id. When the approval finds the tree changed under a date change
+ * (StaleRequestError), the request goes back for changes — committed, with the reason on a blocking
+ * thread, one audit row and one outbox row — and the approver gets the 409 with that reason.
  */
 export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequestId: string, raw: unknown) {
   const requestId = parseId(rawRequestId);
   const input = parseInput(DecideInput, raw);
-  return withTenant(prisma, auth.ctx, async (tx) => {
+  const result = await withTenant(prisma, auth.ctx, async (tx) => {
     const r = await lockApprovalRequest(tx, requestId);
     if (r === null) throw new DomainError("NOT_FOUND", "Request not found");
     assertOpen(r);
+    await lockRequestEnvelopes(tx, r);
     assertEnvelopeRequest(r);
     await assertNotLocked(tx, r);
     const snapshot = snapshotOf(r);
@@ -56,10 +63,25 @@ export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequest
       outcome = "CHANGES_REQUESTED";
     } else {
       const admin = auth.isOrgAdmin || auth.roles.some((role) => (DIRECT_ROLES as readonly string[]).includes(role));
-      const advanced = await advanceIfComplete(tx, auth.ctx, r, snapshot, admin);
-      outcome = advanced === "approved" ? "APPROVED" : advanced === "advanced" ? "PENDING" : r.status;
+      try {
+        const advanced = await advanceIfComplete(tx, auth.ctx, r, snapshot, admin);
+        outcome = advanced === "approved" ? "APPROVED" : advanced === "advanced" ? "PENDING" : r.status;
+      } catch (error) {
+        // Thrown before the approval wrote anything (revalidate-dates.ts), so the transaction is clean.
+        if (!(error instanceof StaleRequestError)) throw error;
+        await closeRequest(tx, r, "CHANGES_REQUESTED");
+        const env = await tx.envelope.findUnique({ where: { id: error.envelopeId }, select: { name: true, displayName: true } });
+        const who = env ? (env.displayName ?? env.name) : "A budget in this change";
+        const comment = `[system] ${who}: ${STALE_REASON_TEXT[error.reason]}. ${error.message}.`;
+        const stale = await openBlockingThread(tx, auth.ctx, r, comment);
+        await recordRequestChange(tx, auth.ctx, r, "approval.request_changes", { step: r.currentStep, comment, status: "CHANGES_REQUESTED", threadId: stale, stale: error.details ?? null });
+        return { stale: error };
+      }
     }
     await recordRequestChange(tx, auth.ctx, r, `approval.${input.decision}`, { step: r.currentStep, comment: input.comment ?? null, status: outcome, threadId });
     return { requestId: r.id, status: outcome };
   });
+  // The request went back for changes (committed above); the approver is told why.
+  if ("stale" in result) throw result.stale;
+  return result;
 }

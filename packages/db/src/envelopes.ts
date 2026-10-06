@@ -24,3 +24,13 @@ export async function lockEnvelope(tx: Tx, envelopeId: string): Promise<LockedEn
     FROM envelope WHERE id = ${envelopeId}::uuid FOR UPDATE`;
   return rows[0] ?? null;
 }
+
+/**
+ * Serializes changes to the shape of one workspace's tree (W3-5, audit I-15): two moves that would
+ * each be fine alone can close a cycle together (A under a descendant of B while B goes under a
+ * descendant of A), and row locks on the moved budgets and their parents do not see that. Taken
+ * first, before any request or envelope lock; only moves take it. Held until the transaction ends.
+ */
+export async function lockTreeShape(tx: Tx, workspaceId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('envelope-tree:' || ${workspaceId}, 0))`;
+}

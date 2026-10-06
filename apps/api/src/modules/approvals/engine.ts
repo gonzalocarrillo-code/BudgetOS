@@ -1,10 +1,11 @@
 import { DomainError, newId } from "@budget/domain";
-import { applyDates, applyEnd, archiveEnvelopes, audit, closeBulkVersions, loadBulkChange, outbox, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
+import { applyDates, applyEnd, archiveEnvelopes, audit, auditMany, bumpDataVersion, closeBulkVersions, loadBulkChange, lockEnvelopes, outbox, releaseHeld, type BulkChangeRow, type LockedRequestRow, type TenantContext, type Tx } from "@budget/db";
 import { clock } from "../../common/clock.js";
 import { approveTargetVersion } from "../targets/commands/approve-target-version.js";
 import { approveVersion } from "./commands/approve-version.js";
 import { approveManualEntry, reopenManualEntry } from "../manual-entry/commands/manual-entry.js";
 import { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "./read.js";
+import { revalidateDates } from "./revalidate-dates.js";
 
 export { OPEN_STATUSES, PolicySnapshot, SUPPORTED_ENTITY_TYPES, requestTargets } from "./read.js";
 export type { RequestTargets } from "./read.js";
@@ -36,14 +37,55 @@ export async function assertNotLocked(tx: Tx, r: { entityType: string; entityId:
   if (locked > 0) throw new DomainError("LOCKED", "Period is closed; restate via closure", { lockedEnvelopes: locked });
 }
 
+/** Every envelope a bulk change touches: its versions' budgets, sources, new budgets, the ended budget, the dated lines. */
+async function bulkEnvelopeIds(tx: Tx, bulk: BulkChangeRow): Promise<string[]> {
+  const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { envelopeId: true } });
+  return [
+    ...new Set([
+      ...versions.map((v) => v.envelopeId),
+      ...bulk.archiveIds,
+      ...bulk.createdIds,
+      ...(bulk.payload.end ? [bulk.payload.end.envelopeId] : []),
+      ...(bulk.payload.dates ?? []).map((d) => d.envelopeId),
+    ]),
+  ];
+}
+
+/**
+ * W3-5 lock order (audit I-15; structure.ts has the whole order): right after the request's own
+ * lock, every envelope a decision on it may write, and their parents (the cap check locks those),
+ * in id order. Later locks on the same rows are then no-ops, so a decision never holds one budget
+ * while waiting for another that a move or a date change holds the other way round.
+ */
+export async function lockRequestEnvelopes(tx: Tx, r: { entityType: string; entityId: string }): Promise<void> {
+  let ids: string[];
+  if (r.entityType === "bulk_change") {
+    const bulk = await loadBulkChange(tx, r.entityId);
+    if (bulk === null) return;
+    ids = await bulkEnvelopeIds(tx, bulk);
+  } else if (r.entityType === "envelope_version") {
+    const v = await tx.envelopeVersion.findUnique({ where: { id: r.entityId }, select: { envelopeId: true } });
+    if (v === null) return;
+    ids = [v.envelopeId];
+  } else {
+    return; // targets and manual entries lock no envelope
+  }
+  const parents = await tx.envelope.findMany({ where: { id: { in: ids }, parentId: { not: null } }, select: { parentId: true } });
+  await lockEnvelopes(tx, [...new Set([...ids, ...parents.map((p) => p.parentId as string)])]);
+}
+
 /**
  * Approves every version of a bulk change (plan §9.3; split / merge per spec §7.5). Sources being
  * archived go first — their version is the zero amount — so the new siblings fit the parent's cap;
  * the rest go parents first. Then the sources are archived.
+ *
+ * A date change is checked again first (W3-5): if the tree moved since the request, this throws
+ * `StaleRequestError` before anything is written, and decide() returns the request for changes.
  */
 export async function finalizeBulk(tx: Tx, ctx: TenantContext, bulkChangeId: string, requestId: string | null, reason: string): Promise<void> {
   const bulk = await loadBulkChange(tx, bulkChangeId);
   if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
+  if (bulk.payload.dates) await revalidateDates(tx, bulk.payload.dates);
   const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { id: true, envelopeId: true } });
   // Sources that give their amount back (split / merge sources, an ended budget) go first, so the
   // new siblings (parts, the merge, a successor) fit the parent's cap; then parents before children.
@@ -55,7 +97,48 @@ export async function finalizeBulk(tx: Tx, ctx: TenantContext, bulkChangeId: str
   }
   await archiveEnvelopes(tx, bulk.archiveIds);
   if (bulk.payload.end) await applyEnd(tx, bulk.payload.end, bulk.createdBy); // H-011
-  if (bulk.payload.dates) await applyDates(tx, bulk.payload.dates); // ADR-060
+  if (bulk.payload.dates) await applyRequestedDates(tx, ctx, bulk, new Set(versions.map((v) => v.envelopeId)), requestId, reason); // ADR-060
+}
+
+/**
+ * The approved dates (ADR-060). Budgets with a version in the change were audited and announced by
+ * approveVersion; the others (never approved, trimmed with their parent) get their own audit row
+ * and outbox row here, and every held budget gets its resting status back (W3-5).
+ */
+async function applyRequestedDates(tx: Tx, ctx: TenantContext, bulk: BulkChangeRow, versioned: Set<string>, requestId: string | null, reason: string): Promise<void> {
+  const dates = bulk.payload.dates ?? [];
+  const rest = dates.filter((d) => !versioned.has(d.envelopeId));
+  const before = new Map(
+    (await tx.envelope.findMany({ where: { id: { in: rest.map((d) => d.envelopeId) } }, select: { id: true, workspaceId: true, startDate: true, endDate: true } })).map((e) => [e.id, e]),
+  );
+  await applyDates(tx, dates);
+  await releaseHeld(tx, dates.map((d) => d.envelopeId));
+  if (rest.length === 0) return;
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const workspaceId = [...before.values()][0]?.workspaceId;
+  if (workspaceId === undefined) return;
+  await auditMany(
+    tx,
+    rest.map((d) => {
+      const b = before.get(d.envelopeId);
+      return {
+        workspaceId,
+        actorId: ctx.userId,
+        actorType: ctx.actorType,
+        action: "envelope.dates_changed",
+        entityType: "envelope",
+        entityId: d.envelopeId,
+        before: b ? { startDate: iso(b.startDate), endDate: iso(b.endDate) } : null,
+        after: { startDate: d.startDate, endDate: d.endDate, bulkChangeId: bulk.id, requestId },
+        reason: `${reason} (${bulk.kind} ${bulk.id})`,
+        requestId: ctx.requestId,
+      };
+    }),
+  );
+  for (const d of rest) {
+    await outbox(tx, { workspaceId, topic: "budget.changed", payload: { envelopeId: d.envelopeId, kind: "dates", startDate: d.startDate, endDate: d.endDate, bulkChangeId: bulk.id, requestId } });
+  }
+  await bumpDataVersion(tx, workspaceId);
 }
 
 /** Envelope depth (0 = root) so bulk approvals run parents first and child caps see the parent's new amount. */
@@ -112,6 +195,8 @@ export async function closeRequest(tx: Tx, r: LockedRequestRow, outcome: "REJECT
     const bulk = await loadBulkChange(tx, r.entityId);
     if (!bulk) throw new DomainError("NOT_FOUND", "Bulk change not found");
     await closeBulkVersions(tx, bulk.versionIds, outcome);
+    // Dated budgets held without a version of their own (W3-5) get their status back too.
+    if (bulk.payload.dates) await releaseHeld(tx, bulk.payload.dates.map((d) => d.envelopeId));
     // New split / merge envelopes that will never be approved.
     if (outcome !== "CHANGES_REQUESTED") await archiveEnvelopes(tx, bulk.createdIds);
     await tx.approvalRequest.update({ where: { id: r.id }, data: outcome === "CHANGES_REQUESTED" ? { status: outcome } : { status: outcome, resolvedAt: new Date() } });

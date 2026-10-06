@@ -8,7 +8,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 import { rephase } from "../bulk/allocate.js";
 import { insertEnvelopeRow } from "./create-envelope.js";
 import { routeStructural } from "./structure.js";
-import { assertBasedOnHead, assertDraftNotPending, lockForWrite, resolveFx, writeDraftVersion } from "./version-writer.js";
+import { assertBasedOnHead, assertDraftNotPending, assertNotHeld, lockForWrite, resolveFx, writeDraftVersion } from "./version-writer.js";
 
 /**
  * Ending a budget and reintroducing it (H-011, H-012; docs/BUDGET_HISTORY_PLAN.md §2.8, ADR-053).
@@ -82,6 +82,7 @@ export async function endIn(tx: Tx, auth: AuthContext, workspaceId: string, enve
   const env = await lockForWrite(tx, auth, envelopeId, "envelope.move");
   assertBasedOnHead(env, input.basedOnVersionId);
   await assertDraftNotPending(tx, env);
+  await assertNotHeld(tx, [envelopeId]); // W3-5
   if (env.currentVersionId === null) throw new DomainError("VALIDATION", "Only a budget with an approved amount can be ended");
   if (input.endDate < env.startDate || input.endDate > env.endDate) {
     throw new DomainError("VALIDATION", `The end date must fall between ${env.startDate} and ${env.endDate}`, { startDate: env.startDate, endDate: env.endDate });
@@ -169,6 +170,7 @@ export async function reintroduceIn(tx: Tx, auth: AuthContext, workspaceId: stri
   if (source === null) throw new DomainError("NOT_FOUND", "Envelope not found");
   assertInScope(auth, "envelope.create", await envelopeScopeTarget(tx, envelopeId));
   if (source.endedAt === null) throw new DomainError("CONFLICT", "Only an ended budget can be reintroduced. End it first, and add the new budget there.");
+  await assertNotHeld(tx, [envelopeId]); // W3-5
   const successor = await createSuccessor(tx, auth, workspaceId, source, input, isoDate(source.endDate), input.rationale);
   const rate = (await resolveFx(tx, source.currency, workspaceId)).rate;
   const amountReporting = successor.amount.mul(rate).toDecimalPlaces(2);

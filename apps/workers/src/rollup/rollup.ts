@@ -323,7 +323,8 @@ async function statusEnvelopes(tx: Tx, topic: string, payload: Record<string, un
   const bulk = await loadBulkChange(tx, r.entityId);
   if (bulk === null) return [];
   const versions = await tx.envelopeVersion.findMany({ where: { id: { in: bulk.versionIds } }, select: { envelopeId: true } });
-  return [...new Set([...versions.map((v) => v.envelopeId), ...bulk.archiveIds, ...bulk.createdIds])];
+  // W3-5: a date change holds every budget it moves, with or without a version of its own.
+  return [...new Set([...versions.map((v) => v.envelopeId), ...bulk.archiveIds, ...bulk.createdIds, ...(bulk.payload.dates ?? []).map((d) => d.envelopeId)])];
 }
 
 /** Push handler for ROLLUP_TOPICS (and naming.changed's rename); once per outbox id. */

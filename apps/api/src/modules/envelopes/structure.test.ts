@@ -227,3 +227,76 @@ describe("merge", () => {
     expect((await as("planner", "POST", "/api/v1/envelopes/merge", body([id(x), id(x)]))).status).toBe(422);
   });
 });
+
+/**
+ * W3-5 (audit I-15): one lock order for every structural write — the tree lock (moves only), then
+ * the approval request, then envelopes by id. A move and a decision on the same budget, or two
+ * moves that would make a cycle, wait for each other instead of deadlocking (40P01 → 500).
+ */
+describe("lock order (W3-5)", () => {
+  const noServerError = (statuses: number[]) => expect(statuses.filter((s) => s >= 500), `statuses ${statuses.join(",")}`).toEqual([]);
+  /** Whether walking up from this envelope comes back to it. */
+  async function inCycle(envelopeId: string): Promise<boolean> {
+    let p: string | null = envelopeId;
+    for (let i = 0; i < 64 && p !== null; i += 1) {
+      p = (await owner.envelope.findUniqueOrThrow({ where: { id: p }, select: { parentId: true } })).parentId;
+      if (p === envelopeId) return true;
+    }
+    return false;
+  }
+
+  it("a move and a decision on the same budget, ten times at once: never a 500", async () => {
+    const leaves = [...leafKeys("LATAM/BR/meta"), ...leafKeys("LATAM/BR/google_ads")].slice(0, 10);
+    expect(leaves).toHaveLength(10);
+    for (const leaf of leaves) {
+      const e = await env(id(leaf));
+      // Over the parent's cap (allowed there), so the request routes to Major / over-allocation and
+      // the move to the root re-routes it: the move takes the request lock, the decision the envelope's.
+      await owner.envelope.update({ where: { id: e.parentId as string }, data: { allowOverAllocation: true } });
+      const draft = await as("planner", "PATCH", `/api/v1/envelopes/${id(leaf)}/draft`, { amount: approved(leaf).mul(2).toFixed(2), basedOnVersionId: e.currentVersionId });
+      expect(draft.status, JSON.stringify(draft.body)).toBeLessThan(300);
+      const submitted = await as("planner", "POST", `/api/v1/envelopes/${id(leaf)}/submit`, { versionId: draft.body["id"] });
+      expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+      const rowVersion = (await env(id(leaf))).rowVersion;
+      const [moved, decided] = await Promise.all([
+        as("planner", "POST", `/api/v1/envelopes/${id(leaf)}/move`, { parentId: null, rowVersion }),
+        as("admin", "POST", `/api/v1/approvals/${String(submitted.body["requestId"])}/decisions`, { decision: "approve" }),
+      ]);
+      noServerError([moved.status, decided.status]);
+      // Either both went through one after the other, or the later one was refused as stale.
+      expect([201, 409]).toContain(moved.status);
+      expect([201, 409]).toContain(decided.status);
+    }
+  }, 180_000);
+
+  it("cross-moves (A under B, B under A) at once: one wins, the other is refused, never a 500 or a cycle", async () => {
+    const pairs = [
+      ["LATAM/BR/tiktok/awareness", "LATAM/BR/tiktok/consideration"],
+      ["LATAM/BR/amazon/awareness", "LATAM/BR/amazon/consideration"],
+      ["LATAM/AR/meta/awareness", "LATAM/AR/meta/consideration"],
+    ] as const;
+    for (const [a, b] of pairs) {
+      await owner.envelope.updateMany({ where: { id: { in: [id(a), id(b)] } }, data: { allowOverAllocation: true } });
+      const [ra, rb] = await Promise.all([move(id(a), id(b)), move(id(b), id(a))]);
+      noServerError([ra.status, rb.status]);
+      expect([ra.status, rb.status].sort()).toEqual([201, 422]);
+      const loser = ra.status === 201 ? rb : ra;
+      expect(String(loser.body["message"])).toContain("own descendant");
+      expect(await inCycle(id(a))).toBe(false);
+    }
+  }, 180_000);
+
+  it("two moves under each other's descendants with different old parents never close a cycle", async () => {
+    for (const country of ["EMEA/GB", "EMEA/FR"]) {
+      const x = `${country}/google_ads/awareness`;
+      const z = `${country}/tiktok/awareness`;
+      const w = leafKeys(x)[0] as string; // under x
+      const y = leafKeys(z)[0] as string; // under z
+      await owner.envelope.updateMany({ where: { id: { in: [id(w), id(y)] } }, data: { allowOverAllocation: true } });
+      const [m1, m2] = await Promise.all([move(id(x), id(y)), move(id(z), id(w))]);
+      noServerError([m1.status, m2.status]);
+      expect([m1.status, m2.status].sort()).toEqual([201, 422]);
+      expect(await inCycle(id(x))).toBe(false);
+    }
+  }, 180_000);
+});
