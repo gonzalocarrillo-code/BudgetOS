@@ -14,6 +14,8 @@ model Organization {
   name       String
   workspaces Workspace[]
   createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  /// W3-2 (ADR-0081): org-level Idempotency-Key rows; they cascade with the org.
+  idempotencyKeys IdempotencyKey[]
   /// R11-002: `slack` is the Slack team every workspace of the org answers to.
   settings   Json        @default("{}")
 
@@ -40,6 +42,8 @@ model Workspace {
   purgedAt             DateTime?    @map("purged_at") @db.Timestamptz
   /// W1-5 (ADR-0072): previews are ephemeral staging; they cascade when the workspace is deleted.
   bulkPreviews         BulkPreview[]
+  /// W3-2 (ADR-0081): Idempotency-Key replays are ephemeral; they cascade when the workspace is deleted.
+  idempotencyKeys      IdempotencyKey[]
 
   @@unique([orgId, slug])
   @@map("workspace")
@@ -1038,4 +1042,28 @@ model OauthRefresh {
 
   @@index([userId, clientId])
   @@map("oauth_refresh")
+}
+
+/// W3-2 (audit I-6, spec §17, ADR-0081): one `Idempotency-Key` per (scope, actor, key). Exactly one
+/// of workspaceId / orgId / slackTeamId is set (CHECK); the three partial unique indexes on
+/// (scope, actor, key) live in the SQL migration (Prisma cannot express them). Read and written
+/// only by packages/db/src/idempotency.ts; rows live 24 h.
+model IdempotencyKey {
+  id          String        @id @db.Uuid
+  workspaceId String?       @map("workspace_id") @db.Uuid
+  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  orgId       String?       @map("org_id") @db.Uuid
+  org         Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  slackTeamId String?       @map("slack_team_id")
+  actorId     String?       @map("actor_id") @db.Uuid
+  key         String
+  route       String
+  fingerprint String
+  status      Int?
+  response    Json?         @db.Json
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  completedAt DateTime?     @map("completed_at") @db.Timestamptz
+
+  @@index([createdAt], map: "idempotency_key_created")
+  @@map("idempotency_key")
 }

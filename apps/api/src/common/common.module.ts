@@ -10,6 +10,7 @@ import { assertAppRoleIsRestricted } from "./assert-app-role.js";
 import { AllExceptionsFilter } from "./all-exceptions.filter.js";
 import { DomainExceptionFilter } from "./domain-exception.filter.js";
 import { HealthController } from "./health.controller.js";
+import { IdempotencyInterceptor } from "./idempotency.interceptor.js";
 import { pinoHttpOptions } from "./logging.js";
 import { RateLimitInterceptor } from "./rate-limit.interceptor.js";
 import { TenantInterceptor } from "./tenant.interceptor.js";
@@ -58,6 +59,9 @@ const loggerModule = LoggerModule.forRoot({
     // S-6: after TenantInterceptor in this array, so its "before" logic (which sets request.tenant)
     // runs first; see rate-limit.decorator.ts.
     { provide: APP_INTERCEPTOR, useClass: RateLimitInterceptor },
+    // W3-2 (ADR-0081): after both, so request.tenant is set and a rate-limited request never
+    // claims an Idempotency-Key.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     // Order matters (W5-1): Nest tries global filters most-recently-provided first, so the last
     // entry here is checked first. AllExceptionsFilter's bare @Catch() matches everything, so it

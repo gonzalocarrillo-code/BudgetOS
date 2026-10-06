@@ -33,3 +33,4 @@ export { checkSnapshotIntegrity } from "./integrity/snapshots.js";
 export type { IntegrityFinding } from "./integrity/snapshots.js";
 export { BigQueryReplicaTotals, HOT_MONTHS, RAW_FILE_RETENTION_DAYS, pruneRawFiles, pruneWorkspaceFacts, retentionCutoff, retentionFromEnv, runRetention } from "./retention/retention.js";
 export type { FactPruneResult, ReplicaTotals, RetentionDeps } from "./retention/retention.js";
+export { idempotencyPass, idempotencySweep } from "./idempotency/sweep.js";
