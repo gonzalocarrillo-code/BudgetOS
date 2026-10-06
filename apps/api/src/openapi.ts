@@ -135,15 +135,42 @@ const idParam = { name: "id", in: "path", required: true, schema: { type: "strin
 /** Routes without :ws take the workspace from this header (spec §4). */
 const workspaceHeader = { name: "X-Workspace-Id", in: "header", required: true, schema: { type: "string", format: "uuid" } };
 
+/**
+ * W3-2 (spec §17, ADR-0081): every mutating operation accepts `Idempotency-Key`. Declared once in
+ * `components.parameters` and referenced from every POST/PATCH/PUT/DELETE by `withIdempotencyKey`,
+ * so a new route documents it without anyone remembering to.
+ */
+const idempotencyKeyParam = {
+  name: "Idempotency-Key",
+  in: "header",
+  required: false,
+  schema: { type: "string", minLength: 1, maxLength: 255 },
+  description:
+    "Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409.",
+};
+const MUTATING = new Set(["post", "put", "patch", "delete"]);
+
+function withIdempotencyKey<P extends Record<string, Record<string, object>>>(paths: P): P {
+  for (const item of Object.values(paths)) {
+    for (const [method, op] of Object.entries(item)) {
+      if (!MUTATING.has(method)) continue;
+      const operation = op as { parameters?: unknown[] };
+      operation.parameters = [...(operation.parameters ?? []), { $ref: "#/components/parameters/IdempotencyKey" }];
+    }
+  }
+  return paths;
+}
+
 export function openApiDocument(): Record<string, unknown> {
   return {
     openapi: "3.0.3",
     info: { title: "BudgetOS", version: "0.5.0" },
     components: {
       securitySchemes: { identityPlatform: { type: "http", scheme: "bearer", bearerFormat: "JWT", description: "Identity Platform ID token" } },
+      parameters: { IdempotencyKey: idempotencyKeyParam },
     },
     security: [{ identityPlatform: [] }],
-    paths: {
+    paths: withIdempotencyKey({
       "/api/v1/me": {
         get: { operationId: "getMe", responses: { "200": { description: "Caller, roles per workspace and permissions" } } },
         patch: { operationId: "updateMe", parameters: [workspaceHeader], requestBody: json(UpdateMeInput), responses: { "200": { description: "The caller's new display name" } } },
@@ -751,6 +778,6 @@ export function openApiDocument(): Record<string, unknown> {
       "/api/v1/assets": {
         post: { operationId: "uploadIconAsset", parameters: [workspaceHeader], requestBody: json(UploadAssetInput), responses: { "200": { description: "Sanitized SVG icon asset" } } },
       },
-    },
+    }),
   };
 }

@@ -2327,7 +2327,10 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: never;
     responses: never;
-    parameters: never;
+    parameters: {
+        /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+        IdempotencyKey: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -2357,6 +2360,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -2401,7 +2406,10 @@ export interface operations {
     assignRole: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -2499,7 +2507,10 @@ export interface operations {
     addMember: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -2554,6 +2565,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -2574,7 +2587,10 @@ export interface operations {
     createEnvelope: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -2654,6 +2670,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -2749,6 +2767,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -2804,6 +2824,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -2838,6 +2860,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -2869,6 +2893,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -2934,7 +2960,10 @@ export interface operations {
     previewBudgetImport: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -3029,7 +3058,10 @@ export interface operations {
     commitBudgetImport: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -3083,6 +3115,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3122,6 +3156,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3177,6 +3213,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3212,6 +3250,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3245,6 +3285,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3283,6 +3325,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -3393,6 +3437,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3427,6 +3473,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -3458,6 +3506,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -3571,6 +3621,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 previewId: string;
@@ -3605,7 +3657,10 @@ export interface operations {
     exportEnvelopesCsv: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -3674,7 +3729,10 @@ export interface operations {
     importEnvelopesCsv: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -3783,6 +3841,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3822,6 +3882,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3919,6 +3981,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -3962,6 +4026,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4038,6 +4104,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4087,6 +4155,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4119,6 +4189,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4165,7 +4237,10 @@ export interface operations {
     createPolicy: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -4243,6 +4318,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4326,7 +4403,10 @@ export interface operations {
     syncGroups: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -4377,7 +4457,10 @@ export interface operations {
     createDimension: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -4419,6 +4502,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4454,6 +4539,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4492,6 +4579,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4526,6 +4615,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4573,7 +4664,10 @@ export interface operations {
     saveHierarchyTemplate: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -4604,6 +4698,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4652,7 +4748,10 @@ export interface operations {
     createMetric: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -4713,7 +4812,10 @@ export interface operations {
     createTarget: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -4763,6 +4865,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4800,6 +4904,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4830,6 +4936,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -4921,7 +5029,10 @@ export interface operations {
     createSource: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -5037,6 +5148,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -5245,7 +5358,10 @@ export interface operations {
     createMappingProfile: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -5397,7 +5513,10 @@ export interface operations {
     matchMappingProfile: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -5498,6 +5617,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -5729,7 +5850,10 @@ export interface operations {
     createMappingSynonym: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -5775,6 +5899,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -5801,7 +5927,10 @@ export interface operations {
     previewMapping: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -5906,7 +6035,10 @@ export interface operations {
     suggestMappingFromSample: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -5935,6 +6067,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -5957,6 +6091,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6029,7 +6165,10 @@ export interface operations {
     mapUnmatchedSpend: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -6061,6 +6200,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -6087,6 +6228,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6116,6 +6259,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6166,7 +6311,10 @@ export interface operations {
     query: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -6345,7 +6493,10 @@ export interface operations {
     tree: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -6475,7 +6626,10 @@ export interface operations {
     createManualEntry: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -6546,6 +6700,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6594,6 +6750,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6862,6 +7020,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6892,6 +7052,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -6986,7 +7148,10 @@ export interface operations {
     createWorkspace: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -7024,7 +7189,10 @@ export interface operations {
     deleteWorkspace: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -7058,7 +7226,10 @@ export interface operations {
     setWorkspaceStatus: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -7086,7 +7257,10 @@ export interface operations {
     undeleteWorkspace: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -7142,6 +7316,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -7224,7 +7400,10 @@ export interface operations {
     saveBaseline: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -7360,6 +7539,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -7610,7 +7791,10 @@ export interface operations {
     updateOrgPerson: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 id: string;
             };
@@ -7657,7 +7841,10 @@ export interface operations {
     purgeDemoData: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -7713,7 +7900,10 @@ export interface operations {
     createExperiment: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -7803,6 +7993,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -7849,6 +8041,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -7880,6 +8074,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -7902,6 +8098,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -7924,6 +8122,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -7946,6 +8146,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8115,7 +8317,10 @@ export interface operations {
     createSavedView: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -8156,6 +8361,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8178,6 +8385,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8246,7 +8455,10 @@ export interface operations {
     createPeriod: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -8279,7 +8491,10 @@ export interface operations {
     generatePeriods: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -8334,7 +8549,10 @@ export interface operations {
     setFiscalYearStart: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -8362,6 +8580,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8384,6 +8604,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8461,7 +8683,10 @@ export interface operations {
     closePeriod: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -8534,6 +8759,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8569,6 +8796,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -8649,6 +8878,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -8870,7 +9101,10 @@ export interface operations {
     createNamingTemplate: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -8930,6 +9164,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -8992,6 +9228,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9510,7 +9748,10 @@ export interface operations {
     createRule: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -9583,6 +9824,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9605,6 +9848,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9701,6 +9946,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9757,6 +10004,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -9805,6 +10054,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9841,6 +10092,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9863,6 +10116,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9891,6 +10146,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9913,6 +10170,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -9935,6 +10194,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -9984,7 +10245,10 @@ export interface operations {
     updateWorkspaceGeneral: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -10030,7 +10294,10 @@ export interface operations {
     updateSlackSettings: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -10060,7 +10327,10 @@ export interface operations {
     sendSlackTest: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -10104,7 +10374,10 @@ export interface operations {
     updateOrgSlack: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -10129,7 +10402,10 @@ export interface operations {
     sendOrgSlackTest: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -10153,7 +10429,10 @@ export interface operations {
     slackInteractions: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -10171,7 +10450,10 @@ export interface operations {
     slackCommands: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -10209,7 +10491,10 @@ export interface operations {
     createTag: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 ws: string;
             };
@@ -10267,6 +10552,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path: {
                 id: string;
@@ -10300,6 +10587,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -10333,6 +10622,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;
@@ -10438,6 +10729,8 @@ export interface operations {
             query?: never;
             header: {
                 "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
             path?: never;
             cookie?: never;

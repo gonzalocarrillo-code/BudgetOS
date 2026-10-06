@@ -4,7 +4,8 @@ import { COOKIE_AUTH, IAP, clearToken, getToken } from "./auth.js";
 
 /**
  * Typed API client generated from apps/api/openapi.json (`pnpm --filter @budget/web api:generate`,
- * kept current by src/lib/api.gen.test.ts). Adds the bearer token; a 401 signs the tab out.
+ * kept current by src/lib/api.gen.test.ts). Adds the bearer token; a 401 signs the tab out; every
+ * mutation carries an Idempotency-Key (idempotentFetch).
  */
 export class ApiError extends Error {
   constructor(
@@ -39,7 +40,39 @@ const auth: Middleware = {
   },
 };
 
-export const api = createClient<paths>({ baseUrl: typeof window === "undefined" ? "http://localhost" : window.location.origin });
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+/** Worth one retry: the API's own "database busy; retry" (503) and a load-balancer hiccup. */
+const RETRY_STATUSES = new Set([502, 503, 504]);
+
+export interface IdempotentFetchOptions {
+  fetch?: (request: Request) => Promise<Response>;
+  newKey?: () => string;
+  retryDelayMs?: number;
+}
+
+/**
+ * W3-2 (spec §17, ADR-0081): every mutating call carries a fresh `Idempotency-Key`, and the one
+ * retry this client makes — after a network failure or a 502/503/504 — reuses it, so a change
+ * whose first attempt did land is answered from the API's stored response instead of being made
+ * twice. Reads are sent as they are, never retried here (TanStack Query retries those).
+ */
+export async function idempotentFetch(request: Request, opts: IdempotentFetchOptions = {}): Promise<Response> {
+  const send = opts.fetch ?? ((r: Request) => globalThis.fetch(r));
+  if (SAFE_METHODS.has(request.method.toUpperCase())) return send(request);
+  if (!request.headers.has("idempotency-key")) request.headers.set("idempotency-key", (opts.newKey ?? (() => crypto.randomUUID()))());
+  const retry = request.clone();
+  try {
+    const first = await send(request);
+    if (!RETRY_STATUSES.has(first.status)) return first;
+  } catch (error) {
+    // The caller gave up (navigated away, cancelled): not a failure to retry.
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+  }
+  await new Promise((resolve) => setTimeout(resolve, opts.retryDelayMs ?? 500));
+  return send(retry);
+}
+
+export const api = createClient<paths>({ baseUrl: typeof window === "undefined" ? "http://localhost" : window.location.origin, fetch: (request) => idempotentFetch(request) });
 api.use(auth);
 
 /** Unwraps an openapi-fetch result: the data, or an ApiError with the API's error code. */

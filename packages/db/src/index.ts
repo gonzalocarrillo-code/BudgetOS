@@ -109,3 +109,5 @@ export { importEnvelopesById, importEnvelopesByTuple, liveChildrenApproved } fro
 export type { ImportEnvelope } from "./budget-import.js";
 export type { FactTable, MonthTotals } from "./retention.js";
 export type { BaselineTreeRow, ComparedRow, SnapshotIntegrity } from "./baselines.js";
+export { IDEMPOTENCY_TTL_HOURS, IN_FLIGHT_LEASE_SECONDS, MAX_REPLAY_BYTES, claimIdempotencyKey, completeIdempotencyKey, releaseIdempotencyKey, sweepIdempotencyKeys, withIdempotency } from "./idempotency.js";
+export type { HandlerResult, IdempotencyClaim, IdempotencyRequest, IdempotencyScope, IdempotentResponse, WithIdempotencyOptions } from "./idempotency.js";

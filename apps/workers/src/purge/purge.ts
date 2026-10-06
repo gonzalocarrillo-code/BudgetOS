@@ -32,6 +32,7 @@ const VIA_PARENT: Array<[table: string, sql: string]> = [
 /** Tables with workspace_id, in an order that satisfies the foreign keys (children before parents). */
 const OWN = [
   "bulk_preview",
+  "idempotency_key",
   "budget_baseline_row",
   "budget_baseline",
   "thread",

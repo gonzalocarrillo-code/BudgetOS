@@ -20,6 +20,7 @@ import { handleInApp } from "./notify/in-app.js";
 import { handleSlackEvent, slackConfigWarnings, slackFromEnv, type SlackClient } from "./notify/slack.js";
 import { handleExportRequested } from "./export/export.js";
 import { objectStoreFromEnv, uploadBucket, type ObjectStore } from "./ingest/object-store.js";
+import { idempotencyPass } from "./idempotency/sweep.js";
 import { log } from "./log.js";
 import { purgeDueWorkspaces } from "./purge/purge.js";
 import { retentionFromEnv, runRetention } from "./retention/retention.js";
@@ -283,6 +284,8 @@ async function main(): Promise<void> {
     await purgePass().catch((err: unknown) => log.error({ err }, "local purge pass failed"));
     if (isStopping()) break;
     await sweeperPass(app, publisher, scope).catch((err: unknown) => log.error({ err }, "ingest/export lease sweeper pass failed"));
+    if (isStopping()) break;
+    await idempotencyPass(app, publisher, scope).catch((err: unknown) => log.error({ err }, "idempotency key sweep failed"));
     if (isStopping()) break;
     const n = await pass().catch((err: unknown) => (log.error({ err }, "local runner pass failed"), 0));
     if (n === 0 && !isStopping()) await new Promise((r) => setTimeout(r, 1000));
