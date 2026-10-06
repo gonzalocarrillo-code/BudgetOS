@@ -164,7 +164,21 @@ creators above started deadlocking against ordinary readers holding a `RowShareL
 relation — the same deadlock class W3-10 fixed elsewhere, and exactly what the Postgres docs warn
 against for a `DEFAULT` partition on a table this hot. A write outside every explicit month
 partition fails with "no partition of relation found for row" instead of silently landing
-somewhere unindexed; `ensure_fact_partitions`'s own advisory-style table lock (`LOCK TABLE ... IN
-SHARE UPDATE EXCLUSIVE MODE`, taken before any `CREATE TABLE`, migration `20260924100000`) keeps
-concurrent creators from racing each other, and `packages/db/src/invariants.test.ts` proves a fact
-five months out inserts cleanly right after one `ensure_fact_partitions` call.
+somewhere unindexed. `packages/db/src/invariants.test.ts` proves a fact five months out inserts
+cleanly right after one `ensure_fact_partitions` call.
+
+**How a month is created (W3-10, migration `20261015010000`).** A month whose partitions exist
+costs a catalog lookup and no lock. To create one, `ensure_fact_partitions` first takes a
+transaction-scoped advisory lock (creators queue on it, nobody else does), builds the partition as a
+standalone table (`CREATE TABLE IF NOT EXISTS ... (LIKE parent)`, its workspace FK, no grants) and
+then `ATTACH`es it, which locks the parent `SHARE UPDATE EXCLUSIVE` — compatible with every read and
+write. The earlier `CREATE TABLE ... PARTITION OF` locked each of the four parents `ACCESS
+EXCLUSIVE` in turn and deadlocked (`40P01`) with sessions reading or writing them. Callers create
+the months they need before opening their write transaction, each call its own short transaction:
+the ingest pipeline per batch, the pacing evaluator (this month + 3), and demo seeding (its fiscal
+year). Approving a manual-entry batch still calls it inside the approval transaction, which is
+short and safe with the new body. `packages/db/src/partitions.concurrency.test.ts` runs 4 writers ×
+5 attempts, each creating a new month inside its write, next to a reader holding every parent, and
+expects no `40P01`. Dropping a fact partition still locks its parent and `workspace` (where its FK
+triggers live) `ACCESS EXCLUSIVE`: never do it on a live database without a short `lock_timeout`
+(tests use `dropFactPartitionsForTests` in `packages/db/src/test-support/partitions.ts`).

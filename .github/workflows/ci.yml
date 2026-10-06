@@ -67,11 +67,7 @@ jobs:
       # apps/api's suites assumes; every such assertion scales through test-support/perf.ts.
       # Product gates (e.g. T-006's 60 s) are unchanged locally and in `pnpm bench`.
       PERF_BUDGET_SCALE: "3"
-      # Several apps/api suites share one golden-style workspace pattern; running them concurrently
-      # (the local default, apps/api/vitest.config.mjs) surfaced a real Postgres deadlock and
-      # cross-file data pollution on this runner — product bugs for their own item. Run one at a
-      # time here instead.
-      VITEST_MAX_WORKERS: "1"
+      VITEST_MAX_WORKERS: "3"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

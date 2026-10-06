@@ -208,8 +208,13 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
 
     const flush = async () => {
       if (batch.length === 0) return;
-      const rows = batch;
+      const rows = batch.map(({ line, row }) => ({ line, row, res: normalize(row, mapping, setup.registry, setup.source.id, setup.keys) }));
       batch = [];
+      // W3-10: the batch's months are created here, each in a short transaction of its own, before
+      // the write transaction opens — never inside it, where the DDL would queue behind (and in
+      // front of) every other session's locks on the fact tables.
+      const dates = rows.flatMap(({ res }) => ("rejected" in res ? [] : res.facts.map((f) => f.periodDate))).sort();
+      if (dates.length) await ensurePartitions(prisma, dates[0] as string, dates[dates.length - 1] as string);
       await withTenant(
         prisma,
         ctx,
@@ -217,8 +222,7 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
           const spend: SpendFactInput[] = [];
           const kpi: KpiFactInput[] = [];
           const projection: ProjectionFactInput[] = [];
-          for (const { line, row } of rows) {
-            const res = normalize(row, mapping, setup.registry, setup.source.id, setup.keys);
+          for (const { line, row, res } of rows) {
             if ("rejected" in res) {
               rejected.push({ line, row, reason: res.rejected });
               continue;
@@ -273,8 +277,6 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
             projection.push(...pending.projection);
             rowsAccepted += 1;
           }
-          const dates = [...spend, ...kpi, ...projection].map((f) => f.periodDate).sort();
-          if (dates.length) await ensurePartitions(tx, dates[0] as string, dates[dates.length - 1] as string);
           // One statement may not upsert a key twice: a row id delivered twice in a batch keeps its last delivery.
           const last = <T extends { rowHash: string; periodDate: string }>(rows: T[]) => [...new Map(rows.map((r) => [`${r.rowHash}|${r.periodDate}`, r])).values()];
           const spendRows = last(spend);
