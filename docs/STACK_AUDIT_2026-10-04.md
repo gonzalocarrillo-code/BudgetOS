@@ -309,37 +309,37 @@ Each line is roughly one PR.
 
 ## 8. Status
 
-Updated by the orchestrator as fix PRs merge (see `docs/STACK_HARDENING_PLAN.md`). Last sync: 2026-10-06. `—` = no work item (accepted as-is or informational).
+Updated by each fix PR (see `docs/STACK_HARDENING_PLAN.md`). `—` = no work item (accepted as-is or informational).
 
 | ID | Severity | Plan item | Status |
 |---|---|---|---|
-| S-1 | High (impact Suspected) | W2-5 | done (#147) |
-| S-2 | Medium | W2-3 | open |
-| S-3 | Medium | W2-3 | open |
-| S-4 | Medium | W2-4 | done (#151) |
-| S-5 | Medium | W2-1 | done (#146) |
-| S-6 | Medium | W2-2 | open |
-| S-7 | Medium | W2-5 | done (#147) |
-| S-8 | Medium | W2-6 | done (#148, #150) |
-| S-9 | Low | W2-7 | open |
-| S-10 | Low | W2-8 | open |
+| S-1 | High (impact Suspected) | W2-5 | open |
+| S-2 | Medium | W2-3 | done (#163) |
+| S-3 | Medium | W2-3 | done (#163) |
+| S-4 | Medium | W2-4 | open |
+| S-5 | Medium | W2-1 | open |
+| S-6 | Medium | W2-2 | done (#154) |
+| S-7 | Medium | W2-5 | open |
+| S-8 | Medium | W2-6 | open |
+| S-9 | Low | W2-7 | done (#149) |
+| S-10 | Low | W2-8 | done (#161) |
 | S-11 | Medium | W5-3 | open |
 | S-12 | Medium | W5-3 | open |
 | S-13 | Medium (infra) | W5-4 | open |
-| S-14 | Low | W5-7 | open |
-| S-15 | Low | W5-7 | open |
-| S-16 | Low | W2-2 | open |
-| S-17 | Low | W2-2 | open |
-| S-18 | Low | W2-5 | done (#147) |
-| S-19 | Low | W2-5 | done (#147) |
-| S-20 | Low | W2-2 | open |
-| S-21 | Info | W2-3 | open |
+| S-14 | Low | W5-7 | done (#165) |
+| S-15 | Low | W5-7 | done (#165) |
+| S-16 | Low | W2-2 | done (#154) |
+| S-17 | Low | W2-2 | done (#154) |
+| S-18 | Low | W2-5 | open |
+| S-19 | Low | W2-5 | open |
+| S-20 | Low | W2-2 | done (#154) |
+| S-21 | Info | W2-3 | done (#163) |
 | S-22 | Info | — | open |
-| T-1 | Critical | W1-1 | done (#152) |
-| T-2 | Critical (companion to T-1) | W1-1 | done (#152) |
-| T-3 | High | W1-3 | done (#141) |
+| T-1 | Critical | W1-1 | open |
+| T-2 | Critical (companion to T-1) | W1-1 | open |
+| T-3 | High | W1-3 | open |
 | T-4 | High (impact depends on the feed) | W4-1 | open |
-| T-5 | High | W1-4 | done (#145) |
+| T-5 | High | W1-4 | open |
 | T-6 | Medium | W4-3 | open |
 | T-7 | Medium | W4-3 | open |
 | T-8 | Medium | W4-2 | open |
@@ -347,18 +347,18 @@ Updated by the orchestrator as fix PRs merge (see `docs/STACK_HARDENING_PLAN.md`
 | T-10 | Medium | W4-2 | open |
 | T-11 | Medium | W4-2 | open |
 | T-12 | Medium | D-1 | open |
-| T-13 | Low | W4-4 | open |
-| T-14 | Low | W4-4 | open |
-| T-15 | Low | W4-4 | open |
-| T-16 | Low | W4-4 | open |
-| T-17 | Low | W4-4 | open |
-| I-1 | Critical | W1-2 | open |
-| I-2 | Critical | W1-2 | open |
-| I-3 | High | W1-4 | done (#145) |
-| I-4 | High | W3-1 | open |
+| T-13 | Low | W4-4 | done (#153) |
+| T-14 | Low | W4-4 | done (#153) |
+| T-15 | Low | W4-4 | deferred (#153) |
+| T-16 | Low | W4-4 | done (#153) |
+| T-17 | Low | W4-4 | done (#153) |
+| I-1 | Critical | W1-2 | done (#144) |
+| I-2 | Critical | W1-2 | done (#144) |
+| I-3 | High | W1-4 | open |
+| I-4 | High | W3-1 | done (#159) |
 | I-5 | High | W0-4/W1-5 | open |
 | I-6 | High | W3-2 | open |
-| I-7 | High | W1-2 | open |
+| I-7 | High | W1-2 | done (#144) |
 | I-8 | Medium | W3-7 | open |
 | I-9 | High | W3-4 | open |
 | I-10 | High | D-3 | open |
@@ -366,23 +366,23 @@ Updated by the orchestrator as fix PRs merge (see `docs/STACK_HARDENING_PLAN.md`
 | I-12 | High | W3-4 | open |
 | I-13 | Medium | W3-7 | open |
 | I-14 | Medium | W3-8 | open |
-| I-15 | Medium | W3-2 | open |
-| I-16 | Medium | W3-6 | open |
-| I-17 | Medium | W3-5 | open |
+| I-15 | Medium | W3-2 | partly (#160 lock order; error filter W5-1 open) |
+| I-16 | Medium | W3-6 | done (#164) |
+| I-17 | Medium | W3-5 | done (#159/#160) |
 | I-18 | Medium | W3-3 | open |
 | I-19 | Medium | W3-3 | open |
 | I-20 | Medium | W3-2 | open |
-| I-21 | Medium | W3-6 | open |
+| I-21 | Medium | W3-6 | done (#164) |
 | I-22 | Medium | — | open |
-| I-23 | Medium | W3-6 | open |
+| I-23 | Medium | W3-6 | done (#164) |
 | I-24 | Medium | W3-9 | open |
 | I-25 | Medium | W3-9 | open |
 | I-26 | Low | W3-9 | open |
 | I-27 | Low | W3-3 | open |
 | I-28 | Low | W3-3 | open |
-| I-29 | Low | W1-2 | open |
-| I-30 | Low | W1-1 | partly (#152: overlap window; FX age open) |
-| I-31 | Info | W0-3 | done (#139) |
+| I-29 | Low | W1-2 | done (#144) |
+| I-30 | Low | W1-1 | open |
+| I-31 | Info | W0-3 | open |
 | I-32 | Medium | W3-11 | open |
 | I-33 | Medium | W3-3/W3-2 | open |
 | I-34 | Medium | W3-11 | open |
@@ -392,26 +392,26 @@ Updated by the orchestrator as fix PRs merge (see `docs/STACK_HARDENING_PLAN.md`
 | I-38 | Low | W3-11 | open |
 | I-39 | Low | W0-1 follow-up | open |
 | I-40 | Info | — | open |
-| M-1 | Critical | W0-1 | done (#143) |
-| M-2 | High | W0-2 | done (#140 runbook) |
+| M-1 | Critical | W0-1 | open |
+| M-2 | High | W0-2 | open |
 | M-3 | High | W5-1 | open |
 | M-4 | Medium | W5-5 | open |
-| M-5 | Medium | W5-2 | open |
-| M-6 | Medium | W2-8 | open |
-| M-7 | Medium | W1-2/W5-8 | open |
+| M-5 | Medium | W5-2 | done (#155) |
+| M-6 | Medium | W2-8 | done (#161) |
+| M-7 | Medium | W1-2/W5-8 | partly (#144 SIGTERM; alerting W5-8 open) |
 | M-8 | Medium | W5-6 | open |
 | M-9 | Medium | W5-6 | open |
 | M-10 | Low | W5-6 | open |
-| M-11 | Low | W5-9 | open |
+| M-11 | Low | W5-9 | done (#162) |
 | M-12 | Low | — | open |
 | M-13 | Low | W5-5 | open |
-| B-1 | Critical | W0-2 | done in code (#140); apply pending |
-| B-2 | High | W1-2 | open |
+| B-1 | Critical | W0-2 | open |
+| B-2 | High | W1-2 | done (#144) |
 | B-3 | High | W1-4 | open |
-| B-4 | Medium | W5-8 | done in code (#140) |
+| B-4 | Medium | W5-8 | open |
 | B-5 | Medium | W3-9 | open |
 | B-6 | Medium | W3-7 | open |
-| B-7 | Medium | W0-3 | done (#139) |
+| B-7 | Medium | W0-3 | open |
 | B-8 | Low | D-2 | open |
-| B-9 | Info | W1-2 | open |
+| B-9 | Info | W1-2 | done (#144) |
 | B-10 | Done well | — | open |
