@@ -5,6 +5,7 @@ import { ZodValidationPipe } from "nestjs-zod";
 import { AccessRepository } from "./auth/access.repository.js";
 import { JwtVerifier } from "./auth/jwt-verifier.js";
 import { MemoryRoleCache, ROLE_CACHE } from "./auth/role-cache.js";
+import { assertAppRoleIsRestricted } from "./assert-app-role.js";
 import { DomainExceptionFilter } from "./domain-exception.filter.js";
 import { TenantInterceptor } from "./tenant.interceptor.js";
 
@@ -14,12 +15,18 @@ import { TenantInterceptor } from "./tenant.interceptor.js";
   providers: [
     {
       provide: PrismaClient,
-      useFactory: () => {
-        const url = process.env["APP_DATABASE_URL"] ?? process.env["DATABASE_URL"];
+      // No DATABASE_URL fallback (audit S-3): a missing or misnamed app secret in a revision must
+      // fail loudly, not boot the API as the owner with RLS off. assertAppRoleIsRestricted is the
+      // second line of defense for the same mistake by another route (a copy-pasted env var, a
+      // secret aliased to the wrong value) — it refuses to start on a BYPASSRLS/superuser role.
+      useFactory: async () => {
+        const url = process.env["APP_DATABASE_URL"];
         if (url === undefined) {
           throw new Error("APP_DATABASE_URL is required");
         }
-        return new PrismaClient({ datasources: { db: { url } } });
+        const client = new PrismaClient({ datasources: { db: { url } } });
+        await assertAppRoleIsRestricted(client);
+        return client;
       },
     },
     JwtVerifier,

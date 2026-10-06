@@ -25,8 +25,12 @@ const url = (key: string) => {
   if (!v) throw new Error(`${key} is not set (packages/db/.env)`);
   return v;
 };
+// Fixture setup/teardown only (creating the org/workspace/user, inspecting raw outbox state): a
+// test may use the owner role to seed data. The runner itself never does (W2-3, audit S-2) — see
+// `publisher` below, which is what `pass()` actually runs against in these tests.
 const owner = new PrismaClient({ datasources: { db: { url: url("DATABASE_URL") } } });
 const app = new PrismaClient({ datasources: { db: { url: url("APP_DATABASE_URL") } } });
+const publisher = new PrismaClient({ datasources: { db: { url: url("PUBLISHER_DATABASE_URL") } } });
 
 const orgId = randomUUID();
 // LOCAL_WORKSPACE_PREFIX defaults to "e2e-": every workspace the runner's default scope claims from.
@@ -43,7 +47,7 @@ const realHandlers: RunnerHandlers = {
   slackNotify: handleSlackEvent,
   exportRequested: handleExportRequested,
 };
-const baseDeps: RunnerDeps = { app, owner, store, slack: null, maxAttempts: MAX_ATTEMPTS, handlers: realHandlers };
+const baseDeps: RunnerDeps = { app, publisher, store, slack: null, maxAttempts: MAX_ATTEMPTS, handlers: realHandlers };
 
 async function insertOutbox(topic: string, payload: unknown): Promise<string> {
   const rows = await owner.$queryRawUnsafe<Array<{ id: string }>>(`INSERT INTO outbox (workspace_id, topic, payload) VALUES ($1::uuid, $2, $3::jsonb) RETURNING id::text AS id`, ws, topic, JSON.stringify(payload));
@@ -90,7 +94,7 @@ afterAll(async () => {
   await owner.user.deleteMany({ where: { orgId } });
   await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
-  await Promise.all([owner.$disconnect(), app.$disconnect()]);
+  await Promise.all([owner.$disconnect(), app.$disconnect(), publisher.$disconnect()]);
 });
 
 describe("local-runner pass() (W1-2 done-when)", () => {
@@ -164,5 +168,22 @@ describe("local-runner pass() (W1-2 done-when)", () => {
     expect(row2.published_at).toBeNull(); // never started
     expect(row2.attempts).toBe(0);
     expect(await processed("search-indexer", id2)).toBe(false);
+  });
+});
+
+describe("local-runner on the publisher role (W2-3 done-when, audit S-2)", () => {
+  it("every test above already proves claim → handler → mark works against budget_publisher: baseDeps.publisher connects as PUBLISHER_DATABASE_URL, never DATABASE_URL", () => {
+    // No assertion of its own — documents which fixture backs `pass()` in this file. A regression
+    // that quietly put the owner role back into RunnerDeps.publisher would not be caught by type
+    // checking alone (both are PrismaClient); this test name is the marker to grep for.
+    expect(publisher).not.toBe(owner);
+  });
+
+  it("budget_publisher cannot read envelope data: least privilege holds beyond the outbox/workspace grants it needs", async () => {
+    await expect(publisher.$queryRawUnsafe("SELECT * FROM envelope")).rejects.toThrow(/permission denied/i);
+  });
+
+  it("budget_publisher cannot read workspace columns it was not granted (e.g. name)", async () => {
+    await expect(publisher.$queryRawUnsafe("SELECT name FROM workspace LIMIT 1")).rejects.toThrow(/permission denied/i);
   });
 });

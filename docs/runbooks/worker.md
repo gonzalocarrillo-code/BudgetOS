@@ -16,6 +16,25 @@ the Playwright stack). For each unpublished, non-dead-lettered row past its back
 ingest, roll-up, search-indexer, in-app notify, Slack notify and export consumer families that apply
 to that row's topic — each in its own `try` (I-1): one family's failure never blocks the others.
 
+## Two database connections (W2-3, audit S-2)
+
+`local-runner.ts` opens two Prisma clients, neither the owner role:
+
+- **`PUBLISHER_DATABASE_URL`** (role `budget_publisher`, ADR-010): claims, marks and dead-letters
+  outbox rows, and runs every workspace/org discovery query (`localActiveOrgs`, `localAllOrgs`,
+  `localOrgsPendingPurge`, `localWorkspacesForReindex` in `packages/db/src/runner.ts`). This role
+  holds only the column-level grants those queries need (migrations `20260924070000`,
+  `20261010000000`, `20261010040000`) and is `NOBYPASSRLS` like every other login role — it cannot
+  read `envelope`, `spend_fact` or any other tenant table.
+- **`APP_DATABASE_URL`** (role `budget_app`): runs the real consumer handlers inside `withTenant()`,
+  the same connection and the same tenant isolation the API uses.
+
+The service used to run its poll loop on `DATABASE_URL` (the owner role, which `bootstrap.ts` once
+gave a standing `BYPASSRLS`): a worker that processes attacker-influenced input (uploaded CSVs,
+warehouse rows, Slack payloads) on a role that bypasses every RLS policy was flagged as audit S-2.
+`PUBLISHER_DATABASE_URL` is a required secret — the service fails at startup if it is unset, rather
+than silently falling back to the owner.
+
 ## How a row is published or retried
 
 - **All applicable families succeed:** `published_at = now()`.
@@ -49,7 +68,10 @@ SELECT id, topic, workspace_id, attempts, last_error, failed_at
  ORDER BY failed_at DESC;
 ```
 
-Run as the owner role (`DATABASE_URL`), same as any other manual operation in these runbooks.
+Run as the **publisher role** (`PUBLISHER_DATABASE_URL`), not the owner: `budget_publisher` holds
+full `SELECT` on `outbox` plus `UPDATE` on exactly the retry columns below, which is also everything
+this and the next section need. The owner role (`DATABASE_URL`) no longer bypasses RLS (W2-3, audit
+S-2, S-3, S-21) and cannot see `outbox` rows at all outside the one migration/bootstrap job.
 
 ## Replaying a dead-lettered row
 

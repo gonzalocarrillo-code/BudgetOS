@@ -1,0 +1,41 @@
+-- W2-3 (audit S-2, S-3, S-21): apps/api/src/deploy/bootstrap.ts used to run
+-- `ALTER ROLE CURRENT_USER BYPASSRLS` once and leave it set permanently, so the owner role (also
+-- used, until this item, by the worker's poll loop) held a standing bypass of every RLS policy on
+-- every FORCE-RLS table, forever, for the sake of three tables it only ever touches once per
+-- deploy: `organization`, `app_user` and `role_assignment` have no tenant context to authorize
+-- bootstrap's writes under their ordinary policies (there is no org yet to be its admin, and
+-- app_user's find-by-email runs before any org is known at all).
+--
+-- Two mechanisms were tried and do not work, for the record (so nobody re-adds them):
+--   - `SET LOCAL row_security = off` does not bypass FORCE ROW LEVEL SECURITY for a non-owner,
+--     non-BYPASSRLS role; per Postgres's own docs it turns silent filtering into a hard error
+--     instead ("query would be affected by row-level security policy"), which is the opposite of
+--     what bootstrap needs. Confirmed against Postgres 16.
+--   - A non-superuser role cannot `ALTER ROLE CURRENT_USER BYPASSRLS` (or unset it) on itself even
+--     with CREATEROLE: Postgres 16 additionally requires ADMIN OPTION on the target role, which a
+--     role cannot hold on itself through ordinary GRANT (it is already an implicit member).
+-- Instead: one explicit, permanent, unconditional policy per table, bound to the literal role that
+-- runs this migration (and bootstrap.ts) via `TO CURRENT_USER` — resolved to that role's name once,
+-- at migration-apply time, in every environment (`budget` locally, Cloud SQL's owner in
+-- production). This is "make the one place that needed it explicit": the owner gets ALL on these
+-- three tables only, and never BYPASSRLS. ADR-005 carries an addendum recording this.
+--
+-- `app_set_my_name` and `app_set_my_slack_settings` (migrations 20260930010000, 20261008010000)
+-- are SECURITY DEFINER, owned by the owner, and update `app_user` — FORCE ROW LEVEL SECURITY
+-- applies to the owner too (ADR-005), so without the owner's old standing bypass neither function
+-- could update a non-admin's own row (app_user's only other write policy, org_admin_write, needs
+-- app_is_org_admin()). Grepping every migration for SECURITY DEFINER turns up four: these two, and
+-- ensure_fact_partitions/its fact_partitions_lock replacement, which only run DDL (CREATE
+-- TABLE/LOCK TABLE/REVOKE) and never touch an RLS table's rows — they need nothing here. The
+-- `owner_bootstrap` policy on `app_user` below, already required for bootstrap's own read/create/
+-- reactivate, covers both functions as a side effect: SECURITY DEFINER makes `current_user` the
+-- owner for the duration of the call, and the owner already has unconditional access to this one
+-- table. No separate policy is needed for them.
+--
+-- Reverse:
+--   DROP POLICY IF EXISTS owner_bootstrap ON role_assignment;
+--   DROP POLICY IF EXISTS owner_bootstrap ON app_user;
+--   DROP POLICY IF EXISTS owner_bootstrap ON organization;
+CREATE POLICY owner_bootstrap ON organization FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
+CREATE POLICY owner_bootstrap ON app_user FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
+CREATE POLICY owner_bootstrap ON role_assignment FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
