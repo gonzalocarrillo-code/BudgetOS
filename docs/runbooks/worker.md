@@ -167,7 +167,7 @@ partition fails with "no partition of relation found for row" instead of silentl
 somewhere unindexed. `packages/db/src/invariants.test.ts` proves a fact five months out inserts
 cleanly right after one `ensure_fact_partitions` call.
 
-**How a month is created (W3-10, migration `20261015010000`).** A month whose partitions exist
+**How a month is created (W3-10, migration `20261015020000`).** A month whose partitions exist
 costs a catalog lookup and no lock. To create one, `ensure_fact_partitions` first takes a
 transaction-scoped advisory lock (creators queue on it, nobody else does), builds the partition as a
 standalone table (`CREATE TABLE IF NOT EXISTS ... (LIKE parent)`, its workspace FK, no grants) and

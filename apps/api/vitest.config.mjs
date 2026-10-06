@@ -9,7 +9,7 @@ import root from "../../vitest.config.mjs";
  *
  * ADR-073: `VITEST_MAX_WORKERS` (default 3, as above) overrides it. CI ran these files one at a
  * time while concurrent seeding deadlocked in `ensure_fact_partitions`; W3-10 fixed that deadlock
- * (migration 20261015010000) and CI is back to 3.
+ * (migration 20261015020000) and CI is back to 3.
  */
 const maxWorkers = Number(process.env["VITEST_MAX_WORKERS"] ?? 3);
 export default mergeConfig(

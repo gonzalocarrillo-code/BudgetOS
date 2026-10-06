@@ -61,7 +61,7 @@ export interface FactLoad {
  * creates a month runs as its own short transaction (a write path should not hold its locks while
  * months are created). Inside a transaction it is a lock-free no-op for months that already exist,
  * and creating one there is still deadlock-safe against readers and writers (migration
- * 20261015010000: one advisory lock, then ATTACH PARTITION under SHARE UPDATE EXCLUSIVE).
+ * 20261015020000: one advisory lock, then ATTACH PARTITION under SHARE UPDATE EXCLUSIVE).
  */
 export async function ensurePartitions(db: Tx | PrismaClient, from: string, to: string): Promise<void> {
   const start = new Date(`${from.slice(0, 7)}-01T00:00:00Z`);
