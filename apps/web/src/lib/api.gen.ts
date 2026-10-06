@@ -9145,8 +9145,8 @@ export interface operations {
                                 };
                             };
                             cells: {
-                                row: string | null;
-                                col: string | null;
+                                row: string;
+                                col: string;
                                 budget?: string | null;
                                 budget_in_period?: string | null;
                                 actual?: string | null;
@@ -9167,7 +9167,7 @@ export interface operations {
                             }[];
                             /** @default [] */
                             rowTotals: {
-                                code: string | null;
+                                code: string;
                                 budget?: string | null;
                                 budget_in_period?: string | null;
                                 actual?: string | null;
@@ -9179,7 +9179,7 @@ export interface operations {
                             }[];
                             /** @default [] */
                             colTotals: {
-                                code: string | null;
+                                code: string;
                                 budget?: string | null;
                                 budget_in_period?: string | null;
                                 actual?: string | null;
@@ -9198,6 +9198,12 @@ export interface operations {
                                 spend_to_date_pct?: string | null;
                                 ahead_of_plan_abs?: string | null;
                             } | null;
+                            gap: {
+                                budget: string;
+                                actual: string;
+                                rows: number;
+                                cols: number;
+                            };
                             /**
                              * @default budget
                              * @enum {string}

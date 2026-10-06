@@ -124,8 +124,11 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
 
   const [heat, rowTotals, colTotals, liveTotals, over, under, noSpend, kpiOff, kpi, kpiTargets, headTotals, alerts, queue, sources, report] = await Promise.all([
     dims.rows && dims.cols ? q({ groupBy: [rowKey, colKey], measures: [...HEAT, ...(params.compareTo ? ["budget_baseline", "budget_change_abs"] : [])], ...compareCells, sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
-    dims.rows && dims.cols ? q({ groupBy: [rowKey], measures: HEAT, sort: [{ key: sortKey, dir: "desc" }], limit: 50 }) : null,
-    dims.rows && dims.cols ? q({ groupBy: [colKey], measures: HEAT, sort: [{ key: "budget", dir: "desc" }], limit: 50 }) : null,
+    // T-7: fetched well past the 50 actually shown (HEATMAP_TOP below), so a row/col beyond the cut
+    // — including the ∅ bucket, grouped under a null code like any other value — is still counted
+    // into `gap` instead of silently vanishing from `totals`.
+    dims.rows && dims.cols ? q({ groupBy: [rowKey], measures: HEAT, sort: [{ key: sortKey, dir: "desc" }], limit: 1000 }) : null,
+    dims.rows && dims.cols ? q({ groupBy: [colKey], measures: HEAT, sort: [{ key: "budget", dir: "desc" }], limit: 1000 }) : null,
     // No row/col axes, so no heatmap (T-3): the same live-leaf totals it would have had, ungrouped.
     !(dims.rows && dims.cols) ? q({ measures: HEAT, limit: 1 }) : null,
     // Needs attention (ADR-064): ahead of plan and past the on-plan band, largest first …
@@ -149,22 +152,48 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   const place = await alertPlaces(prisma, auth, alerts, [dims.rows, dims.cols].filter((d): d is NonNullable<typeof d> => d !== null && d !== undefined).map((d) => ({ key: d.key, id: d.id })));
   const alertsAt = (row: string | null, col: string | null) => alerts.filter((a) => (row === null || place.get(a.envelopeId)?.[rowKey] === row) && (col === null || place.get(a.envelopeId)?.[colKey] === col)).length;
 
+  // T-7: a leaf with no value for the row/col dimension still carries its money, under this code
+  // (never dropped as a bare null would be), so the ∅ row/column can show it.
+  const NO_DIMENSION_VALUE = "__none__";
+  const HEATMAP_TOP = 50;
   const measuresOf = (r: QueryRow) => Object.fromEntries(HEAT.map((m) => [m, r.measures[m] ?? null])) as Record<string, string | null>;
   const cells = (heat?.rows ?? []).map((r) => {
-    const row = r.dimensions[rowKey] ?? null;
-    const col = r.dimensions[colKey] ?? null;
+    const row = r.dimensions[rowKey] ?? NO_DIMENSION_VALUE;
+    const col = r.dimensions[colKey] ?? NO_DIMENSION_VALUE;
     return { row, col, ...r.measures, alerts: alertsAt(row, col), pending: r.pendingCount };
   });
   const margins = (res: QueryResponse | null, key: string, axis: "row" | "col") =>
     (res?.rows ?? []).map((r) => {
-      const code = r.dimensions[key] ?? null;
+      const code = r.dimensions[key] ?? NO_DIMENSION_VALUE;
       return { code, ...measuresOf(r), alerts: axis === "row" ? alertsAt(code, null) : alertsAt(null, code) };
     });
-  const rowMargins = margins(rowTotals, rowKey, "row");
-  const colMargins = margins(colTotals, colKey, "col");
+  // Every row/col code with a margin (fetched well past what's shown, see above), already ranked by
+  // the query's own sort.
+  const rowMarginsAll = margins(rowTotals, rowKey, "row");
+  const colMarginsAll = margins(colTotals, colKey, "col");
   const withCells = new Set(cells.flatMap((c) => [c.row, c.col]));
-  const rowOrder = rowMargins.map((m) => m.code).filter((c): c is string => c !== null && withCells.has(c));
-  const colOrder = colMargins.map((m) => m.code).filter((c): c is string => c !== null && withCells.has(c));
+  // The top 50 shown, keeping the ∅ bucket even past that cut so its money is never silently hidden.
+  const shownOrder = (all: Array<{ code: string }>) => {
+    const top = all.slice(0, HEATMAP_TOP).map((m) => m.code);
+    const withNone = all.some((m) => m.code === NO_DIMENSION_VALUE) && !top.includes(NO_DIMENSION_VALUE) ? [...top, NO_DIMENSION_VALUE] : top;
+    return withNone.filter((c) => withCells.has(c));
+  };
+  const rowOrder = shownOrder(rowMarginsAll);
+  const colOrder = shownOrder(colMarginsAll);
+  // Only the shown margins go to the client (the same bound as before); the money beyond them is `gap`.
+  const rowMargins = rowMarginsAll.filter((m) => rowOrder.includes(m.code));
+  const colMargins = colMarginsAll.filter((m) => colOrder.includes(m.code));
+  // T-7: cells + margins + gap == totals exactly. `margins` is what's shown in one axis only (a
+  // shown row's money in a hidden column, or vice versa); `gap` is neither axis shown — the money
+  // that was simply never sent, the top-50 cut used to drop silently. Reads straight off `heat.rows`
+  // (not the already-spread `cells`) so the dynamic "budget" | "actual" index keeps its type.
+  const heatmapGapSum = (key: "budget" | "actual") =>
+    (heat?.rows ?? [])
+      .filter((r) => !rowOrder.includes(r.dimensions[rowKey] ?? NO_DIMENSION_VALUE) && !colOrder.includes(r.dimensions[colKey] ?? NO_DIMENSION_VALUE))
+      .reduce((s, r) => s.plus(new Decimal(r.measures[key] ?? 0)), new Decimal(0));
+  const rowCodeCount = new Set(cells.map((c) => c.row)).size;
+  const colCodeCount = new Set(cells.map((c) => c.col)).size;
+  const heatmapGap = { budget: heatmapGapSum("budget").toFixed(2), actual: heatmapGapSum("actual").toFixed(2), rows: Math.max(0, rowCodeCount - rowOrder.length), cols: Math.max(0, colCodeCount - colOrder.length) };
 
   const targetOf = new Map((kpiTargets?.rows ?? []).map((r) => [r.dimensions[rowKey] ?? "", r.targets["cpa"]?.target ?? null]));
   // CPA: lower is better, so a positive gap is worse than target.
@@ -236,6 +265,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
             rowTotals: rowMargins,
             colTotals: colMargins,
             total: heat ? (Object.fromEntries(HEAT.map((m) => [m, heat.totals[m] ?? null])) as Record<string, string | null>) : null,
+            gap: heatmapGap,
             sort,
           }
         : null,

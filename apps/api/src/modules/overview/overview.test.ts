@@ -325,3 +325,133 @@ describe("GET /workspaces/:ws/overview — no heatmap axes (T-3)", () => {
     expect(o.headline?.["assignedPct"]).toBe(new Decimal(o.headline?.["assigned"] ?? 0).div(o.headline?.["budget"] ?? 1).toDecimalPlaces(4).toString());
   });
 });
+
+describe("GET /workspaces/:ws/overview — heatmap gap (T-7)", () => {
+  // 61 country values (so the top-50 cut actually cuts something) plus one more leaf with no
+  // platform value at all, so it lands under the ∅ column instead of vanishing.
+  const orgId = randomUUID();
+  const ws = randomUUID();
+  const owner_ = testUser("t7-gap", randomUUID());
+  const countryDim = randomUUID();
+  const platformDim = randomUUID();
+  const ROWS = 61;
+  const countryValueId = new Map<string, string>();
+  let platformValueId = "";
+
+  async function leaf(name: string, dims: Record<string, string>, budget: string): Promise<string> {
+    const id = randomUUID();
+    const v = randomUUID();
+    await owner.$executeRawUnsafe(
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
+      id,
+      ws,
+      name,
+      JSON.stringify(dims),
+      owner_.id,
+    );
+    await owner.$executeRawUnsafe(
+      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
+      v,
+      id,
+      budget,
+      owner_.id,
+    );
+    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+    if (dims["country"]) await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, countryDim, countryValueId.get(dims["country"]));
+    if (dims["platform"]) await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, platformDim, platformValueId);
+    return id;
+  }
+
+  beforeAll(async () => {
+    await owner.organization.create({ data: { id: orgId, name: "t7-gap" } });
+    await owner.workspace.create({ data: { id: ws, orgId, slug: `t7-${ws}`, name: "T-7 gap", reportingCurrency: "USD" } });
+    await owner.user.create({ data: { id: owner_.id, orgId, email: owner_.email, name: owner_.email, googleSub: `g-${owner_.sub}` } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: owner_.id, role: "BUDGET_OWNER", createdBy: owner_.id } });
+    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, countryDim, orgId, owner_.id);
+    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'platform', 'Platform', 'ENUM', $3::uuid)`, platformDim, orgId, owner_.id);
+    for (let i = 1; i <= ROWS; i++) {
+      const code = `c${String(i).padStart(2, "0")}`;
+      const id = randomUUID();
+      countryValueId.set(code, id);
+      await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, id, countryDim, code);
+    }
+    countryValueId.set("c99", randomUUID());
+    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'c99', 'c99')`, countryValueId.get("c99"), countryDim);
+    platformValueId = randomUUID();
+    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'meta', 'Meta')`, platformValueId, platformDim);
+    // 61 leaves, strictly increasing budgets so the top-50 cut is deterministic: c01 (lowest) is
+    // the first to go, c61 (highest of the 61) is the last of them still shown.
+    for (let i = 1; i <= ROWS; i++) {
+      const code = `c${String(i).padStart(2, "0")}`;
+      await leaf(`Country ${code}`, { country: code, platform: "meta" }, (i * 100).toFixed(2));
+    }
+    // The ∅-column leaf: a country value of its own, budget larger than all the above so it is
+    // always in the shown rows, but no platform at all.
+    await leaf("Country c99 (no platform)", { country: "c99" }, "999999.00");
+  }, 120_000);
+
+  afterAll(async () => {
+    const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
+    await owner.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`, ws);
+    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
+    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN ${envs}`, ws);
+    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+    await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
+    await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
+    await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+    await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
+    await owner.user.deleteMany({ where: { id: owner_.id } });
+    await owner.workspace.deleteMany({ where: { id: ws } });
+    await owner.organization.deleteMany({ where: { id: orgId } });
+  });
+
+  it("with 60+ row values, cells + margins + gap == total exactly; a leaf with no column value carries it under __none__", async () => {
+    const token = await h.mint(owner_);
+    const res = await h.call("GET", `/api/v1/workspaces/${ws}/overview`, token, { headers: { "x-workspace-id": ws } });
+    expect(res.status, JSON.stringify(res.body).slice(0, 500)).toBe(200);
+    const o = res.body as {
+      totals: Record<string, string | null>;
+      heatmap: {
+        rows: string[];
+        cols: string[];
+        cells: Array<{ row: string; col: string; budget: string | null; actual: string | null }>;
+        rowTotals: Array<{ code: string; budget: string | null; actual: string | null }>;
+        colTotals: Array<{ code: string; budget: string | null; actual: string | null }>;
+        total: Record<string, string | null>;
+        gap: { budget: string; actual: string; rows: number; cols: number };
+      } | null;
+    };
+    const h_ = o.heatmap;
+    if (h_ === null) throw new Error("expected a heatmap");
+
+    // The ∅ column is there, under the sentinel code, and carries the c99 leaf's money.
+    expect(h_.cols).toContain("__none__");
+    const noneCell = h_.cells.find((c) => c.row === "c99" && c.col === "__none__");
+    expect(noneCell?.budget).toBe("999999.00");
+    expect(h_.rows).toContain("c99"); // never cut: its budget dwarfs the rest
+
+    // Top 50 rows by budget desc: c99 (#1) plus the 49 largest of c01..c61 (c13..c61) — 62 distinct
+    // row codes total, so the smallest 12 (c01..c12) are cut.
+    expect(h_.rows.length).toBe(50);
+    expect(h_.gap.rows).toBe(12);
+    expect(h_.gap.cols).toBe(0); // only "meta" and "__none__": both shown
+    for (let i = 1; i <= 12; i++) expect(h_.rows).not.toContain(`c${String(i).padStart(2, "0")}`);
+    for (const code of ["c13", "c61", "c99"]) expect(h_.rows).toContain(code);
+
+    // cells (shown row × shown col) + margins (exactly one of row/col shown) + gap (neither shown)
+    // partition every (row, col) pair exactly once, so they must sum to `total` exactly.
+    const sum = (xs: Array<{ budget: string | null; actual: string | null }>, key: "budget" | "actual") => xs.reduce((s, x) => s.plus(new Decimal(x[key] ?? 0)), new Decimal(0));
+    const rowShown = (c: { row: string }) => h_.rows.includes(c.row);
+    const colShown = (c: { col: string }) => h_.cols.includes(c.col);
+    const interior = h_.cells.filter((c) => rowShown(c) && colShown(c));
+    const margins = h_.cells.filter((c) => rowShown(c) !== colShown(c));
+    const hidden = h_.cells.filter((c) => !rowShown(c) && !colShown(c));
+    for (const key of ["budget", "actual"] as const) {
+      const total = new Decimal(h_.total[key] ?? 0);
+      expect(sum(interior, key).plus(sum(margins, key)).plus(sum(hidden, key)).toFixed(2)).toBe(total.toFixed(2));
+      expect(sum(hidden, key).toFixed(2)).toBe(new Decimal(h_.gap[key]).toFixed(2));
+      expect(total.toFixed(2)).toBe(new Decimal(o.totals[key] ?? 0).toFixed(2));
+    }
+  });
+});

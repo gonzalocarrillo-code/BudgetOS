@@ -29,15 +29,23 @@ export const OverviewLeaf = z
   .passthrough();
 export type OverviewLeaf = z.infer<typeof OverviewLeaf>;
 
-/** One heatmap cell: its measures, its open alerts and budgets waiting; with Compare to, the budget then. */
+/**
+ * One heatmap cell: its measures, its open alerts and budgets waiting; with Compare to, the budget
+ * then. A leaf with no value for the row or column dimension carries its money under `"__none__"`
+ * (T-7) rather than being dropped — the UI's ∅ row/column.
+ */
 export const OverviewHeatmapCell = z
-  .object({ row: z.string().nullable(), col: z.string().nullable(), ...MEASURES, budget_baseline: Num, budget_change_abs: Num, alerts: z.number().int().default(0), pending: z.number().int().default(0) })
+  .object({ row: z.string(), col: z.string(), ...MEASURES, budget_baseline: Num, budget_change_abs: Num, alerts: z.number().int().default(0), pending: z.number().int().default(0) })
   .passthrough();
 export type OverviewHeatmapCell = z.infer<typeof OverviewHeatmapCell>;
 
 /** A row's or a column's total (HO-010): the heatmap's margins, from the planner, not summed on the page. */
-export const OverviewMargin = z.object({ code: z.string().nullable(), ...MEASURES, alerts: z.number().int().default(0) }).passthrough();
+export const OverviewMargin = z.object({ code: z.string(), ...MEASURES, alerts: z.number().int().default(0) }).passthrough();
 export type OverviewMargin = z.infer<typeof OverviewMargin>;
+
+/** T-7: money and row/col codes left out of `rows` × `cols` (beyond the top 50 shown of each) — so cells + margins + gap always equals `total`. */
+export const OverviewHeatmapGap = z.object({ budget: z.string(), actual: z.string(), rows: z.number().int(), cols: z.number().int() });
+export type OverviewHeatmapGap = z.infer<typeof OverviewHeatmapGap>;
 
 export const HEATMAP_SORTS = ["budget", "pace", "ahead"] as const;
 
@@ -54,6 +62,7 @@ export const OverviewHeatmap = z.object({
   rowTotals: z.array(OverviewMargin).default([]),
   colTotals: z.array(OverviewMargin).default([]),
   total: z.object(MEASURES).passthrough().nullable().default(null),
+  gap: OverviewHeatmapGap,
   sort: z.enum(HEATMAP_SORTS).default("budget"),
 });
 export type OverviewHeatmap = z.infer<typeof OverviewHeatmap>;

@@ -35,8 +35,8 @@ export type { PendingSlackDelivery, SlackDeliveryAbout, SlackDeliveryIntent, Sla
 export type { OpenAlertInput, RuleStateInput } from "./alerts.js";
 export { currentFilterTargets, fiscalCalendar, hasProjections, metricLibrary, plannerOptions } from "./planner-options.js";
 export type { CurrentFilterTarget } from "./planner-options.js";
-export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, tuplesWithEnvelope, runCoverage, runEnvelopes, supersedeMovedFacts, supersedeUnseenFacts, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
-export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, ProjectionFactInput, RunCoverage, SpendFactInput, Superseded, UnmatchedGroup } from "./facts.js";
+export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchRunFacts, spendThroughInCurrency, tuplesWithEnvelope, runCoverage, runEnvelopes, supersedeMovedFacts, supersedeUnseenFacts, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
+export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, ProjectionFactInput, RunCoverage, SpendFactInput, SpendInCurrency, Superseded, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
 export { approvalRequestsBySuffix, eligibleApproverSql, lastActorId, lastRequestAuditAt, lockApprovalRequest, lockParentCap } from "./approvals.js";

@@ -1,7 +1,6 @@
 import { DomainError, canInScope } from "@budget/domain";
-import { openBulkRequestFor, spendThrough, withTenant, type Tx } from "@budget/db";
+import { openBulkRequestFor, spendThrough, spendThroughInCurrency, withTenant, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
-import { resolveFx } from "../fx.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseId } from "../../../common/parse-input.js";
 import { assertInScope, envelopeScopeTarget, envelopeScopeTargets } from "../../../common/scope.guard.js";
@@ -169,6 +168,12 @@ export async function listVersions(prisma: PrismaClient, auth: AuthContext, rawI
 /**
  * GET /envelopes/:id/spend?through=YYYY-MM-DD: spend on the budget up to a date, in its own
  * currency. End proposes it as the final amount so the unspent part goes back to the parent (H-011).
+ *
+ * T-6: converting the reporting-currency total back with *today's* FX rate drifts from the
+ * released amount as rates move, because each fact was converted at its own date. So a budget
+ * currency equal to the workspace's reporting currency reads `amount_reporting` directly (the same
+ * number, no FX at all); otherwise facts already in the budget's currency are exact, and only the
+ * remainder (facts in another currency) is converted, each at its own date's rate.
  */
 export async function getEnvelopeSpend(prisma: PrismaClient, auth: AuthContext, rawId: string, rawThrough?: string) {
   const id = parseId(rawId);
@@ -178,8 +183,14 @@ export async function getEnvelopeSpend(prisma: PrismaClient, auth: AuthContext, 
     if (env === null) throw new DomainError("NOT_FOUND", "Envelope not found");
     assertInScope(auth, "envelope.read", await envelopeScopeTarget(tx, id));
     const through = rawThrough ?? new Date().toISOString().slice(0, 10);
-    const reportingSpend = new Decimal(await spendThrough(tx, id, through));
-    const rate = (await resolveFx(tx, env.currency, env.workspaceId)).rate;
-    return { through, currency: env.currency, spend: reportingSpend.div(rate).toDecimalPlaces(2).toFixed(2) };
+    const ws = await tx.workspace.findUniqueOrThrow({ where: { id: env.workspaceId }, select: { reportingCurrency: true } });
+    const spend =
+      env.currency === ws.reportingCurrency
+        ? new Decimal(await spendThrough(tx, id, through))
+        : await (async () => {
+            const { native, convertedRemainder } = await spendThroughInCurrency(tx, id, through, env.currency);
+            return new Decimal(native).plus(convertedRemainder);
+          })();
+    return { through, currency: env.currency, spend: spend.toDecimalPlaces(2).toFixed(2) };
   });
 }
