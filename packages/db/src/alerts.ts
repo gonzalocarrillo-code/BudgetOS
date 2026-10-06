@@ -34,6 +34,17 @@ export interface RuleStateInput {
   priorDays: number;
 }
 
+/**
+ * Serializes pacing evaluation for one workspace (audit I-23). Two overlapping evaluations (the
+ * 15-minute schedule and a manual re-run, or two scheduler ticks) must not both transition the same
+ * alert between OPEN/SNOOZED/RESOLVED and both emit an audit_event + outbox row for it. A
+ * session-scoped advisory lock held for the rest of the transaction makes the second evaluator wait
+ * for the first to commit, then re-read the alert's current status.
+ */
+export async function lockWorkspacePacing(tx: Tx, workspaceId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pacing:${workspaceId}`}, 0))`;
+}
+
 /** One statement for a rule's evaluated envelopes (the job runs every 15 minutes over every envelope in scope). */
 export async function saveRuleStates(tx: Tx, ruleId: string, rows: RuleStateInput[]): Promise<number> {
   if (rows.length === 0) return 0;

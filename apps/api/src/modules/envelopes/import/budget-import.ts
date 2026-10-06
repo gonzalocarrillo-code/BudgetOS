@@ -1,5 +1,5 @@
 import { BudgetImportCommitInput, BudgetImportInput, BudgetImportTemplateQuery, DomainError, newId, resolvePeriod, type BudgetImportPreview } from "@budget/domain";
-import { audit, auditMany, bumpDataVersion, outbox, recomputeNames, withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
+import { audit, auditMany, bumpDataVersion, lockWorkspaceImport, outbox, recomputeNames, withTenant, type LockedEnvelopeRow, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { PrismaClient } from "@prisma/client";
 import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -94,6 +94,10 @@ export async function commitBudgetImport(prisma: PrismaClient, auth: AuthContext
     prisma,
     auth.ctx,
     async (tx) => {
+      // I-16: serialize commits for this workspace so two concurrent commits cannot both read "not
+      // created yet" and both insert the same tuple. The loser waits here, then rebuilds the plan
+      // against what the winner just wrote, so its own commit sees the row as unchanged and 409s.
+      await lockWorkspaceImport(tx, workspaceId);
       const plan = await buildImportPlan(tx, auth, workspaceId, stored.csv, stored.templateId);
       const check = previewOf(input.previewId, plan);
       if (check.blocked) throw new DomainError("CONFLICT", `The file no longer imports as previewed: ${check.blocked}`, { counts: check.counts, overCap: check.overCap });

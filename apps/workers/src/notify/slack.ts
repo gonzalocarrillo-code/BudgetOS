@@ -1,5 +1,5 @@
-import { envelopePaths, lastActorId, loadBulkChange, type Tx } from "@budget/db";
-import { parseOutboxPayload, threadPath } from "@budget/domain";
+import { envelopePaths, lastActorId, loadBulkChange, markSlackDeliveryPosted, pendingSlackDeliveries, recordSlackIntent, recordSlackMessage, withTenant, type SlackDeliveryAbout, type TenantContext, type Tx } from "@budget/db";
+import { newId, parseOutboxPayload, threadPath } from "@budget/domain";
 import { WebClient } from "@slack/web-api";
 import type { PrismaClient } from "@prisma/client";
 import { decodePush, handleOnce, type OutboxEvent } from "../consumer.js";
@@ -87,7 +87,14 @@ export interface Outgoing {
   channel: string;
   message: SlackMessage;
   /** The alert or request the message is about: recorded, so later changes edit it. */
-  about?: { type: "alert" | "approval_request"; id: string };
+  about?: SlackDeliveryAbout;
+  /**
+   * Disambiguates this post from any other one this same outbox event might record (I-21): several
+   * direct messages can share both `about` and, less often, `channel`-independent content, and a
+   * mention or a connectivity test message has no `about` at all. Unique together with the outbox id
+   * and channel; recording the same key twice for the same event is a no-op, not a second message.
+   */
+  dedupeKey: string;
 }
 /** workspace.settings.slack (SlackSettings in @budget/domain). */
 interface SlackSettings {
@@ -157,7 +164,7 @@ async function alertPosts(tx: Tx, event: OutboxEvent, p: Record<string, unknown>
   if (built === null) return [];
   const channel = alertChannel(built.delivery, built.alert.severity, s);
   if (!channel) return [];
-  return [{ channel, message: built.message, about: { type: "alert", id: built.alert.id } }];
+  return [{ channel, message: built.message, about: { type: "alert", id: built.alert.id }, dedupeKey: `alert:${built.alert.id}` }];
 }
 
 /** An approval event's message, for the request as it is now. `extra` makes a private card (S-007): its buttons' origin, and whether to show them. */
@@ -273,7 +280,7 @@ async function approvalDelivery(tx: Tx, event: OutboxEvent, p: Record<string, un
   // Nothing changed with a reminder: the messages already say where the request is.
   const edits = reminder || !slack.updateMessage ? [] : recorded;
   const inChannel = recorded.some((m) => !m.channel.startsWith("D"));
-  if (!reminder && !inChannel && s.defaultChannel) posts.push({ channel: s.defaultChannel, message, about });
+  if (!reminder && !inChannel && s.defaultChannel) posts.push({ channel: s.defaultChannel, message, about, dedupeKey: `approval_request:${r.id}:channel` });
   if (s.dms === false) return { message, edits, posts };
   if (kind === "requested" || kind === "escalated") {
     const by = reminder && typeof p["by"] === "string" ? ((await names(tx, [p["by"]])).get(p["by"]) ?? null) : null;
@@ -282,11 +289,11 @@ async function approvalDelivery(tx: Tx, event: OutboxEvent, p: Record<string, un
       const channel = await dmChannel(tx, slack, userId);
       if (channel === null) continue;
       if (!reminder && recorded.some((m) => m.channel === channel)) continue; // told already; the edit shows the new step
-      posts.push({ channel, message: dm, about });
+      posts.push({ channel, message: dm, about, dedupeKey: `approval_request:${r.id}:dm:${userId}` });
     }
   } else if ((await lastActorId(tx, "approval_request", r.id)) !== r.requestedBy) {
     const channel = await dmChannel(tx, slack, r.requestedBy);
-    if (channel !== null) posts.push({ channel, message, about });
+    if (channel !== null) posts.push({ channel, message, about, dedupeKey: `approval_request:${r.id}:dm:${r.requestedBy}` });
   }
   return { message, edits, posts };
 }
@@ -317,6 +324,7 @@ async function mentionPosts(tx: Tx, event: OutboxEvent, p: Record<string, unknow
     out.push({
       channel: slackUser,
       message: mentionMessage({ baseUrl, workspaceId: event.workspaceId, commentId: c.id, threadPath: path, authorName: display[c.authorId] ?? "Someone", anchorLabel, threadTitle: c.thread.title, bodyMd: c.bodyMd, names: display }),
+      dedupeKey: `mention:${c.id}:${userId}`,
     });
   }
   return out;
@@ -327,11 +335,18 @@ async function mentionPosts(tx: Tx, event: OutboxEvent, p: Record<string, unknow
  * `thread.changed` and `slack.test`. New alerts and requests are posted (and recorded); a change to
  * one the bot already posted edits that message instead — whether the change came from Slack or
  * from the app. Without a Slack client it acknowledges and posts nothing.
+ *
+ * I-21: Slack is never called from inside the consumer transaction. The transaction only decides
+ * what to post and records that decision (`recordSlackIntent`, `ts` left null); posting happens
+ * afterwards, and each post's `ts` is set by its own short follow-up transaction, so one post
+ * failing can never roll back the record of the ones that already went out. Edits (`chat.update`)
+ * stay inside the transaction: re-applying the same final content is harmless, unlike re-posting.
  */
 export async function handleSlackEvent(prisma: PrismaClient, slack: SlackClient | null, body: unknown, baseUrl = process.env["APP_BASE_URL"] ?? "https://budget-os.example") {
   const event = decodePush(body);
   const posted: Outgoing[] = [];
   const edited: Array<{ channel: string; ts: string }> = [];
+  const ctx: TenantContext = { workspaceId: event.workspaceId, orgId: event.orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `${SLACK_CONSUMER}-${event.outboxId}` };
   const outcome = await handleOnce(prisma, SLACK_CONSUMER, event, async (tx) => {
     if (slack === null) return;
     // I-29: a malformed payload fails the handler (attempts/backoff in local-runner.ts) instead of
@@ -344,13 +359,7 @@ export async function handleSlackEvent(prisma: PrismaClient, slack: SlackClient 
     const org = await tx.organization.findUnique({ where: { id: event.orgId }, select: { settings: true } });
     const orgTeam = ((org?.settings ?? {}) as { slack?: { teamId?: string } }).slack?.teamId;
     const s: SlackSettings = { ...own, teamId: orgTeam ?? own.teamId };
-    const post = async (o: Outgoing) => {
-      const ref = await slack.postMessage({ channel: o.channel, text: o.message.text, blocks: o.message.blocks });
-      if (ref && o.about) {
-        await tx.$executeRaw`INSERT INTO slack_message (workspace_id, entity_type, entity_id, channel, ts) VALUES (${event.workspaceId}::uuid, ${o.about.type}, ${o.about.id}::uuid, ${ref.channel}, ${ref.ts}) ON CONFLICT DO NOTHING`;
-      }
-      posted.push(o);
-    };
+    const recordPost = (o: Outgoing) => recordSlackIntent(tx, { id: newId(), workspaceId: event.workspaceId, outboxId: event.outboxId, channel: o.channel, dedupeKey: o.dedupeKey, message: o.message, ...(o.about ? { about: o.about } : {}) });
     const edit = async (m: { channel: string; ts: string }, message: SlackMessage) => {
       await slack.updateMessage?.({ channel: m.channel, ts: m.ts, text: message.text, blocks: message.blocks });
       edited.push(m);
@@ -359,7 +368,7 @@ export async function handleSlackEvent(prisma: PrismaClient, slack: SlackClient 
     if (event.topic === "approval.changed" || event.topic === "approval.reminded") {
       const plan = await approvalDelivery(tx, event, p, baseUrl, s, slack);
       if (plan.message) for (const m of plan.edits) await edit(m, plan.message);
-      for (const o of plan.posts) await post(o);
+      for (const o of plan.posts) await recordPost(o);
       return;
     }
 
@@ -375,17 +384,39 @@ export async function handleSlackEvent(prisma: PrismaClient, slack: SlackClient 
       return;
     }
 
-    const outgoing =
+    const outgoing: Outgoing[] =
       event.topic === "alert.triggered"
         ? await alertPosts(tx, event, p, baseUrl, s)
         : event.topic === "thread.changed"
           ? await mentionPosts(tx, event, p, baseUrl, slack)
           : event.topic === "slack.test" && typeof p["channel"] === "string"
-            ? [{ channel: p["channel"], message: testMessage(baseUrl, event.workspaceId, typeof p["requestedBy"] === "string" ? p["requestedBy"] : null) }]
+            ? [{ channel: p["channel"], message: testMessage(baseUrl, event.workspaceId, typeof p["requestedBy"] === "string" ? p["requestedBy"] : null), dedupeKey: "test" }]
             : [];
-    for (const o of outgoing) await post(o);
+    for (const o of outgoing) await recordPost(o);
   });
-  if (slack === null) log.info({ outboxId: event.outboxId, topic: event.topic }, "no SLACK_BOT_TOKEN: Slack delivery skipped");
+
+  // Outside the transaction: post whatever is still unsent for this outbox event — this run's own
+  // intents, or ones a previous run recorded but failed to post past partway through.
+  if (slack) {
+    const pending = await withTenant(prisma, ctx, (tx) => pendingSlackDeliveries(tx, event.outboxId));
+    for (const row of pending) {
+      const outgoing: Outgoing = { channel: row.channel, message: { text: row.message.text, blocks: row.message.blocks as SlackMessage["blocks"] }, dedupeKey: "", ...(row.about ? { about: row.about } : {}) };
+      // Not every SlackClient returns a ts (editing is optional, SlackClient.updateMessage?); this
+      // still marks the intent posted either way, with "" standing in for "sent, but not editable" —
+      // only a throw here (the call never reaching the mark-posted statement below) leaves it to retry.
+      const ref = await slack.postMessage({ channel: row.channel, text: outgoing.message.text, blocks: outgoing.message.blocks });
+      posted.push(outgoing);
+      const about = row.about;
+      // Its own short transaction, separate from the next post: one post failing can never roll
+      // back another post's "already sent" record (I-21).
+      await withTenant(prisma, ctx, async (tx) => {
+        await markSlackDeliveryPosted(tx, row.id, ref?.ts ?? "");
+        if (ref && about) await recordSlackMessage(tx, event.workspaceId, about, ref);
+      });
+    }
+  } else {
+    log.info({ outboxId: event.outboxId, topic: event.topic }, "no SLACK_BOT_TOKEN: Slack delivery skipped");
+  }
   return { outcome, posted, edited };
 }
 

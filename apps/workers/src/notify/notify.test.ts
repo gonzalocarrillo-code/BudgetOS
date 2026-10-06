@@ -34,7 +34,7 @@ class FakeSlack implements SlackClient {
     }
     this.posts.push({ channel: m.channel, text: m.text });
   }
-  async lookupUserByEmail(email: string) {
+  async lookupUserByEmail(email: string): Promise<string | null> {
     return email.startsWith("owner") ? "U-OWNER" : null; // the approver is not in Slack
   }
 }
@@ -152,14 +152,49 @@ describe("Slack delivery (fake client)", () => {
     expect(slack.posts).toEqual([{ channel: "U-OWNER", text: "Name planner mentioned you on BR Meta" }]); // the approver has no Slack account
   });
 
-  it("posts once per outbox event; a failed post is not recorded, so the redelivery posts it", async () => {
+  it("posts once per outbox event; a post that fails after the decision to send it commits is retried on redelivery, not re-decided (I-21)", async () => {
     const slack = new FakeSlack();
     const body = await event("alert.triggered", { alertId: await alert(ruleIds.critical, "critical") });
     slack.failNext = true;
+    // The consumer transaction (deciding to post, and recording that) already committed by the time
+    // Slack is called, so this throw is the post itself failing, not the business logic.
     await expect(handleSlackEvent(app, slack, body)).rejects.toThrow(/ratelimited/);
-    expect((await handleSlackEvent(app, slack, body)).outcome).toBe("applied");
+    expect(slack.posts).toHaveLength(0);
+    // Redelivery of the same event: the handler is not re-run (the event was already applied), but
+    // the still-unsent post is retried and this time succeeds.
     expect((await handleSlackEvent(app, slack, body)).outcome).toBe("duplicate");
     expect(slack.posts).toHaveLength(1);
+    // A further redelivery finds nothing left to send.
+    expect((await handleSlackEvent(app, slack, body)).outcome).toBe("duplicate");
+    expect(slack.posts).toHaveLength(1);
+  });
+
+  it("a failure on the second of two posts leaves the first's ts recorded; redelivery posts only the missing one (I-21)", async () => {
+    const slack = new FakeSlack();
+    const requestId = await request();
+    const body = await event("approval.changed", { requestId, action: "approval.requested", status: "PENDING" });
+    // Two posts for one event: the channel, and the approver's direct message (owner is in Slack as U-OWNER; the approver is not, so give the approver a Slack identity for this test).
+    const originalLookup = slack.lookupUserByEmail.bind(slack);
+    slack.lookupUserByEmail = async (email: string) => (email.startsWith("owner") || email.startsWith("approver") ? (email.startsWith("owner") ? "U-OWNER" : "U-APPROVER") : null);
+    let calls = 0;
+    const originalPost = slack.postMessage.bind(slack);
+    slack.postMessage = async (m: { channel: string; text: string }) => {
+      calls += 1;
+      if (calls === 2) throw new Error("slack: ratelimited");
+      return originalPost(m);
+    };
+    await expect(handleSlackEvent(app, slack, body)).rejects.toThrow(/ratelimited/);
+    const afterFailure = await owner.$queryRawUnsafe<Array<{ ts: string | null }>>(`SELECT ts FROM slack_delivery WHERE outbox_id = $1::bigint ORDER BY channel`, body.message.attributes.outboxId);
+    expect(afterFailure.filter((r) => r.ts !== null)).toHaveLength(1); // the first post's ts is recorded; the second's is still null
+    expect(slack.posts).toHaveLength(1);
+
+    const redelivered = await handleSlackEvent(app, slack, body);
+    expect(redelivered.outcome).toBe("duplicate");
+    expect(slack.posts).toHaveLength(2); // only the missing one was retried
+    const afterRetry = await owner.$queryRawUnsafe<Array<{ ts: string | null }>>(`SELECT ts FROM slack_delivery WHERE outbox_id = $1::bigint`, body.message.attributes.outboxId);
+    expect(afterRetry.every((r) => r.ts !== null)).toBe(true);
+
+    slack.lookupUserByEmail = originalLookup;
   });
 
   it("without SLACK_BOT_TOKEN nothing is sent and the event is still acknowledged", async () => {

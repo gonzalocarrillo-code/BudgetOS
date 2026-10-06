@@ -104,6 +104,29 @@ describe("budget import (D-007, D-008)", () => {
     expect((await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/commit`, { previewId: again.previewId, rationale: "again" })).status).toBe(409);
   });
 
+  it("two concurrent commits of the same new tuple create it exactly once (I-16, advisory lock)", async () => {
+    const ws = golden.workspaceId;
+    // APAC/JP is untouched by the golden seed and by the earlier AMER/EMEA tests in this file, so this is a genuinely new tuple.
+    const tuple = { region: "APAC", country: "JP", platform: "meta", objective: "awareness", audience: "prospecting" };
+    const file = csvOf([HEADER, ["", "APAC", "JP", "meta", "awareness", "prospecting", "USD", "500.00", "2026-01-01", "2026-12-31", ""]]);
+    expect(await owner.envelope.count({ where: { workspaceId: ws, dimensionValues: { equals: tuple } } })).toBe(0);
+
+    const previewA = (await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/preview`, { csv: file, templateId })).body as unknown as Preview;
+    const previewB = (await as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/preview`, { csv: file, templateId })).body as unknown as Preview;
+    expect(previewA.counts.new).toBe(1);
+    expect(previewB.counts.new).toBe(1);
+
+    const results = await Promise.all([
+      as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/commit`, { previewId: previewA.previewId, rationale: "race A" }),
+      as("admin", "POST", `/api/v1/workspaces/${ws}/budget-import/commit`, { previewId: previewB.previewId, rationale: "race B" }),
+    ]);
+    const statuses = results.map((r) => r.status).sort((a, b) => a - b);
+    expect(statuses[0]).toBe(201);
+    expect([404, 409]).toContain(statuses[1]); // the loser: plan rebuilt after the winner's commit shows the tuple already exists (409), or the preview store already dropped it (404)
+
+    expect(await owner.envelope.count({ where: { workspaceId: ws, dimensionValues: { equals: tuple } } })).toBe(1);
+  });
+
   it("problems are per line with the nearest value; a parent pushed over its budget blocks Commit", async () => {
     const ws = golden.workspaceId;
     const file = csvOf([
