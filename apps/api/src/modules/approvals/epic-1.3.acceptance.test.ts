@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { asOrgAdmin, type TenantContext } from "@budget/db";
+import { asOrgAdmin, type TenantContext, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
+import type { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appDb as appDbClient, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
 import { escalateOverdue } from "./commands/escalate-overdue.js";
@@ -18,6 +19,7 @@ const appDb = appDbClient();
 let h: Harness;
 
 const orgId = randomUUID();
+const asE13 = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 const ws = randomUUID();
 const users = {
   planner: testUser("planner", randomUUID()),
@@ -250,6 +252,35 @@ describe("external approvals with evidence can be recorded", () => {
     const s = await submit(e.id, e.draft);
     const res = await as(users.planner, "POST", `/api/v1/approvals/${s.requestId}/external-evidence`, evidence);
     expect(res.body).toMatchObject({ counted: false, status: "PENDING", currentStep: 0 });
+  });
+
+  // W3-3 (audit I-18): countedApprovals() used to COUNT(*) decisions instead of counting distinct
+  // deciders, and this endpoint had no duplicate check at all -- one requester uploading evidence
+  // twice satisfied minApprovals: 2. Force the step to need two approvals, then fire the same
+  // person's upload twice at once: only one may count, the other is refused, and the request must
+  // not advance to APPROVED on one person's evidence alone.
+  it("W3-3 (audit I-18): the same person's two concurrent uploads count once, not twice", async () => {
+    const e = await newEnvelope("7100.00");
+    const s = await submit(e.id, e.draft);
+    const requestId = s.requestId!;
+    const before = await asE13((tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { policySnapshot: true } }));
+    const snapshot = before.policySnapshot as { chain: Array<Record<string, unknown>> } & Record<string, unknown>;
+    const chain = snapshot.chain.map((step, i) => (i === 0 ? { ...step, minApprovals: 2 } : step));
+    await asE13((tx) => tx.approvalRequest.update({ where: { id: requestId }, data: { policySnapshot: { ...snapshot, chain, allowExternalEvidence: true } as Prisma.InputJsonValue } }));
+
+    const [a, b] = await Promise.all([
+      as(users.planner, "POST", `/api/v1/approvals/${requestId}/external-evidence`, evidence),
+      as(users.planner, "POST", `/api/v1/approvals/${requestId}/external-evidence`, evidence),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    const ok = a.status === 201 ? a : b;
+    const conflict = a.status === 201 ? b : a;
+    expect(ok.body).toMatchObject({ counted: true, status: "PENDING" });
+    expect(conflict.body).toMatchObject({ code: "CONFLICT" });
+
+    expect(await asE13((tx) => tx.approvalDecision.count({ where: { requestId, stepIndex: 0, decidedBy: users.planner.id } }))).toBe(1);
+    const after = await asE13((tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { status: true, currentStep: true } }));
+    expect(after).toMatchObject({ status: "PENDING", currentStep: 0 });
   });
 });
 

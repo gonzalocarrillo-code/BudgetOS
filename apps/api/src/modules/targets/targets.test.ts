@@ -166,6 +166,20 @@ describe("targets: versions, approval, concurrency", () => {
     expect((await createTarget(planner, { scope: { type: "envelope", envelopeId: env["mx"] }, metricKey: "cpa", value: "1", comparator: "between" })).status).toBe(422);
   });
 
+  // W3-3 (audit I-19): createTarget()'s "clash" check is SELECT-then-INSERT; two concurrent creates
+  // for an envelope with no target yet both pass it. target_envelope_active_metric
+  // (20261015010000_partial_unique_constraints) refuses the second active row; create-target.ts
+  // maps the resulting P2002 to the same 409 the sequential check above already gives.
+  it("W3-3 (audit I-19): two concurrent target creates for the same (envelope, metric) make exactly one", async () => {
+    const [a, b] = await Promise.all([
+      createTarget(planner, { scope: { type: "envelope", envelopeId: env["de"] }, metricKey: "cpa", value: "5" }),
+      createTarget(planner, { scope: { type: "envelope", envelopeId: env["de"] }, metricKey: "cpa", value: "7" }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    const rows = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM target WHERE envelope_id = $1::uuid AND metric_key = 'cpa' AND status = 'active'`, env["de"]));
+    expect(Number(rows[0]?.n)).toBe(1);
+  });
+
   it("a first target needs an APPROVER (deltaPct 100%); the approver's decision makes it current", async () => {
     const t = (await call(planner, "GET", `/targets/${parentTarget}/versions`)).body as { versions: Array<{ id: string }> };
     const v1 = t.versions[0]?.id as string;

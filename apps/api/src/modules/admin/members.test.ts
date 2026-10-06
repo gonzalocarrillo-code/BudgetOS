@@ -107,6 +107,19 @@ describe("members (ORG-005: a workspace admin sees and adds only their workspace
     expect(bare.body).toMatchObject({ created: true, role: null });
   });
 
+  // W3-3 (audit I-19): assignRole()'s "duplicate" check is SELECT-then-INSERT; two concurrent
+  // assignments of a role the principal does not have yet both pass it.
+  // role_assignment_unique_scoped (20261015010000_partial_unique_constraints) refuses the second
+  // row; assign-role.ts maps the resulting P2002 to the same 409 the sequential check already gives.
+  it("W3-3 (audit I-19): two concurrent assignments of the same new role make exactly one row", async () => {
+    const [a, b] = await Promise.all([
+      call(admin, "POST", `/workspaces/${ws}/roles`, { principalType: "user", principalId: planner.id, role: "FINANCE" }),
+      call(admin, "POST", `/workspaces/${ws}/roles`, { principalType: "user", principalId: planner.id, role: "FINANCE" }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(await owner.roleAssignment.count({ where: { workspaceId: ws, principalType: "user", principalId: planner.id, role: "FINANCE" } })).toBe(1);
+  });
+
   it("a workspace keeps at least one admin", async () => {
     const roles = (await call(admin, "GET", `/workspaces/${ws}/roles`)).body as unknown as { rows?: Array<{ id: string; role: string }> } | Array<{ id: string; role: string }>;
     const list = Array.isArray(roles) ? roles : (roles.rows ?? []);
