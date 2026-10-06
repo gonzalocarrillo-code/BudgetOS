@@ -1,9 +1,10 @@
 import { HEATMAP_SORTS, paceBand, type OverviewHeatmap, type OverviewHeatmapCell, type OverviewMargin } from "@budget/domain";
 import { formatMoney, formatMoneyCompact } from "@budget/grid";
-import { Button, cn, PACE_TINT, PaceBar, PaceLegend, Popover, PopoverContent, PopoverTrigger, Select, moneyOrDash } from "@budget/ui";
+import { Button, cn, PACE_TINT, PaceBar, PaceLegend, Popover, PopoverContent, PopoverTrigger, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { Link } from "@tanstack/react-router";
 import { useRef, useState, type KeyboardEvent, type ReactElement } from "react";
+import { moneyOrDash } from "../../lib/money.js";
 import { Card } from "../../components/page.js";
 import { cellFilter, type CellRef } from "./cell-editor.js";
 
