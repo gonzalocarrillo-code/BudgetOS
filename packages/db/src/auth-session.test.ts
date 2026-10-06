@@ -95,6 +95,36 @@ describe("auth_session (S-11)", () => {
   });
 });
 
+/**
+ * Audit follow-up to PR #166: since W2-3 (20261010050000_owner_bootstrap_policies, ADR-005) the
+ * migrating/owner role — which owns every SECURITY DEFINER function here — holds no standing
+ * BYPASSRLS in any deployed environment. FORCE ROW LEVEL SECURITY applies to the owner too, so
+ * without an explicit policy for it, app_create_session's INSERT (and the other RPCs' writes)
+ * would be silently refused there even though they succeed in this checkout, where the local
+ * Postgres superuser happens to double as the owner. The fix is the `owner_rpc` policy on each of
+ * the three tables (`CREATE POLICY owner_rpc ... TO CURRENT_USER USING (true) WITH CHECK (true)`,
+ * same pattern as `owner_bootstrap`). A real non-superuser, non-owner role is not available in
+ * this local Postgres without destabilizing the shared docker instance other sessions also use, so
+ * this exercises the RPCs the way the API actually calls them — through budget_app, which only
+ * ever has EXECUTE on the functions, never a table grant — and confirms a direct write still is not
+ * possible outside them.
+ */
+describe("owner_rpc: the SECURITY DEFINER path works through budget_app (W2-3 audit follow-up)", () => {
+  it("every session RPC, called through budget_app exactly as the API calls it, still succeeds", async () => {
+    const jti = `s-ownerrpc-${randomUUID()}`;
+    await expect(createSession(app, { jti, userId: userA, orgId, expiresAt: hourFromNow(), userAgent: null })).resolves.toBeUndefined();
+    expect(await sessionLive(app, jti)).toBe(true);
+    await expect(revokeSession(app, jti)).resolves.toBeUndefined();
+    expect(await sessionLive(app, jti)).toBe(false);
+  });
+
+  it("budget_app still cannot write auth_session directly — only the RPCs (owned by the migrating role) can", async () => {
+    await expect(
+      app.$executeRawUnsafe(`INSERT INTO auth_session (jti, user_id, org_id, expires_at) VALUES ('owner-rpc-direct', $1::uuid, $2::uuid, now())`, userA, orgId),
+    ).rejects.toThrow(/permission denied/);
+  });
+});
+
 describe("oauth_code and oauth_refresh (S-12)", () => {
   const clientId = `client-${randomUUID()}`;
   const minuteFromNow = () => new Date(Date.now() + 60_000);

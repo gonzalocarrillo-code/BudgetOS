@@ -19,15 +19,20 @@
 --                chain_started_at carries forward across rotations so the chain's absolute
 --                lifetime (90 days) is measured from the first issuance, not the latest refresh.
 --
--- All four new RPCs that touch these tables are SECURITY DEFINER (owned by the migrating role,
--- which bypasses RLS — verified: `budget` has rolbypassrls = true locally and is expected to in
--- every environment, same assumption every other SECURITY DEFINER function here already makes:
--- app_set_my_name, app_set_my_slack_settings, ensure_fact_partitions). budget_app and budget_mcp
--- get EXECUTE on only the functions each side calls; no role gets table-level INSERT/UPDATE/DELETE
--- beyond the narrow grants below, so a direct write bypassing the rotation/reuse logic is refused
--- by Postgres itself.
+-- All eight new RPCs that touch these tables are SECURITY DEFINER, owned by the migrating role.
+-- Since W2-3 (20261010050000_owner_bootstrap_policies, ADR-005) that role holds NO standing
+-- BYPASSRLS in any deployed environment — only this checkout's local superuser happens to have
+-- it, which is why that was wrongly assumed true everywhere in an earlier version of this comment
+-- (audit follow-up to PR #166). FORCE ROW LEVEL SECURITY applies to the owner too, so each of the
+-- three tables below gets its own `owner_rpc` policy, same pattern as `owner_bootstrap`: bound to
+-- the literal role that runs this migration (and therefore owns these functions) via
+-- `TO CURRENT_USER`, resolved once at migration-apply time. budget_app and budget_mcp get EXECUTE
+-- on only the functions each side calls; no role gets a table-level grant beyond the narrow ones
+-- below, so a direct write bypassing the rotation/reuse logic is refused by Postgres itself.
 --
 -- Reverse:
+--   DROP POLICY IF EXISTS owner_rpc ON auth_session; DROP POLICY IF EXISTS owner_rpc ON oauth_code;
+--   DROP POLICY IF EXISTS owner_rpc ON oauth_refresh;
 --   REVOKE EXECUTE ON FUNCTION app_create_session(text,uuid,uuid,timestamptz,text) FROM budget_app;
 --   REVOKE EXECUTE ON FUNCTION app_session_live(text) FROM budget_app;
 --   REVOKE EXECUTE ON FUNCTION app_revoke_session(text) FROM budget_app;
@@ -130,6 +135,10 @@ CREATE POLICY own_rows_select ON auth_session FOR SELECT USING (user_id = (SELEC
 CREATE POLICY own_rows_update ON auth_session FOR UPDATE
   USING (user_id = (SELECT app_user_id()))
   WITH CHECK (user_id = (SELECT app_user_id()));
+-- The SECURITY DEFINER path (app_create_session's INSERT, its sweep DELETE): the owner has no
+-- BYPASSRLS (W2-3), so without this FORCE RLS would refuse those statements outright.
+DROP POLICY IF EXISTS owner_rpc ON auth_session;
+CREATE POLICY owner_rpc ON auth_session FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
 
 -- MCP OAuth codes and refresh tokens -------------------------------------------------------------
 
@@ -201,8 +210,16 @@ ALTER TABLE oauth_code ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oauth_code FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS no_direct_access ON oauth_code;
 CREATE POLICY no_direct_access ON oauth_code USING (false) WITH CHECK (false);
+-- The SECURITY DEFINER path (app_issue_code's INSERT, app_consume_code's UPDATE): see auth_session's
+-- owner_rpc above for why this is needed now that the owner has no BYPASSRLS (W2-3).
+DROP POLICY IF EXISTS owner_rpc ON oauth_code;
+CREATE POLICY owner_rpc ON oauth_code FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
 
 ALTER TABLE oauth_refresh ENABLE ROW LEVEL SECURITY;
 ALTER TABLE oauth_refresh FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS own_rows ON oauth_refresh;
 CREATE POLICY own_rows ON oauth_refresh FOR SELECT USING (user_id = (SELECT app_user_id()));
+-- The SECURITY DEFINER path (app_issue_refresh's INSERT, app_consume_refresh's SELECT FOR UPDATE
+-- and its two UPDATEs): see auth_session's owner_rpc above.
+DROP POLICY IF EXISTS owner_rpc ON oauth_refresh;
+CREATE POLICY owner_rpc ON oauth_refresh FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
