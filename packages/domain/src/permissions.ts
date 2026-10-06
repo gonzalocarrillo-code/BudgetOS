@@ -36,7 +36,8 @@ export type Action =
   | "source.manage"
   | "export.run"
   | "view.share_workspace"
-  | "user.manage";
+  | "user.manage"
+  | "baseline.save";
 
 const ALL: Action[] = [
   "envelope.read",
@@ -63,8 +64,15 @@ const ALL: Action[] = [
   "export.run",
   "view.share_workspace",
   "user.manage",
+  "baseline.save",
 ];
 const READ: Action[] = ["envelope.read", "target.read", "export.run", "tag.apply", "thread.comment"];
+/**
+ * S-16: baselines may be saved by whoever can already do it in `assertMayManage`
+ * (`apps/api/src/modules/baselines/commands/baselines.ts`) — closure.close holders (workspace-wide)
+ * or envelope.edit_draft holders (scoped to a budget's subtree) — declared here so the route's
+ * permission matches the service check instead of the looser `workspace.member`.
+ */
 const PLAN: Action[] = [
   ...READ,
   "envelope.create",
@@ -75,6 +83,7 @@ const PLAN: Action[] = [
   "target.edit_draft",
   "target.submit",
   "thread.resolve",
+  "baseline.save",
 ];
 
 export const permissions: Record<Role, ReadonlySet<Action>> = {
@@ -82,7 +91,7 @@ export const permissions: Record<Role, ReadonlySet<Action>> = {
   PLANNER: new Set(PLAN),
   BUDGET_OWNER: new Set([...PLAN, "approval.decide", "rule.manage"]),
   APPROVER: new Set([...READ, "approval.decide", "thread.resolve"]),
-  FINANCE: new Set([...READ, "approval.decide", "closure.close", "thread.resolve"]),
+  FINANCE: new Set([...READ, "approval.decide", "closure.close", "thread.resolve", "baseline.save"]),
   DATA_ADMIN: new Set([...READ, "source.manage"]),
   WORKSPACE_ADMIN: new Set(ALL.filter((action) => action !== "approval.force")),
   ORG_ADMIN: new Set(ALL),

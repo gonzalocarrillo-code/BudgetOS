@@ -65,7 +65,12 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-export async function startHarness(): Promise<Harness> {
+/**
+ * `configureAppEnv`: merged with `process.env` for `configureApp`'s own env param only (the S-6
+ * CSRF check), so a test can flip `AUTH_MODE`/`APP_BASE_URL` for that check without touching the
+ * real `process.env` the rest of this harness's auth (identity-platform JWKS) depends on.
+ */
+export async function startHarness(opts: { configureAppEnv?: Record<string, string> } = {}): Promise<Harness> {
   const pair = await generateKeyPair("RS256");
   const foreignKey = (await generateKeyPair("RS256")).privateKey;
   const jwk: JWK = { ...(await exportJWK(pair.publicKey)), kid: KID, alg: "RS256", use: "sig" };
@@ -79,7 +84,7 @@ export async function startHarness(): Promise<Harness> {
   process.env["AUTH_JWKS_URL"] = `http://127.0.0.1:${(jwks.address() as AddressInfo).port}/jwks`;
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: ["error"], abortOnError: false, bodyParser: false });
-  configureApp(app);
+  await configureApp(app, { ...process.env, ...opts.configureAppEnv });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
 

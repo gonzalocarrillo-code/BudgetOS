@@ -22,7 +22,9 @@ async function main(): Promise<void> {
   const verifier = oauth ? (oauth.verifier() as unknown as JwtVerifier) : new JwtVerifier();
   const config = oauth ? { oauth, publicUrl: (process.env["MCP_PUBLIC_URL"] ?? "").replace(/\/$/, ""), appUrl: (process.env["APP_BASE_URL"] ?? "").replace(/\/$/, "") } : null;
   if (config && (!config.publicUrl || !config.appUrl)) throw new Error("MCP_PUBLIC_URL and APP_BASE_URL are required with MCP_OAUTH_KEY");
-  const app = buildHttp({ prisma, auth: { verifier, access: new AccessRepository(prisma), cache: new MemoryRoleCache() }, limiter: await rateLimiterFromEnv(), store: objectStoreFromEnv() }, config);
+  // S-6: trust Cloud Run's X-Forwarded-For (K_SERVICE is set by the runtime) so the /oauth/*
+  // rate limit keys on the real caller, not the front end's own address.
+  const app = await buildHttp({ prisma, auth: { verifier, access: new AccessRepository(prisma), cache: new MemoryRoleCache() }, limiter: await rateLimiterFromEnv(), store: objectStoreFromEnv() }, config, { trustProxy: Boolean(process.env["K_SERVICE"]) });
   const port = Number(process.env["PORT"] ?? 8080);
   await app.listen({ port, host: "0.0.0.0" });
   log.info({ port }, "mcp-readonly listening");

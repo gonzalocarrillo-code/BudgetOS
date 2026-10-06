@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
+import { rateLimitErrorHandler } from "./configure-app.js";
 import { JwtVerifier } from "./common/auth/jwt-verifier.js";
 import { McpOAuth } from "./common/auth/mcp-oauth.js";
 import { SESSION_COOKIE, cookie, googleLoginFromEnv, loginCallback, loginRedirect, logoutCookie, verifySession } from "./common/auth/google-login.js";
@@ -37,26 +38,37 @@ export function serveWeb(app: NestFastifyApplication, env: NodeJS.ProcessEnv = p
   // ADR-067: Budget OS's own Google sign-in (AUTH_MODE=session).
   const google = env["AUTH_MODE"] === "session" ? googleLoginFromEnv(env) : null;
   if (google) {
-    fastify.get("/auth/login", async (req, reply) => {
-      const r = await loginRedirect(google, (req.query as { next?: string }).next);
-      return reply.header("set-cookie", r.setCookie).header("cache-control", "no-store").redirect(r.location, 302);
+    // S-6: an encapsulated scope so its own `setErrorHandler` (not Nest's, which only recognizes a
+    // real `FastifyError`) formats the rate limiter's thrown error — by IP, 20/min, since these are
+    // the routes a credential-stuffing or sign-in-flood script hits.
+    void fastify.register(async (scope) => {
+      scope.setErrorHandler(rateLimitErrorHandler);
+      const authRateLimit = { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } };
+      scope.get("/auth/login", authRateLimit, async (req, reply) => {
+        const r = await loginRedirect(google, (req.query as { next?: string }).next);
+        return reply.header("set-cookie", r.setCookie).header("cache-control", "no-store").redirect(r.location, 302);
+      });
+      scope.get("/auth/callback", authRateLimit, async (req, reply) => {
+        try {
+          const r = await loginCallback(google, req.query as { code?: string; state?: string; error?: string }, req.headers.cookie);
+          return reply.header("set-cookie", r.setCookies).header("cache-control", "no-store").redirect(r.location, 302);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          return reply.header("cache-control", "no-store").redirect(`/?login_error=${encodeURIComponent(message)}`, 302);
+        }
+      });
+      // Who the session names, without the database: the "not added yet" page says which account.
+      scope.get("/auth/me", authRateLimit, async (req, reply) => {
+        const token = cookie(req.headers.cookie, SESSION_COOKIE);
+        const who = token ? await verifySession(google.sessionKey, token).catch(() => null) : null;
+        return reply.header("cache-control", "no-store").send(who ? { email: who.email } : { email: null });
+      });
+      // S-6: logout is a state change (it ends the session), so it is POST; a GET is refused rather
+      // than silently doing nothing, so an old link or bookmark fails loudly instead of looking like
+      // it worked.
+      scope.post("/auth/logout", authRateLimit, async (_req, reply) => reply.header("set-cookie", logoutCookie()).header("cache-control", "no-store").redirect("/", 302));
+      scope.get("/auth/logout", async (_req, reply) => reply.code(405).header("allow", "POST").send({ code: "VALIDATION", message: "Sign out with POST /auth/logout" }));
     });
-    fastify.get("/auth/callback", async (req, reply) => {
-      try {
-        const r = await loginCallback(google, req.query as { code?: string; state?: string; error?: string }, req.headers.cookie);
-        return reply.header("set-cookie", r.setCookies).header("cache-control", "no-store").redirect(r.location, 302);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        return reply.header("cache-control", "no-store").redirect(`/?login_error=${encodeURIComponent(message)}`, 302);
-      }
-    });
-    // Who the session names, without the database: the "not added yet" page says which account.
-    fastify.get("/auth/me", async (req, reply) => {
-      const token = cookie(req.headers.cookie, SESSION_COOKIE);
-      const who = token ? await verifySession(google.sessionKey, token).catch(() => null) : null;
-      return reply.header("cache-control", "no-store").send(who ? { email: who.email } : { email: null });
-    });
-    fastify.get("/auth/logout", async (_req, reply) => reply.header("set-cookie", logoutCookie()).header("cache-control", "no-store").redirect("/", 302));
   }
   // ADR-066: the MCP OAuth authorization endpoint, signed in like the rest of the app.
   const oauth = McpOAuth.fromEnv(env);

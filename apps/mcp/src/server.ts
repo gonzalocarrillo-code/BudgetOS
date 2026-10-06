@@ -59,7 +59,8 @@ export function buildServer(deps: McpDeps): McpServer {
     if (!token) throw new DomainError("UNAUTHENTICATED", "Bearer token required");
     const auth = await authenticate(deps.auth, { authorization: `Bearer ${token}`, workspaceId, requestId, actorType: "mcp" });
     authorize(auth, permission);
-    await deps.limiter.take(auth.user.id);
+    // S-17: export_csv writes a GCS object per call, so it spends a stricter, separately tracked budget.
+    await deps.limiter.take(auth.user.id, tool === "export_csv" ? "export_csv" : "default");
     const dataVersion = await withTenant(deps.prisma, auth.ctx, async (tx) => {
       const argText = JSON.stringify(args ?? {});
       await audit(tx, { workspaceId, actorId: auth.user.id, actorType: "mcp", action: `mcp.${tool}`, entityType: "mcp_call", entityId: callId, after: { tool, args: argText.length > 4000 ? `${argText.slice(0, 4000)}…` : JSON.parse(argText) }, requestId });

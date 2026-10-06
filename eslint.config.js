@@ -5,7 +5,9 @@ import { FORBIDDEN_PACKAGES } from "./scripts/forbidden-packages.mjs";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "**/.turbo/**", "**/coverage/**"],
+    // apps/web/public/**: static assets served as-is (favicon, manifest, theme-init.js — a plain
+    // browser script with no build step, not part of the TypeScript source).
+    ignores: ["**/dist/**", "**/node_modules/**", "**/.turbo/**", "**/coverage/**", "**/public/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

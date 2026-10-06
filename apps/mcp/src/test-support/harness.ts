@@ -56,7 +56,7 @@ export interface McpHarness {
   close(): Promise<void>;
 }
 
-export async function startMcp(opts: { limit?: number } = {}): Promise<McpHarness> {
+export async function startMcp(opts: { limit?: number; now?: () => number } = {}): Promise<McpHarness> {
   const pair = await generateKeyPair("RS256");
   const jwk: JWK = { ...(await exportJWK(pair.publicKey)), kid: "t025", alg: "RS256", use: "sig" };
   const jwks = createServer((req, res) => {
@@ -70,7 +70,7 @@ export async function startMcp(opts: { limit?: number } = {}): Promise<McpHarnes
 
   const prisma = mcpDb();
   const store = new MemoryObjectStore();
-  const app = buildHttp({ prisma, auth: { verifier: new JwtVerifier(), access: new AccessRepository(prisma), cache: new MemoryRoleCache() }, limiter: new MemoryRateLimiter(opts.limit ?? 10_000), store });
+  const app = await buildHttp({ prisma, auth: { verifier: new JwtVerifier(), access: new AccessRepository(prisma), cache: new MemoryRoleCache() }, limiter: new MemoryRateLimiter(opts.limit ?? 10_000, opts.now), store });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const url = new URL(`http://127.0.0.1:${(app.server.address() as AddressInfo).port}/mcp`);
 

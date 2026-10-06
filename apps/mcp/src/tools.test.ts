@@ -292,4 +292,24 @@ describe("MCP access rules", () => {
       await limited.close();
     }
   });
+
+  it("export_csv rate limit: 10 calls a minute per user, tracked separately from the general limit (S-17)", async () => {
+    // A frozen clock: the rate limiter's window is a Date.now() minute bucket, and this test makes
+    // 11 sequential HTTP round trips, so a wall-clock minute boundary crossing mid-test would
+    // otherwise reset the count and make the assertion flaky.
+    const frozenNow = Date.now();
+    const limited = await startMcp({ now: () => frozenNow });
+    try {
+      const token = await limited.mint(person("planner"));
+      const args = { workspaceId: golden.workspaceId, filter: live({ field: { kind: "dimension", key: "region" }, op: "eq", value: GOLDEN_EXPORT.region }), period, measures: ["budget"] };
+      for (let i = 0; i < 10; i++) {
+        expect((await limited.call(token, "export_csv", args)).isError).toBe(false);
+      }
+      expect(await limited.call(token, "export_csv", args)).toMatchObject({ isError: true, body: { code: "RATE_LIMITED" } });
+      // The general 120/min budget (opts.limit defaults to 10,000 here) is untouched by export_csv calls.
+      expect((await limited.call(token, "list_tags", { workspaceId: golden.workspaceId })).isError).toBe(false);
+    } finally {
+      await limited.close();
+    }
+  });
 });

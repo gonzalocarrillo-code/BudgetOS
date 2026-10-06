@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { Permission } from "../../common/permission.decorator.js";
+import { RateLimit } from "../../common/rate-limit.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { CreateMappingProfileDto, CreateMappingSynonymDto, CreateSourceDto, CreateUploadDto, MapUnmatchedDto, MappingPreviewDto, MatchMappingProfileDto, RunSourceDto, SuggestMappingSampleDto, UpdateMappingProfileDto, UpdateMappingSynonymDto, UpdateSourceDto } from "./dto.js";
 import { SourcesService } from "./sources.service.js";
@@ -78,14 +79,17 @@ export class SourcesController {
     return this.sources.preview(auth, body);
   }
 
+  /** S-6: the two routes that call OpenAI (via @budget/ai), so they get the stricter 10/min. */
   @Post("workspaces/:ws/mapping-suggestions")
   @Permission("source.manage")
+  @RateLimit("ai-suggest", 10)
   suggestFromSample(@Tenant() auth: AuthContext, @Body() body: SuggestMappingSampleDto) {
     return this.sources.suggestFromSample(auth, body);
   }
 
   @Post("sources/:id/suggest-mapping")
   @Permission("source.manage")
+  @RateLimit("ai-suggest", 10)
   suggestMapping(@Tenant() auth: AuthContext, @Param("id") id: string) {
     return this.sources.suggestMapping(auth, id);
   }

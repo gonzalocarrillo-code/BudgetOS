@@ -6,8 +6,12 @@ import { AppModule } from "./app.module.js";
 import { serveWeb } from "./serve-web.js";
 
 export async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { bodyParser: false });
-  configureApp(app);
+  // S-6: Cloud Run terminates TLS and proxies every request, so the socket's peer is Google's
+  // front end, not the caller; X-Forwarded-For is real there (K_SERVICE is set by the runtime)
+  // and nowhere else, so IP-keyed rate limits use the real caller only in that environment.
+  const trustProxy = Boolean(process.env["K_SERVICE"]);
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy }), { bodyParser: false });
+  await configureApp(app);
   serveWeb(app);
   const port = Number(process.env["PORT"] ?? 3000);
   await app.listen(port, "0.0.0.0");
