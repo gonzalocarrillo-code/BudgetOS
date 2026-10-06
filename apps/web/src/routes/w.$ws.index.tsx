@@ -16,6 +16,8 @@ import { Headline } from "../features/overview/headline.js";
 import { Heatmap } from "../features/overview/heatmap.js";
 import { PeriodPicker } from "../features/periods/period-picker.js";
 import { snapshotLabel, snapshotsQuery } from "../features/snapshots/queries.js";
+import { DemoHiddenBanner } from "../features/workspace/demo-hidden-banner.js";
+import { demoStatusQuery } from "../lib/queries.js";
 
 /**
  * Overview (spec §18.5, plan §11.1, docs/HOME_OVERVIEW_PLAN.md §3.2): the state of the money. The
@@ -35,6 +37,8 @@ const OverviewSearch = z.object({
   cols: z.string().optional(),
   sort: z.enum(HEATMAP_SORTS).optional().catch(undefined),
   compareTo: z.string().uuid().optional().catch(undefined),
+  /** HF-1 (audit T-5 follow-up): "Show demo data" for this visit — every query then carries includeDemo. */
+  demo: z.boolean().optional(),
 });
 type OverviewSearch = z.infer<typeof OverviewSearch>;
 export const Route = createFileRoute("/w/$ws/")({ validateSearch: OverviewSearch, search: { middlewares: [stripSearchParams({ period: "current_year" })] }, component: OverviewPage });
@@ -45,6 +49,7 @@ interface OverviewParams {
   cols?: string | undefined;
   sort?: string | undefined;
   compareTo?: string | undefined;
+  includeDemo?: string | undefined;
 }
 const defined = (p: OverviewParams) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== ""));
 
@@ -80,7 +85,8 @@ function OverviewPage(): ReactElement {
   const saved = layout.layout;
   const rows = search.rows ?? saved.axes.rows;
   const cols = search.cols ?? saved.axes.cols;
-  const params: OverviewParams = { period: search.period, rows, cols, sort: search.sort ?? saved.sort, compareTo: search.compareTo };
+  const params: OverviewParams = { period: search.period, rows, cols, sort: search.sort ?? saved.sort, compareTo: search.compareTo, includeDemo: search.demo === true ? "true" : undefined };
+  const { data: demo } = useQuery(demoStatusQuery(ws));
   const remembered = (search.rows === undefined && saved.axes.rows !== undefined) || (search.cols === undefined && saved.axes.cols !== undefined);
   // The layout first: its remembered axes decide what to ask for (one request, not two).
   // A new period, axes or sort keeps the previous numbers on screen (not ready) until the new ones come.
@@ -180,6 +186,7 @@ function OverviewPage(): ReactElement {
           {error.message}
         </p>
       ) : null}
+      {demo?.hidden ? <DemoHiddenBanner ws={ws} count={demo.envelopes} showing={search.demo === true} onToggle={(show) => setSearch({ demo: show || undefined })} /> : null}
       {o?.asOf.stale && o.asOf.through ? <StaleBanner ws={ws} through={o.asOf.through} days={o.asOf.staleDays ?? 0} /> : null}
       {isPending || !o ? (
         <OverviewSkeleton />

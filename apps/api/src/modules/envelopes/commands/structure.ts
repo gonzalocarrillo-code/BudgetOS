@@ -90,7 +90,7 @@ export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, inpu
   // submitted since the plain read is not the one locked above: refuse rather than lock it out of order.
   if ((await openVersionRequestId(tx, envelopeId)) !== openId) throw new DomainError("CONFLICT", "Envelope changed since you loaded it", { currentRowVersion: env.rowVersion });
   await assertNotHeld(tx, [envelopeId]); // W3-5: a budget in an open split, merge, end or date change stays put
-  const row = await tx.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { parentId: true, name: true } });
+  const row = await tx.envelope.findUniqueOrThrow({ where: { id: envelopeId }, select: { parentId: true, name: true, demo: true } });
   if (row.parentId === input.parentId) throw new DomainError("VALIDATION", "The envelope is already under that parent");
 
   if (input.parentId !== null) {
@@ -100,11 +100,15 @@ export async function moveIn(tx: Tx, auth: AuthContext, envelopeId: string, inpu
       if (p === envelopeId) throw new DomainError("VALIDATION", "An envelope cannot move under itself or its own descendant");
       p = (await tx.envelope.findUnique({ where: { id: p }, select: { parentId: true } }))?.parentId ?? null;
     }
-    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { status: true, endedAt: true } });
+    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { status: true, endedAt: true, demo: true } });
     if (parent === null) throw new DomainError("NOT_FOUND", "New parent not found");
     if (parent.endedAt !== null) throw new DomainError("LOCKED", "The new parent has ended");
     if (parent.status === "LOCKED") throw new DomainError("LOCKED", "New parent's period is closed");
     if (parent.status === "ARCHIVED") throw new DomainError("CONFLICT", "New parent is archived");
+    // HF-1 (audit T-5 follow-up): a real budget moved under a demo one would become unreachable the
+    // moment the workspace also has any other real budget (T-5's default exclusion). Demo-under-demo
+    // (the seeder) is unaffected.
+    if (!row.demo && parent.demo) throw new DomainError("VALIDATION", "A real budget cannot sit under a demo budget; remove the demo data first");
     assertInScope(auth, "envelope.move", await envelopeScopeTarget(tx, input.parentId));
     // Cap re-validation under the new parent's row lock (spec §7.5): its approved amount must
     // still cover its approved children plus this envelope's approved amount.

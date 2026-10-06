@@ -399,6 +399,13 @@ const en = {
   "home.title": "Good to see you, {name}",
   "home.demo": "This workspace has demo data ({count} budgets). Explore freely, then remove it in one click.",
   "home.demoManage": "Manage demo data",
+  // HF-1 (audit T-5 follow-up): demo money is excluded from every total once a real budget exists
+  // (T-5), but that exclusion must never be silent — this banner (Home, Overview, Budgets) says so
+  // and lets the caller show it for this visit.
+  "demo.hiddenBanner": "{count} demo budgets are hidden because this workspace has real budgets.",
+  "demo.shownBanner": "Demo data is shown; totals include demo money.",
+  "demo.show": "Show demo data",
+  "demo.hide": "Hide",
   "home.waiting": "Waiting on you · {count}",
   "home.waitingEmpty": "Nothing is waiting on you. Approvals, mentions and alerts for you will appear here.",
   "home.kind.approval": "Approval to decide",

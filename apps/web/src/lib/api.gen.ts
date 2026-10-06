@@ -7829,12 +7829,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo rows left: envelopes and targets, and whether the workspace has real (non-demo) budgets too */
+            /** @description Demo rows left: envelopes and targets, whether the workspace has real (non-demo) budgets too, and `hidden` (HF-1): whether the planner is excluding demo money from totals right now */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        envelopes: number;
+                        targets: number;
+                        hasRealBudgets: boolean;
+                        hidden: boolean;
+                    };
+                };
             };
         };
     };
@@ -8194,6 +8201,8 @@ export interface operations {
                 zoom?: "week" | "month" | "quarter" | "fy";
                 cursor?: string;
                 limit?: number;
+                /** @description HF-1: show demo money in every bar for this request */
+                includeDemo?: "true" | "false";
             };
             header?: never;
             path: {
@@ -9296,6 +9305,8 @@ export interface operations {
                 sort?: "budget" | "pace" | "ahead";
                 /** @description A snapshot to compare with: the headline's change and each cell's budget then (default: the latest plan snapshot, headline only) */
                 compareTo?: string;
+                /** @description HF-1: show demo money in every total for this request (T-5's default exclusion is otherwise on once the workspace has a real budget) */
+                includeDemo?: "true" | "false";
             };
             header?: never;
             path: {

@@ -76,6 +76,23 @@ describe("move: cap re-validation (T-014 done-when)", () => {
     expect(Number(out[0]?.n)).toBe(1);
   });
 
+  it("refuses to move a real envelope under a demo one, and writes nothing (HF-1)", async () => {
+    const demoParentId = randomUUID();
+    await owner.envelope.create({
+      data: { id: demoParentId, workspaceId: golden.workspaceId, name: "Demo parent", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.planner, demo: true },
+    });
+    const leaf = leafKeys("LATAM/AR/google_ads/conversion")[0] as string;
+    const before = await env(id(leaf));
+    const res = await move(id(leaf), demoParentId);
+    expect(res.status).toBe(422);
+    expect(res.body["code"]).toBe("VALIDATION");
+    const after = await env(id(leaf));
+    expect(after.parentId).toBe(before.parentId);
+    expect(after.rowVersion).toBe(before.rowVersion);
+    expect(await owner.envelopeLineage.count({ where: { fromEnvelopeId: id(leaf), toEnvelopeId: demoParentId } })).toBe(0);
+    await owner.envelope.delete({ where: { id: demoParentId } });
+  });
+
   it("to the root and back: the original parent still has room for it", async () => {
     const leaf = leafKeys("LATAM/MX/meta/consideration")[0] as string;
     const parent = (await env(id(leaf))).parentId as string;

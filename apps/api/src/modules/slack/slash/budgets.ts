@@ -1,5 +1,6 @@
 import { DomainError, QueryRequest, can, canInScope, type FilterGroupT } from "@budget/domain";
 import { envelopePaths, withTenant } from "@budget/db";
+import { context, type Block } from "@budget/workers";
 import type { PrismaClient } from "@prisma/client";
 import { authorize } from "../../../common/auth/authenticate.js";
 import { headline } from "../../../common/headline.js";
@@ -9,6 +10,7 @@ import { getEnvelope } from "../../envelopes/queries/get-envelope.js";
 import { listAlerts } from "../../pacing/queries.js";
 import { runQuery } from "../../query/queries/run-query.js";
 import { search } from "../../search/search.js";
+import { demoStatus } from "../../workspaces/workspaces.js";
 import { budgetCard, budgetList, whichBudget } from "../blocks/budget.js";
 import { appUrl } from "../slack-config.js";
 import { reply } from "../views.js";
@@ -21,6 +23,17 @@ import { reply } from "../views.js";
 type Hit = { id: string; title: string; path: string | null; facets?: Record<string, unknown> | null };
 
 const MEASURES = ["budget", "actual", "projected", "spend_to_date_pct", "pace_index"] as const;
+
+/**
+ * HF-1 (audit T-5 follow-up): nothing in Slack said demo budgets had gone quiet once a workspace
+ * also had a real one (T-5's default exclusion). One context line on `/budget` and `/budget list`,
+ * the same condition as the web banner and GET /demo-data's `hidden`.
+ */
+async function demoHiddenContext(prisma: PrismaClient, auth: AuthContext): Promise<Block | null> {
+  const status = await demoStatus(prisma, auth);
+  if (!status.hidden) return null;
+  return context(`${status.envelopes} demo budgets hidden — this workspace has real budgets. Manage demo data in Settings › Workspace.`);
+}
 
 async function findBudgets(prisma: PrismaClient, auth: AuthContext, q: string, limit: number): Promise<Hit[]> {
   authorize(auth, "workspace.member"); // GET /workspaces/:ws/search
@@ -139,6 +152,8 @@ export async function budgetCardReply(prisma: PrismaClient, auth: AuthContext, w
     notice: notice ?? null,
     canRequest: requestable,
   });
+  const demoLine = await demoHiddenContext(prisma, auth);
+  if (demoLine) card.blocks.push(demoLine);
   return { response_type: "ephemeral", ...card };
 }
 
@@ -159,7 +174,10 @@ export async function listReply(prisma: PrismaClient, auth: AuthContext, workspa
     // card's numbers come from the one query path — the same measures as Budgets and Home — by
     // resolving the hit ids first, then one `id in […]` query, same as `/budget <name>`'s card.
     const rows = await rowsFor(prisma, auth, workspaceId, hits);
-    return { response_type: "ephemeral", ...budgetList({ baseUrl: appUrl(), workspaceId, title: `Budgets matching “${text}”`, currency: reporting, rows, more: hits.length === 10, footer }) };
+    const list = budgetList({ baseUrl: appUrl(), workspaceId, title: `Budgets matching “${text}”`, currency: reporting, rows, more: hits.length === 10, footer });
+    const demoLine = await demoHiddenContext(prisma, auth);
+    if (demoLine) list.blocks.push(demoLine);
+    return { response_type: "ephemeral", ...list };
   }
   authorize(auth, "envelope.read"); // POST /workspaces/:ws/query
   const head = headline(auth);
@@ -167,5 +185,8 @@ export async function listReply(prisma: PrismaClient, auth: AuthContext, workspa
   const q = QueryRequest.parse({ workspaceId, filter: head.filter, subtree: head.subtree, period: { kind: "relative", preset: "current_year" }, measures: [...MEASURES], sort: [{ key: "budget", dir: "desc" }], limit: 15 });
   const res = await runQuery(prisma, auth, q);
   const rows = res.rows.map((r) => ({ id: r.envelopeId, label: r.path.at(-1) ?? r.key, path: r.path.length > 1 ? r.path.slice(0, -1).join(" › ") : null, budget: r.measures["budget"] ?? null, spentPct: r.measures["spend_to_date_pct"] ?? null, paceIndex: r.measures["pace_index"] ?? null }));
-  return { response_type: "ephemeral", ...budgetList({ baseUrl: appUrl(), workspaceId, title: head.basis === "top_level" ? "Top-level budgets, this fiscal year" : "Your budgets, this fiscal year", currency: reporting, rows, more: res.nextCursor !== null, footer }) };
+  const list = budgetList({ baseUrl: appUrl(), workspaceId, title: head.basis === "top_level" ? "Top-level budgets, this fiscal year" : "Your budgets, this fiscal year", currency: reporting, rows, more: res.nextCursor !== null, footer });
+  const demoLine = await demoHiddenContext(prisma, auth);
+  if (demoLine) list.blocks.push(demoLine);
+  return { response_type: "ephemeral", ...list };
 }

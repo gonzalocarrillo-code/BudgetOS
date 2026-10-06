@@ -55,6 +55,16 @@ export function tourRolesFor(roles: readonly Role[]): TourRole[] {
 export const PurgeDemoInput = z.object({ confirm: z.literal(true) });
 export type PurgeDemoInput = z.infer<typeof PurgeDemoInput>;
 
+/**
+ * GET /workspaces/:ws/demo-data (HF-1, audit T-5 follow-up): demo rows left, whether the workspace
+ * has real (non-demo) budgets too, and — new — `hidden`: the planner excludes demo money from every
+ * total by default once a real budget exists (T-5), so `hidden` is true exactly when that exclusion
+ * is silently dropping rows the workspace still has. The web banners and the Slack context line both
+ * key off this one field instead of recomputing `envelopes > 0 && hasRealBudgets` themselves.
+ */
+export const DemoDataResponse = z.object({ envelopes: z.number().int().min(0), targets: z.number().int().min(0), hasRealBudgets: z.boolean(), hidden: z.boolean() });
+export type DemoDataResponse = z.infer<typeof DemoDataResponse>;
+
 export const CreateWorkspaceInput = z.object({
   name: z.string().trim().min(1).max(120),
   slug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/).optional(),

@@ -176,4 +176,13 @@ describe("GET /workspaces/:ws/timeline (T-037)", () => {
     expect(second.bars.some((b) => b.kind === "group")).toBe(false);
     expect(envelopes(second)[0]?.name.localeCompare(envelopes(p1).at(-1)?.name ?? "")).toBeGreaterThanOrEqual(0);
   });
+
+  // HF-1 (audit T-5 follow-up): includeDemo carries through to the Gantt, the same as /query and
+  // Overview. The golden workspace has no demo rows, so this is a negative control.
+  it("includeDemo=true is accepted and changes nothing when the workspace has no demo rows", async () => {
+    const withDemo = await timeline("groupBy=country&includeDemo=true");
+    const without = await timeline("groupBy=country");
+    expect(sum(envelopes(withDemo))).toBe(sum(envelopes(without)));
+    expect(envelopes(withDemo)).toHaveLength(envelopes(without).length);
+  });
 });

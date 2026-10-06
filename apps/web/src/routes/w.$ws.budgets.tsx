@@ -21,7 +21,8 @@ import { SavedViews } from "../features/explorer/saved-views.js";
 import { useGridTheme } from "../features/explorer/grid-theme.js";
 import { TimelineView } from "../features/timeline/TimelineView.js";
 import { api, unwrap } from "../lib/api.js";
-import { envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { demoStatusQuery, envelopeQuery, meQuery, periodsQuery, registryQuery, templatesQuery } from "../lib/queries.js";
+import { DemoHiddenBanner } from "../features/workspace/demo-hidden-banner.js";
 import { NewBudgetDialog } from "../features/structure/new-budget-dialog.js";
 import { StructureActions } from "../features/structure/structure-actions.js";
 import { StructureDialog, type StructureOp } from "../features/structure/structure-dialog.js";
@@ -56,6 +57,8 @@ const ExplorerSearch = z.object({
   expanded: z.array(z.string()).default([]),
   /** Opens the New budget dialog (Home's "Add your first budgets"). */
   new: z.boolean().optional(),
+  /** HF-1 (audit T-5 follow-up): "Show demo data" for this visit — every query then carries includeDemo. */
+  demo: z.boolean().optional(),
 });
 type ExplorerSearchT = z.infer<typeof ExplorerSearch>;
 
@@ -101,6 +104,7 @@ function ExplorerPage(): ReactElement {
   const [structure, setStructure] = useState<StructureOp | null>(null);
   const [datesOf, setDatesOf] = useState<string | null>(null);
   const { data: selected } = useQuery({ ...envelopeQuery(ws, search.select ?? ""), enabled: search.select !== undefined });
+  const { data: demo } = useQuery(demoStatusQuery(ws));
 
   const setSearch = (patch: Partial<ExplorerSearchT>) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, ...patch }), replace: false });
   const { data: me } = useQuery(meQuery);
@@ -123,12 +127,12 @@ function ExplorerPage(): ReactElement {
   const labels = useExplorerLabels(ws);
 
   // A new source when what is queried changes; expanding a node updates the URL, not the source.
-  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, search.compareTo ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, reload]);
+  const sourceKey = JSON.stringify([ws, isTimeline, view, search.filter, search.period, search.asOf ?? null, search.compareTo ?? null, byStructure, template?.id ?? null, template?.path ?? [], search.groupBy, measures, search.demo ?? false, reload]);
   const source = useMemo(
     () =>
       !isTimeline && (byStructure || template || view === "pivot")
         ? new ExplorerRowSource(
-            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, compareTo: search.compareTo, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [] },
+            { ws, view, filter: search.filter, period: search.period, measures, asOf: search.asOf, compareTo: search.compareTo, structure: byStructure, templateId: template?.id, levels: template?.path ?? [], groupBy: search.groupBy, expanded: search.expanded, sort: [], includeDemo: search.demo === true },
             labels,
             (keys) => void navigate({ search: (prev: ExplorerSearchT) => ({ ...prev, expanded: keys }), replace: true }),
             // Only the current source reports: a replaced one (older filter) whose response lands
@@ -234,6 +238,7 @@ function ExplorerPage(): ReactElement {
   const toggle = "h-8 px-3 text-sm rounded-md";
   return (
     <Page title={t("nav.budgets")}>
+      {demo?.hidden ? <DemoHiddenBanner ws={ws} count={demo.envelopes} showing={search.demo === true} onToggle={(show) => setSearch({ demo: show || undefined })} /> : null}
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border border-border bg-card p-0.5" role="tablist" data-testid="view-toggle" data-tour="view-toggle">
           {(["tree", "pivot", "timeline"] as const).map((v) => (
@@ -387,7 +392,7 @@ function ExplorerPage(): ReactElement {
               <div className="h-[calc(100dvh-19rem)] min-h-80">
                 <TimelineView
                   ws={ws}
-                  search={{ filter: search.filter, templateId: template?.id, structure: byStructure, period: search.period, asOf: search.asOf, zoom: search.zoom }}
+                  search={{ filter: search.filter, templateId: template?.id, structure: byStructure, period: search.period, asOf: search.asOf, zoom: search.zoom, includeDemo: search.demo === true }}
                   currency="USD"
                   onSelect={(id) => setSearch({ select: id })}
                   onAsOf={(asOf) => setSearch({ asOf })}

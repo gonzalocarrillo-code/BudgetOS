@@ -41,6 +41,8 @@ export interface OverviewParams {
   cols?: string | undefined;
   sort?: string | undefined;
   compareTo?: string | undefined;
+  /** HF-1: "Show demo data" — overrides T-5's default exclusion for this request only. */
+  includeDemo?: boolean | undefined;
 }
 
 export async function overview(prisma: PrismaClient, auth: AuthContext, params: OverviewParams = {}, now: Date = new Date()): Promise<OverviewResponse> {
@@ -105,7 +107,9 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   const { dims, labels, currency, cpa, hasProjections, range, asOf, rules } = setup;
   const elapsedThrough = asOf.through ?? undefined;
   // Live leaves (ADR-016): the heatmap, its margins and totals add up to Budgets' leaf totals.
-  const q = (body: Record<string, unknown>) => runQuery(prisma, auth, { workspaceId, period, filter: { logic: "and", children: LIVE_LEAVES }, ...body }, now, undefined, { elapsedThrough });
+  // HF-1: "Show demo data" (T-5's default exclusion lifted for one request) carries through every
+  // query this endpoint runs, the same as Budgets.
+  const q = (body: Record<string, unknown>) => runQuery(prisma, auth, { workspaceId, period, filter: { logic: "and", children: LIVE_LEAVES }, includeDemo: params.includeDemo === true, ...body }, now, undefined, { elapsedThrough });
   const rowKey = dims.rows?.key ?? "";
   const colKey = dims.cols?.key ?? "";
   const leavesAnd = (...more: Predicate[]): FilterGroupT => ({ logic: "and", children: [...LEAVES, ...more] });

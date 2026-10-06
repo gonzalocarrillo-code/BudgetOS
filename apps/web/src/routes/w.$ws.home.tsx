@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Bell, CircleCheck, Database, Plus, Sparkles, Users, Wallet } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
+import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { Desk } from "../features/home/desk.js";
 import { TourInvite } from "../features/home/tour-launcher.js";
+import { DemoHiddenBanner } from "../features/workspace/demo-hidden-banner.js";
 import { api, unwrap } from "../lib/api.js";
 import { demoStatusQuery, meQuery } from "../lib/queries.js";
 
@@ -17,7 +19,8 @@ import { demoStatusQuery, meQuery } from "../lib/queries.js";
  * they left off and what they sent (features/home/desk.tsx). A blank workspace gets its first
  * steps instead. Every block opens its screen filtered; empty states say what next.
  */
-export const Route = createFileRoute("/w/$ws/home")({ component: HomePage });
+const HomeSearch = z.object({ demo: z.boolean().optional() });
+export const Route = createFileRoute("/w/$ws/home")({ validateSearch: HomeSearch, component: HomePage });
 
 const homeQuery = (ws: string) => ({ queryKey: ["home", ws], queryFn: async () => HomeResponse.parse(await unwrap(api.GET("/api/v1/me/home", { params: { header: { "X-Workspace-Id": ws } } }))) });
 const pct = (v: string | null) => (v === null ? "—" : `${Math.round(Number(v) * 100)}%`);
@@ -34,6 +37,8 @@ const greetingKey = (hour: number): MessageKey => (hour < 12 ? "home.greeting.mo
 
 function HomePage(): ReactElement {
   const { ws } = Route.useParams();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const { data: me } = useQuery(meQuery);
   const { data: home, isPending, error } = useQuery(homeQuery(ws));
   const { data: demo } = useQuery(demoStatusQuery(ws));
@@ -50,7 +55,9 @@ function HomePage(): ReactElement {
         {home?.asOf ? <AsOfChip through={home.asOf.through} stale={home.asOf.stale} staleDays={home.asOf.staleDays} grain={home.asOf.grain} testId="home-as-of" /> : null}
       </div>
       <TourInvite ws={ws} />
-      {demo && demo.envelopes > 0 ? (
+      {demo?.hidden ? (
+        <DemoHiddenBanner ws={ws} count={demo.envelopes} showing={search.demo === true} onToggle={(show) => void navigate({ search: (prev: z.infer<typeof HomeSearch>) => ({ ...prev, demo: show || undefined }) })} />
+      ) : demo && demo.envelopes > 0 ? (
         <div role="status" className="flex items-center gap-3 rounded-lg border border-primary/30 bg-secondary px-4 py-2.5 text-sm" data-testid="home-demo">
           <Sparkles className="size-4 text-primary" aria-hidden />
           <span className="flex-1">{t("home.demo", { count: demo.envelopes })}</span>

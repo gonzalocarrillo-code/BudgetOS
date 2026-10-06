@@ -95,6 +95,8 @@ export const TimelineQuery = z
     zoom: TimelineZoom.default("month"),
     cursor: z.string().max(2000).optional(),
     limit: z.coerce.number().int().min(1).max(5000).default(2000),
+    /** HF-1: "Show demo data" in the Explorer carries through to the Gantt (T-5's exclusion is default-on, not forced). */
+    includeDemo: z.enum(["true", "false"]).optional(),
   })
   .refine((q) => q.from === undefined || q.to === undefined || q.from <= q.to, { message: "from is after to", path: ["to"] });
 export type TimelineQuery = z.infer<typeof TimelineQuery>;
