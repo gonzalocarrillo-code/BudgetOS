@@ -130,8 +130,28 @@ export async function pruneRawFiles(app: PrismaClient, ws: { workspaceId: string
   const before = now.getTime() - days * 86_400_000;
   const objects = await store.list(prefix);
   const due = objects.filter((o) => o.updated.getTime() < before && !inUse.has(o.uri));
-  for (const o of due) await store.remove(o.uri);
-  if (due.length) await withTenant(app, ctx, (tx) => record(tx, ctx, "uploads.pruned", { removed: due.map((o) => o.uri), retentionDays: days }));
+
+  // Write audit row FIRST in its own transaction, listing the URIs
+  if (due.length) {
+    await withTenant(app, ctx, (tx) => record(tx, ctx, "uploads.pruned", { removed: due.map((o) => o.uri), retentionDays: days }));
+  }
+
+  // Then remove the objects; if a removal fails, log it and continue
+  const failed: string[] = [];
+  for (const o of due) {
+    try {
+      await store.remove(o.uri);
+    } catch (err) {
+      log.warn({ uri: o.uri, error: err instanceof Error ? err.message : String(err), requestId: ctx.requestId }, "retention: failed to remove object");
+      failed.push(o.uri);
+    }
+  }
+
+  // If any removals failed, write a second audit row
+  if (failed.length) {
+    await withTenant(app, ctx, (tx) => record(tx, ctx, "uploads.pruned", { removed: due.map((o) => o.uri), retentionDays: days, failed }));
+  }
+
   return { removed: due.map((o) => o.uri), kept: objects.length - due.length };
 }
 

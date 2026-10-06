@@ -58,7 +58,9 @@ export async function updateOrgPerson(prisma: PrismaClient, auth: AuthContext, r
     if (input.isActive !== undefined && u.isActive !== input.isActive) {
       await tx.user.update({ where: { id }, data: { isActive: input.isActive } });
       changed = true;
-      // audit_event is per workspace: record it in each workspace where the person holds a role.
+      // Always write an org-level audit row for the app_user update
+      await audit(tx, { workspaceId: null, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "person.updated", entityType: "app_user", entityId: id, before: { isActive: u.isActive }, after: { isActive: input.isActive }, requestId: auth.ctx.requestId });
+      // Also record one audit_event and one outbox row per workspace where the person holds a role.
       const where = [...new Set((await tx.roleAssignment.findMany({ where: { principalType: "user", principalId: id, workspaceId: { not: null } }, select: { workspaceId: true } })).map((r) => r.workspaceId as string))];
       for (const workspaceId of where) {
         await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: input.isActive ? "user.reactivated" : "user.deactivated", entityType: "user", entityId: id, before: { isActive: u.isActive }, after: { isActive: input.isActive }, requestId: auth.ctx.requestId });

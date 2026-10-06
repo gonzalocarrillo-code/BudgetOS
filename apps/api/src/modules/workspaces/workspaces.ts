@@ -1,5 +1,5 @@
 import { CreatePolicyInput, CreateRuleInput, CreateWorkspaceInput, DomainError, PurgeDemoInput, TemplateSavedView, TourStep, newId, type Role } from "@budget/domain";
-import { audit, ensureDefaultTemplate, ensureDefaultTours, outbox, purgeDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
+import { audit, defaultAgencyTemplate, ensureDefaultTemplate, outbox, purgeDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
 import type { Prisma, PrismaClient, WorkspaceTemplate } from "@prisma/client";
 import { z } from "zod";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
@@ -30,13 +30,20 @@ export function templateView(t: WorkspaceTemplate) {
   return { id: t.id, key: t.key, name: t.name, description: t.description, builtIn: t.orgId === null, counts: { dimensions: count(t.registry), hierarchyTemplates: count(t.hierarchyTemplates), policies: count(t.policies), rules: count(t.rules), savedViews: count(t.savedViews), tours: count(t.tours) } };
 }
 
-/** GET /workspace-templates (org admins): the built-in one (written from the defaults) and the org's. */
+/** GET /workspace-templates (org admins): the built-in one (created during workspace creation) and the org's. */
 export async function listTemplates(prisma: PrismaClient, auth: AuthContext) {
   if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin creates workspaces");
   return withTenant(prisma, orgAdminCtx(auth), async (tx) => {
-    await ensureDefaultTemplate(tx, newId);
-    await ensureDefaultTours(tx, newId);
-    return (await tx.workspaceTemplate.findMany({ orderBy: [{ orgId: "asc" }, { name: "asc" }] })).map(templateView);
+    // Read-only query: defaults are created in createWorkspace and syncDefaultTours, not on GET
+    const rows = await tx.workspaceTemplate.findMany({ orderBy: [{ orgId: "asc" }, { name: "asc" }] });
+    // If the org has no templates, return the built-in default in memory
+    if (rows.length === 0) {
+      const def = defaultAgencyTemplate();
+      // Use a stable ID for the in-memory default (deterministic from the key)
+      const stableId = "00000000-0000-0000-0000-000000000001";
+      return [{ id: stableId, key: def.key, name: def.name, description: def.description, builtIn: true, counts: { dimensions: def.registry.length, hierarchyTemplates: def.hierarchyTemplates.length, policies: def.policies.length, rules: def.rules.length, savedViews: def.savedViews.length, tours: def.tours.length } }];
+    }
+    return rows.map(templateView);
   });
 }
 
@@ -50,7 +57,13 @@ export async function createWorkspace(prisma: PrismaClient, auth: AuthContext, r
   const orgCtx = orgAdminCtx(auth);
   const template = await withTenant(prisma, orgCtx, async (tx) => {
     await ensureDefaultTemplate(tx, newId);
-    const t = await tx.workspaceTemplate.findUnique({ where: { id: input.templateId } });
+    // If the in-memory default ID is passed, look up the actual default template
+    let templateId = input.templateId;
+    if (templateId === "00000000-0000-0000-0000-000000000001") {
+      const defaultTemplate = await tx.workspaceTemplate.findFirst({ where: { orgId: null, key: "default_agency" }, select: { id: true } });
+      if (defaultTemplate) templateId = defaultTemplate.id;
+    }
+    const t = await tx.workspaceTemplate.findUnique({ where: { id: templateId } });
     if (t === null || (t.orgId !== null && t.orgId !== auth.user.orgId)) throw new DomainError("NOT_FOUND", "Workspace template not found");
     return t;
   });

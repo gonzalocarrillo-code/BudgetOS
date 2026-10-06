@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { purgeWorkspace } from "@budget/workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { parseRetentionDays } from "./lifecycle.js";
 import { appDb as appDbClient, ownerDb, startHarness, testUser, type Harness, type Method, type TestUser } from "../../test-support/harness.js";
 
 /**
@@ -52,6 +53,15 @@ afterAll(async () => {
 });
 
 describe("workspace lifecycle (ADR-052)", () => {
+  it("WORKSPACE_RETENTION_DAYS: rejects 0 and NaN, defaults to 30, accepts >= 7", () => {
+    expect(() => parseRetentionDays("0")).toThrow("Invalid WORKSPACE_RETENTION_DAYS");
+    expect(() => parseRetentionDays("abc")).toThrow("Invalid WORKSPACE_RETENTION_DAYS");
+    expect(parseRetentionDays(undefined)).toBe(30);
+    expect(parseRetentionDays("45")).toBe(45);
+    expect(parseRetentionDays("7")).toBe(7);
+    expect(() => parseRetentionDays("6")).toThrow("Invalid WORKSPACE_RETENTION_DAYS");
+  });
+
   it("lists the org's workspaces for superadmins only, with admins and counts", async () => {
     expect((await call(admin, "GET", "/workspaces", undefined, null)).status).toBe(403);
     const res = await call(superadmin, "GET", "/workspaces", undefined, null);
@@ -105,5 +115,22 @@ describe("workspace lifecycle (ADR-052)", () => {
     expect(Number(kept[0]?.n)).toBeGreaterThan(4);
     expect((await call(superadmin, "POST", `/workspaces/${ws}/undelete`)).status).toBe(409); // purged: no way back
     expect(await owner.roleAssignment.count({ where: { workspaceId: other } })).toBe(1); // the other workspace is untouched
+  });
+});
+
+describe("templates (I-26)", () => {
+  it("GET /workspace-templates leaves row counts unchanged (read-only, no write on GET)", async () => {
+    const countBefore = await owner.workspaceTemplate.count();
+    const toursBefore = await owner.tour.count({ where: { workspaceId: null } });
+
+    // Call GET /workspace-templates (no workspace context)
+    const result = await call(superadmin, "GET", "/workspace-templates", undefined, null);
+    expect(result.status).toBe(200);
+
+    const countAfter = await owner.workspaceTemplate.count();
+    const toursAfter = await owner.tour.count({ where: { workspaceId: null } });
+
+    expect(countAfter).toBe(countBefore);
+    expect(toursAfter).toBe(toursBefore);
   });
 });
