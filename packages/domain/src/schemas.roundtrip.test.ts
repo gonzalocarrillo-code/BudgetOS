@@ -463,7 +463,7 @@ const samples: Record<string, readonly unknown[]> = {
   CreateUploadInput: [{ filename: "spend 2026-Q1.csv" }],
   OverviewLayout: [{ hidden: [], order: [], axes: {} }, { hidden: ["heatmap"], order: ["kpi", "heatmap"], axes: { rows: "region" }, sort: "pace" }],
   SavedViewScreen: ["explorer"],
-  SavedViewVisibility: ["private", "workspace"],
+  SavedViewVisibility: ["private", "workspace", "shared"],
   CreateSavedViewInput: [{ name: "LATAM by country", definition: { view: "pivot", groupBy: ["country"] } }, { name: "Everyone", screen: "explorer", definition: {}, visibility: "workspace" }],
   UpdateSavedViewInput: [{ name: "Renamed" }, { visibility: "private" }],
   ListSavedViewsQuery: [{}, { screen: "explorer" }],

@@ -29,9 +29,9 @@ export function useLayout(ws: string) {
   const { data: views = [], isPending } = useQuery(viewsQuery);
   const mineOf = (vs: SavedView[]) => vs.find((v) => v.createdBy === me?.user.id && v.visibility === "private") ?? null;
   const mine = mineOf(views);
-  // The workspace default is the shared view of that name; another shared Overview view stands in.
-  const byDefault = views.find((v) => v.visibility === "workspace" && v.name === DEFAULT_NAME) ?? null;
-  const shared = byDefault ?? views.find((v) => v.visibility === "workspace") ?? null;
+  // The workspace default is a workspace or shared view of that name; another workspace/shared Overview view stands in.
+  const byDefault = views.find((v) => (v.visibility === "workspace" || v.visibility === "shared") && v.name === DEFAULT_NAME) ?? null;
+  const shared = byDefault ?? views.find((v) => v.visibility === "workspace" || v.visibility === "shared") ?? null;
   const fallback = readOverviewLayout(shared?.definition);
   // The choice shows at once; saves run one after another, and the last one's result stays shown.
   const [pending, setPending] = useState<OverviewLayout | null>(null);

@@ -3,10 +3,11 @@ import { z } from "zod";
 /**
  * Saved views (spec §17 `views`, §18.3): a screen's search params under a name. Loading one
  * replaces the search params. private: the owner only; workspace: everyone in the workspace
- * (needs view.share_workspace).
+ * (needs view.share_workspace); shared: seeded from a workspace template, visible to all members
+ * (system-only value, never set by user input).
  */
 export const SavedViewScreen = z.enum(["explorer", "alerts", "approvals", "targets", "report", "overview"]);
-export const SavedViewVisibility = z.enum(["private", "workspace"]);
+export const SavedViewVisibility = z.enum(["private", "workspace", "shared"]);
 
 export const CreateSavedViewInput = z.object({
   name: z.string().trim().min(1).max(120),

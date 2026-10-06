@@ -8342,7 +8342,7 @@ export interface operations {
                      * @default private
                      * @enum {string}
                      */
-                    visibility?: "private" | "workspace";
+                    visibility?: "private" | "workspace" | "shared";
                 };
             };
         };
@@ -8404,7 +8404,7 @@ export interface operations {
                      * @default private
                      * @enum {string}
                      */
-                    visibility?: "private" | "workspace";
+                    visibility?: "private" | "workspace" | "shared";
                 };
             };
         };

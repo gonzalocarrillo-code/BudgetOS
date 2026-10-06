@@ -15795,7 +15795,8 @@
                     "type": "string",
                     "enum": [
                       "private",
-                      "workspace"
+                      "workspace",
+                      "shared"
                     ],
                     "default": "private"
                   }
@@ -15860,7 +15861,8 @@
                     "type": "string",
                     "enum": [
                       "private",
-                      "workspace"
+                      "workspace",
+                      "shared"
                     ],
                     "default": "private"
                   }
