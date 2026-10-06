@@ -469,7 +469,7 @@ const samples: Record<string, readonly unknown[]> = {
   FiscalPeriodKey: ["FY2026", "2026-Q1", "2026-03"],
   CloseInput: [{ periodKey: "2026-Q1" }, { periodId: "01927a00-0000-7000-8000-0000000000c1" }],
   RestateInput: [{ reason: "Late invoices" }],
-  ClosureStatus: ["closed", "restated"],
+  ClosureStatus: ["closing", "closed", "failed", "restated"],
   ClosureView: [
     {
       id: "01927a00-0000-7000-8000-0000000000c2",
@@ -478,8 +478,9 @@ const samples: Record<string, readonly unknown[]> = {
       status: "closed",
       closedBy: "01927a00-0000-7000-8000-0000000000c3",
       closedAt: "2026-04-02T09:00:00.000Z",
-      table: "closures.budget_vs_actual_x_2026_q1",
+      table: "closures.closure_01927a0000007000800000000000c2",
       lockedEnvelopes: 12,
+      error: null,
     },
   ],
   RunSourceInput: [{}, { restatementOf: "01927a00-0000-7000-8000-0000000000c2" }, { fullResync: true }],

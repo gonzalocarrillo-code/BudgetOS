@@ -6,7 +6,9 @@ import { DomainError, newId } from "@budget/domain";
 
 /**
  * Where a closure's budget vs actual rows go (spec §15, ADR-018). Production writes BigQuery
- * `closures.budget_vs_actual_<workspace>_<period>[_r<N>]`; a table is never written twice. The
+ * `closures.closure_<closure id>` (W3-1; earlier closures named `budget_vs_actual_<ws>_<period>[_r<N>]`).
+ * A table is never overwritten unless its closure is still `closing` and the caller says so
+ * (`replace`: the table is that closure's own, left half-written by an earlier attempt). The
  * recording sink exists for tests only: it is not a second system of record.
  */
 
@@ -36,9 +38,14 @@ export interface ClosureRow {
   closed_at: string;
 }
 
+export interface ClosureWriteOptions {
+  /** Drop an existing `table` first. Only for the table of a closure that is still `closing`. */
+  replace?: boolean;
+}
+
 export interface ClosureSink {
-  /** Creates `table` and writes every row; throws CONFLICT when the table already exists. */
-  write(table: string, rows: ClosureRow[]): Promise<void>;
+  /** Creates `table` and writes every row; throws CONFLICT when the table already exists, unless `replace`. */
+  write(table: string, rows: ClosureRow[], opts?: ClosureWriteOptions): Promise<void>;
 }
 
 export const CLOSURE_SINK = Symbol("CLOSURE_SINK");
@@ -68,10 +75,11 @@ export class BigQueryClosureSink implements ClosureSink {
     private readonly datasetId = CLOSURE_DATASET,
   ) {}
 
-  async write(table: string, rows: ClosureRow[]): Promise<void> {
+  async write(table: string, rows: ClosureRow[], opts: ClosureWriteOptions = {}): Promise<void> {
     const dataset = this.bq.dataset(this.datasetId);
     const [exists] = await dataset.table(table).exists();
-    if (exists) throw new DomainError("CONFLICT", `Closure table ${this.datasetId}.${table} already exists; it is never overwritten`, { table });
+    if (exists && opts.replace !== true) throw new DomainError("CONFLICT", `Closure table ${this.datasetId}.${table} already exists; it is never overwritten`, { table });
+    if (exists) await dataset.table(table).delete();
     const [created] = await dataset.createTable(table, { schema: CLOSURE_SCHEMA });
     if (rows.length > STREAMING_MAX_ROWS) {
       const file = join(tmpdir(), `closure-${newId()}.ndjson`);
@@ -90,11 +98,11 @@ export class BigQueryClosureSink implements ClosureSink {
   }
 }
 
-/** Tests only (NODE_ENV=test): keeps the rows in memory and refuses a second write to a table. */
+/** Tests only (NODE_ENV=test): keeps the rows in memory and refuses a second write to a table unless `replace`. */
 export class RecordingClosureSink implements ClosureSink {
   readonly tables = new Map<string, ClosureRow[]>();
-  async write(table: string, rows: ClosureRow[]): Promise<void> {
-    if (this.tables.has(table)) throw new DomainError("CONFLICT", `Closure table ${table} already exists; it is never overwritten`, { table });
+  async write(table: string, rows: ClosureRow[], opts: ClosureWriteOptions = {}): Promise<void> {
+    if (this.tables.has(table) && opts.replace !== true) throw new DomainError("CONFLICT", `Closure table ${table} already exists; it is never overwritten`, { table });
     this.tables.set(table, rows);
   }
 }

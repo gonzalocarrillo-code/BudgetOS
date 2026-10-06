@@ -27,6 +27,13 @@ export class ClosuresController {
     return this.closures.restate(auth, id, body);
   }
 
+  /** W3-1: fail a stale `closing` closure and release its envelope locks (runbook closures.md). */
+  @Post("closures/:id/abandon")
+  @Permission("closure.close")
+  abandon(@Tenant() auth: AuthContext, @Param("id") id: string) {
+    return this.closures.abandon(auth, id);
+  }
+
   @Get("closures/:id/report")
   @Permission("envelope.read")
   report(@Tenant() auth: AuthContext, @Param("id") id: string) {

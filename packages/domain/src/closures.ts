@@ -4,7 +4,7 @@ import { z } from "zod";
  * Period closures (spec §15, plan §4.5). A closure locks every live envelope that overlaps a fiscal
  * period, snapshots the registry and writes the budget vs actual rows of every hierarchy template
  * to the closure sink (BigQuery). A restatement (admin + reason) unlocks them; the next closure of
- * the period writes a new table version (`_r<N>`), never over the old one.
+ * the period writes a new table, never over the old one.
  */
 
 /** `FY2026`, `2026-Q1` (fiscal quarter) or `2026-03` (calendar month): the keys resolvePeriod reads. */
@@ -23,7 +23,15 @@ export type CloseInput = z.infer<typeof CloseInput>;
 export const RestateInput = z.object({ reason: z.string().trim().min(3).max(2000) });
 export type RestateInput = z.infer<typeof RestateInput>;
 
-export const ClosureStatus = z.enum(["closed", "restated"]);
+/**
+ * W3-1 (ADR-018 addendum): `closing` while the rows are written outside the transaction (envelopes
+ * already locked), then `closed`; `failed` when the sink failed or a stale close was abandoned (locks
+ * released, `error` says why); `restated` after a restatement.
+ */
+export const ClosureStatus = z.enum(["closing", "closed", "failed", "restated"]);
+export type ClosureStatus = z.infer<typeof ClosureStatus>;
+/** A `closing` closure older than this is stale: POST /closures/:id/abandon may fail it. */
+export const CLOSURE_STALE_MINUTES = 15;
 
 export const ClosureView = z.object({
   id: z.string().uuid(),
@@ -32,9 +40,14 @@ export const ClosureView = z.object({
   status: ClosureStatus,
   closedBy: z.string().uuid(),
   closedAt: z.string().datetime(),
-  /** Where the rows were written: `closures.budget_vs_actual_<workspace>_<period>[_r<N>]`. */
+  /**
+   * Where the rows are written: `closures.closure_<closure id without dashes>` (W3-1); closures from
+   * before then name `closures.budget_vs_actual_<workspace>_<period>[_r<N>]`.
+   */
   table: z.string(),
   lockedEnvelopes: z.number().int(),
+  /** Why a `failed` closure failed; null otherwise. */
+  error: z.string().nullable(),
 });
 export type ClosureView = z.infer<typeof ClosureView>;
 

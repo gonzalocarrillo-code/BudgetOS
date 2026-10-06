@@ -288,7 +288,7 @@ export async function rebuildWorkspace(prisma: PrismaClient, tenant: { workspace
 }
 
 /** Topics whose envelopes the worker refreshes; registry.changed rebuilds instead (naming.changed only renames). */
-export const ROLLUP_TOPICS = ["budget.changed", "facts.loaded", "registry.changed", "approval.changed", "period.closed", "period.restated"] as const;
+export const ROLLUP_TOPICS = ["budget.changed", "facts.loaded", "registry.changed", "approval.changed", "period.closing", "period.closed", "period.closure_failed", "period.restated"] as const;
 
 /**
  * approval.changed actions that move an envelope into or out of PENDING without a budget.changed
@@ -300,11 +300,13 @@ const PENDING_ACTIONS = new Set(["approval.requested", "approval.reject", "appro
 /**
  * The envelopes whose status a status-only event changed, so their pendingCount is stale (ADR-044):
  * the request's envelope, or every envelope of its bulk change; for a closure, the envelopes it
- * locked (or unlocked) that were PENDING — locking is the only other status a measure sees.
+ * locked (or unlocked) that were PENDING — locking is the only other status a measure sees. A close
+ * locks them when it starts (`period.closing`, W3-1) and unlocks them when it fails
+ * (`period.closure_failed`); `period.closed` changes no status but is kept for consumers.
  */
 async function statusEnvelopes(tx: Tx, topic: string, payload: Record<string, unknown>): Promise<string[]> {
   const str = (v: unknown) => (typeof v === "string" ? v : null);
-  if (topic === "period.closed" || topic === "period.restated") {
+  if (topic === "period.closing" || topic === "period.closed" || topic === "period.closure_failed" || topic === "period.restated") {
     const closureId = str(payload["closureId"]);
     if (closureId === null) return [];
     return (await tx.closureEnvelope.findMany({ where: { closureId, priorStatus: "PENDING" }, select: { envelopeId: true } })).map((c) => c.envelopeId);

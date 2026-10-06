@@ -15937,7 +15937,93 @@
         ],
         "responses": {
           "200": {
-            "description": "Closures, newest first (restated ones included)"
+            "description": "Closures, newest first (restated, failed and in-progress ones included)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "period": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "kind",
+                          "start",
+                          "end"
+                        ]
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "closing",
+                          "closed",
+                          "failed",
+                          "restated"
+                        ]
+                      },
+                      "closedBy": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "closedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "table": {
+                        "type": "string"
+                      },
+                      "lockedEnvelopes": {
+                        "type": "integer"
+                      },
+                      "error": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "workspaceId",
+                      "period",
+                      "status",
+                      "closedBy",
+                      "closedAt",
+                      "table",
+                      "lockedEnvelopes",
+                      "error"
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -15975,7 +16061,7 @@
         },
         "responses": {
           "201": {
-            "description": "Closed: overlapping envelopes are LOCKED and the rows are in the closure table",
+            "description": "Closed: overlapping envelopes are LOCKED and the rows are in the closure table closures.closure_<id>",
             "content": {
               "application/json": {
                 "schema": {
@@ -16020,7 +16106,9 @@
                     "status": {
                       "type": "string",
                       "enum": [
+                        "closing",
                         "closed",
+                        "failed",
                         "restated"
                       ]
                     },
@@ -16037,6 +16125,10 @@
                     },
                     "lockedEnvelopes": {
                       "type": "integer"
+                    },
+                    "error": {
+                      "type": "string",
+                      "nullable": true
                     }
                   },
                   "required": [
@@ -16047,17 +16139,18 @@
                     "closedBy",
                     "closedAt",
                     "table",
-                    "lockedEnvelopes"
+                    "lockedEnvelopes",
+                    "error"
                   ]
                 }
               }
             }
           },
           "409": {
-            "description": "The period is already closed, or has not ended"
+            "description": "The period is already closed, is being closed, or has not ended"
           },
           "503": {
-            "description": "No closure sink (BigQuery) in this environment"
+            "description": "No closure sink (BigQuery) in this environment, or the sink failed: the closure is then `failed` and its envelopes unlocked"
           }
         }
       }
@@ -16107,6 +16200,125 @@
         "responses": {
           "201": {
             "description": "Restated; envelopes no other closed closure covers get their prior status back"
+          },
+          "409": {
+            "description": "Already restated, failed, or still closing"
+          }
+        }
+      }
+    },
+    "/api/v1/closures/{id}/abandon": {
+      "post": {
+        "operationId": "abandonClosure",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "A stale closing closure (15 minutes or more) is now failed and its envelopes unlocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "period": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "key",
+                        "kind",
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "closing",
+                        "closed",
+                        "failed",
+                        "restated"
+                      ]
+                    },
+                    "closedBy": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "closedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "table": {
+                      "type": "string"
+                    },
+                    "lockedEnvelopes": {
+                      "type": "integer"
+                    },
+                    "error": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "workspaceId",
+                    "period",
+                    "status",
+                    "closedBy",
+                    "closedAt",
+                    "table",
+                    "lockedEnvelopes",
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not closing, or still within 15 minutes of its start"
           }
         }
       }

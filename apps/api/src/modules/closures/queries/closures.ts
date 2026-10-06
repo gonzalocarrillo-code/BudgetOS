@@ -5,7 +5,7 @@ import { parseId, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { closureView } from "../views.js";
 
-/** GET /workspaces/:ws/closures: newest first, restated ones included (they are history). */
+/** GET /workspaces/:ws/closures: newest first, restated, failed and in-progress ones included (they are history). */
 export async function listClosures(prisma: PrismaClient, auth: AuthContext) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   return withTenant(prisma, auth.ctx, async (tx) => {
@@ -31,12 +31,12 @@ export async function closureReport(prisma: PrismaClient, auth: AuthContext, raw
   });
 }
 
-/** The latest closure of a period by key (`2026-Q1`) with its frozen report, or NOT_FOUND. */
+/** The latest closure of a period by key (`2026-Q1`) with its frozen report, or NOT_FOUND. A failed attempt froze nothing (W3-1). */
 export async function closureByPeriod(prisma: PrismaClient, auth: AuthContext, periodKey: string) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const id = await withTenant(prisma, auth.ctx, async (tx) => {
     const p = await tx.fiscalPeriod.findUnique({ where: { workspaceId_key: { workspaceId, key: periodKey } } });
-    const c = p ? await tx.periodClosure.findFirst({ where: { workspaceId, periodId: p.id }, orderBy: { closedAt: "desc" }, select: { id: true } }) : null;
+    const c = p ? await tx.periodClosure.findFirst({ where: { workspaceId, periodId: p.id, status: { not: "failed" } }, orderBy: { closedAt: "desc" }, select: { id: true } }) : null;
     return c?.id ?? null;
   });
   if (id === null) throw new DomainError("NOT_FOUND", `No closure for period ${periodKey}`);

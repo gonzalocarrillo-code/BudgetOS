@@ -635,12 +635,15 @@ model PeriodClosure {
   id              String   @id @db.Uuid
   workspaceId     String   @map("workspace_id") @db.Uuid
   periodId        String   @map("period_id") @db.Uuid
-  status          String   @default("closed") // closed | restated
+  status          String   @default("closed") // closing | closed | failed | restated (W3-1, ADR-018 addendum)
   closedBy        String   @map("closed_by") @db.Uuid
+  /// When the close started while `closing`; when it became `closed` after that.
   closedAt        DateTime @default(now()) @map("closed_at") @db.Timestamptz
   registryVersion Json     @map("registry_version") // { dimensions: {key: version}, templates: {...} }
   bqTable         String   @map("bq_table")
   varianceSummary Json     @map("variance_summary")
+  /// Why a `failed` closure failed (the sink's error, or who abandoned it).
+  error           String?
 
   @@unique([workspaceId, periodId, closedAt])
   @@map("period_closure")

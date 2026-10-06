@@ -560,20 +560,30 @@ export function openApiDocument(): Record<string, unknown> {
         delete: { operationId: "deletePeriod", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Deleted; 409 when it has a closure or budgets aligned to it" } } },
       },
       "/api/v1/workspaces/{ws}/closures": {
-        get: { operationId: "listClosures", parameters: [workspaceParam], responses: { "200": { description: "Closures, newest first (restated ones included)" } } },
+        get: { operationId: "listClosures", parameters: [workspaceParam], responses: { "200": { description: "Closures, newest first (restated, failed and in-progress ones included)", ...json(z.array(ClosureView)) } } },
         post: {
           operationId: "closePeriod",
           parameters: [workspaceParam],
           requestBody: json(CloseInput),
           responses: {
-            "201": { description: "Closed: overlapping envelopes are LOCKED and the rows are in the closure table", ...json(ClosureView) },
-            "409": { description: "The period is already closed, or has not ended" },
-            "503": { description: "No closure sink (BigQuery) in this environment" },
+            "201": { description: "Closed: overlapping envelopes are LOCKED and the rows are in the closure table closures.closure_<id>", ...json(ClosureView) },
+            "409": { description: "The period is already closed, is being closed, or has not ended" },
+            "503": { description: "No closure sink (BigQuery) in this environment, or the sink failed: the closure is then `failed` and its envelopes unlocked" },
           },
         },
       },
       "/api/v1/closures/{id}/restate": {
-        post: { operationId: "restateClosure", parameters: [idParam, workspaceHeader], requestBody: json(RestateInput), responses: { "201": { description: "Restated; envelopes no other closed closure covers get their prior status back" } } },
+        post: { operationId: "restateClosure", parameters: [idParam, workspaceHeader], requestBody: json(RestateInput), responses: { "201": { description: "Restated; envelopes no other closed closure covers get their prior status back" }, "409": { description: "Already restated, failed, or still closing" } } },
+      },
+      "/api/v1/closures/{id}/abandon": {
+        post: {
+          operationId: "abandonClosure",
+          parameters: [idParam, workspaceHeader],
+          responses: {
+            "201": { description: "A stale closing closure (15 minutes or more) is now failed and its envelopes unlocked", ...json(ClosureView) },
+            "409": { description: "Not closing, or still within 15 minutes of its start" },
+          },
+        },
       },
       "/api/v1/closures/{id}/report": {
         get: { operationId: "getClosureReport", parameters: [idParam, workspaceHeader], responses: { "200": { description: "The frozen report: variance summary and registry snapshot as stored at close" } } },

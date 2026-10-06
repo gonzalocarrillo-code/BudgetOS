@@ -224,6 +224,7 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/workspaces/{ws}/closures", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/closures` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/closures", permission: "closure.close", url: () => `/api/v1/workspaces/${wsA}/closures`, body: {} },
   { method: "POST", path: "/api/v1/closures/{id}/restate", permission: "closure.restate", url: () => `/api/v1/closures/${rid}/restate`, headers: X(), body: {} },
+  { method: "POST", path: "/api/v1/closures/{id}/abandon", permission: "closure.close", url: () => `/api/v1/closures/${rid}/abandon`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/closures/{id}/report", permission: "envelope.read", url: () => `/api/v1/closures/${rid}/report`, headers: X() },
   { method: "POST", path: "/api/v1/comments/{id}/reactions", permission: "thread.comment", url: () => `/api/v1/comments/${rid}/reactions`, headers: X(), body: {} },
   { method: "DELETE", path: "/api/v1/comments/{id}/reactions", permission: "thread.comment", url: () => `/api/v1/comments/${rid}/reactions`, headers: X(), body: {} },

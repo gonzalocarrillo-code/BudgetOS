@@ -66,6 +66,8 @@ export const Closure = z.object({
   closedBy: z.string().uuid(),
   closedAt: z.string(),
   table: z.string(),
+  /** Why a failed close failed (W3-1). */
+  error: z.string().nullable().optional(),
   lockedEnvelopes: z.number(),
 });
 export type Closure = z.infer<typeof Closure>;
