@@ -115,7 +115,16 @@ export async function queueRun(prisma: PrismaClient, auth: AuthContext, rawId: s
       if (closure.status !== "closed") throw new DomainError("CONFLICT", "The closure is already restated; its period accepts facts");
     }
     const restatement = { ...(input.restatementOf ? { restatementOf: input.restatementOf } : {}), ...(input.fullResync ? { mode: "full" } : {}) };
-    const run = await tx.ingestRun.create({ data: { id: newId(), sourceId: source.id, status: "queued", summary: restatement } });
+    let run;
+    try {
+      run = await tx.ingestRun.create({ data: { id: newId(), sourceId: source.id, status: "queued", summary: restatement } });
+    } catch (e) {
+      // W3-3 (audit I-19): the `open` check above is SELECT-then-INSERT; two concurrent "run now"
+      // calls for the same source both pass it, and ingest_run_source_open_run
+      // (20261015010000_partial_unique_constraints) refuses the second queued/running row.
+      if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "A run is already queued or running");
+      throw e;
+    }
     await audit(tx, { workspaceId: source.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "ingest.run.queued", entityType: "ingest_run", entityId: run.id, after: { sourceId: source.id, ...restatement }, requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId: source.workspaceId, topic: "ingest.requested", payload: { runId: run.id, sourceId: source.id } });
     return { runId: run.id, sourceId: source.id, status: run.status };

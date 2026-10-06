@@ -149,10 +149,22 @@ async function depths(tx: Tx, envelopeIds: string[]): Promise<Map<string, number
   return new Map(rows.map((x) => [x.id, x.d]));
 }
 
-/** Approvals that count toward the current step: approves, plus external evidence when the policy allows it. */
+/**
+ * Approvals that count toward the current step: approves, plus external evidence when the policy
+ * allows it. W3-3 (audit I-18): counts distinct deciders, not rows -- one requester recording
+ * external evidence twice (or, before the unique index in 20261015010000_partial_unique_constraints,
+ * racing two decisions in) must not satisfy minApprovals twice over. The database backs this with a
+ * unique index on (request_id, step_index, decided_by): a second row for the same decider is refused
+ * before this ever runs again for that step.
+ */
 export async function countedApprovals(tx: Tx, r: LockedRequestRow, snapshot: PolicySnapshot): Promise<number> {
   const decisions = snapshot.allowExternalEvidence ? ["approve", "external_evidence"] : ["approve"];
-  return tx.approvalDecision.count({ where: { requestId: r.id, stepIndex: r.currentStep, decision: { in: decisions } } });
+  const deciders = await tx.approvalDecision.findMany({
+    where: { requestId: r.id, stepIndex: r.currentStep, decision: { in: decisions } },
+    distinct: ["decidedBy"],
+    select: { decidedBy: true },
+  });
+  return deciders.length;
 }
 
 /**

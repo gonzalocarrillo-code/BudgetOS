@@ -39,19 +39,28 @@ export async function createTarget(prisma: PrismaClient, auth: AuthContext, raw:
     if (startDate === undefined || endDate === undefined) throw new DomainError("VALIDATION", "Target dates are required");
     if (startDate > endDate) throw new DomainError("VALIDATION", "startDate after endDate");
 
-    const target = await tx.target.create({
-      data: {
-        id: newId(),
-        workspaceId,
-        scopeType: input.scope.type,
-        envelopeId,
-        ...(input.scope.type === "filter" ? { scopeFilter: input.scope.filter as Prisma.InputJsonObject } : {}),
-        metricKey: input.metricKey,
-        startDate: new Date(`${startDate}T00:00:00Z`),
-        endDate: new Date(`${endDate}T00:00:00Z`),
-        ownerId: input.ownerId ?? null,
-      },
-    });
+    let target;
+    try {
+      target = await tx.target.create({
+        data: {
+          id: newId(),
+          workspaceId,
+          scopeType: input.scope.type,
+          envelopeId,
+          ...(input.scope.type === "filter" ? { scopeFilter: input.scope.filter as Prisma.InputJsonObject } : {}),
+          metricKey: input.metricKey,
+          startDate: new Date(`${startDate}T00:00:00Z`),
+          endDate: new Date(`${endDate}T00:00:00Z`),
+          ownerId: input.ownerId ?? null,
+        },
+      });
+    } catch (e) {
+      // W3-3 (audit I-19): the `clash` check above is SELECT-then-INSERT; two concurrent creates for
+      // the same (envelope, metric) both pass it, and target_envelope_active_metric
+      // (20261015010000_partial_unique_constraints) refuses the second active row.
+      if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "This envelope already has a target for the metric; add a draft to it");
+      throw e;
+    }
     const currency = await targetCurrency(tx, workspaceId, metric.format);
     const version = await writeTargetDraft(tx, auth, target, { ...input, currency });
     await recordTargetChange(tx, auth.ctx, {

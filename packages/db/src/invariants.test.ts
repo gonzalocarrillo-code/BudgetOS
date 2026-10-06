@@ -172,8 +172,10 @@ describe("CHECK constraints (audit I-34)", () => {
     // 'external_evidence' is a fourth value external-evidence.ts writes outside that zod schema.
     const decisions = ["approve", "reject", "request_changes", "external_evidence"] as const;
     await withTenant(owner, ctx, async (tx) => {
+      // W3-3 (audit I-18): a distinct decidedBy per row -- approval_decision_request_step_decider
+      // (one decision per decider per step) would otherwise refuse every row after the first here.
       for (const decision of decisions) {
-        await tx.approvalDecision.create({ data: { id: randomUUID(), requestId, stepIndex: 0, decidedBy: userId, decision } });
+        await tx.approvalDecision.create({ data: { id: randomUUID(), requestId, stepIndex: 0, decidedBy: randomUUID(), decision } });
       }
     });
     await expect(withTenant(owner, ctx, (tx) => tx.approvalDecision.create({ data: { id: randomUUID(), requestId, stepIndex: 0, decidedBy: userId, decision: "shrug" } }))).rejects.toThrow(
@@ -214,9 +216,14 @@ describe("CHECK constraints (audit I-34)", () => {
   });
 
   it("status enum: ingest_run.status is queued | running | ok | failed (pipeline.ts, worker.ts)", async () => {
+    // W3-3 (audit I-19): ingest_run_source_open_run (at most one queued-or-running row per source)
+    // would otherwise refuse 'running' right after 'queued' for the same fixture source; clear each
+    // open row before the next so this test only has to prove the status CHECK, not coexistence.
     await withTenant(owner, ctx, async (tx) => {
       for (const status of ["queued", "running", "ok", "failed"] as const) {
-        await tx.ingestRun.create({ data: { id: randomUUID(), sourceId: dataSourceId, status } });
+        const id = randomUUID();
+        await tx.ingestRun.create({ data: { id, sourceId: dataSourceId, status } });
+        if (status === "queued" || status === "running") await tx.ingestRun.delete({ where: { id } });
       }
     });
     await expect(withTenant(owner, ctx, (tx) => tx.ingestRun.create({ data: { id: randomUUID(), sourceId: dataSourceId, status: "paused" } }))).rejects.toThrow(

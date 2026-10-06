@@ -1,5 +1,5 @@
 import { DomainError, EndEnvelopeInput, ReintroduceInput, newId } from "@budget/domain";
-import { audit, auditMany, outbox, recomputeNames, withTenant, type Tx } from "@budget/db";
+import { audit, auditMany, lockEnvelope, outbox, recomputeNames, withTenant, type Tx } from "@budget/db";
 import { Decimal } from "decimal.js";
 import type { Envelope, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
@@ -63,9 +63,17 @@ async function createSuccessor(tx: Tx, auth: AuthContext, workspaceId: string, s
     "envelope.create",
   );
   const version = await writeDraftVersion(tx, auth, row, { amount, phasing: undefined, rationale: rationale || `Continues ${source.name}`, attachments: [] });
-  await tx.envelopeLineage.create({
-    data: { id: newId(), workspaceId, fromEnvelopeId: source.id, toEnvelopeId: row.id, kind: "continues", versionId: version.id, actorId: auth.user.id },
-  });
+  try {
+    await tx.envelopeLineage.create({
+      data: { id: newId(), workspaceId, fromEnvelopeId: source.id, toEnvelopeId: row.id, kind: "continues", versionId: version.id, actorId: auth.user.id },
+    });
+  } catch (e) {
+    // W3-3 (audit I-28): backstop for reintroduceIn's row lock (and for endIn's own successor,
+    // which has no equivalent check) -- envelope_lineage_continues_source
+    // (20261015010000_partial_unique_constraints) refuses a second `continues` row for this source.
+    if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", `${source.name} already has a successor`);
+    throw e;
+  }
   await recomputeNames(tx, workspaceId, [row.id]);
   return { id: row.id, versionId: version.id, amount };
 }
@@ -165,11 +173,19 @@ export async function reintroduceEnvelope(prisma: PrismaClient, auth: AuthContex
 }
 
 export async function reintroduceIn(tx: Tx, auth: AuthContext, workspaceId: string, envelopeId: string, input: ReintroduceInput) {
-  const source = await tx.envelope.findUnique({ where: { id: envelopeId } });
-  if (source === null) throw new DomainError("NOT_FOUND", "Envelope not found");
+  // W3-3 (audit I-28): hold the source row for the rest of this transaction so two concurrent
+  // reintroduces of the same ended budget serialize instead of both reading endedAt != null and both
+  // creating a successor; the second waits here until the first commits (or rolls back).
+  const locked = await lockEnvelope(tx, envelopeId);
+  if (locked === null) throw new DomainError("NOT_FOUND", "Envelope not found");
   assertInScope(auth, "envelope.create", await envelopeScopeTarget(tx, envelopeId));
-  if (source.endedAt === null) throw new DomainError("CONFLICT", "Only an ended budget can be reintroduced. End it first, and add the new budget there.");
+  if (!locked.endedAt) throw new DomainError("CONFLICT", "Only an ended budget can be reintroduced. End it first, and add the new budget there.");
   await assertNotHeld(tx, [envelopeId]); // W3-5
+  // Fails fast under the lock above, before the (comparatively expensive) successor creation and
+  // approval routing run; envelope_lineage_continues_source is still the backstop of record.
+  const priorSuccessor = await tx.envelopeLineage.findFirst({ where: { fromEnvelopeId: envelopeId, kind: "continues" }, select: { toEnvelopeId: true } });
+  if (priorSuccessor) throw new DomainError("CONFLICT", "This budget already has a successor", { envelopeId: priorSuccessor.toEnvelopeId });
+  const source = await tx.envelope.findUniqueOrThrow({ where: { id: envelopeId } });
   const successor = await createSuccessor(tx, auth, workspaceId, source, input, isoDate(source.endDate), input.rationale);
   const rate = (await resolveFx(tx, source.currency, workspaceId)).rate;
   const amountReporting = successor.amount.mul(rate).toDecimalPlaces(2);

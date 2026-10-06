@@ -59,22 +59,31 @@ function assertWorkspaceWide(auth: AuthContext): void {
 export async function insertRule(tx: Tx, ctx: TenantContext, workspaceId: string, input: CreateRuleInput) {
   const clash = await tx.pacingRule.findFirst({ where: { workspaceId, name: input.name, deletedAt: null }, select: { id: true } });
   if (clash) throw new DomainError("CONFLICT", "A rule with this name exists", { ruleId: clash.id });
-  const row = await tx.pacingRule.create({
-    data: {
-      id: newId(),
-      workspaceId,
-      name: input.name,
-      scope: json(input.scope ?? {}),
-      metric: input.metric,
-      metricArgs: json(input.metricArgs),
-      comparator: input.comparator,
-      threshold: input.threshold,
-      consecutiveDays: input.consecutiveDays,
-      severity: input.severity,
-      delivery: json(input.delivery),
-      isActive: input.isActive,
-    },
-  });
+  let row;
+  try {
+    row = await tx.pacingRule.create({
+      data: {
+        id: newId(),
+        workspaceId,
+        name: input.name,
+        scope: json(input.scope ?? {}),
+        metric: input.metric,
+        metricArgs: json(input.metricArgs),
+        comparator: input.comparator,
+        threshold: input.threshold,
+        consecutiveDays: input.consecutiveDays,
+        severity: input.severity,
+        delivery: json(input.delivery),
+        isActive: input.isActive,
+      },
+    });
+  } catch (e) {
+    // W3-3 (audit I-19): the `clash` check above is SELECT-then-INSERT; two concurrent creates of the
+    // same name both pass it, and pacing_rule_workspace_live_name
+    // (20261015010000_partial_unique_constraints) refuses the second live row.
+    if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "A rule with this name exists");
+    throw e;
+  }
   await recordRule(tx, ctx, workspaceId, row.id, "rule.created", null, ruleView(row));
   return row;
 }
@@ -102,21 +111,28 @@ export async function updateRule(prisma: PrismaClient, auth: AuthContext, rawId:
     const metric = input.metric ?? current.metric;
     const metricArgs = (input.metricArgs ?? current.metricArgs) as { metricKey?: string };
     if (metric === "kpi_vs_target_pct" && !metricArgs.metricKey) throw new DomainError("VALIDATION", "kpi_vs_target_pct needs metricArgs.metricKey");
-    const row = await tx.pacingRule.update({
-      where: { id },
-      data: {
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.scope !== undefined ? { scope: json(input.scope) } : {}),
-        ...(input.metric !== undefined ? { metric: input.metric } : {}),
-        ...(input.metricArgs !== undefined ? { metricArgs: json(input.metricArgs) } : {}),
-        ...(input.comparator !== undefined ? { comparator: input.comparator } : {}),
-        ...(input.threshold !== undefined ? { threshold: input.threshold } : {}),
-        ...(input.consecutiveDays !== undefined ? { consecutiveDays: input.consecutiveDays } : {}),
-        ...(input.severity !== undefined ? { severity: input.severity } : {}),
-        ...(input.delivery !== undefined ? { delivery: json(input.delivery) } : {}),
-        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-      },
-    });
+    let row;
+    try {
+      row = await tx.pacingRule.update({
+        where: { id },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.scope !== undefined ? { scope: json(input.scope) } : {}),
+          ...(input.metric !== undefined ? { metric: input.metric } : {}),
+          ...(input.metricArgs !== undefined ? { metricArgs: json(input.metricArgs) } : {}),
+          ...(input.comparator !== undefined ? { comparator: input.comparator } : {}),
+          ...(input.threshold !== undefined ? { threshold: input.threshold } : {}),
+          ...(input.consecutiveDays !== undefined ? { consecutiveDays: input.consecutiveDays } : {}),
+          ...(input.severity !== undefined ? { severity: input.severity } : {}),
+          ...(input.delivery !== undefined ? { delivery: json(input.delivery) } : {}),
+          ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        },
+      });
+    } catch (e) {
+      // W3-3 (audit I-19): the rename clash check above is SELECT-then-INSERT too.
+      if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "A rule with this name exists");
+      throw e;
+    }
     await recordRule(tx, auth.ctx, row.workspaceId, id, "rule.updated", ruleView(current), ruleView(row));
     return ruleView(row);
   });
