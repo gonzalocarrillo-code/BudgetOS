@@ -1,6 +1,6 @@
 import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
-import { outbox, withTenant } from "@budget/db";
+import { ensurePartitions, outbox, withTenant } from "@budget/db";
 import { compileTree } from "@budget/query-planner";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -109,7 +109,7 @@ describe("rollup-worker", () => {
   it("archiving a leaf refreshes its path and removes the node it leaves empty, once per event", async () => {
     await owner.$executeRawUnsafe(`UPDATE envelope SET status = 'ARCHIVED' WHERE id = $1::uuid`, env["latamTiktok"]);
     await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { envelopeId: env["latamTiktok"], kind: "archived" } }));
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
     const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId: env["latamTiktok"], kind: "archived" })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: "m" }, subscription: "rollup-worker" };
     const first = await handleRollupEvent(app, body, TODAY);
     expect(first).toMatchObject({ outcome: "applied", deleted: 2 }); // LATAM/tiktok, in the fiscal year and the current quarter (ADR-038)
@@ -120,7 +120,7 @@ describe("rollup-worker", () => {
 
   it("a draft changes no cached measure: its event is skipped (T-034)", async () => {
     await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { envelopeId: env["latamMeta"], kind: "draft" } }));
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
     const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId: env["latamMeta"], kind: "draft" })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
     expect(await handleRollupEvent(app, body, TODAY)).toMatchObject({ outcome: "applied", templates: 0, upserted: 0, deleted: 0 });
   });
@@ -129,6 +129,10 @@ describe("rollup-worker", () => {
     const snapshot = async () => (await owner.$queryRawUnsafe<Array<{ k: string; m: unknown }>>(`SELECT period_start::text || '|' || node_path AS k, measures AS m FROM rollup_cache WHERE template_id = $1::uuid ORDER BY 1`, templateId)).map((r) => [r.k, r.m]);
     // A new leaf under a node that did not exist (EMEA/tiktok), and spend on an existing one.
     env["emeaTiktok"] = await envelope("EMEA tiktok", { region: "EMEA", platform: "tiktok" }, "70.00");
+    // W0-5: every real write path ensures the month's partition first (packages/db/src/facts.ts);
+    // this raw insert bypassed that, so it only ever passed by accident when some other test file
+    // happened to have already created the 2026-05 partition first (non-deterministic file order).
+    await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => ensurePartitions(tx, "2026-05-10", "2026-05-10"));
     await owner.$executeRawUnsafe(
       `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash)
        VALUES ($1::uuid, $2::uuid, '{}'::jsonb, '2026-05-10', 'USD', 12.34, 12.34, 'csv', $3::uuid, $4)`,
@@ -136,7 +140,7 @@ describe("rollup-worker", () => {
     );
     for (const envelopeId of [env["emeaTiktok"], env["latamMeta"]]) {
       await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { envelopeId } }));
-      const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+      const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
       const body = { message: { data: Buffer.from(JSON.stringify({ envelopeId })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
       expect((await handleRollupEvent(app, body, TODAY)).outcome).toBe("applied");
     }
@@ -156,7 +160,7 @@ describe("rollup-worker", () => {
     );
     const payload = { envelopeId: id, kind: "granularities" };
     await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload }));
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
     const body = { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "budget.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
     expect(await handleRollupEvent(app, body, TODAY)).toMatchObject({ outcome: "applied", rebuilt: true });
     const t = await tree();
@@ -171,7 +175,7 @@ describe("rollup-worker", () => {
     const step = async (sql: string[], topic: string, payload: Record<string, unknown>) => {
       for (const q of sql) await owner.$executeRawUnsafe(q);
       await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t022-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic, payload }));
-      const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+      const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
       const body = { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
       const r = await handleRollupEvent(app, body, TODAY);
       expect(r).toMatchObject({ outcome: "applied", rebuilt: false });
@@ -244,7 +248,7 @@ describe("rollup-worker", () => {
     await owner.$executeRawUnsafe(`INSERT INTO approval_request (id, workspace_id, entity_type, entity_id, policy_id, policy_version, policy_snapshot, summary, requested_by) VALUES ($1::uuid, $2::uuid, 'bulk_change', $3::uuid, $4::uuid, 1, '{}'::jsonb, 's003', $5::uuid)`, requestId, ws, bulkChangeId, randomUUID(), userId);
     const payload = { requestId, action: "approval.requested", bulkChangeId, status: "PENDING", step: 0 };
     await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `s003-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic: "approval.changed", payload }));
-    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+    const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
     const body = { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "approval.changed" }, messageId: `m-${row?.id}` }, subscription: "rollup-worker" };
     expect(await handleRollupEvent(app, body, TODAY)).toMatchObject({ outcome: "applied", upserted: 0, rebuilt: false });
   });

@@ -56,7 +56,7 @@ async function queue(kind: "csv" | "xlsx", query: Record<string, unknown>) {
     await tx.exportJob.create({ data: { id: jobId, workspaceId: ws, kind, query: { workspaceId: ws, period, ...query }, filename: "t023", createdBy: userId } });
     await outbox(tx, { workspaceId: ws, topic: "export.requested", payload: { jobId } });
   });
-  const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid AND topic = 'export.requested' ORDER BY id DESC LIMIT 1`, ws);
+  const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid AND topic = 'export.requested' ORDER BY outbox.id DESC LIMIT 1`, ws);
   const body = { message: { data: Buffer.from(JSON.stringify({ jobId })).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic: "export.requested" }, messageId: "m" }, subscription: "export-worker" };
   return { jobId, body };
 }

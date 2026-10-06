@@ -42,7 +42,13 @@ class FakeSlack implements SlackClient {
 /** Writes the event through the real outbox helper and returns it as a Pub/Sub push body. */
 async function event(topic: string, payload: Record<string, unknown>) {
   await withTenant(app, { workspaceId: ws, orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `t021-${randomUUID()}` }, (tx) => outbox(tx, { workspaceId: ws, topic, payload }));
-  const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY id DESC LIMIT 1`, ws);
+  // W0-5: `id` in ORDER BY must stay qualified (outbox.id, not the `id::text` output column) or
+  // Postgres sorts the text alias lexicographically, returning a stale single-digit id once this
+  // workspace's own rows pass id 9 (e.g. "9" > "10"). That silently misrouted markProcessed's
+  // dedupe key onto an earlier delivery, so the handler never reran and posts/notifications stayed
+  // empty — intermittent only because it depends on where this workspace's ids land in the shared
+  // bigserial sequence (itself a function of non-deterministic test file ordering).
+  const [row] = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text FROM outbox WHERE workspace_id = $1::uuid ORDER BY outbox.id DESC LIMIT 1`, ws);
   return { message: { data: Buffer.from(JSON.stringify(payload)).toString("base64"), attributes: { outboxId: row?.id ?? "", workspaceId: ws, orgId, topic }, messageId: randomUUID() }, subscription: "notify-worker" };
 }
 const notifications = (userId: string) => owner.$queryRawUnsafe<Array<{ kind: string }>>(`SELECT kind FROM notification WHERE workspace_id = $1::uuid AND user_id = $2::uuid ORDER BY created_at`, ws, userId);

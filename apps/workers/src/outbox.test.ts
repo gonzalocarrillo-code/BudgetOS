@@ -49,7 +49,7 @@ async function emit(n: number, workspaceId = ws, topic = "budget.changed"): Prom
   return (await unpublished(workspaceId)).filter((id) => !before.has(id));
 }
 async function unpublished(workspaceId = ws): Promise<string[]> {
-  const rows = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text AS id FROM outbox WHERE workspace_id = $1::uuid AND published_at IS NULL ORDER BY id`, workspaceId);
+  const rows = await owner.$queryRawUnsafe<Array<{ id: string }>>(`SELECT id::text AS id FROM outbox WHERE workspace_id = $1::uuid AND published_at IS NULL ORDER BY outbox.id`, workspaceId);
   return rows.map((r) => r.id);
 }
 /** Passes until one publishes nothing (other suites may have rows queued too). */
