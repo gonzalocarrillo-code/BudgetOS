@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asOrgAdmin, type TenantContext } from "@budget/db";
+import { asOrgAdmin, type TenantContext, type Tx } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
 import type { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,6 +19,7 @@ const appDb = appDbClient();
 let h: Harness;
 
 const orgId = randomUUID();
+const asE13 = <T,>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 const ws = randomUUID();
 const users = {
   planner: testUser("planner", randomUUID()),
@@ -262,10 +263,10 @@ describe("external approvals with evidence can be recorded", () => {
     const e = await newEnvelope("7100.00");
     const s = await submit(e.id, e.draft);
     const requestId = s.requestId!;
-    const before = await owner.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { policySnapshot: true } });
+    const before = await asE13((tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { policySnapshot: true } }));
     const snapshot = before.policySnapshot as { chain: Array<Record<string, unknown>> } & Record<string, unknown>;
     const chain = snapshot.chain.map((step, i) => (i === 0 ? { ...step, minApprovals: 2 } : step));
-    await owner.approvalRequest.update({ where: { id: requestId }, data: { policySnapshot: { ...snapshot, chain, allowExternalEvidence: true } as Prisma.InputJsonValue } });
+    await asE13((tx) => tx.approvalRequest.update({ where: { id: requestId }, data: { policySnapshot: { ...snapshot, chain, allowExternalEvidence: true } as Prisma.InputJsonValue } }));
 
     const [a, b] = await Promise.all([
       as(users.planner, "POST", `/api/v1/approvals/${requestId}/external-evidence`, evidence),
@@ -277,8 +278,8 @@ describe("external approvals with evidence can be recorded", () => {
     expect(ok.body).toMatchObject({ counted: true, status: "PENDING" });
     expect(conflict.body).toMatchObject({ code: "CONFLICT" });
 
-    expect(await owner.approvalDecision.count({ where: { requestId, stepIndex: 0, decidedBy: users.planner.id } })).toBe(1);
-    const after = await owner.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { status: true, currentStep: true } });
+    expect(await asE13((tx) => tx.approvalDecision.count({ where: { requestId, stepIndex: 0, decidedBy: users.planner.id } }))).toBe(1);
+    const after = await asE13((tx) => tx.approvalRequest.findUniqueOrThrow({ where: { id: requestId }, select: { status: true, currentStep: true } }));
     expect(after).toMatchObject({ status: "PENDING", currentStep: 0 });
   });
 });

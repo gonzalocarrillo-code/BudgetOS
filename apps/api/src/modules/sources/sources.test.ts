@@ -143,7 +143,7 @@ describe("sources", () => {
     const id = String(created.body["id"]);
     const [a, b] = await Promise.all([call(dataAdmin, "POST", `/sources/${id}/run`), call(dataAdmin, "POST", `/sources/${id}/run`)]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
-    expect(await owner.ingestRun.count({ where: { sourceId: id, status: { in: ["queued", "running"] } } })).toBe(1);
+    expect(await asAdmin((tx) => tx.ingestRun.count({ where: { sourceId: id, status: { in: ["queued", "running"] } } }))).toBe(1);
   });
 
   it("an incremental source must map a row_id; a full resync is queued as a full run (ADR-071)", async () => {
