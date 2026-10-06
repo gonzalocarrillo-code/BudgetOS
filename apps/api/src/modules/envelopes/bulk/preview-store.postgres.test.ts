@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { withTenant, type TenantContext } from "@budget/db";
+import { asOrgAdmin, withTenant, type TenantContext } from "@budget/db";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ownerDb } from "../../../test-support/harness.js";
@@ -30,15 +30,29 @@ function ctx(workspaceId: string): TenantContext {
 
 beforeAll(async () => {
   await owner.$executeRaw`INSERT INTO organization (id, name) VALUES (${orgId}::uuid, 'w1-5 preview store')`;
-  await owner.$executeRaw`
-    INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${wsA}::uuid, ${orgId}::uuid, ${`w15a-${wsA}`}, 'W1-5 A', 'USD')`;
-  await owner.$executeRaw`
-    INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${wsB}::uuid, ${orgId}::uuid, ${`w15b-${wsB}`}, 'W1-5 B', 'USD')`;
+  // W0-6: the owner has no BYPASSRLS; workspace needs the org-admin tenant context real writes
+  // get from withTenant.
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${wsA}::uuid, ${orgId}::uuid, ${`w15a-${wsA}`}, 'W1-5 A', 'USD')`;
+      await tx.$executeRaw`
+        INSERT INTO workspace (id, org_id, slug, name, reporting_currency) VALUES (${wsB}::uuid, ${orgId}::uuid, ${`w15b-${wsB}`}, 'W1-5 B', 'USD')`;
+    },
+    orgId,
+  );
 });
 
 afterAll(async () => {
-  await owner.$executeRaw`DELETE FROM bulk_preview WHERE workspace_id IN (${wsA}::uuid, ${wsB}::uuid)`;
-  await owner.$executeRaw`DELETE FROM workspace WHERE id IN (${wsA}::uuid, ${wsB}::uuid)`;
+  await asOrgAdmin(
+    owner,
+    async (tx) => {
+      await tx.$executeRaw`DELETE FROM bulk_preview WHERE workspace_id IN (${wsA}::uuid, ${wsB}::uuid)`;
+      await tx.$executeRaw`DELETE FROM workspace WHERE id IN (${wsA}::uuid, ${wsB}::uuid)`;
+    },
+    orgId,
+  );
   await owner.$executeRaw`DELETE FROM organization WHERE id = ${orgId}::uuid`;
   await Promise.all([owner.$disconnect(), app.$disconnect(), app2.$disconnect()]);
 });
@@ -92,10 +106,10 @@ describe("PostgresPreviewStore", () => {
   it("put opportunistically sweeps this workspace's own expired rows", async () => {
     const stale = randomUUID();
     await withTenant(app, ctx(wsA), (tx) => store.put(tx, stale, "bulk-edit", "{}", -1));
-    const beforeSweep = await owner.$queryRaw<Array<{ id: string }>>`SELECT id FROM bulk_preview WHERE id = ${stale}`;
+    const beforeSweep = await asOrgAdmin(owner, (tx) => tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM bulk_preview WHERE id = ${stale}`, orgId);
     expect(beforeSweep).toHaveLength(1);
     await withTenant(app, ctx(wsA), (tx) => store.put(tx, randomUUID(), "bulk-edit", "{}", 60));
-    const afterSweep = await owner.$queryRaw<Array<{ id: string }>>`SELECT id FROM bulk_preview WHERE id = ${stale}`;
+    const afterSweep = await asOrgAdmin(owner, (tx) => tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM bulk_preview WHERE id = ${stale}`, orgId);
     expect(afterSweep).toHaveLength(0);
   });
 });

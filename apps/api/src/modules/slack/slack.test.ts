@@ -213,7 +213,7 @@ describe("Slack requests", () => {
 
   it("/budget search and /budget list <text> show the same numbers as the one query path (T-8, audit)", async () => {
     // T-014's split part: a live, distinctively-named budget with its own approved amount and spend.
-    const hit = await owner.envelope.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, status: "APPROVED", name: { contains: "Walmart" } }, select: { id: true } });
+    const hit = await asAdmin((tx) => tx.envelope.findFirstOrThrow({ where: { workspaceId: golden.workspaceId, status: "APPROVED", name: { contains: "Walmart" } }, select: { id: true } }));
     const direct = (await as(
       "admin",
       "POST",

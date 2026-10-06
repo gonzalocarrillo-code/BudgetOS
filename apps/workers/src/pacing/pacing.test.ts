@@ -197,7 +197,7 @@ describe("evaluateWorkspace (T-018 done-when)", () => {
     await evaluateWorkspace(app, tenant, "2026-08-13"); // env A breaches on day 1 (consecutiveDays: 1) and opens
     const [alert] = await openAlerts(raceRule);
     expect(alert?.envelopeId).toBe(env["a"]);
-    await owner.alert.update({ where: { id: alert?.id ?? "" }, data: { status: "SNOOZED", snoozedUntil: new Date("2026-08-14T00:00:00Z") } });
+    await asOwner((tx) => tx.alert.update({ where: { id: alert?.id ?? "" }, data: { status: "SNOOZED", snoozedUntil: new Date("2026-08-14T00:00:00Z") } }));
 
     // Two evaluations past snoozedUntil, run concurrently: only one may flip SNOOZED → OPEN.
     const [r1, r2] = await Promise.all([
@@ -205,9 +205,9 @@ describe("evaluateWorkspace (T-018 done-when)", () => {
       evaluateWorkspace(app, tenant, "2026-08-15", new Date("2026-08-15T12:00:00Z")),
     ]);
     expect([...r1.reopened, ...r2.reopened]).toEqual([alert?.id]);
-    expect(await owner.alert.findUniqueOrThrow({ where: { id: alert?.id ?? "" } })).toMatchObject({ status: "OPEN", snoozedUntil: null });
-    expect(await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'alert.reopened'`, alert?.id).then((r) => Number(r[0]?.n))).toBe(1);
-    expect(await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'alert.triggered' AND payload->>'alertId' = $1 AND payload->>'reopened' = 'true'`, alert?.id).then((r) => Number(r[0]?.n))).toBe(1);
+    expect(await asOwner((tx) => tx.alert.findUniqueOrThrow({ where: { id: alert?.id ?? "" } }))).toMatchObject({ status: "OPEN", snoozedUntil: null });
+    expect(await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = 'alert.reopened'`, alert?.id)).then((r) => Number(r[0]?.n))).toBe(1);
+    expect(await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE topic = 'alert.triggered' AND payload->>'alertId' = $1 AND payload->>'reopened' = 'true'`, alert?.id)).then((r) => Number(r[0]?.n))).toBe(1);
 
     await owner.$executeRawUnsafe(`DELETE FROM alert WHERE rule_id = $1::uuid`, raceRule);
     await owner.$executeRawUnsafe(`DELETE FROM rule_state WHERE rule_id = $1::uuid`, raceRule);

@@ -185,14 +185,14 @@ describe("Slack delivery (fake client)", () => {
       return originalPost(m);
     };
     await expect(handleSlackEvent(app, slack, body)).rejects.toThrow(/ratelimited/);
-    const afterFailure = await owner.$queryRawUnsafe<Array<{ ts: string | null }>>(`SELECT ts FROM slack_delivery WHERE outbox_id = $1::bigint ORDER BY channel`, body.message.attributes.outboxId);
+    const afterFailure = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ ts: string | null }>>(`SELECT ts FROM slack_delivery WHERE outbox_id = $1::bigint ORDER BY channel`, body.message.attributes.outboxId));
     expect(afterFailure.filter((r) => r.ts !== null)).toHaveLength(1); // the first post's ts is recorded; the second's is still null
     expect(slack.posts).toHaveLength(1);
 
     const redelivered = await handleSlackEvent(app, slack, body);
     expect(redelivered.outcome).toBe("duplicate");
     expect(slack.posts).toHaveLength(2); // only the missing one was retried
-    const afterRetry = await owner.$queryRawUnsafe<Array<{ ts: string | null }>>(`SELECT ts FROM slack_delivery WHERE outbox_id = $1::bigint`, body.message.attributes.outboxId);
+    const afterRetry = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ ts: string | null }>>(`SELECT ts FROM slack_delivery WHERE outbox_id = $1::bigint`, body.message.attributes.outboxId));
     expect(afterRetry.every((r) => r.ts !== null)).toBe(true);
 
     slack.lookupUserByEmail = originalLookup;
@@ -274,7 +274,7 @@ describe("in-app delivery for alerts and approvals", () => {
     await handleInApp(app, await event("approval.changed", { requestId: id, action: "approval.requested", status: "PENDING" }));
     expect((await notifications(u.approver)).map((n) => n.kind)).toEqual(["approval_requested"]);
     expect(await notifications(u.other)).toEqual([]);
-    await owner.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 0, decidedBy: u.approver, decision: "approve" } });
+    await asOwner((tx) => tx.approvalDecision.create({ data: { id: randomUUID(), requestId: id, stepIndex: 0, decidedBy: u.approver, decision: "approve" } }));
     await handleInApp(app, await event("approval.changed", { requestId: id, action: "approval.approve", status: "APPROVED" }));
     expect((await notifications(u.planner)).map((n) => n.kind)).toEqual(["approval_outcome"]);
     expect((await notifications(u.approver)).map((n) => n.kind)).toEqual(["approval_requested"]); // the decider is not told about their own decision

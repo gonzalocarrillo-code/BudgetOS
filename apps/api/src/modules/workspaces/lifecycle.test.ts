@@ -137,14 +137,20 @@ describe("org people (I-26)", () => {
     try {
       const res = await call(superadmin, "PATCH", `/org/people/${loner.id}`, { isActive: false }, null);
       expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
-      const rows = await owner.$queryRawUnsafe<Array<{ n: number; ws: string | null }>>(
-        `SELECT count(*)::int AS n, min(workspace_id::text) AS ws FROM audit_event WHERE action = 'person.updated' AND entity_id = $1::uuid`,
-        loner.id,
+      // W0-6: an org-level (workspace_id NULL) audit row needs is_org_admin AND an exact org match.
+      const rows = await asOrgAdmin(
+        owner,
+        (tx) =>
+          tx.$queryRawUnsafe<Array<{ n: number; ws: string | null }>>(
+            `SELECT count(*)::int AS n, min(workspace_id::text) AS ws FROM audit_event WHERE action = 'person.updated' AND entity_id = $1::uuid`,
+            loner.id,
+          ),
+        orgId,
       );
       expect(rows[0]?.n).toBe(1);
       expect(rows[0]?.ws).toBeNull();
     } finally {
-      await owner.$executeRawUnsafe(`DELETE FROM audit_event WHERE entity_id = $1::uuid`, loner.id).catch(() => undefined);
+      await asOrgAdmin(owner, (tx) => tx.$executeRawUnsafe(`DELETE FROM audit_event WHERE entity_id = $1::uuid`, loner.id), orgId).catch(() => undefined);
       await owner.user.deleteMany({ where: { id: loner.id } });
     }
   });

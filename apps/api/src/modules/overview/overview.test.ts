@@ -374,48 +374,63 @@ describe("GET /workspaces/:ws/overview — heatmap gap (T-7)", () => {
   const countryValueId = new Map<string, string>();
   let platformValueId = "";
 
+  // W0-6: the owner has no BYPASSRLS; workspace, dimension and every generic tenant_isolation
+  // table below (envelope, envelope_version, envelope_dimension, outbox) need the org-admin
+  // tenant context real writes get from withTenant.
   async function leaf(name: string, dims: Record<string, string>, budget: string): Promise<string> {
     const id = randomUUID();
     const v = randomUUID();
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
-       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
-      id,
-      ws,
-      name,
-      JSON.stringify(dims),
-      owner_.id,
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
+           VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
+          id,
+          ws,
+          name,
+          JSON.stringify(dims),
+          owner_.id,
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
+          v,
+          id,
+          budget,
+          owner_.id,
+        );
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
+        if (dims["country"]) await tx.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, countryDim, countryValueId.get(dims["country"]));
+        if (dims["platform"]) await tx.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, platformDim, platformValueId);
+      },
+      orgId,
     );
-    await owner.$executeRawUnsafe(
-      `INSERT INTO envelope_version (id, envelope_id, version_no, amount, amount_reporting, status, created_by, approved_at) VALUES ($1::uuid, $2::uuid, 1, $3::numeric, $3::numeric, 'APPROVED', $4::uuid, '2026-01-02T00:00:00Z')`,
-      v,
-      id,
-      budget,
-      owner_.id,
-    );
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = $2::uuid WHERE id = $1::uuid`, id, v);
-    if (dims["country"]) await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, countryDim, countryValueId.get(dims["country"]));
-    if (dims["platform"]) await owner.$executeRawUnsafe(`INSERT INTO envelope_dimension (envelope_id, dimension_id, value_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, id, platformDim, platformValueId);
     return id;
   }
 
   beforeAll(async () => {
     await owner.organization.create({ data: { id: orgId, name: "t7-gap" } });
-    await owner.workspace.create({ data: { id: ws, orgId, slug: `t7-${ws}`, name: "T-7 gap", reportingCurrency: "USD" } });
+    await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: ws, orgId, slug: `t7-${ws}`, name: "T-7 gap", reportingCurrency: "USD" } }), orgId);
     await owner.user.create({ data: { id: owner_.id, orgId, email: owner_.email, name: owner_.email, googleSub: `g-${owner_.sub}` } });
     await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: ws, principalType: "user", principalId: owner_.id, role: "BUDGET_OWNER", createdBy: owner_.id } });
-    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, countryDim, orgId, owner_.id);
-    await owner.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'platform', 'Platform', 'ENUM', $3::uuid)`, platformDim, orgId, owner_.id);
-    for (let i = 1; i <= ROWS; i++) {
-      const code = `c${String(i).padStart(2, "0")}`;
-      const id = randomUUID();
-      countryValueId.set(code, id);
-      await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, id, countryDim, code);
-    }
-    countryValueId.set("c99", randomUUID());
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'c99', 'c99')`, countryValueId.get("c99"), countryDim);
-    platformValueId = randomUUID();
-    await owner.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'meta', 'Meta')`, platformValueId, platformDim);
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'country', 'Country', 'ENUM', $3::uuid)`, countryDim, orgId, owner_.id);
+        await tx.$executeRawUnsafe(`INSERT INTO dimension (id, org_id, workspace_id, key, label, data_type, created_by) VALUES ($1::uuid, $2::uuid, NULL, 'platform', 'Platform', 'ENUM', $3::uuid)`, platformDim, orgId, owner_.id);
+        for (let i = 1; i <= ROWS; i++) {
+          const code = `c${String(i).padStart(2, "0")}`;
+          const id = randomUUID();
+          countryValueId.set(code, id);
+          await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, $3, $3)`, id, countryDim, code);
+        }
+        countryValueId.set("c99", randomUUID());
+        await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'c99', 'c99')`, countryValueId.get("c99"), countryDim);
+        platformValueId = randomUUID();
+        await tx.$executeRawUnsafe(`INSERT INTO dimension_value (id, dimension_id, code, label) VALUES ($1::uuid, $2::uuid, 'meta', 'Meta')`, platformValueId, platformDim);
+      },
+      orgId,
+    );
     // 61 leaves, strictly increasing budgets so the top-50 cut is deterministic: c01 (lowest) is
     // the first to go, c61 (highest of the 61) is the last of them still shown.
     for (let i = 1; i <= ROWS; i++) {
@@ -428,17 +443,23 @@ describe("GET /workspaces/:ws/overview — heatmap gap (T-7)", () => {
   }, 120_000);
 
   afterAll(async () => {
-    const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`, ws);
-    await owner.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN ${envs}`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
-    await owner.$executeRawUnsafe(`DELETE FROM dimension WHERE id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
-    await owner.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+    await asOrgAdmin(
+      owner,
+      async (tx) => {
+        const envs = `(SELECT id FROM envelope WHERE workspace_id = $1::uuid)`;
+        await tx.$executeRawUnsafe(`DELETE FROM envelope_dimension WHERE envelope_id IN ${envs}`, ws);
+        await tx.$executeRawUnsafe(`UPDATE envelope SET current_version_id = NULL WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM envelope_version WHERE envelope_id IN ${envs}`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM envelope WHERE workspace_id = $1::uuid`, ws);
+        await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE dimension_id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
+        await tx.$executeRawUnsafe(`DELETE FROM dimension WHERE id IN ($1::uuid, $2::uuid)`, countryDim, platformDim);
+        await tx.$executeRawUnsafe(`DELETE FROM outbox WHERE workspace_id = $1::uuid`, ws);
+        await tx.workspace.deleteMany({ where: { id: ws } });
+      },
+      orgId,
+    );
     await owner.roleAssignment.deleteMany({ where: { workspaceId: ws } });
     await owner.user.deleteMany({ where: { id: owner_.id } });
-    await owner.workspace.deleteMany({ where: { id: ws } });
     await owner.organization.deleteMany({ where: { id: orgId } });
   });
 
