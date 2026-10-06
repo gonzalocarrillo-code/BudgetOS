@@ -47,7 +47,7 @@ import { assertBasedOnHead, assertDraftNotPending, assertNotHeld, lockForWrite, 
  *      parent; a decision locks every budget of the request and their parents
  *      (`lockRequestEnvelopes`); a date change locks the budget, its parent and its subtree.
  * The data version row (`workspace_data_version`) is bumped at commit by the outbox trigger
- * (ADR-0082), after all of these, so it never takes part in this order.
+ * (ADR-0084), after all of these, so it never takes part in this order.
  *
  * Re-locking a row already held is a no-op, so the per-row locks taken further down (lockForWrite,
  * lockParentCap, approveVersion) never wait once the set above is held. Before W3-5 a move locked

@@ -83,4 +83,4 @@ record with its status line; regenerate it when you add one.
 | [ADR-0079](0079-golden-seed-speed.md) | Golden seed speed: fewer round trips, same commands, same data | Accepted, 2026-09-26. Not a §22 task. Branch `task/golden-seed-speed`. |
 | [ADR-0080](0080-hosting-on-dmus-gonzalo.md) | Hosting on the dmus-gonzalo project, signed in by IAP | Accepted (product owner, 2026-09-29). Replaces the Identity Platform sign-in page for the deployed app; the multi-tenant infrastructure of spec §20 stays the target. |
 | [ADR-0081](0081-idempotency-keys.md) | Idempotency-Key on every mutating route, stored in Postgres | Accepted (W3-2, audit I-6, spec §17) |
-| [ADR-0082](0082-data-version-at-commit.md) | The data version moves at commit (deferred outbox trigger), off the workspace row | Accepted (W3-8, audit I-14) |
+| [ADR-0084](0084-data-version-at-commit.md) | The data version moves at commit (deferred outbox trigger), off the workspace row | Accepted (W3-8, audit I-14) |

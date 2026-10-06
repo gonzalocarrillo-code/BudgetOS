@@ -1,4 +1,4 @@
--- W3-8 (audit I-14, ADR-0082): the cache data version moves off the workspace row.
+-- W3-8 (audit I-14, ADR-0084): the cache data version moves off the workspace row.
 --
 -- Until now every write path called bumpDataVersion(), an UPDATE of workspace.settings.dataVersion
 -- inside the write's transaction, so the workspace row stayed locked from the bump to the commit:

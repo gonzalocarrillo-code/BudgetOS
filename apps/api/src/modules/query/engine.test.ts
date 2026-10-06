@@ -87,7 +87,7 @@ describe("query routing", () => {
     const again = await runQuery(app, auth(), body(period), now, { cache, warehouse: null });
     expect(again.engine).toBe("cache");
     expect(again.totals["budget"]).toBe("1000.00");
-    // W3-8 (ADR-0082): a write moves the version through its outbox row, at commit, as the app role.
+    // W3-8 (ADR-0084): a write moves the version through its outbox row, at commit, as the app role.
     // An open (or rolled-back) write does not; a committed one does.
     const write = () => withTenant(app, auth().ctx, (tx) => outbox(tx, { workspaceId: ws, topic: "budget.changed", payload: { kind: "engine-test" } }));
     await expect(withTenant(app, auth().ctx, async (tx) => {

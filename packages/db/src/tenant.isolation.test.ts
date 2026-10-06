@@ -134,7 +134,7 @@ it("drops SET LOCAL settings when the transaction commits", async () => {
   }
 });
 
-it("writes audit and outbox in one tenant transaction; the outbox row moves the data version at commit (ADR-0082)", async () => {
+it("writes audit and outbox in one tenant transaction; the outbox row moves the data version at commit (ADR-0084)", async () => {
   const orgId = randomUUID();
   const workspaceId = randomUUID();
   const entityId = randomUUID();

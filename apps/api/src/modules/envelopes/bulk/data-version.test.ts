@@ -6,7 +6,7 @@ import { cleanupGolden } from "../../../test-support/golden-cleanup.js";
 import { appDb as appDbClient, ownerDb, startHarness, type Harness } from "../../../test-support/harness.js";
 
 /**
- * W3-8 (audit I-14, ADR-0082) done-when: a bulk commit no longer blocks a concurrent single edit,
+ * W3-8 (audit I-14, ADR-0084) done-when: a bulk commit no longer blocks a concurrent single edit,
  * and the data version `/query` keys its cache on still moves with every write, in commit order.
  *
  * The bulk commit is held open at its very end (a deferred trigger on its `bulk_change` row waits

@@ -118,7 +118,7 @@ export async function writeDraftVersion(tx: Tx, auth: AuthContext, env: LockedEn
   return version;
 }
 
-/** Exactly one audit_event and one outbox row per write path (the outbox row moves the cache data version at commit, ADR-0082). */
+/** Exactly one audit_event and one outbox row per write path (the outbox row moves the cache data version at commit, ADR-0084). */
 export async function recordEnvelopeChange(
   tx: Tx,
   auth: AuthContext,

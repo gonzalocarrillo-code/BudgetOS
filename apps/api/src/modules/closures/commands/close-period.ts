@@ -15,7 +15,7 @@ import { failClosure } from "./fail-closure.js";
  * 1. Lock the live envelopes that overlap the period (versions untouched), snapshot the registry
  *    versions, compute every hierarchy template's nodes with the planner for the period and for
  *    each of its months, store the variance summary on a `closing` closure, audit
- *    `closure.started`, outbox `period.closing` (which moves the data version at commit, ADR-0082), commit.
+ *    `closure.started`, outbox `period.closing` (which moves the data version at commit, ADR-0084), commit.
  * 2. Write the rows to `closures.closure_<closure id>` outside any transaction.
  * 3. Flip the closure to `closed` with audit `closure.created` and outbox `period.closed`; or, when
  *    the sink failed, to `failed` with its envelopes unlocked (`fail-closure.ts`), and rethrow.

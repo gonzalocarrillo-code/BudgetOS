@@ -93,7 +93,7 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
 
   return withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } });
-    // Read before the data (ADR-0082): the answer is at least as new as the version it carries.
+    // Read before the data (ADR-0084): the answer is at least as new as the version it carries.
     const dataVersion = await readDataVersion(tx, workspaceId);
     const fy = ws.fiscalYearStartMonth;
     const spec = resolvePeriod(parsePeriodParam(q.period), today, fy, await fiscalCalendar(tx, workspaceId));

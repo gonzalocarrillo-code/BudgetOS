@@ -1,4 +1,4 @@
-# ADR-082: The data version moves at commit, off the workspace row
+# ADR-084: The data version moves at commit, off the workspace row
 
 ## Status
 

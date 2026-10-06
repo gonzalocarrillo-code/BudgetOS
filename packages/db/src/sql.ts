@@ -16,7 +16,7 @@ export async function outbox(tx: Tx, message: OutboxInput): Promise<void> {
 
 /**
  * The workspace's data version, which caches key on (`/query`, the tree, MCP results, exports).
- * W3-8 (ADR-0082): it is no longer bumped by write paths. A deferred trigger on `outbox` bumps
+ * W3-8 (ADR-0084): it is no longer bumped by write paths. A deferred trigger on `outbox` bumps
  * `workspace_data_version` at commit for every outbox row, so a write moves it by emitting its one
  * outbox row, in commit order, without holding a workspace-wide lock through the transaction.
  */
