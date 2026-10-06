@@ -34,6 +34,13 @@ describe("Datastream replica (infra/modules/datastream)", () => {
     expect(mainTf).toContain("backfill_all {}");
   });
 
+  it("I-8: the BigQuery destination is append-only, so a Postgres DELETE (including retention's own) never erases a BigQuery row", () => {
+    const destination = /bigquery_destination_config \{([\s\S]*?)\n {4}\}/.exec(mainTf)?.[1] ?? "";
+    expect(destination).toContain("append_only {}");
+    // Append-only is the opt-in: the default without it is merge mode, which applies DELETEs.
+    expect(destination).not.toMatch(/\bmerge\s*\{/);
+  });
+
   it("the replication role reads everything and writes nothing", () => {
     expect(setup).toContain("CREATE ROLE budget_datastream WITH LOGIN REPLICATION BYPASSRLS");
     expect(setup).toContain("GRANT SELECT ON ALL TABLES IN SCHEMA public TO budget_datastream");

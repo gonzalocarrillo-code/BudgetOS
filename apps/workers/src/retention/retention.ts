@@ -40,9 +40,16 @@ export class BigQueryReplicaTotals implements ReplicaTotals {
     const out: MonthTotals[] = [];
     for (const f of FACT_TABLES) {
       const [rows] = await this.client.query({
-        // As factMonthTotals: every row counted, live rows summed (ADR-071; Datastream replicates superseded_at).
+        // As factMonthTotals: every row counted, live rows summed (ADR-071; Datastream replicates
+        // superseded_at). The inner query collapses the append-only replica (ADR-054 addendum,
+        // audit I-8) to its latest non-deleted row per id, so a replayed change (including the
+        // retention job's own prior delete attempts) is counted once, not once per change.
         query: `SELECT COUNT(*) AS n, CAST(ROUND(COALESCE(SUM(IF(superseded_at IS NULL, CAST(${f.amount} AS BIGNUMERIC), NULL)), 0), 2) AS STRING) AS amount
-                FROM \`${this.dataset}.${f.table}\`
+                FROM (
+                  SELECT * FROM \`${this.dataset}.${f.table}\`
+                  QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY datastream_metadata.source_timestamp DESC) = 1
+                    AND datastream_metadata.change_type != 'DELETE'
+                )
                 WHERE workspace_id = @ws AND period_date >= @m AND period_date < DATE_ADD(@m, INTERVAL 1 MONTH)`,
         params: { ws: workspaceId, m: month },
         types: { ws: "STRING", m: "DATE" },
@@ -67,8 +74,13 @@ const same = (a: MonthTotals[], b: MonthTotals[]) =>
 export interface FactPruneResult {
   workspaceId: string;
   pruned: Array<{ month: string; deleted: Record<string, number> }>;
-  /** The first month that stayed because the replica does not match it yet (the job stops there). */
-  held: { month: string; postgres: MonthTotals[]; replica: MonthTotals[] } | null;
+  /**
+   * The first month that stayed (the job stops there): either the replica did not match it yet
+   * (`"replica-mismatch"`), or Postgres changed — a restatement landing between the compare and
+   * the delete (I-13) — so the re-count inside the delete transaction no longer matched what was
+   * compared (`"changed-before-delete"`); `postgres` is that re-count.
+   */
+  held: { month: string; postgres: MonthTotals[]; replica: MonthTotals[]; reason: "replica-mismatch" | "changed-before-delete" } | null;
   prunedBefore: string | null;
 }
 
@@ -80,8 +92,20 @@ async function record(tx: Prisma.TransactionClient, ctx: TenantContext, action: 
   await tx.$executeRaw`INSERT INTO outbox (workspace_id, topic, payload) VALUES (${ctx.workspaceId}::uuid, ${action}, ${JSON.stringify({ workspaceId: ctx.workspaceId, ...(after as object) })}::jsonb)`;
 }
 
-/** One workspace's facts older than the cutoff, month by month, each only once the replica matches it. */
-export async function pruneWorkspaceFacts(app: PrismaClient, ws: { workspaceId: string; orgId: string }, replica: ReplicaTotals, opts: { now?: Date; hotMonths?: number } = {}): Promise<FactPruneResult> {
+/**
+ * One workspace's facts older than the cutoff, month by month, each only once the replica matches
+ * it. The compare (above) and the delete (below) are separate transactions, so a restatement could
+ * land between them (I-13): the delete transaction re-counts the month and aborts — no delete, no
+ * audit, no outbox — if it no longer matches what was compared. `opts.beforeDelete`, used only by
+ * tests, runs after the compare and before the delete transaction starts: the seam that lets a test
+ * land a change exactly there.
+ */
+export async function pruneWorkspaceFacts(
+  app: PrismaClient,
+  ws: { workspaceId: string; orgId: string },
+  replica: ReplicaTotals,
+  opts: { now?: Date; hotMonths?: number; beforeDelete?: (month: string) => Promise<void> | void } = {},
+): Promise<FactPruneResult> {
   const ctx = system(ws, "retention");
   const cutoff = retentionCutoff(opts.now ?? new Date(), opts.hotMonths ?? HOT_MONTHS);
   const months = await withTenant(app, ctx, (tx) => factMonthsBefore(tx, ws.workspaceId, cutoff));
@@ -90,14 +114,21 @@ export async function pruneWorkspaceFacts(app: PrismaClient, ws: { workspaceId: 
     const postgres = await withTenant(app, ctx, (tx) => factMonthTotals(tx, ws.workspaceId, month));
     const copy = await replica.monthTotals(ws.workspaceId, month);
     if (!same(postgres, copy)) {
-      result.held = { month, postgres, replica: copy };
+      result.held = { month, postgres, replica: copy, reason: "replica-mismatch" };
       log.warn({ workspaceId: ws.workspaceId, month, postgres, replica: copy, requestId: ctx.requestId }, "retention: replica does not match; month kept");
       break;
     }
-    const deleted = await withTenant(
+    if (opts.beforeDelete) await opts.beforeDelete(month);
+    const outcome = await withTenant(
       app,
       ctx,
       async (tx) => {
+        // Re-verify inside the delete transaction (I-13): a restatement landing between the compare
+        // above and here must not be deleted unverified. REPEATABLE READ gives this recheck and the
+        // delete the same snapshot, so the delete removes exactly the rows just recounted — nothing
+        // a concurrent writer commits after this transaction starts is visible to either statement.
+        const recheck = await factMonthTotals(tx, ws.workspaceId, month);
+        if (!same(recheck, postgres)) return { aborted: true as const, recheck };
         const counts = await deleteFactMonth(tx, ws.workspaceId, month);
         const before = nextMonth(month);
         // factsPrunedBefore only moves forward: the month after the newest month pruned.
@@ -105,11 +136,16 @@ export async function pruneWorkspaceFacts(app: PrismaClient, ws: { workspaceId: 
           WHERE id = ${ws.workspaceId}::uuid`;
         await tx.$executeRaw`UPDATE workspace SET settings = jsonb_set(settings, '{dataVersion}', to_jsonb(coalesce((settings->>'dataVersion')::int, 0) + 1)) WHERE id = ${ws.workspaceId}::uuid`;
         await record(tx, ctx, "facts.pruned", { month, deleted: counts, replicaTotals: copy });
-        return counts;
+        return { aborted: false as const, counts };
       },
-      { timeoutMs: 300_000 },
+      { timeoutMs: 300_000, isolation: "RepeatableRead" },
     );
-    result.pruned.push({ month, deleted });
+    if (outcome.aborted) {
+      result.held = { month, postgres: outcome.recheck, replica: copy, reason: "changed-before-delete" };
+      log.warn({ workspaceId: ws.workspaceId, month, postgres, recheck: outcome.recheck, requestId: ctx.requestId }, "retention: facts changed between compare and delete; month kept, nothing deleted or audited");
+      break;
+    }
+    result.pruned.push({ month, deleted: outcome.counts });
     result.prunedBefore = nextMonth(month);
   }
   if (result.pruned.length) log.info({ workspaceId: ws.workspaceId, requestId: ctx.requestId, months: result.pruned.map((p) => p.month) }, "retention: facts pruned");

@@ -28,8 +28,14 @@ const base = block("views");
 const derived = block("derived_views");
 const sql = (view: string) => readFileSync(join(moduleDir, "views", `${view}.sql`), "utf8");
 const REF = /`\$\{project\}\.\$\{dataset\}\.(\w+)`/g;
-/** BigQuery → Postgres: the only difference allowed is the `project.dataset.` table prefix. */
-const forPostgres = (text: string) => text.replace(REF, "$1");
+/**
+ * The append-only de-dup clause (ADR-054 addendum, audit I-8): QUALIFY ROW_NUMBER() ... over
+ * datastream_metadata, which only exists on the BigQuery replica. Postgres's live tables hold
+ * exactly one current row per primary key already, so the clause is a no-op there.
+ */
+const DEDUP = /[ \t]*-- DATASTREAM_DEDUP_START[\s\S]*?-- DATASTREAM_DEDUP_END\n?/g;
+/** BigQuery → Postgres: the only differences allowed are the `project.dataset.` table prefix and the append-only de-dup clause. */
+const forPostgres = (text: string) => text.replace(DEDUP, "\n").replace(REF, "$1");
 
 class Rollback extends Error {}
 async function inRolledBackTx(fn: (tx: Prisma.TransactionClient) => Promise<void>): Promise<void> {
@@ -51,6 +57,23 @@ describe("BigQuery curated views (infra/modules/bigquery)", () => {
     for (const v of base) expect([...sql(v).matchAll(REF)].map((m) => m[1]).filter((t) => PLAN_VIEWS.includes(t as string))).toEqual([]);
     for (const v of derived) expect([...sql(v).matchAll(REF)].map((m) => m[1]).filter((t) => (t as string).startsWith("v_")).every((t) => base.includes(t as string))).toBe(true);
     expect(mainTf).toContain("depends_on          = [google_bigquery_table.view]");
+  });
+
+  it("I-8: every raw replicated table a view reads is deduped to its latest non-deleted row (append_only replication)", () => {
+    for (const v of PLAN_VIEWS) {
+      const text = sql(v);
+      // Every `project.dataset.table` reference other than another curated view must be wrapped in
+      // a WITH <table> AS ( ... QUALIFY ... datastream_metadata.change_type != 'DELETE' ... ) CTE.
+      const rawTables = [...text.matchAll(REF)].map((m) => m[1] as string).filter((t) => !t.startsWith("v_"));
+      expect(rawTables.length, v).toBeGreaterThan(0);
+      for (const t of rawTables) {
+        const backtick = "`";
+        const pattern = `${t} AS \\(\\s*SELECT \\* FROM ${backtick}\\$\\{project\\}\\.\\$\\{dataset\\}\\.${t}${backtick}`;
+        expect(text, `${v}: ${t} CTE`).toMatch(new RegExp(pattern));
+      }
+      expect((text.match(/-- DATASTREAM_DEDUP_START/g) ?? []).length, v).toBe(rawTables.length);
+      expect(text, v).toContain("datastream_metadata.change_type != 'DELETE'");
+    }
   });
 
   it("D-014: every curated view carries workspace_id, and clients read one workspace through authorized views only", async () => {

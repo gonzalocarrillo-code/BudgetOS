@@ -105,6 +105,14 @@ resource "google_datastream_stream" "replica" {
       single_target_dataset {
         dataset_id = "${var.project_id}:${var.dataset_id}"
       }
+      # ADR-054 addendum (audit I-8): default is merge mode, which applies source DELETEs to the
+      # BigQuery tables — including the retention job's own deletes (D-002), which would erase the
+      # very rows retention is pruning Postgres *because* BigQuery holds them. append_only {} makes
+      # every change (INSERT/UPDATE/DELETE) land as its own row carrying
+      # datastream_metadata.{uuid,source_timestamp,change_type}; nothing is ever removed from
+      # BigQuery. The curated views and the retention comparison must then select the latest change
+      # per primary key and drop rows whose latest change_type is DELETE.
+      append_only {}
     }
   }
 
