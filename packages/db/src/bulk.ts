@@ -214,6 +214,12 @@ export interface BulkDatesLine {
   envelopeId: string;
   startDate: string;
   endDate: string;
+  /**
+   * W3-5: the budget's parent and row version when the change was requested, so the approval can
+   * tell it moved or changed meanwhile. Absent on requests made before W3-5.
+   */
+  parentId?: string | null;
+  rowVersion?: number;
 }
 
 /**
@@ -278,6 +284,40 @@ export async function applyDates(tx: Tx, lines: BulkDatesLine[]): Promise<void> 
       UPDATE envelope SET start_date = ${l.startDate}::date, end_date = ${l.endDate}::date, row_version = row_version + 1, updated_at = now()
       WHERE id = ${l.envelopeId}::uuid`;
   }
+}
+
+/**
+ * Gives held budgets their resting status back once their request is decided (W3-5): APPROVED with
+ * an approved amount, else DRAFT. A budget whose own draft is waiting in another request stays PENDING.
+ */
+export async function releaseHeld(tx: Tx, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await tx.$executeRaw`
+    UPDATE envelope e SET
+      status = CASE WHEN e.current_version_id IS NOT NULL THEN 'APPROVED'::"EnvelopeStatus" ELSE 'DRAFT'::"EnvelopeStatus" END,
+      row_version = e.row_version + 1, updated_at = now()
+    WHERE e.id = ANY(${ids}::uuid[]) AND e.status = 'PENDING'
+      AND NOT EXISTS (SELECT 1 FROM envelope_version v WHERE v.id = e.draft_version_id AND v.status = 'PENDING')`;
+}
+
+/**
+ * The open structural request (split, merge, end, reintroduce, dates) that holds any of these
+ * budgets (W3-5): one of its versions, sources, new budgets, the budget it ends, or a line of its
+ * dates. Bulk amount edits and imports are amount changes, not structural, and do not hold.
+ */
+export async function structuralRequestHolding(tx: Tx, ids: string[]): Promise<{ requestId: string; kind: BulkKind } | null> {
+  if (ids.length === 0) return null;
+  const [row] = await tx.$queryRaw<Array<{ requestId: string; kind: BulkKind }>>`
+    SELECT r.id::text AS "requestId", b.kind
+    FROM approval_request r JOIN bulk_change b ON b.id = r.entity_id
+    WHERE r.entity_type = 'bulk_change' AND r.status IN ('PENDING', 'ESCALATED')
+      AND b.kind IN ('split', 'merge', 'end', 'reintroduce', 'dates')
+      AND (b.archive_ids && ${ids}::uuid[] OR b.created_ids && ${ids}::uuid[]
+        OR (b.payload->'end'->>'envelopeId')::uuid = ANY(${ids}::uuid[])
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(b.payload->'dates', '[]'::jsonb)) d WHERE (d->>'envelopeId')::uuid = ANY(${ids}::uuid[]))
+        OR EXISTS (SELECT 1 FROM envelope_version v WHERE v.id = ANY(b.version_ids) AND v.envelope_id = ANY(${ids}::uuid[])))
+    ORDER BY r.requested_at LIMIT 1`;
+  return row ?? null;
 }
 
 /** Archives envelopes (split / merge sources after approval, never-approved parts after a rejection). */

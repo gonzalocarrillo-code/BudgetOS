@@ -51,3 +51,21 @@ Not editable, on purpose:
 
 ## Consequences
 - The timeline's bars cannot be dragged yet; the plan's epic 2.5 does that through this endpoint.
+
+## Addendum (W3-5, 2026-10-05): the approval checks the dates again; every line is held
+
+Audit I-17: the dates were checked when the change was requested and written when it was approved, possibly days later, without a second look. Two interleavings broke the tree:
+- the budget was moved under a parent that runs a shorter range, so the approval put it outside its parent;
+- a trimmed child that was never approved was re-dated (which applies at once), and the approval silently reverted it.
+
+Only budgets that received a new version were held, and nothing refused a move of a held budget.
+
+- **Every line is held.** All budgets a date change moves are `PENDING` until it is decided, with or without a version of their own. A budget in an open structural request (split, merge, end, reintroduce, dates) cannot be moved, re-dated (`POST /dates` or `PATCH` dates), ended or reintroduced: 409 "Waiting for approval: request <id>". Draft amount edits are another kind of change and stay allowed; a draft under approval is still frozen.
+- **The request records what it saw.** Each line of the `dates` payload carries the budget's `parentId` and `rowVersion` at request time. Requests made earlier lack them; their range checks still run.
+- **The approval re-checks under the row locks, before writing anything.** Every line is locked by id, then checked:
+  - same parent and row version;
+  - not archived, closed or ended;
+  - the new dates still fit the parent's (its new dates when the parent is a line too);
+  - every child still fits.
+- **A mismatch sends the request back.** It goes to `CHANGES_REQUESTED`, committed, and the approver gets a 409 "The budget changed since the request was made; re-request the dates", with `{ envelopeId, reason }`. The reason is one of `moved`, `changed`, `archived`, `locked`, `ended`, `outside_parent`, `child_outside` or `missing`. It is recorded on a blocking thread on the request, and in one `approval.request_changes` audit row and one outbox row, whose `stale` field holds the reason.
+- **Any decision gives held budgets their status back:** `APPROVED` with an approved amount, else `DRAFT`. On approval, a line without a version of its own (a budget never approved) gets its own `envelope.dates_changed` audit row and `budget.changed` outbox row, so every line is announced once.

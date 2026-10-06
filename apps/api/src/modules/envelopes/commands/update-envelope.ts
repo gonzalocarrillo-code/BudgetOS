@@ -5,7 +5,7 @@ import { parseId, parseInput } from "../../../common/parse-input.js";
 import { assertInScope, scopeTargetForValues } from "../../../common/scope.guard.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { validateTuple } from "../../registry/commands/validate-tuple.js";
-import { headVersionId, lockForWrite, recordEnvelopeChange } from "./version-writer.js";
+import { assertNotHeld, headVersionId, lockForWrite, recordEnvelopeChange } from "./version-writer.js";
 
 /**
  * PATCH /envelopes/:id: metadata with optimistic concurrency on rowVersion. Amounts never change
@@ -27,6 +27,8 @@ export async function updateEnvelope(prisma: PrismaClient, auth: AuthContext, ra
     if ((input.startDate !== undefined || input.endDate !== undefined) && env.currentVersionId !== null) {
       throw new DomainError("VALIDATION", "An approved budget's dates change through its approval policy: POST /envelopes/:id/dates", { envelopeId });
     }
+    // W3-5: a budget held by an open request (a line of a date change, say) keeps its dates until it is decided.
+    if (input.startDate !== undefined || input.endDate !== undefined) await assertNotHeld(tx, [envelopeId]);
     const startDate = input.startDate ?? env.startDate;
     const endDate = input.endDate ?? env.endDate;
     if (startDate > endDate) throw new DomainError("VALIDATION", "startDate must not be after endDate");

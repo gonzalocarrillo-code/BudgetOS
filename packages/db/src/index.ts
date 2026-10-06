@@ -75,13 +75,13 @@ export {
 } from "../seed/golden.plan.js";
 export type { GoldenFactRow, GoldenTotals, PlannedEnvelope, PlannedTarget, PlannedVersion } from "../seed/golden.plan.js";
 export type { DefaultPolicySeed } from "../seed/defaults.policies.js";
-export { actualsByEnvelope, applyDates, applyEnd, archiveEnvelopes, auditMany, capInputs, closeBulkVersions, insertBulkChange, loadBulkChange, openBulkRequestFor, envelopePaths, insertBulkVersions, loadBulkHeads, lockEnvelopes, previousPeriodAmounts, setDraftPointers, spendThrough, supersedeDrafts } from "./bulk.js";
+export { actualsByEnvelope, applyDates, applyEnd, archiveEnvelopes, auditMany, capInputs, closeBulkVersions, insertBulkChange, loadBulkChange, openBulkRequestFor, envelopePaths, insertBulkVersions, loadBulkHeads, lockEnvelopes, previousPeriodAmounts, releaseHeld, setDraftPointers, structuralRequestHolding, spendThrough, supersedeDrafts } from "./bulk.js";
 export type { BulkChangeRow, BulkDatesLine, BulkEndPayload, BulkHeadRow, BulkKind, BulkVersionRow } from "./bulk.js";
 export { envelopeTimeline } from "./timeline.js";
 export { ganttKeyDates, ganttMarkers, ganttTargets } from "./gantt.js";
 export type { GanttKeyDateRow, GanttMarkerRow, GanttTargetRow } from "./gantt.js";
 export type { TimelineQuery, TimelineRow } from "./timeline.js";
-export { lockEnvelope } from "./envelopes.js";
+export { lockEnvelope, lockTreeShape } from "./envelopes.js";
 export { effectiveTargets, lockTarget } from "./targets.js";
 export type { EffectiveTargetRow, LockedTargetRow } from "./targets.js";
 export type { LockedEnvelopeRow } from "./envelopes.js";

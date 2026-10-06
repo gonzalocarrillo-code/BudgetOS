@@ -3,12 +3,13 @@ import { lockApprovalRequest, withTenant, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { parseId, parseInput } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
-import { assertNotLocked, assertOpen, closeRequest, recordRequestChange } from "../engine.js";
+import { assertNotLocked, assertOpen, closeRequest, lockRequestEnvelopes, recordRequestChange } from "../engine.js";
 
 async function withdrawLocked(tx: Tx, auth: AuthContext, requestId: string, comment: string | undefined) {
   const r = await lockApprovalRequest(tx, requestId);
   if (r === null) throw new DomainError("NOT_FOUND", "Request not found");
   assertOpen(r);
+  await lockRequestEnvelopes(tx, r); // W3-5 lock order: the request, then its envelopes by id
   const admin = auth.isOrgAdmin || auth.roles.includes("WORKSPACE_ADMIN");
   if (r.requestedBy !== auth.user.id && !admin) throw new DomainError("FORBIDDEN", "Only the requester or a workspace admin can withdraw");
   await assertNotLocked(tx, r);
