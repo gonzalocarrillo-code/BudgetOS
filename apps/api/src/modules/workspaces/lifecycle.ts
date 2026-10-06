@@ -1,6 +1,7 @@
 import { DeleteWorkspaceInput, DomainError, UpdateWorkspaceStatusInput, type OrgWorkspacesResponse } from "@budget/domain";
 import { audit, outbox, withTenant } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
 import type { AuthContext } from "../../common/tenant.js";
 
@@ -10,7 +11,16 @@ import type { AuthContext } from "../../common/tenant.js";
  * writes one audit_event and one outbox row in its transaction.
  */
 
-const retentionDays = () => Math.max(0, Number(process.env["WORKSPACE_RETENTION_DAYS"] ?? 30));
+export function parseRetentionDays(raw: unknown = process.env["WORKSPACE_RETENTION_DAYS"]): number {
+  const schema = z.coerce.number().int().min(7).default(30);
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(`Invalid WORKSPACE_RETENTION_DAYS: must be an integer >= 7, got ${JSON.stringify(raw)}`);
+  }
+  return result.data;
+}
+
+const retentionDays = () => parseRetentionDays();
 
 function superadminOnly(auth: AuthContext): void {
   if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only a superadmin manages workspaces");

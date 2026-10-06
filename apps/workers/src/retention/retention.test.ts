@@ -116,6 +116,37 @@ describe("fact retention (D-002)", () => {
 });
 
 describe("raw file retention (D-002)", () => {
+  it("writes audit row before deleting objects, and logs failed deletions without losing the audit", async () => {
+    // Create a store that throws on one object removal
+    class ThrowingStore extends MemoryObjectStore {
+      async remove(uri: string): Promise<void> {
+        if (uri.includes("fail")) {
+          throw new Error("Simulated removal failure");
+        }
+        await super.remove(uri);
+      }
+    }
+
+    const store = new ThrowingStore();
+    const prefix = `gs://budget-os-uploads/uploads/${wsA}/`;
+    const put = async (name: string, daysAgo: number) => {
+      await store.write(`${prefix}${name}`, "a,b\n1,2\n", "text/csv");
+      (store.objects.get(`${prefix}${name}`) as { updated?: Date }).updated = new Date(NOW.getTime() - daysAgo * 86_400_000);
+    };
+    await put("fail.csv", 500);
+    await put("success.csv", 500);
+
+    const r = await pruneRawFiles(app, { workspaceId: wsA, orgId }, store, { now: NOW, bucket: "budget-os-uploads" });
+    expect(r.removed).toEqual([`${prefix}fail.csv`, `${prefix}success.csv`]);
+
+    // Verify audit rows were written (at least one from the first call)
+    const audits = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE workspace_id = $1::uuid AND action = 'uploads.pruned'`, wsA);
+    expect(Number(audits[0]?.n)).toBeGreaterThan(0);
+
+    // The success file should be gone, but fail should still exist
+    expect([...store.objects.keys()].filter((k) => k.startsWith(prefix)).sort()).toEqual([`${prefix}fail.csv`].sort());
+  });
+
   it("removes uploads older than the workspace's retention, keeps recent ones and files a source still reads", async () => {
     const store = new MemoryObjectStore();
     const prefix = `gs://budget-os-uploads/uploads/${wsA}/`;
