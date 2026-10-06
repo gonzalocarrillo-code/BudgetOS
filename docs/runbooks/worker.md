@@ -126,6 +126,16 @@ stops claiming more — it does not interrupt a row partway through. The health 
 check does not also think the instance is unhealthy while it is simply finishing up. Once the loop
 exits, it closes the HTTP server and disconnects both Prisma clients, and the process ends.
 
+## Alerting (M-7, plan W5-8)
+
+Cloud Monitoring alerts on two of this runbook's own log lines — `log.error`'s `"local worker
+consumer failed"` (per consumer family) and `"outbox row failed; consumers that succeeded are kept
+(processed_event dedupe), the rest retry with backoff"` (per row, the second filtered further by
+`attempts` to approximate a dead-letter) — plus a zero-instance check on the service itself, since
+it must always run exactly one. See `docs/runbooks/deploy.md` "Alerts" and
+`infra/modules/alerting/README.md` for the full policy list, the exact filters, and a known gap
+(no outbox-backlog gauge yet, tracked there as a follow-up).
+
 ## Other periodic passes
 
 The same loop also runs, on their own schedules, independent of outbox rows: workspace purge (every
