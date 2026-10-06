@@ -53,6 +53,10 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   /// The person's own settings (S-010): `slack.defaultWorkspaceId`. Written only through app_set_my_slack_settings.
   settings  Json     @default("{}")
+  /// S-14 (ADR-075): the Slack user id this app user's identity is pinned to, set on first contact
+  /// by app_link_my_slack_user. A partial unique index (org_id, slack_user_id) in the migration
+  /// (not representable here) keeps one Slack account from pinning to two app users of an org.
+  slackUserId String? @map("slack_user_id")
 
   @@map("app_user")
 }

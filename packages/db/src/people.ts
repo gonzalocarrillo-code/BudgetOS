@@ -12,6 +12,16 @@ export async function setMySlackSettings(tx: Tx, value: Record<string, unknown>)
   return row?.saved ?? null;
 }
 
+/**
+ * The caller pins their own app_user.slack_user_id (S-14, app_link_my_slack_user): set only when it
+ * was NULL (first contact); otherwise left alone. `conflict` is true when another app_user of the
+ * org already holds this Slack user id — the caller's own slack_user_id stays NULL in that case.
+ */
+export async function linkMySlackUser(tx: Tx, slackUserId: string): Promise<{ slackUserId: string | null; conflict: boolean }> {
+  const [row] = await tx.$queryRaw<Array<{ result: { slackUserId: string | null; conflict: boolean } }>>`SELECT app_link_my_slack_user(${slackUserId}::text) AS result`;
+  return row?.result ?? { slackUserId: null, conflict: true };
+}
+
 /** What a workspace has set up (Home's getting-started steps). */
 export async function workspaceSetup(tx: Tx, workspaceId: string): Promise<{ budgets: number; sources: number; people: number; spend: boolean; tags: number }> {
   const [r] = await tx.$queryRaw<Array<{ budgets: bigint; sources: bigint; people: bigint; spend: boolean; tags: bigint }>>`

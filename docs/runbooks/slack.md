@@ -113,13 +113,38 @@ A request's id is on every request message (`Request #a1b2c3d4`): the last eight
 
 A reply that says it could not be updated means Slack's link to that message expired (30 minutes, or five uses): the action stands; run the command again.
 
-## 8. When something goes wrong
+## 8. Linking and relinking people (S-14, ADR-075)
+
+The first time someone acts from Slack (a button or `/budget`), Budget OS pins their Slack account to
+their app user: `app_user.slack_user_id` is set to the Slack user id that request came from. Every
+request after that is checked against the pin, not just the email, because a Slack **workspace
+admin** can set anyone's email on their own Slack profile — the pin is what stops that from acting as
+someone else.
+
+- **A person's Slack account changes** (they are off-boarded and re-invited under the same email, or
+  the team migrates to a new Slack): they are refused with *"This Slack account is not the one linked
+  to \<email\>; ask an org admin to relink"* until an org admin clears the old pin. Org console › People
+  → find them → clear their Slack link (`PATCH /org/people/:id { slackUserId: null }`). Their next
+  Slack-signed request pins to whichever Slack account resolves to their email then.
+- **Two people, one Slack account**: if a Slack account is already pinned to someone else in the org,
+  a second person whose email now resolves to that same account gets the same refusal. This is
+  usually a Slack admin mistake (the wrong person's email on a profile) or a shared/service Slack
+  account — fix the Slack profile, or decide which person should hold the pin and clear the other's.
+- **Nothing to do for the common case.** A person who has never used Slack before, or whose pin
+  already matches, is unaffected; this only shows up on an actual mismatch.
+- `SELECT id, email, slack_user_id FROM app_user WHERE org_id = '<org id>' ORDER BY email;` shows who
+  is pinned to what. `audit_event` rows `person.slack_linked` / `person.slack_unlinked`
+  (`entity_type = 'app_user'`, `workspace_id IS NULL`) are the trail.
+
+## 9. When something goes wrong
 
 | Symptom | Cause and fix |
 |---|---|
 | Slack says "dispatch_failed" or "didn't respond" | Slack cannot reach the URL or the API took over three seconds: check the tunnel or the path rule, then the API log. |
 | 403 in the API log for `/slack/*` | Wrong or missing `SLACK_SIGNING_SECRET`, a clock more than five minutes off, or a request not from Slack. |
+| 401 in the API log for `/slack/*` | The same signed request arrived twice within 300 s (S-15's replay cache): a genuine Slack retry carries `X-Slack-Retry-Num` and is let through; anything else repeating a request is refused. |
 | "Your Slack profile has no email Budget OS can match" / "No active Budget OS account…" | The Slack email does not match a Budget OS user: add the person with that email. |
+| "This Slack account is not the one linked to \<email\>; ask an org admin to relink" | S-14's identity pin: see §8 above. |
 | "This Budget OS workspace is not linked to your Slack workspace" | The workspace is linked to another team, or not linked: Admin › Slack › Link. |
 | "No role in this workspace" | Working as designed: the person has no role there. |
 | Nothing posts | No token (the worker logs "no SLACK_BOT_TOKEN"), no default channel, or the bot is not in the channel (`not_in_channel`: invite it). |

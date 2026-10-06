@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
 import { cleanupGolden } from "../../test-support/golden-cleanup.js";
 import { appDb, ownerDb, startHarness, type Harness } from "../../test-support/harness.js";
-import { signSlackBody } from "./signature.js";
+import { resetSlackReplayCache, signSlackBody } from "./signature.js";
 import { setSlackResponder } from "./respond.js";
 import { setCommandDeadline } from "./slash/index.js";
 import { setSlackApi, type SlackApi } from "./slack-api.js";
@@ -25,10 +25,15 @@ const SECRET = "test-signing-secret";
 const TEAM = "T0GOLDEN1";
 const email = (p: string) => `${p.toLowerCase()}@${slug}.golden.test`;
 const views: Array<{ trigger: string; view: Record<string, unknown> }> = [];
+// S-14: a Slack user id's email is normally a pure function of the id (below), but an impersonation
+// test needs two different Slack user ids to resolve to the same email, or the same id to resolve to
+// two different emails over time — exactly what a Slack profile edit can do. This override wins.
+const slackEmailOverrides = new Map<string, string>();
 const fake: SlackApi = {
   // "U-<persona>" is that persona; "U-CAPS-<persona>" has the same email in capitals, as some Slack
   // profiles do; "U-SLOW-<persona>" answers after 300 ms, like a slow Slack (S-012).
   userEmail: async (slackUserId) => {
+    if (slackEmailOverrides.has(slackUserId)) return slackEmailOverrides.get(slackUserId) ?? null;
     if (slackUserId.startsWith("U-SLOW-")) {
       await new Promise((r) => setTimeout(r, 300));
       return email(slackUserId.slice(7));
@@ -43,10 +48,16 @@ async function as(persona: string, method: "GET" | "POST" | "PATCH", url: string
   const token = await h.mint({ sub: `ip-${persona}`, email: email(persona) }, { googleSub: `golden-${slug}-${persona}` });
   return h.call(method, `/api/v1${url}`, token, { headers: { "x-workspace-id": golden.workspaceId }, ...(body === undefined ? {} : { body }) });
 }
+// S-15's replay cache keys on (timestamp, signature): two genuinely distinct test requests built in
+// the same wall-clock second would otherwise collide if both let `signSlackBody` default its
+// timestamp to `Date.now()`. Strictly increasing defaults (never reused) avoid that, while a test
+// that wants a real replay still passes an explicit `timestamp` to force the collision.
+let nextDefaultTimestamp = Math.floor(Date.now() / 1000);
 /** What Slack sends: a form body, signed. */
-async function slack(path: "interactions" | "commands", fields: Record<string, string>, opts: { secret?: string; timestamp?: number } = {}) {
+async function slack(path: "interactions" | "commands", fields: Record<string, string>, opts: { secret?: string; timestamp?: number; headers?: Record<string, string> } = {}) {
+  const timestamp = opts.timestamp ?? (nextDefaultTimestamp = Math.max(Math.floor(Date.now() / 1000), nextDefaultTimestamp + 1));
   const raw = new URLSearchParams(fields).toString();
-  const res = await h.app.getHttpAdapter().getInstance().inject({ method: "POST", url: `/api/v1/slack/${path}`, headers: { "content-type": "application/x-www-form-urlencoded", ...signSlackBody(opts.secret ?? SECRET, raw, opts.timestamp) }, payload: raw });
+  const res = await h.app.getHttpAdapter().getInstance().inject({ method: "POST", url: `/api/v1/slack/${path}`, headers: { "content-type": "application/x-www-form-urlencoded", ...signSlackBody(opts.secret ?? SECRET, raw, timestamp), ...opts.headers }, payload: raw });
   return { status: res.statusCode, body: res.body ? (JSON.parse(res.body) as Record<string, unknown>) : {} };
 }
 const click = (persona: string, actionId: string, id: string, team = TEAM) =>
@@ -245,8 +256,15 @@ describe("Slack acts with the app's permissions (S-001)", () => {
   });
 
   it("finds the account when the Slack profile's email is in capitals", async () => {
-    const res = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-CAPS-admin" });
-    expect(JSON.stringify(res.body)).toMatch(/open alerts/i);
+    // The same Slack account as every other "admin" test here (S-14 pins by Slack user id, not
+    // email): only its profile email briefly reads in capitals, as some Slack profiles do.
+    slackEmailOverrides.set("U-admin", email("admin").toUpperCase());
+    try {
+      const res = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-admin" });
+      expect(JSON.stringify(res.body)).toMatch(/open alerts/i);
+    } finally {
+      slackEmailOverrides.delete("U-admin");
+    }
   });
 });
 
@@ -642,11 +660,16 @@ describe("sending a budget for approval from Slack (S-011)", () => {
 
 describe("answers slower than Slack waits (S-012)", () => {
   it("says it is working on it, then sends the answer through the command's response_url", async () => {
+    // "U-SLOW-<x>" is a distinct Slack user id from "U-<x>" (S-012's fake answers slowly by id
+    // prefix): a dedicated persona avoids colliding with "planner"'s own pin (S-14) from "U-planner".
+    const slowId = randomUUID();
+    await owner.user.create({ data: { id: slowId, orgId: golden.orgId, email: email("slowpoke"), name: "Slow Poke", googleSub: `golden-${slug}-slowpoke` } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: golden.workspaceId, principalType: "user", principalId: slowId, role: "VIEWER", createdBy: golden.users.orgAdmin } });
     setCommandDeadline(50);
     try {
       responses.length = 0;
       const url = "https://hooks.slack.com/commands/T0GOLDEN1/5/late";
-      const first = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-SLOW-planner", response_url: url });
+      const first = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-SLOW-slowpoke", response_url: url });
       expect(first.body).toEqual({ response_type: "ephemeral", text: ":hourglass_flowing_sand: Working on it…" });
       for (let i = 0; i < 100 && !responses.some((r) => r.url === url); i += 1) await new Promise((r) => setTimeout(r, 50));
       const late = responses.find((r) => r.url === url);
@@ -659,6 +682,112 @@ describe("answers slower than Slack waits (S-012)", () => {
 
   it("a quick answer comes at once", async () => {
     expect(String((await slack("commands", { text: "help", team_id: TEAM, user_id: "U-planner", response_url: "https://hooks.slack.com/commands/T0GOLDEN1/6/quick" })).body["text"])).toContain("/budget approvals");
+  });
+});
+
+describe("Slack identity is pinned to the app user (S-14)", () => {
+  // Fresh app users, so each test's "first contact" is really first: the personas above have
+  // already been pinned by earlier tests in this file.
+  async function freshPerson(label: string): Promise<{ id: string; email: string }> {
+    const id = randomUUID();
+    const personEmail = email(label);
+    await owner.user.create({ data: { id, orgId: golden.orgId, email: personEmail, name: `Pin ${label}` } });
+    await owner.roleAssignment.create({ data: { id: randomUUID(), workspaceId: golden.workspaceId, principalType: "user", principalId: id, role: "VIEWER", createdBy: golden.users.orgAdmin } });
+    return { id, email: personEmail };
+  }
+  const pinnedSlackId = async (id: string) => (await owner.$queryRawUnsafe<Array<{ slack_user_id: string | null }>>(`SELECT slack_user_id FROM app_user WHERE id = $1::uuid`, id))[0]?.slack_user_id ?? null;
+  const linkCount = async (id: string, action: "person.slack_linked" | "person.slack_unlinked") => Number((await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM audit_event WHERE entity_id = $1::uuid AND action = $2 AND workspace_id IS NULL`, id, action))[0]?.n ?? 0);
+
+  it("first contact links the Slack account to the app user, and audits it at the org level", async () => {
+    const who = await freshPerson(`pin-first-${randomUUID().slice(0, 6)}`);
+    expect(await pinnedSlackId(who.id)).toBeNull();
+    const res = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-first-1" });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toMatch(/not the one linked to/);
+    expect(await pinnedSlackId(who.id)).toBeNull(); // U-pin-first-1 resolves to its own convention email, not `who`
+    // Point U-pin-first-1 at `who`'s email instead, as `users.info` would after a profile edit.
+    slackEmailOverrides.set("U-pin-first-2", who.email);
+    const linked = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-first-2" });
+    expect(linked.status).toBe(200);
+    expect(await pinnedSlackId(who.id)).toBe("U-pin-first-2");
+    expect(await linkCount(who.id, "person.slack_linked")).toBe(1);
+    // Asking again with the same Slack account changes nothing and writes no second audit row.
+    await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-first-2" });
+    expect(await linkCount(who.id, "person.slack_linked")).toBe(1);
+  });
+
+  it("a second Slack account for the same email is refused, not silently re-pinned", async () => {
+    const who = await freshPerson(`pin-second-${randomUUID().slice(0, 6)}`);
+    slackEmailOverrides.set("U-pin-second-a", who.email);
+    await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-second-a" });
+    expect(await pinnedSlackId(who.id)).toBe("U-pin-second-a");
+    slackEmailOverrides.set("U-pin-second-b", who.email);
+    const impostor = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-second-b" });
+    expect(impostor.status).toBe(200); // the command still answers (ephemeral refusal), not a 4xx
+    expect(String(impostor.body["text"])).toContain(`not the one linked to ${who.email}`);
+    expect(String(impostor.body["text"])).toContain("ask an org admin to relink");
+    expect(await pinnedSlackId(who.id)).toBe("U-pin-second-a"); // unchanged
+    expect(await linkCount(who.id, "person.slack_linked")).toBe(1);
+  });
+
+  it("a Slack account already pinned to someone is refused for a different email, not re-pinned to them", async () => {
+    const first = await freshPerson(`pin-shared-a-${randomUUID().slice(0, 6)}`);
+    const second = await freshPerson(`pin-shared-b-${randomUUID().slice(0, 6)}`);
+    slackEmailOverrides.set("U-pin-shared", first.email);
+    await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-shared" });
+    expect(await pinnedSlackId(first.id)).toBe("U-pin-shared");
+    slackEmailOverrides.set("U-pin-shared", second.email); // the same Slack account, now claiming to be `second`
+    const res = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-shared" });
+    expect(String(res.body["text"])).toContain(`not the one linked to ${second.email}`);
+    expect(await pinnedSlackId(second.id)).toBeNull();
+    expect(await linkCount(second.id, "person.slack_linked")).toBe(0);
+  });
+
+  it("an org admin relinks a person: unlink, then the next Slack account re-pins", async () => {
+    const who = await freshPerson(`pin-relink-${randomUUID().slice(0, 6)}`);
+    slackEmailOverrides.set("U-pin-relink-old", who.email);
+    await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-relink-old" });
+    expect(await pinnedSlackId(who.id)).toBe("U-pin-relink-old");
+    expect((await as("planner", "PATCH", `/org/people/${who.id}`, { slackUserId: null })).status).toBe(403);
+    const unlinked = await as("orgAdmin", "PATCH", `/org/people/${who.id}`, { slackUserId: null });
+    expect(unlinked.status, JSON.stringify(unlinked.body)).toBe(200);
+    expect(unlinked.body).toMatchObject({ slackUserId: null, changed: true });
+    expect(await pinnedSlackId(who.id)).toBeNull();
+    expect(await linkCount(who.id, "person.slack_unlinked")).toBe(1);
+    // Their new Slack account (still claiming the same email the impostor test above used) now
+    // links cleanly: the pin was cleared, so this is first contact again.
+    slackEmailOverrides.set("U-pin-relink-new", who.email);
+    const relinked = await slack("commands", { text: "alerts", team_id: TEAM, user_id: "U-pin-relink-new" });
+    expect(String(relinked.body["text"])).not.toMatch(/not the one linked to/);
+    expect(await pinnedSlackId(who.id)).toBe("U-pin-relink-new");
+    // One link row for the original pin, one for the relink.
+    expect(await linkCount(who.id, "person.slack_linked")).toBe(2);
+  });
+});
+
+describe("Slack signature replay cache (S-15)", () => {
+  beforeAll(() => resetSlackReplayCache());
+
+  it("refuses a replayed signed request", async () => {
+    const fields = { text: "help", team_id: TEAM, user_id: "U-planner-replay" };
+    const timestamp = Math.floor(Date.now() / 1000);
+    const first = await slack("commands", fields, { timestamp });
+    expect(first.status).toBe(200);
+    const replay = await slack("commands", fields, { timestamp });
+    expect(replay.status).toBe(401);
+    expect(replay.body).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+
+  it("still accepts a Slack retry of a request that timed out", async () => {
+    const fields = { text: "help", team_id: TEAM, user_id: "U-planner-retry" };
+    const timestamp = Math.floor(Date.now() / 1000);
+    const first = await slack("commands", fields, { timestamp });
+    expect(first.status).toBe(200);
+    // Slack's own retry carries the same signature (same timestamp, same body) plus these headers.
+    const retried = await slack("commands", fields, { timestamp, headers: { "x-slack-retry-num": "1", "x-slack-retry-reason": "http_timeout" } });
+    expect(retried.status).toBe(200);
+    // A plain replay (no retry headers) of that same signed request is still refused.
+    expect((await slack("commands", fields, { timestamp })).status).toBe(401);
   });
 });
 

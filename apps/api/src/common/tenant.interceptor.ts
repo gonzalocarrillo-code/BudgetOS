@@ -42,7 +42,14 @@ export class TenantInterceptor implements NestInterceptor {
       throw new DomainError("FORBIDDEN", "Route declares no permission");
     }
     if (permission === "slack.signed") {
-      verifySlackSignature({ rawBody: (request as unknown as { rawBody?: string }).rawBody, timestamp: header(request, "x-slack-request-timestamp"), signature: header(request, "x-slack-signature"), secret: process.env["SLACK_SIGNING_SECRET"] });
+      verifySlackSignature({
+        rawBody: (request as unknown as { rawBody?: string }).rawBody,
+        timestamp: header(request, "x-slack-request-timestamp"),
+        signature: header(request, "x-slack-signature"),
+        secret: process.env["SLACK_SIGNING_SECRET"],
+        retryNum: header(request, "x-slack-retry-num"),
+        retryReason: header(request, "x-slack-retry-reason"),
+      });
       return;
     }
     const tenant = await authenticate(
