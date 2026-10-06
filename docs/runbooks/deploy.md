@@ -9,6 +9,38 @@ Deploys happen only after `.github/workflows/ci.yml` succeeds on `main` (the `de
 | Database | Cloud SQL `budgetos-db`, database `budget` |
 | Secrets | `budgetos-*` in Secret Manager |
 
+## Image (W2-8, audit S-10/M-6)
+The `Dockerfile` is multi-stage: `deps`/`build` do a full `pnpm install` (with devDependencies)
+and compile every server-side package/app with `tsc`, in place — a `.js` file next to each
+`.ts` file, not a separate `dist/` — see the Dockerfile header and `docker/build-server.sh` for
+why. A second, independent `deps-prod` stage does a fresh `pnpm install --prod` and runs
+`prisma generate` directly in it (copying the generated client from the full `build` stage does
+not work: `@prisma/client`'s pnpm store path hashes differently with and without the
+`typescript` devDependency present). The `runtime` stage copies only the pruned production
+`node_modules`, the compiled output, and `apps/web/dist` onto a plain `node:22-slim`, and runs
+as the image's built-in `node` user (non-root).
+
+Every `@budget/*` package.json still points its `"exports"` at TypeScript source, unchanged, so
+`pnpm dev`/`tsx`/`vitest` are unaffected by any of this. In the runtime image only,
+`docker/resolve-hooks.mjs` (a Node module customization hook, registered once via
+`NODE_OPTIONS=--import`) redirects that resolution from `.ts` to the compiled `.js` sibling.
+`docker/tsx-shim.mjs` is copied over the (now-pruned) `node_modules/.bin/tsx` at the two paths
+this runbook and `.github/workflows/deploy.yml` invoke it from, so every command below and in
+that workflow keeps working unchanged — including the ad hoc `tsx src/deploy/slack-sandbox.ts`
+run further down this page.
+
+Measured locally (`docker build` on this repo; a laptop's Docker Desktop VM, not Cloud Run, so
+treat the ratio rather than the absolute seconds as the signal): image size dropped from 2.12 GB
+to 1.21 GB. Five interleaved `docker run` + poll-for-`GET /health 200` runs of each image, same
+host and moment, with a throwaway `APP_DATABASE_URL`: the old single-stage (`tsx`-at-boot) image
+averaged ~3.9 s, the new multi-stage (precompiled) image ~3.0 s (~25% faster; every run of the
+new image was at or below the matching run of the old one). A plain `node` process outside Docker
+entirely (no container virtualization overhead) showed a clearer gap: ~5.2 s precompiled vs.
+~11.2 s under `tsx` — roughly half. The 25–30 s figure in the Dockerfile's own history (the
+reason `budgetos-slack` keeps a warm instance) is a production Cloud Run cold start, which this
+local setup cannot reproduce exactly; compiling ahead of time removes `tsx`'s JIT transpilation
+from the request path regardless of environment.
+
 ## Give someone access
 1. IAP: `gcloud iap web add-iam-policy-binding --project dmus-gonzalo --resource-type=cloud-run --service=budgetos-app --region=us-central1 --member=user:<email> --role=roles/iap.httpsResourceAccessor` (or `--member=domain:deptagency.com` for everyone at DEPT).
 2. In the app, the superadmin adds them in Org console › People and gives them a role in a workspace. Without a user and role the app answers "Unknown or inactive user".
