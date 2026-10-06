@@ -1,4 +1,4 @@
-import { QueryRequest, can, canInScope, elapsedFraction, fiscalYearPeriods, matchesScope, resolvePeriod, type Action, type FilterGroupT, type HomeResponse } from "@budget/domain";
+import { QueryRequest, can, canInScope, elapsedFraction, fiscalYearPeriods, matchesScope, resolvePeriod, todayIso, type Action, type FilterGroupT, type HomeResponse } from "@budget/domain";
 import { headline } from "../../common/headline.js";
 import { closedPeriods, dataAsOf, envelopeLineage, failedRuns, fiscalCalendar, plannerOptions, recentActivity, unmatchedSpend, unsentDrafts, unsettledInPeriod, withTenant, workspaceSetup, type LineageStep, type Tx } from "@budget/db";
 import { compileQuery, compileTotals, elapsedDay } from "@budget/query-planner";
@@ -40,7 +40,7 @@ export async function getHome(prisma: PrismaClient, auth: AuthContext, now: Date
   ]);
   const approvals = approvalPage.rows as Array<{ id: string; summary: string | null; entityType: string; entityId?: string; versionId: string | null; manualEntryId: string | null; requestedAt: string; dueAt: string | null; requestedByName?: string | null }>;
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const today = now.toISOString().slice(0, 10);
+    const today = todayIso(now);
 
     // Approvals I can decide, with what each one changes.
     const refs = await tx.approvalRequest.findMany({ where: { id: { in: approvals.map((a) => a.id) } }, select: { id: true, entityType: true, entityId: true, summary: true } });

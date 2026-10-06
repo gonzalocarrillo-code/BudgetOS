@@ -1,4 +1,4 @@
-import { DomainError, HEATMAP_SORTS, LIVE_LEAVES, ON_PLAN, PeriodSpec, elapsedFraction, resolvePeriod, type FilterGroupT, type OverviewAttentionItem, type OverviewResponse, type Predicate, type QueryResponse, type QueryRow } from "@budget/domain";
+import { DomainError, HEATMAP_SORTS, LIVE_LEAVES, ON_PLAN, PeriodSpec, elapsedFraction, resolvePeriod, todayIso, type FilterGroupT, type OverviewAttentionItem, type OverviewResponse, type Predicate, type QueryResponse, type QueryRow } from "@budget/domain";
 import { dataAsOf, fiscalCalendar, projectionFreshness, withTenant } from "@budget/db";
 import { elapsedDay } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
@@ -55,7 +55,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
   const sort = (params.sort ?? "budget") as (typeof HEATMAP_SORTS)[number];
   if (!(HEATMAP_SORTS as readonly string[]).includes(sort)) throw new DomainError("VALIDATION", `sort must be one of ${HEATMAP_SORTS.join(", ")}`);
   if (params.compareTo !== undefined && !/^[0-9a-f-]{36}$/i.test(params.compareTo)) throw new DomainError("VALIDATION", "compareTo must be a snapshot id");
-  const today = now.toISOString().slice(0, 10);
+  const today = todayIso(now);
 
   const setup = await withTenant(prisma, auth.ctx, async (tx) => {
     const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true, reportingCurrency: true, fiscalYearStartMonth: true } });
@@ -95,7 +95,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
       currency: ws.reportingCurrency,
       cpa: metric !== null,
       hasProjections: projection !== undefined,
-      range: { ...range, elapsed: shareGone(through), elapsedToday: shareGone(today), daysLeft: Math.max(0, dayNo(range.end) - dayNo(today) + 1) },
+      range: { ...range, elapsed: shareGone(through), elapsedToday: shareGone(today), daysLeft: Math.max(0, dayNo(range.end) - dayNo(today)) },
       asOf,
       rules,
       projections,

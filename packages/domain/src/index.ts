@@ -20,6 +20,7 @@ export type { FilterGroupT } from "./filter-ast.js";
 export { Grain, PeriodSpec, QueryRequest, QueryResponse, QueryRow, TreeRequest, TreeResponse } from "./query.js";
 export { factsPrunedBefore, fiscalYearPeriods, readsPrunedFacts, resolvePeriod } from "./period.js";
 export type { CalendarPeriod, DateRange, PeriodPattern } from "./period.js";
+export { todayIso } from "./dates.js";
 export {
   CreateRuleInput,
   ListAlertsQuery,

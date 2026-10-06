@@ -15,3 +15,4 @@ export { Dialog, DialogClose, DialogContent, DialogTrigger, Modal, Menu, MenuCon
 export { Avatar, Kbd, RowActions, TBody, TD, TH, THead, TR, Table } from "./bits.js";
 export { AsOfChip, HeadlineStrip, PACE_TINT, PACE_TONES, PaceBar, PaceLegend, StatTile } from "./stats.js";
 export type { PaceTone, PulseItem } from "./stats.js";
+export { moneyOrDash } from "./money.js";

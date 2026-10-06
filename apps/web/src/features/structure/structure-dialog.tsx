@@ -1,4 +1,4 @@
-import { largestRemainder } from "@budget/domain";
+import { largestRemainder, todayIso } from "@budget/domain";
 import { formatMoney } from "@budget/grid";
 import { Button, cn, Input, Select, Modal } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
@@ -76,7 +76,7 @@ export function StructureDialog({ ws, op, env, onDone, onClose }: { ws: string; 
   const [mergeIds, setMergeIds] = useState<string[]>([]);
   const [mergeName, setMergeName] = useState("");
   // end (H-011): the last day defaults to today, inside the budget's dates
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const [endDate, setEndDate] = useState(() => (today < env.startDate ? env.startDate : today > env.endDate ? env.endDate : today));
   const [finalAmount, setFinalAmount] = useState("");
   const [finalTouched, setFinalTouched] = useState(false);

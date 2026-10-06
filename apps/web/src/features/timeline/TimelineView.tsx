@@ -1,4 +1,4 @@
-import { TimelineResponse, type FilterGroupT, type PeriodSpec, type TimelineZoom } from "@budget/domain";
+import { TimelineResponse, todayIso, type FilterGroupT, type PeriodSpec, type TimelineZoom } from "@budget/domain";
 import { useExplorerLabels } from "../explorer/labels.js";
 import { formatMoney } from "@budget/grid";
 import { BudgetTimeline, type BudgetTimelineLabels } from "@budget/timeline";
@@ -78,7 +78,7 @@ export function TimelineView({
   canEdit?: boolean;
   onDatesChanged?: (r: DatesResult) => void;
 }): ReactElement {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const client = useQueryClient();
   const { data, isPending, error, isFetching } = useQuery(timelineQuery(ws, search));
   const [dropped, setDropped] = useState<{ envelopeId: string; dates: { startDate: string; endDate: string }; revert: () => void } | null>(null);

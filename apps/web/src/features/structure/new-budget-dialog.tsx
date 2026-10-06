@@ -1,5 +1,6 @@
 import { Button, cn, Input, Select, Modal } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
+import { todayIso } from "@budget/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { z } from "zod";
@@ -16,7 +17,7 @@ const MONEY = /^\d{1,13}(\.\d{1,2})?$/;
 const field = "w-full";
 
 function thisYear(periods: Array<{ kind: string; start: string; end: string }>): { start: string; end: string } {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const fy = periods.find((p) => p.kind === "year" && p.start <= today && p.end >= today);
   const y = today.slice(0, 4);
   return fy ? { start: fy.start, end: fy.end } : { start: `${y}-01-01`, end: `${y}-12-31` };
