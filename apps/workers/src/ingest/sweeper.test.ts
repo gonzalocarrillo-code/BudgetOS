@@ -2,6 +2,7 @@ import "../test-support/env.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteWorkspaceForTests } from "../purge/purge.js";
 import { runSweeper } from "./sweeper.js";
 
 /**
@@ -34,17 +35,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const sql of [
-    `DELETE FROM processed_event WHERE outbox_id IN (SELECT id FROM outbox WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM outbox WHERE workspace_id = $1::uuid`,
-    `DELETE FROM export_job WHERE workspace_id = $1::uuid`,
-    `DELETE FROM ingest_run WHERE source_id IN (SELECT id FROM data_source WHERE workspace_id = $1::uuid)`,
-    `DELETE FROM data_source WHERE workspace_id = $1::uuid`,
-  ]) {
-    await owner.$executeRawUnsafe(sql, ws);
-  }
+  // W3-11 (audit I-32): deletes every row that FKs to this workspace (and the workspace row
+  // itself), in the same order `purgeWorkspace` validates against production.
+  await deleteWorkspaceForTests(owner, ws);
   await owner.user.deleteMany({ where: { orgId } });
-  await owner.workspace.deleteMany({ where: { orgId } });
   await owner.organization.delete({ where: { id: orgId } });
   await Promise.all([owner.$disconnect(), app.$disconnect()]);
 });
