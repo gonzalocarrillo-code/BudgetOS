@@ -22,7 +22,7 @@ async function record(tx: Tx, auth: AuthContext, a: { workspaceId: string; actio
 /** A column mapping as a synonym target: the role or dimension, without file-specific details (formats, currencies). */
 function synonymTarget(c: ColumnMapping): ColumnSynonymTarget | null {
   if ("dimension" in c) return { dimension: c.dimension };
-  if (c.role === "ignore") return null;
+  if (c.role === "ignore" || c.role === "row_id") return null; // a row id is one table's key, not a word worth learning
   if (c.role === "kpi" || c.role === "projection") return { role: c.role, metric: c.metric };
   return { role: c.role };
 }

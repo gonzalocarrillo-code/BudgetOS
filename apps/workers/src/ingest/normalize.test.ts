@@ -1,6 +1,6 @@
 import { SourceMapping } from "@budget/domain";
 import { describe, expect, it } from "vitest";
-import { RegistryIndex, normalize, parseDate, rowHash } from "./normalize.js";
+import { RegistryIndex, naturalKey, normalize, occurrenceKey, parseDate } from "./normalize.js";
 
 const registry = new RegistryIndex(
   new Map([
@@ -76,9 +76,26 @@ describe("normalize", () => {
     expect(reason({ SPEND: null })).toBe("ok"); // KPI-only row of a spend+kpi source
   });
 
-  it("hashes the row, not its column order", () => {
-    expect(rowHash("s", { a: "1", b: "2" })).toBe(rowHash("s", { b: "2", a: "1" }));
-    expect(rowHash("s", { a: "1" })).not.toBe(rowHash("t", { a: "1" }));
+  it("keys a fact by its business key, never by its measure or ignored columns (ADR-071)", () => {
+    const keys = (over: Record<string, string | null>, m = mapping) => {
+      const r = normalize(row(over), m, registry, "s");
+      if (!("facts" in r)) throw new Error(r.rejected);
+      return r.facts.map((f) => f.rowHash);
+    };
+    expect(keys({ SPEND: "250.00", CONV: "9", NOTE: "loaded 2026-04-02" })).toEqual(keys({})); // a restated amount is the same fact
+    expect(keys({ MONTH: "2026-04" })[0]).not.toBe(keys({})[0]);
+    expect(keys({ PLATFORM: "Google Ads" })[0]).not.toBe(keys({})[0]);
+    expect(naturalKey("s", { periodDate: "2026-03-01", dimensionValues: { a: "1", b: "2" }, matchKey: null }, "spend")).toBe(naturalKey("s", { periodDate: "2026-03-01", dimensionValues: { b: "2", a: "1" }, matchKey: null }, "spend"));
+    expect(naturalKey("s", { rowId: "1" }, "spend")).not.toBe(naturalKey("t", { rowId: "1" }, "spend"));
+    expect(occurrenceKey("k", 0)).toBe("k");
+    expect(occurrenceKey("k", 1)).not.toBe(occurrenceKey("k", 2));
+
+    // With a row_id column the row id is the identity: the same row on another date is the same key.
+    const byId = SourceMapping.parse({ ...mapping, columns: { ...mapping.columns, NOTE: { role: "row_id" } } });
+    expect(keys({ NOTE: "42", MONTH: "2026-04", COUNTRY: "Brasil" }, byId)).toEqual(keys({ NOTE: "42" }, byId));
+    expect(keys({ NOTE: "43" }, byId)[0]).not.toBe(keys({ NOTE: "42" }, byId)[0]);
+    const r = normalize(row({ NOTE: null }), byId, registry, "s");
+    expect("rejected" in r ? r.rejected : "ok").toBe("missing NOTE");
   });
 
   it("parses the four date formats and refuses impossible dates", () => {

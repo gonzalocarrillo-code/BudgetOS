@@ -106,14 +106,14 @@ export async function actualsByEnvelope(tx: Tx, ids: string[]): Promise<Map<stri
   if (ids.length === 0) return new Map();
   const rows = await tx.$queryRaw<Array<{ id: string; s: string }>>`
     SELECT envelope_id::text AS id, sum(amount_reporting)::text AS s FROM spend_fact
-    WHERE envelope_id = ANY(${ids}::uuid[]) GROUP BY envelope_id`;
+    WHERE envelope_id = ANY(${ids}::uuid[]) AND superseded_at IS NULL GROUP BY envelope_id`;
   return new Map(rows.map((r) => [r.id, r.s]));
 }
 
 /** Spend on one envelope up to and including `through` (reporting currency): End proposes it as the final amount (H-011). */
 export async function spendThrough(tx: Tx, envelopeId: string, through: string): Promise<string> {
   const [row] = await tx.$queryRaw<Array<{ s: string | null }>>`
-    SELECT sum(amount_reporting)::text AS s FROM spend_fact WHERE envelope_id = ${envelopeId}::uuid AND period_date <= ${through}::date`;
+    SELECT sum(amount_reporting)::text AS s FROM spend_fact WHERE envelope_id = ${envelopeId}::uuid AND period_date <= ${through}::date AND superseded_at IS NULL`;
   return row?.s ?? "0";
 }
 

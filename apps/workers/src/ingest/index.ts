@@ -1,5 +1,5 @@
 export { BigQueryConnector, CsvConnector, SheetsConnector, SnowflakeConnector, connectorFor } from "./connectors/index.js";
-export { RegistryIndex, normalize, parseDate, rowHash, transformDimension } from "./normalize.js";
+export { RegistryIndex, naturalKey, normalize, occurrenceKey, parseDate, transformDimension } from "./normalize.js";
 export type { NormalizeResult, RegistryValue } from "./normalize.js";
 export { GcsObjectStore, MemoryObjectStore, objectStoreFromEnv, parseGsUri, uploadBucket } from "./object-store.js";
 export type { ObjectStore } from "./object-store.js";

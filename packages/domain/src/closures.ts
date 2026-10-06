@@ -39,7 +39,13 @@ export const ClosureView = z.object({
 export type ClosureView = z.infer<typeof ClosureView>;
 
 /** Optional body of POST /sources/:id/run: load facts into the period of a closed closure (spec §15). */
-export const RunSourceInput = z.object({ restatementOf: z.string().uuid().optional() }).strict();
+export const RunSourceInput = z
+  .object({
+    restatementOf: z.string().uuid().optional(),
+    /** ADR-071: run an incremental source as a full extract once (it sees deletes and re-keys). */
+    fullResync: z.boolean().optional(),
+  })
+  .strict();
 export type RunSourceInput = z.infer<typeof RunSourceInput>;
 
 /**

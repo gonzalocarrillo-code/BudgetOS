@@ -243,6 +243,7 @@ describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
     expect(run).toMatchObject({ status: "ok", rowsRead: F.rowsRead, rowsRejected: F.rowsRejected, rowsAccepted: F.rowsRead - F.rowsRejected });
     const summary = run.summary as { matchCoverage: string; spendRows: number; matchedSpendRows: number; spend: string; matchedSpend: string };
     expect(summary).toMatchObject({ matchCoverage: F.matchCoverage, spendRows: F.spendRows, matchedSpendRows: F.matchedSpendRows, spend: F.spend, matchedSpend: F.matchedSpend });
+    expect(summary).toMatchObject({ mode: "full", superseded: 0 }); // ADR-071: one file, nothing to retire
     expect(new Decimal(summary.matchCoverage).gte("0.99")).toBe(true);
     expect(summary.matchedSpendRows / summary.spendRows).toBeGreaterThanOrEqual(0.99);
     const report = String(golden.ingest?.store.objects.get(run.errorReportUri ?? "")?.body ?? "");
@@ -298,6 +299,8 @@ describe("facts (T-017 seed rows; done-when: >= 99% match on golden)", () => {
     const [report] = await storage.bucket(uploadBucket()).file(path).download();
     expect(report.toString().trim().split("\n")).toHaveLength(1 + F.rowsRejected);
     expect(await facts()).toEqual(before);
+    // ADR-071: the identical file reloads the same facts in place; nothing is superseded.
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: runId } })).summary).toMatchObject({ mode: "full", superseded: 0 });
   });
 });
 

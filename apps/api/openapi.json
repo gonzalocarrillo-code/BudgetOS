@@ -6482,6 +6482,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "row_id"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -6893,6 +6907,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "row_id"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -7198,6 +7226,20 @@
                                             "role": {
                                               "type": "string",
                                               "enum": [
+                                                "row_id"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
                                                 "ignore"
                                               ]
                                             }
@@ -7471,6 +7513,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "row_id"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -7726,6 +7782,20 @@
                                         "type": "string",
                                         "enum": [
                                           "match_key"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "row_id"
                                         ]
                                       }
                                     },
@@ -8057,6 +8127,20 @@
                                           "role": {
                                             "type": "string",
                                             "enum": [
+                                              "row_id"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
                                               "ignore"
                                             ]
                                           }
@@ -8350,6 +8434,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "row_id"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -8594,6 +8692,20 @@
                                         "type": "string",
                                         "enum": [
                                           "match_key"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "row_id"
                                         ]
                                       }
                                     },
@@ -9377,6 +9489,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "row_id"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "ignore"
                                       ]
                                     }
@@ -9681,6 +9807,9 @@
                   "restatementOf": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "fullResync": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -9689,7 +9818,7 @@
         },
         "responses": {
           "201": {
-            "description": "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period"
+            "description": "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period; fullResync runs an incremental source as a full extract once (ADR-071)"
           }
         }
       }

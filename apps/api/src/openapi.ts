@@ -396,7 +396,7 @@ export function openApiDocument(): Record<string, unknown> {
           operationId: "runSource",
           parameters: [idParam, workspaceHeader],
           requestBody: { required: false, ...json(RunSourceInput) },
-          responses: { "201": { description: "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period" } },
+          responses: { "201": { description: "Queued ingest run (the ingest worker runs it); 409 while a run is queued or running. restatementOf lets it load facts into that closed period; fullResync runs an incremental source as a full extract once (ADR-071)" } },
         },
       },
       "/api/v1/sources/{id}/runs": {

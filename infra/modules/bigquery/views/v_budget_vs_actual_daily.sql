@@ -1,6 +1,7 @@
 -- Per envelope and day with matched spend: the day's actual, actual to date and what remains of
 -- the current budget, all in the workspace reporting currency. Unmatched spend (envelope_id NULL)
--- is not here; KPIs are derived by the reader from spend and kpi facts, never stored.
+-- is not here; KPIs are derived by the reader from spend and kpi facts, never stored. Superseded
+-- facts (ADR-071) are history, not spend: readers of the replica's fact tables filter them the same way.
 SELECT
   b.workspace_id,
   b.envelope_id,
@@ -17,6 +18,6 @@ FROM `${project}.${dataset}.v_budget_current` b
 JOIN (
   SELECT s.envelope_id, s.period_date, SUM(s.amount_reporting) AS actual_reporting
   FROM `${project}.${dataset}.spend_fact` s
-  WHERE s.envelope_id IS NOT NULL
+  WHERE s.envelope_id IS NOT NULL AND s.superseded_at IS NULL
   GROUP BY s.envelope_id, s.period_date
 ) f ON f.envelope_id = b.envelope_id

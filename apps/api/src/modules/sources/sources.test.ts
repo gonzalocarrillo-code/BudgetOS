@@ -127,6 +127,25 @@ describe("sources", () => {
     expect(runs).toEqual([expect.objectContaining({ id: res.body["runId"], status: "queued" })]);
   });
 
+  it("an incremental source must map a row_id; a full resync is queued as a full run (ADR-071)", async () => {
+    const config = { kind: "bigquery", projectId: "budget-test", dataset: "d", table: "spend", updatedAtColumn: "UPDATED_AT" };
+    const bad = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "warehouse", config, mapping });
+    expect(bad.status).toBe(422);
+    expect(String(bad.body["message"])).toMatch(/row_id/);
+    const keyed = { ...mapping, columns: { ...mapping.columns, ID: { role: "row_id" } } };
+    const res = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "warehouse", config, mapping: keyed });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const id = String(res.body["id"]);
+    expect((await call(dataAdmin, "PATCH", `/sources/${id}`, { mapping })).status).toBe(422); // dropping the row_id
+    const requestId = rid();
+    const run = await call(dataAdmin, "POST", `/sources/${id}/run`, { fullResync: true }, requestId);
+    expect(run.status, JSON.stringify(run.body)).toBe(201);
+    expect(await actions(requestId)).toEqual(["ingest.run.queued"]);
+    expect(await topics("ingest.requested", "runId", String(run.body["runId"]))).toBe(1);
+    expect((await owner.ingestRun.findUniqueOrThrow({ where: { id: String(run.body["runId"]) } })).summary).toEqual({ mode: "full" });
+    expect((await call(planner, "POST", `/sources/${id}/run`, { fullResync: true })).status).toBe(403);
+  });
+
   it("suggest-mapping is 503 without OPENAI_API_KEY (no stub; ADR-011)", async () => {
     const res = await call(dataAdmin, "POST", `/sources/${sourceId}/suggest-mapping`);
     expect(res.status).toBe(503);

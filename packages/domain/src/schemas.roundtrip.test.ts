@@ -327,6 +327,7 @@ const samples: Record<string, readonly unknown[]> = {
         CONVERSIONS: { role: "kpi", metric: "conversions", attributionModel: "7d_click" },
       },
     },
+    { kind: "spend", columns: { ID: { role: "row_id" }, COUNTRY_CODE: { dimension: "country" }, DATE: { role: "period_date", format: "yyyy-MM-dd" }, SPEND: { role: "amount", currency: "USD" } } },
   ],
   SourceConfig: [
     { kind: "csv", uri: "gs://budget-os-uploads/uploads/01927a00-0000-7000-8000-0000000000a1/spend.csv" },
@@ -481,7 +482,7 @@ const samples: Record<string, readonly unknown[]> = {
       lockedEnvelopes: 12,
     },
   ],
-  RunSourceInput: [{}, { restatementOf: "01927a00-0000-7000-8000-0000000000c2" }],
+  RunSourceInput: [{}, { restatementOf: "01927a00-0000-7000-8000-0000000000c2" }, { fullResync: true }],
   ExportKind: ["csv", "xlsx", "sheets"],
   ExportStatus: ["queued", "done"],
   CreateExportInput: [

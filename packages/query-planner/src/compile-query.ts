@@ -196,8 +196,8 @@ function compileBase(q: QueryRequest, period: { start: string; end: string }, to
         SELECT (array_agg(r.projected ORDER BY r.loaded_at DESC))[1] AS projected
         FROM (SELECT sum(x.value_reporting) FILTER (WHERE x.period_date BETWEEN ${pStart} AND ${pEnd}) AS projected, max(x.loaded_at) AS loaded_at
               FROM projection_fact x
-              WHERE x.workspace_id = ${ws}::uuid AND x.envelope_id = ${envelopeId} AND x.metric = 'spend'
-                AND (SELECT EXISTS (SELECT 1 FROM projection_fact y WHERE y.workspace_id = ${ws}::uuid AND y.metric = 'spend'))
+              WHERE x.workspace_id = ${ws}::uuid AND x.envelope_id = ${envelopeId} AND x.metric = 'spend' AND x.superseded_at IS NULL
+                AND (SELECT EXISTS (SELECT 1 FROM projection_fact y WHERE y.workspace_id = ${ws}::uuid AND y.metric = 'spend' AND y.superseded_at IS NULL))
               GROUP BY x.source_run_id) r
       ) p ON TRUE`;
 
@@ -488,17 +488,17 @@ function demoSuffix(column: string, includeDemo: boolean, pureRef: string | null
 
 /**
  * One source of a metric over facts for envelope alias e. `ws` is the workspace placeholder so the
- * fact indexes apply. `pureRef` is the `(SELECT pure FROM demo_mode)` scalar compileBase computes
+ * fact indexes apply. Superseded facts are never read (ADR-071). `pureRef` is the `(SELECT pure FROM demo_mode)` scalar compileBase computes
  * once per statement; null (derivedMetricSql, which builds no such CTE) falls back to a plain
  * `NOT demo` filter.
  */
 function factSql(metricKey: string, ref: string, b: SqlBuilder, pStart: string, pEnd: string, ws: string, includeDemo: boolean, pureRef: string | null, period?: { start: string; end: string }): string {
   if (ref === "spend") {
     if (period) return spendSql(b, period, ws, includeDemo, pureRef);
-    return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd}${demoSuffix("demo", includeDemo, pureRef)})`;
+    return `(SELECT coalesce(sum(amount_reporting),0) FROM spend_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND period_date BETWEEN ${pStart} AND ${pEnd} AND superseded_at IS NULL${demoSuffix("demo", includeDemo, pureRef)})`;
   }
   if (!ref.startsWith("kpi:")) throw new DomainError("VALIDATION", `metric ${metricKey} references unknown source ${ref}`);
-  return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd}${demoSuffix("demo", includeDemo, pureRef)})`;
+  return `(SELECT coalesce(sum(value),0) FROM kpi_fact WHERE workspace_id = ${ws}::uuid AND envelope_id = e.id AND metric = ${b.p(ref.slice(4))}::text AND period_date BETWEEN ${pStart} AND ${pEnd} AND superseded_at IS NULL${demoSuffix("demo", includeDemo, pureRef)})`;
 }
 
 /** Derived metric for one envelope alias e (a single ratio; roll-ups use compileQuery's num/den columns). */
@@ -533,7 +533,8 @@ export function monthSplit(start: string, end: string): { full: [string, string]
 
 /**
  * Spend of envelope alias e over the period (ADR-037): whole months from spend_month, the partial
- * months at the edges from spend_fact. Same total as summing spend_fact over the period.
+ * months at the edges from spend_fact. Same total as summing spend_fact's live facts over the period
+ * (spend_month counts only live facts, ADR-071).
  *
  * T-5: `spend_month` has no `demo` column (it sums every fact of the envelope, ADR-037's whole
  * reason to exist). Excluding demo rows relies on the envelope-level filter instead: once the
@@ -546,7 +547,7 @@ export function monthSplit(start: string, end: string): { full: [string, string]
 function spendSql(b: SqlBuilder, period: { start: string; end: string }, ws: string, includeDemo: boolean, pureRef: string | null): string {
   const split = monthSplit(period.start, period.end);
   const parts = split.edges.map(
-    ([from, to]) => `(SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${b.p(from)}::date AND ${b.p(to)}::date${demoSuffix("sf.demo", includeDemo, pureRef)})`,
+    ([from, to]) => `(SELECT coalesce(sum(sf.amount_reporting),0) FROM spend_fact sf WHERE sf.workspace_id = ${ws}::uuid AND sf.envelope_id = e.id AND sf.period_date BETWEEN ${b.p(from)}::date AND ${b.p(to)}::date AND sf.superseded_at IS NULL${demoSuffix("sf.demo", includeDemo, pureRef)})`,
   );
   if (split.full) parts.unshift(`(SELECT coalesce(sum(sm.amount_reporting),0) FROM spend_month sm WHERE sm.workspace_id = ${ws}::uuid AND sm.envelope_id = e.id AND sm.month >= ${b.p(split.full[0])}::date AND sm.month < ${b.p(split.full[1])}::date)`);
   return parts.length === 1 ? (parts[0] as string) : `(${parts.join(" + ")})`;

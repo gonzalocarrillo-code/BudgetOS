@@ -1,4 +1,4 @@
-import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, RunSourceInput, SourceMapping, UpdateSourceInput, newId, type SourceConfig } from "@budget/domain";
+import { CreateSourceInput, CreateUploadInput, DomainError, MapUnmatchedInput, RunSourceInput, SourceConfig, SourceMapping, UpdateSourceInput, newId, rowIdentityProblem } from "@budget/domain";
 import { assignUnmatched, audit, bumpDataVersion, outbox, withTenant, type Tx } from "@budget/db";
 import { uploadBucket, type ObjectStore } from "@budget/workers";
 import type { DataSource, Prisma, PrismaClient } from "@prisma/client";
@@ -25,6 +25,12 @@ function checkConfig(config: SourceConfig, workspaceId: string): void {
   }
 }
 
+/** ADR-071: an incremental source must name its rows' primary key (a `row_id` column). */
+function checkRowIdentity(config: SourceConfig, mapping: SourceMapping): void {
+  const problem = rowIdentityProblem(config, mapping);
+  if (problem) throw new DomainError("VALIDATION", problem, { kind: config.kind });
+}
+
 /** Every dimension the mapping names exists in the registry the workspace sees. */
 async function checkMapping(tx: Tx, auth: AuthContext, workspaceId: string, mapping: SourceMapping): Promise<void> {
   const keys = [...new Set(Object.values(mapping.columns).flatMap((c) => ("dimension" in c ? [c.dimension] : [])))];
@@ -44,6 +50,7 @@ export async function createSource(prisma: PrismaClient, auth: AuthContext, raw:
     const mapping = profile ? SourceMapping.parse(profile.mapping) : input.mapping;
     const parsePattern = profile ? profile.parsePattern : (input.parsePattern ?? null);
     await checkMapping(tx, auth, workspaceId, mapping);
+    checkRowIdentity(input.config, mapping);
     const row = await tx.dataSource.create({ data: { id: newId(), workspaceId, kind: input.config.kind, name: input.name, config: json(input.config), mapping: json(mapping), schedule: input.schedule ?? null, parsePattern, mappingProfileId: profile?.id ?? null } });
     const learned = await learnSynonyms(tx, auth, workspaceId, mapping);
     await recordSourceChange(tx, auth, { workspaceId, action: "source.created", sourceId: row.id, after: { kind: row.kind, name: row.name, mappingProfileId: row.mappingProfileId, synonymsLearned: learned } });
@@ -69,6 +76,8 @@ export async function updateSource(prisma: PrismaClient, auth: AuthContext, rawI
     const profile = input.mappingProfileId ? await profileForSource(tx, current.workspaceId, input.mappingProfileId) : null;
     const mapping = profile ? SourceMapping.parse(profile.mapping) : input.mapping;
     if (mapping) await checkMapping(tx, auth, current.workspaceId, mapping);
+    // Checked when the config or the mapping changes, so a source saved before ADR-071 can still be paused or renamed.
+    if (input.config || mapping) checkRowIdentity(input.config ?? SourceConfig.parse(current.config), mapping ?? SourceMapping.parse(current.mapping));
     const link = profile ? { mappingProfileId: profile.id, parsePattern: profile.parsePattern } : input.mappingProfileId === null || input.mapping !== undefined ? { mappingProfileId: null } : {};
     const row = await tx.dataSource.update({
       where: { id: current.id },
@@ -90,7 +99,8 @@ export async function updateSource(prisma: PrismaClient, auth: AuthContext, rawI
 
 /**
  * POST /sources/:id/run: queues a run for the ingest worker (never runs it in the request, ADR-011).
- * `restatementOf` lets the run load facts into that closed closure's period (spec §15).
+ * `restatementOf` lets the run load facts into that closed closure's period (spec §15). `fullResync`
+ * runs an incremental source as a full extract once (ADR-071: it supersedes rows deleted upstream).
  */
 export async function queueRun(prisma: PrismaClient, auth: AuthContext, rawId: string, raw: unknown = {}) {
   const input = parseInput(RunSourceInput, raw ?? {});
@@ -104,7 +114,7 @@ export async function queueRun(prisma: PrismaClient, auth: AuthContext, rawId: s
       if (closure === null || closure.workspaceId !== source.workspaceId) throw new DomainError("NOT_FOUND", "Closure not found");
       if (closure.status !== "closed") throw new DomainError("CONFLICT", "The closure is already restated; its period accepts facts");
     }
-    const restatement = input.restatementOf ? { restatementOf: input.restatementOf } : {};
+    const restatement = { ...(input.restatementOf ? { restatementOf: input.restatementOf } : {}), ...(input.fullResync ? { mode: "full" } : {}) };
     const run = await tx.ingestRun.create({ data: { id: newId(), sourceId: source.id, status: "queued", summary: restatement } });
     await audit(tx, { workspaceId: source.workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "ingest.run.queued", entityType: "ingest_run", entityId: run.id, after: { sourceId: source.id, ...restatement }, requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId: source.workspaceId, topic: "ingest.requested", payload: { runId: run.id, sourceId: source.id } });

@@ -82,7 +82,7 @@ export async function overview(prisma: PrismaClient, auth: AuthContext, params: 
     }
     const metric = await tx.metricDefinition.findFirst({ where: { orgId: ws.orgId, key: "cpa", OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true } });
     // The projection measures are the planner's costly ones; ask for them only when there are projections.
-    const [projection] = await tx.$queryRaw<Array<{ one: number }>>`SELECT 1 AS one FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid LIMIT 1`;
+    const [projection] = await tx.$queryRaw<Array<{ one: number }>>`SELECT 1 AS one FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL LIMIT 1`;
     // HO-003 (ADR-062): the last day the actuals cover; time gone (and so pace) is counted through it.
     const asOf = await dataAsOf(tx, workspaceId, today);
     const through = elapsedDay(today, { elapsedThrough: asOf.through ?? undefined });
