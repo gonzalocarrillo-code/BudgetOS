@@ -24,8 +24,8 @@ module, another thing to keep patched) isn't worth it for state this small and t
   payload, created_at, expires_at)`, RLS-scoped exactly like every other tenant table
   (`workspace_id = ANY ((SELECT app_visible_workspace_ids())::uuid[])`, `ENABLE`+`FORCE ROW LEVEL
   SECURITY`). `budget_app`'s CRUD comes from the `ALTER DEFAULT PRIVILEGES` already in
-  `0001_roles`; it is not granted to `budget_mcp` — a preview is write-path staging, not a
-  read-only query concept `apps/mcp` exposes.
+  `0001_roles`; `budget_mcp` gets an explicit `GRANT SELECT` (ADR-019's T-025 guard: `budget_mcp`
+  reads every table `budget_app` reads, whether or not `apps/mcp` itself ever queries it).
 - **`PreviewStore.put`/`get`/`take`/`delete` take the active tenant transaction** (`Tx`, i.e.
   `Prisma.TransactionClient`), so the Postgres implementation runs inside the caller's
   `withTenant()` and reads `app.workspace_id` / `app.user_id` from the transaction's own session
