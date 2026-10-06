@@ -194,7 +194,7 @@ describe("reintroduce a budget (H-012)", () => {
   // W3-3 (audit I-28): reintroduceIn() read the source with no lock, so two concurrent reintroduces
   // of the same ended budget both passed the `endedAt !== null` check and both created a successor.
   // It now locks the source row (lockEnvelope, FOR UPDATE) before checking, and
-  // envelope_lineage_continues_source (20261013030000_partial_unique_constraints) is the database
+  // envelope_lineage_continues_source (20261015010000_partial_unique_constraints) is the database
   // backstop: exactly one `continues` row per source, ever.
   it("W3-3 (audit I-28): two concurrent reintroduces of the same ended budget make exactly one successor", async () => {
     const leaf = id(leafKeys("EMEA/FR/meta/conversion")[0] as string);

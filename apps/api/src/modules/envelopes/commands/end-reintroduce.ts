@@ -70,7 +70,7 @@ async function createSuccessor(tx: Tx, auth: AuthContext, workspaceId: string, s
   } catch (e) {
     // W3-3 (audit I-28): backstop for reintroduceIn's row lock (and for endIn's own successor,
     // which has no equivalent check) -- envelope_lineage_continues_source
-    // (20261013030000_partial_unique_constraints) refuses a second `continues` row for this source.
+    // (20261015010000_partial_unique_constraints) refuses a second `continues` row for this source.
     if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", `${source.name} already has a successor`);
     throw e;
   }

@@ -156,7 +156,7 @@ describe("targets: versions, approval, concurrency", () => {
 
   // W3-3 (audit I-19): createTarget()'s "clash" check is SELECT-then-INSERT; two concurrent creates
   // for an envelope with no target yet both pass it. target_envelope_active_metric
-  // (20261013030000_partial_unique_constraints) refuses the second active row; create-target.ts
+  // (20261015010000_partial_unique_constraints) refuses the second active row; create-target.ts
   // maps the resulting P2002 to the same 409 the sequential check above already gives.
   it("W3-3 (audit I-19): two concurrent target creates for the same (envelope, metric) make exactly one", async () => {
     const [a, b] = await Promise.all([

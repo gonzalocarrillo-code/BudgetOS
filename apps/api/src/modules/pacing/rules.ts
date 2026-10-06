@@ -80,7 +80,7 @@ export async function insertRule(tx: Tx, ctx: TenantContext, workspaceId: string
   } catch (e) {
     // W3-3 (audit I-19): the `clash` check above is SELECT-then-INSERT; two concurrent creates of the
     // same name both pass it, and pacing_rule_workspace_live_name
-    // (20261013030000_partial_unique_constraints) refuses the second live row.
+    // (20261015010000_partial_unique_constraints) refuses the second live row.
     if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "A rule with this name exists");
     throw e;
   }

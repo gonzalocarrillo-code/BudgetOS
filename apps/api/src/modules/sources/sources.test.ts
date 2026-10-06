@@ -123,7 +123,7 @@ describe("sources", () => {
 
   // W3-3 (audit I-19): queueRun()'s "is a run already open" check is SELECT-then-INSERT; a fresh
   // source with no run yet lets two concurrent calls both pass it. ingest_run_source_open_run
-  // (20261013030000_partial_unique_constraints) refuses the second queued row; sources.ts maps the
+  // (20261015010000_partial_unique_constraints) refuses the second queued row; sources.ts maps the
   // resulting P2002 to the same 409 the sequential check above already gives.
   it("W3-3 (audit I-19): two concurrent 'run now' calls for the same source queue exactly one run", async () => {
     const created = await call(dataAdmin, "POST", `/workspaces/${ws}/sources`, { name: "race source", config: { kind: "csv", uri: uri(ws, "race.csv") }, mapping });

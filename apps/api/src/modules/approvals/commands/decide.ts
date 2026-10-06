@@ -56,7 +56,7 @@ export async function decide(prisma: PrismaClient, auth: AuthContext, rawRequest
     } catch (e) {
       // W3-3 (audit I-18): the check above is SELECT-then-INSERT; two concurrent decisions by the
       // same approver on the same step both pass it, and approval_decision_request_step_decider
-      // (20261013030000_partial_unique_constraints) refuses the second insert.
+      // (20261015010000_partial_unique_constraints) refuses the second insert.
       if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "You already decided this step");
       throw e;
     }

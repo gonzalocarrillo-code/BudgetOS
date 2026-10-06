@@ -119,7 +119,7 @@ describe("rules", () => {
 
   // W3-3 (audit I-19): insertRule()'s name "clash" check is SELECT-then-INSERT; two concurrent
   // creates of a brand-new name both pass it. pacing_rule_workspace_live_name
-  // (20261013030000_partial_unique_constraints) refuses the second live row; rules.ts maps the
+  // (20261015010000_partial_unique_constraints) refuses the second live row; rules.ts maps the
   // resulting P2002 to the same 409 the sequential check above already gives.
   it("W3-3 (audit I-19): two concurrent creates of the same new rule name make exactly one rule", async () => {
     const name = `Race rule ${randomUUID()}`;

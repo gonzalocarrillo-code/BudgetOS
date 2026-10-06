@@ -151,7 +151,7 @@ model RoleAssignment {
   /// role_assignment_unique_org_wide (principal_type, principal_id, role) WHERE workspace_id IS
   /// NULL -- not representable as @@unique (no partial-index attribute, and NULL workspace_id needs
   /// its own index since Postgres treats every NULL as distinct); enforced in
-  /// 20261013030000_partial_unique_constraints/migration.sql.
+  /// 20261015010000_partial_unique_constraints/migration.sql.
   @@map("role_assignment")
 }
 
@@ -404,7 +404,7 @@ model EnvelopeLineage {
   @@index([toEnvelopeId])
   /// W3-3 (audit I-28): partial unique index envelope_lineage_continues_source (from_envelope_id)
   /// WHERE kind='continues' -- one successor per ended budget; not representable as @@unique (no
-  /// partial-index attribute); enforced in 20261013030000_partial_unique_constraints/migration.sql.
+  /// partial-index attribute); enforced in 20261015010000_partial_unique_constraints/migration.sql.
   @@map("envelope_lineage")
 }
 
@@ -468,7 +468,7 @@ model Target {
   @@index([workspaceId, envelopeId, metricKey])
   /// W3-3 (audit I-19): partial unique index target_envelope_active_metric (envelope_id, metric_key)
   /// WHERE status='active' -- not representable as @@unique (no partial-index attribute);
-  /// enforced in 20261013030000_partial_unique_constraints/migration.sql.
+  /// enforced in 20261015010000_partial_unique_constraints/migration.sql.
   @@map("target")
 }
 
@@ -567,7 +567,7 @@ model ApprovalDecision {
   /// W3-3 (audit I-18): unique index approval_decision_request_step_decider (request_id, step_index,
   /// decided_by) -- one decision per decider per step, so countedApprovals (COUNT(DISTINCT
   /// decided_by)) and the row count agree; enforced in
-  /// 20261013030000_partial_unique_constraints/migration.sql.
+  /// 20261015010000_partial_unique_constraints/migration.sql.
   @@map("approval_decision")
 }
 
@@ -591,7 +591,7 @@ model PacingRule {
 
   /// W3-3 (audit I-19): partial unique index pacing_rule_workspace_live_name (workspace_id, name)
   /// WHERE deleted_at IS NULL -- not representable as @@unique (no partial-index attribute);
-  /// enforced in 20261013030000_partial_unique_constraints/migration.sql.
+  /// enforced in 20261015010000_partial_unique_constraints/migration.sql.
   @@map("pacing_rule")
 }
 
@@ -897,7 +897,7 @@ model IngestRun {
   @@index([sourceId, startedAt])
   /// W3-3 (audit I-19): partial unique index ingest_run_source_open_run (source_id) WHERE status
   /// IN ('queued','running') -- not representable as @@unique (no partial-index attribute);
-  /// enforced in 20261013030000_partial_unique_constraints/migration.sql.
+  /// enforced in 20261015010000_partial_unique_constraints/migration.sql.
   @@map("ingest_run")
 }
 

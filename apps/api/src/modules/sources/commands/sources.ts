@@ -121,7 +121,7 @@ export async function queueRun(prisma: PrismaClient, auth: AuthContext, rawId: s
     } catch (e) {
       // W3-3 (audit I-19): the `open` check above is SELECT-then-INSERT; two concurrent "run now"
       // calls for the same source both pass it, and ingest_run_source_open_run
-      // (20261013030000_partial_unique_constraints) refuses the second queued/running row.
+      // (20261015010000_partial_unique_constraints) refuses the second queued/running row.
       if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "A run is already queued or running");
       throw e;
     }

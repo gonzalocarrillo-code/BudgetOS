@@ -90,7 +90,7 @@ describe("members (ORG-005: a workspace admin sees and adds only their workspace
 
   // W3-3 (audit I-19): assignRole()'s "duplicate" check is SELECT-then-INSERT; two concurrent
   // assignments of a role the principal does not have yet both pass it.
-  // role_assignment_unique_scoped (20261013030000_partial_unique_constraints) refuses the second
+  // role_assignment_unique_scoped (20261015010000_partial_unique_constraints) refuses the second
   // row; assign-role.ts maps the resulting P2002 to the same 409 the sequential check already gives.
   it("W3-3 (audit I-19): two concurrent assignments of the same new role make exactly one row", async () => {
     const [a, b] = await Promise.all([

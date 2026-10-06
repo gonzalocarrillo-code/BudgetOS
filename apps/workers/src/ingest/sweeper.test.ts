@@ -44,7 +44,7 @@ afterAll(async () => {
 });
 
 // W3-3 (audit I-19): every ingest test below shares one fixture source, and ingest_run_source_open_run
-// (20261013030000_partial_unique_constraints) now allows at most one queued-or-running row per
+// (20261015010000_partial_unique_constraints) now allows at most one queued-or-running row per
 // source at a time. Without this, a run queued by one test outlives it and blocks the next test's
 // own queueIngest() call for the same source.
 afterEach(async () => {

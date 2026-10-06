@@ -30,7 +30,7 @@ export async function recordExternalEvidence(prisma: PrismaClient, auth: AuthCon
     } catch (e) {
       // W3-3 (audit I-18): this path had no duplicate check at all -- the same requester uploading
       // evidence twice wrote two rows, and countedApprovals (engine.ts) counted both. The unique
-      // index approval_decision_request_step_decider (20261013030000_partial_unique_constraints)
+      // index approval_decision_request_step_decider (20261015010000_partial_unique_constraints)
       // refuses the second row for the same (request, step, decider).
       if ((e as { code?: string }).code === "P2002") throw new DomainError("CONFLICT", "You already recorded external evidence for this step");
       throw e;
