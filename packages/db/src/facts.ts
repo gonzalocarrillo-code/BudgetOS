@@ -1,3 +1,5 @@
+import { DomainError } from "@budget/domain";
+import { Decimal } from "decimal.js";
 import type { Tx } from "./sql.js";
 
 /** Fact loading and matching for the ingest pipeline (spec §14). Every statement runs in withTenant(). */
@@ -326,4 +328,41 @@ export async function tuplesWithEnvelope(tx: Tx, workspaceId: string, rows: Arra
     FROM unnest(${rows.map((r) => JSON.stringify(r.dimensionValues))}::text[], ${rows.map((r) => r.periodDate)}::text[]) WITH ORDINALITY AS t(d, p, i)
     ORDER BY t.i`;
   return hits.map((h) => h.hit);
+}
+
+export interface SpendInCurrency {
+  /** Σ spend_fact.amount for live facts already in `currency` — exact, no FX. */
+  native: string;
+  /** Live facts in any other currency, converted to `currency` with the FX rate as of each fact's own `period_date` (never today's). */
+  convertedRemainder: string;
+  /** How many facts needed that conversion. */
+  factsInOtherCurrencies: number;
+}
+
+/**
+ * Spend on one envelope up to and including `through`, in `currency` (T-6). Facts already in
+ * `currency` are exact (no FX). A fact in another currency is converted back from its own
+ * `amount_reporting` using the `fx_rate(currency, workspace's reporting currency)` as of that
+ * fact's own `period_date` — never today's rate, so the figure does not drift as new rates load.
+ * Superseded facts are never read (ADR-071), the same rule as `spendThrough` and the planner.
+ * Throws when a remainder fact's date has no such rate (never guesses).
+ */
+export async function spendThroughInCurrency(tx: Tx, envelopeId: string, through: string, currency: string): Promise<SpendInCurrency> {
+  const [nativeRow] = await tx.$queryRaw<Array<{ s: string | null }>>`
+    SELECT sum(amount)::text AS s FROM spend_fact
+    WHERE envelope_id = ${envelopeId}::uuid AND period_date <= ${through}::date AND currency = ${currency} AND superseded_at IS NULL`;
+  const remainder = await tx.$queryRaw<Array<{ amount_reporting: string; period_date: string; rate: string | null }>>`
+    SELECT sf.amount_reporting::text AS amount_reporting, sf.period_date::text AS period_date, fx.rate::text AS rate
+    FROM spend_fact sf
+    JOIN workspace w ON w.id = sf.workspace_id
+    LEFT JOIN LATERAL (
+      SELECT rate FROM fx_rate WHERE base = ${currency} AND quote = w.reporting_currency AND as_of_date <= sf.period_date ORDER BY as_of_date DESC LIMIT 1
+    ) fx ON true
+    WHERE sf.envelope_id = ${envelopeId}::uuid AND sf.period_date <= ${through}::date AND sf.currency <> ${currency} AND sf.superseded_at IS NULL`;
+  let convertedRemainder = new Decimal(0);
+  for (const r of remainder) {
+    if (r.rate === null) throw new DomainError("VALIDATION", `No FX rate ${currency}→reporting as of ${r.period_date}`, { currency, periodDate: r.period_date });
+    convertedRemainder = convertedRemainder.plus(new Decimal(r.amount_reporting).div(r.rate));
+  }
+  return { native: nativeRow?.s ?? "0", convertedRemainder: convertedRemainder.toFixed(2), factsInOtherCurrencies: remainder.length };
 }

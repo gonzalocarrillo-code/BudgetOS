@@ -254,7 +254,7 @@ export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";
 export { ON_PLAN, PACE_BANDS, paceBand } from "./pace.js";
-export { ATTENTION_CATEGORIES, DataAsOfView, HEATMAP_SORTS, OverviewAttention, OverviewAttentionItem, OverviewHeatmap, OverviewHeatmapCell, OverviewLeaf, OverviewMargin, OverviewResponse, OverviewRuleAlerts } from "./overview.js";
+export { ATTENTION_CATEGORIES, DataAsOfView, HEATMAP_SORTS, OverviewAttention, OverviewAttentionItem, OverviewHeatmap, OverviewHeatmapCell, OverviewHeatmapGap, OverviewLeaf, OverviewMargin, OverviewResponse, OverviewRuleAlerts } from "./overview.js";
 export type { PaceBandKey } from "./pace.js";
 export type { GroupSums } from "./rollup-measures.js";
 export { csvCell } from "./csv.js";

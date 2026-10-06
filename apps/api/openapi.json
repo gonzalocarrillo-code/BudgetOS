@@ -17953,12 +17953,10 @@
                             "type": "object",
                             "properties": {
                               "row": {
-                                "type": "string",
-                                "nullable": true
+                                "type": "string"
                               },
                               "col": {
-                                "type": "string",
-                                "nullable": true
+                                "type": "string"
                               },
                               "budget": {
                                 "type": "string",
@@ -18032,8 +18030,7 @@
                             "type": "object",
                             "properties": {
                               "code": {
-                                "type": "string",
-                                "nullable": true
+                                "type": "string"
                               },
                               "budget": {
                                 "type": "string",
@@ -18076,8 +18073,7 @@
                             "type": "object",
                             "properties": {
                               "code": {
-                                "type": "string",
-                                "nullable": true
+                                "type": "string"
                               },
                               "budget": {
                                 "type": "string",
@@ -18145,6 +18141,29 @@
                           "nullable": true,
                           "default": null
                         },
+                        "gap": {
+                          "type": "object",
+                          "properties": {
+                            "budget": {
+                              "type": "string"
+                            },
+                            "actual": {
+                              "type": "string"
+                            },
+                            "rows": {
+                              "type": "integer"
+                            },
+                            "cols": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "budget",
+                            "actual",
+                            "rows",
+                            "cols"
+                          ]
+                        },
                         "sort": {
                           "type": "string",
                           "enum": [
@@ -18161,7 +18180,8 @@
                         "rows",
                         "cols",
                         "labels",
-                        "cells"
+                        "cells",
+                        "gap"
                       ],
                       "nullable": true
                     },

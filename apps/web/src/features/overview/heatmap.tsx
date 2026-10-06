@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import { moneyOrDash } from "../../lib/money.js";
 import { Card } from "../../components/page.js";
-import { cellFilter, type CellRef } from "./cell-editor.js";
+import { cellFilter, NO_DIMENSION_VALUE, type CellRef } from "./cell-editor.js";
 
 /**
  * The heatmap (HO-013, docs/HOME_OVERVIEW_PLAN.md §3.2): any two granularities, with row and column
@@ -45,7 +45,7 @@ export function Heatmap(p: HeatmapProps): ReactElement {
   const [allRows, setAllRows] = useState(false);
   const cols = allCols ? h.cols : h.cols.slice(0, COLS_SHOWN);
   const rows = allRows ? h.rows : h.rows.slice(0, ROWS_SHOWN);
-  const label = (kind: "rows" | "cols", code: string) => h.labels[kind][code] ?? code;
+  const label = (kind: "rows" | "cols", code: string) => (code === NO_DIMENSION_VALUE ? t("overview.heatmap.none", { dimension: (kind === "rows" ? h.rowDimension : h.colDimension).label }) : (h.labels[kind][code] ?? code));
   const through = p.through ? new Date(`${p.through}T00:00:00Z`).toLocaleDateString("en", { day: "numeric", month: "short", timeZone: "UTC" }) : "—";
   const axis = (which: "rows" | "cols", value: string, other: string) => (
     <label className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
@@ -112,6 +112,15 @@ export function Heatmap(p: HeatmapProps): ReactElement {
             ) : null}
             <span className="hidden text-xs text-muted-foreground md:inline">{t("overview.heatmap.hint", { date: through })}</span>
           </div>
+          {h.gap.rows > 0 || h.gap.cols > 0 ? (
+            <p className="text-xs text-muted-foreground" data-testid="heatmap-gap">
+              {h.gap.rows > 0 && h.gap.cols > 0
+                ? t("overview.heatmap.gap", { rows: h.gap.rows, cols: h.gap.cols, amount: formatMoney(h.gap.budget, p.currency) })
+                : h.gap.rows > 0
+                  ? t("overview.heatmap.gapRows", { rows: h.gap.rows, amount: formatMoney(h.gap.budget, p.currency) })
+                  : t("overview.heatmap.gapCols", { cols: h.gap.cols, amount: formatMoney(h.gap.budget, p.currency) })}
+            </p>
+          ) : null}
         </>
       )}
     </Card>
@@ -225,7 +234,7 @@ function Grid({ ws, h, currency, period, compareName, onEdit, rows, cols, label 
               </td>
             ))}
             <td className="border-l-2 border-border px-2 pt-2 text-right" data-testid="heatmap-total">
-              <Margin m={h.total ? { code: null, ...h.total, alerts: 0 } : undefined} currency={currency} strong />
+              <Margin m={h.total ? { code: "", ...h.total, alerts: 0 } : undefined} currency={currency} strong />
             </td>
           </tr>
         </tfoot>

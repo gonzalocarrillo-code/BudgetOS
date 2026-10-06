@@ -23,19 +23,22 @@ export interface CellRef {
   col: { key: string; code: string; label: string };
 }
 
+/** T-7: the server's code for a leaf with no value for the row/col dimension — never dropped. */
+export const NO_DIMENSION_VALUE = "__none__";
+
 const Row = z.object({ envelopeId: z.string().uuid().nullable(), versionId: z.string().uuid().nullable().optional(), path: z.array(z.string()), measures: z.record(z.string(), z.string().nullable()) }).passthrough();
 const Rows = z.object({ rows: z.array(Row), totals: z.record(z.string(), z.string().nullable()) }).passthrough();
 
 const pct = (v: string | null | undefined) => (v === null || v === undefined ? "—" : `${(Number(v) * 100).toFixed(0)}%`);
 
 export function cellFilter(cell: CellRef): FilterGroupT {
-  return {
-    logic: "and",
-    children: [
-      { field: { kind: "dimension", key: cell.row.key }, op: "eq", value: cell.row.code },
-      { field: { kind: "dimension", key: cell.col.key }, op: "eq", value: cell.col.code },
-    ],
-  };
+  // The ∅ bucket (T-7) is leaves with no value for that dimension at all: `is_empty`, not a literal
+  // match on the sentinel code.
+  const clause = (axis: { key: string; code: string }) =>
+    axis.code === NO_DIMENSION_VALUE
+      ? ({ field: { kind: "dimension", key: axis.key }, op: "is_empty" } as const)
+      : ({ field: { kind: "dimension", key: axis.key }, op: "eq", value: axis.code } as const);
+  return { logic: "and", children: [clause(cell.row), clause(cell.col)] };
 }
 
 export function CellEditor({ ws, cell, period, currency, onClose }: { ws: string; cell: CellRef; period: Record<string, unknown>; currency: string; onClose: () => void }): ReactElement {
