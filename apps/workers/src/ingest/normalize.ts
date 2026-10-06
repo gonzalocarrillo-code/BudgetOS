@@ -194,6 +194,9 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
         const value = parseNumber(typeof raw === "number" ? raw : v, 4);
         if (value === null) return { rejected: `${column} "${v}" is not a number` };
         projection = { metric: c.metric, value };
+        // W4-1: money projections (metric "spend") take a currency the same way amount does: an
+        // inline constant here, or a `currency` column (which always wins, see the "currency" case).
+        if (c.metric === "spend") currency ??= c.currency ?? null;
         break;
       }
       case "formula_version":
@@ -257,7 +260,12 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
   if (mapping.kind === "projection") {
     if (projection === null) return { rejected: "missing projection value" };
     if (formulaVersion === null || horizonEnd === null) return { rejected: "missing formula_version or horizon_end" };
-    facts.push({ kind: "projection", ...base, metric: projection.metric, value: projection.value, formulaVersion, horizonEnd, rowHash: key(`projection:${projection.metric}`) });
+    // W4-1: currency travels with the fact only for the money metric ("spend"); a non-money
+    // projection (e.g. a ratio) keeps no currency, and the pipeline leaves it NULL. When it is
+    // money but no column or constant resolved a currency, `currency` is still null here and the
+    // pipeline falls back to the workspace's reporting currency (never rejects for it).
+    const isMoney = projection.metric === "spend";
+    facts.push({ kind: "projection", ...base, metric: projection.metric, value: projection.value, ...(isMoney && currency !== null ? { currency } : {}), formulaVersion, horizonEnd, rowHash: key(`projection:${projection.metric}`) });
   }
   if (facts.length === 0) return { rejected: "no values in the row" };
   return { facts };

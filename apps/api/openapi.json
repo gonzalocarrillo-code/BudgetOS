@@ -6428,6 +6428,10 @@
                                       "type": "string",
                                       "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                       "default": "spend"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
                                     }
                                   },
                                   "required": [
@@ -6853,6 +6857,10 @@
                                       "type": "string",
                                       "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                       "default": "spend"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
                                     }
                                   },
                                   "required": [
@@ -7172,6 +7180,10 @@
                                               "type": "string",
                                               "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                               "default": "spend"
+                                            },
+                                            "currency": {
+                                              "type": "string",
+                                              "pattern": "^[A-Z]{3}$"
                                             }
                                           },
                                           "required": [
@@ -7459,6 +7471,10 @@
                                       "type": "string",
                                       "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                       "default": "spend"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
                                     }
                                   },
                                   "required": [
@@ -7741,6 +7757,10 @@
                                         "type": "string",
                                         "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                         "default": "spend"
+                                      },
+                                      "currency": {
+                                        "type": "string",
+                                        "pattern": "^[A-Z]{3}$"
                                       }
                                     },
                                     "required": [
@@ -8073,6 +8093,10 @@
                                             "type": "string",
                                             "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                             "default": "spend"
+                                          },
+                                          "currency": {
+                                            "type": "string",
+                                            "pattern": "^[A-Z]{3}$"
                                           }
                                         },
                                         "required": [
@@ -8380,6 +8404,10 @@
                                       "type": "string",
                                       "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                       "default": "spend"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
                                     }
                                   },
                                   "required": [
@@ -8651,6 +8679,10 @@
                                         "type": "string",
                                         "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                         "default": "spend"
+                                      },
+                                      "currency": {
+                                        "type": "string",
+                                        "pattern": "^[A-Z]{3}$"
                                       }
                                     },
                                     "required": [
@@ -9435,6 +9467,10 @@
                                       "type": "string",
                                       "pattern": "^[a-z][a-z0-9_]{0,62}$",
                                       "default": "spend"
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "pattern": "^[A-Z]{3}$"
                                     }
                                   },
                                   "required": [

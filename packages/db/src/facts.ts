@@ -34,7 +34,11 @@ export interface ProjectionFactInput {
   periodDate: string;
   metric: string;
   value: string;
+  /** W4-1: null for a non-money metric; never null for "spend" (mapped, or the workspace's reporting currency). */
+  currency: string | null;
   valueReporting: string | null;
+  /** W4-1: the FX rate used to convert `value` → `valueReporting`; null when currency is null or equals the reporting currency. */
+  fxRateId: string | null;
   formulaVersion: string;
   horizonEnd: string;
   matchMethod?: MatchHint | null;
@@ -104,15 +108,21 @@ export async function upsertKpiFacts(tx: Tx, load: FactLoad, rows: KpiFactInput[
       match_method = CASE WHEN kpi_fact.envelope_id IS NOT NULL AND kpi_fact.dimension_values = EXCLUDED.dimension_values THEN kpi_fact.match_method ELSE EXCLUDED.match_method END`;
 }
 
-/** Projections are snapshots: each run inserts its own rows and the planner reads the latest run (spec §6.2). */
+/**
+ * Projections are snapshots: each run inserts its own rows and the planner reads the latest run
+ * (spec §6.2). W4-1: a money projection ("spend") carries its own currency and, when converted,
+ * the fx_rate_id (same FxCache as spend facts, AGENTS §4: every amount carries currency, a
+ * converted amount carries fx_rate_id). A non-money metric has both NULL.
+ */
 export async function insertProjectionFacts(tx: Tx, load: FactLoad, rows: ProjectionFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO projection_fact (workspace_id, dimension_values, period_date, metric, value, value_reporting, formula_version, horizon_end, source_system, source_run_id, match_method)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, vr::numeric, f, he::date, ${load.sourceSystem}, ${load.sourceRunId}::uuid, mm
+    INSERT INTO projection_fact (workspace_id, dimension_values, period_date, metric, value, currency, value_reporting, fx_rate_id, formula_version, horizon_end, source_system, source_run_id, match_method)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, c, vr::numeric, fx::uuid, f, he::date, ${load.sourceSystem}, ${load.sourceRunId}::uuid, mm
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.metric)}::text[],
-                ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.valueReporting)}::text[], ${rows.map((r) => r.formulaVersion)}::text[],
-                ${rows.map((r) => r.horizonEnd)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, m, v, vr, f, he, mm)`;
+                ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.currency)}::text[], ${rows.map((r) => r.valueReporting)}::text[],
+                ${rows.map((r) => r.fxRateId)}::text[], ${rows.map((r) => r.formulaVersion)}::text[], ${rows.map((r) => r.horizonEnd)}::text[],
+                ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, m, v, c, vr, fx, f, he, mm)`;
 }
 
 /**

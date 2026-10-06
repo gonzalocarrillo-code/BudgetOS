@@ -167,6 +167,16 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
     const mode: "full" | "incremental" = isIncrementalSource(config) && setup.since !== undefined ? "incremental" : "full";
     const since = mode === "incremental" ? setup.since : undefined;
     const byRowId = Object.values(mapping.columns).some((c) => "role" in c && c.role === "row_id");
+    // W4-1: a money projection ("spend") takes its currency from a column, or a constant on the
+    // projection role, else falls back to the workspace's reporting currency (never rejected for
+    // it, unlike spend). Recorded once per run in summary.projectionCurrency (audit T-4).
+    const roleColumns = Object.values(mapping.columns).flatMap((c) => ("role" in c ? [c] : []));
+    const projectionRole = roleColumns.find((r) => r.role === "projection");
+    const hasCurrencyColumn = roleColumns.some((r) => r.role === "currency");
+    let projectionCurrencySource: "column" | "constant" | "workspace_fallback" | null = null;
+    if (projectionRole && projectionRole.role === "projection" && projectionRole.metric === "spend") {
+      projectionCurrencySource = hasCurrencyColumn ? "column" : projectionRole.currency !== undefined ? "constant" : "workspace_fallback";
+    }
     const unknown = Object.values(mapping.columns).flatMap((c) => ("dimension" in c && !setup.registry.has(c.dimension) ? [c.dimension] : []));
     if (unknown.length) throw new Error(`mapping names unknown dimensions: ${[...new Set(unknown)].join(", ")}`);
     const groups = setup.keys.pattern ? [...(setup.source.parsePattern ?? "").matchAll(/\(\?<([a-z][a-z0-9_]*)>/g)].map((m) => m[1] as string) : [];
@@ -225,7 +235,18 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
               } else if (f.kind === "kpi" && f.metric !== undefined && f.value !== undefined) {
                 pending.kpi.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, attributionModel: f.attributionModel ?? null, rowHash: f.rowHash, matchMethod: f.matchHint ?? null });
               } else if (f.kind === "projection" && f.metric !== undefined && f.value !== undefined && f.formulaVersion !== undefined && f.horizonEnd !== undefined) {
-                pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, valueReporting: f.metric === "spend" ? f.value : null, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null });
+                if (f.metric === "spend") {
+                  // W4-1: no column/constant resolved a currency for this row → the workspace's reporting currency.
+                  const currency = f.currency ?? setup.reporting;
+                  const rate = await fx.rate(tx, currency, f.periodDate);
+                  if (rate === null) {
+                    reason = `no FX rate ${currency}→${setup.reporting} on ${f.periodDate}`;
+                    break;
+                  }
+                  pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, currency, valueReporting: new Decimal(f.value).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null });
+                } else {
+                  pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, currency: null, valueReporting: null, fxRateId: null, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null });
+                }
               }
             }
             if (reason !== null) {
@@ -298,7 +319,7 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
         const superseded = unseen.spend + unseen.kpi + unseen.projection + moved.count;
         const coverage = await runCoverage(tx, tenant.workspaceId, runId);
         const matchCoverage = new Decimal(coverage.spend).isZero() ? "1" : new Decimal(coverage.matchedSpend).div(coverage.spend).toDecimalPlaces(6).toString();
-        const summary = { ...coverage, matchCoverage, envelopes: envelopeIds.length, rejectReasons: reasons, mode, superseded, coveredRange: covered, ...(setup.restatementOf ? { restatementOf: setup.restatementOf } : {}) };
+        const summary = { ...coverage, matchCoverage, envelopes: envelopeIds.length, rejectReasons: reasons, mode, superseded, coveredRange: covered, ...(setup.restatementOf ? { restatementOf: setup.restatementOf } : {}), ...(projectionCurrencySource ? { projectionCurrency: projectionCurrencySource } : {}) };
         await tx.ingestRun.update({
           where: { id: runId },
           data: { status: "ok", finishedAt: new Date(), rowsRead, rowsAccepted, rowsRejected: rejected.length, errorReportUri, summary: summary as unknown as Prisma.InputJsonObject },
