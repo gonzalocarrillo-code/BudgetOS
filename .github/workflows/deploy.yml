@@ -94,10 +94,10 @@ jobs:
           APP_URL="https://budgetos-app-$PROJECT_NUMBER.$REGION.run.app"
           SLACK_URL="https://budgetos-slack-$PROJECT_NUMBER.$REGION.run.app"
           COMMON="GOOGLE_CLOUD_PROJECT=$PROJECT,UPLOAD_BUCKET=dmus-gonzalo-budgetos-uploads,CLOSURE_DATASET=budgetos_closures,APP_BASE_URL=$APP_URL,API_PUBLIC_URL=$SLACK_URL"
-          # W0-4: one instance until the shared preview store lands (plan W1-5, audit I-5).
+          # W1-5 (#142): previews live in Postgres, so the app scales horizontally again (audit I-5).
           gcloud run deploy budgetos-app --project "$PROJECT" --region "$REGION" --image "$IMAGE:$SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" \
-            --cpu 1 --memory 1Gi --min-instances 0 --max-instances 1 --timeout 300 \
+            --cpu 1 --memory 1Gi --min-instances 0 --max-instances 3 --timeout 300 \
             --set-secrets "APP_DATABASE_URL=budgetos-app-database-url:latest,MCP_OAUTH_KEY=budgetos-mcp-oauth-key:latest$AUTH_SECRETS$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,$AUTH_ENV"
           gcloud run deploy budgetos-slack --project "$PROJECT" --region "$REGION" --image "$IMAGE:$SHA" \
