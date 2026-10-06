@@ -81,3 +81,58 @@ T-010's cross-workspace test found that an org admin who sent `X-Workspace-Id` f
   - `audit_read` keeps the stricter, org-admin-only shape for NULL-workspace rows: `(workspace_id IS NOT NULL AND workspace_id = ANY (...)) OR (workspace_id IS NULL AND app_is_org_admin() AND org_id = app_org_id())`. Nothing in the codebase reads NULL-workspace rows back today, and before this migration they were invisible to everyone (including org admins), so the read side can afford to stay narrower than the write side.
   - `budget_mcp` needed no new grant: `app_org_id()`, `app_visible_workspace_ids()` and `app_is_org_admin()` were never revoked from `PUBLIC`, so the role could already evaluate them (it already relies on them through every other table's RLS policy on `SELECT`).
   - `packages/db/src/rls.org-admin.test.ts` asserts all of this, including that `budget_mcp` inserting for a workspace outside its session is refused.
+
+## Addendum (2026-10-05): the owner role has no BYPASSRLS (W2-3, audit S-2, S-3, S-21)
+
+`apps/api/src/deploy/bootstrap.ts` ran `ALTER ROLE CURRENT_USER BYPASSRLS` once and left it set
+permanently, so the owner role — also used, until this item, by the worker's poll loop
+(`apps/workers/src/local-runner.ts`, audit S-2) — held a standing bypass of every RLS policy on
+every FORCE-RLS table, for the sake of three tables (`organization`, `app_user`,
+`role_assignment`) it only ever writes once per deploy, before any org admin exists to authorize
+those writes under their ordinary org-scoped policies.
+
+- **Decision:** the owner role never holds BYPASSRLS, ever. Migration
+  `20261010050000_owner_bootstrap_policies` instead binds one explicit, permanent, unconditional
+  policy per table — `organization`, `app_user`, `role_assignment` — to the literal role that runs
+  the migration (and `bootstrap.ts`) via `TO CURRENT_USER`, resolved once at migration-apply time in
+  every environment. `bootstrap.ts`'s identity writes (find-or-create the org, find-or-create the
+  superadmin, reactivate them, create their org-wide `ORG_ADMIN` assignment) run in one transaction
+  that needs nothing beyond these three policies. The later metrics-seeding check
+  (`workspace.findFirst`, `metricDefinition.count`, `ensureDefaultMetrics`) already works under the
+  ordinary org-admin tenant context (`withTenant`) — `workspace`'s `org_read` policy only requires
+  `org_id = app_org_id()` — so it needs no owner policy at all.
+- **Two mechanisms were tried first and do not work, for the record:**
+  - `SET LOCAL row_security = off` does not bypass FORCE ROW LEVEL SECURITY for a non-owner,
+    non-BYPASSRLS role. Per Postgres's own documentation (confirmed against Postgres 16) it has no
+    effect for a role that already bypasses RLS, and for one that does not, it turns silent
+    filtering into a hard error — `ERROR: query would be affected by row-level security policy for
+    table "…"` — the opposite of what a one-time bootstrap write needs.
+  - A non-superuser role cannot `ALTER ROLE CURRENT_USER BYPASSRLS` (or unset it) on itself even
+    with `CREATEROLE`: Postgres 16 additionally requires `ADMIN OPTION` on the target role, which a
+    role cannot hold on itself through ordinary `GRANT` (it is already an implicit member of
+    itself). A transaction-scoped bypass toggle — on, write, off, commit — was the next idea, and
+    would have kept `rolbypassrls` false at rest; it was dropped once this restriction made it
+    impossible to implement without broader, Cloud-SQL-specific privileges this codebase cannot
+    assume.
+- **SECURITY DEFINER functions:** FORCE ROW LEVEL SECURITY applies to the owner too (this ADR's
+  original text, above), so a SECURITY DEFINER function owned by the owner is a full bypass only if
+  the owner itself can bypass — which, after this addendum, it cannot. Grepping every migration for
+  `SECURITY DEFINER` finds four: `ensure_fact_partitions` and its `fact_partitions_lock` replacement
+  only run DDL (`CREATE TABLE`/`LOCK TABLE`/`REVOKE`) and never touch an RLS table's rows, so they
+  need nothing here. `app_set_my_name` (`20260930010000`) and `app_set_my_slack_settings`
+  (`20261008010000`) both `UPDATE app_user` — `app_user`'s only other write policy,
+  `org_admin_write`, requires `app_is_org_admin()`, which a non-admin changing their own name or
+  Slack settings does not have. The `owner_bootstrap` policy on `app_user`, already needed for
+  bootstrap's own read/create/reactivate, covers both as a side effect: SECURITY DEFINER makes
+  `current_user` the owner for the duration of the call, and the owner already has unconditional
+  access to that one table. No separate, narrower policy was added; a `WHERE id = app_user_id()`
+  scoped policy would have been redundant given `owner_bootstrap`'s unconditional access already
+  covers it.
+- **Consequences:** the owner role's blast radius drops from "every RLS policy, every FORCE-RLS
+  table, forever" to "three identity tables, and only for connections authenticated as the specific
+  role that ran the migrations" — which, after W2-3, is only the `budgetos-migrate` job, never a
+  service that serves live traffic or processes external input. `packages/db/src/runner.ts`'s
+  discovery queries and the worker's outbox claim/mark run as `budget_publisher`
+  (`PUBLISHER_DATABASE_URL`) instead, per ADR-010. `apps/api/src/common/assert-app-role.ts` is a
+  second line of defense for the API specifically: it refuses to start if its own connection turns
+  out to hold `rolbypassrls` or `rolsuper`, whatever the cause.

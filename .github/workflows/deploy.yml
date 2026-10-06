@@ -108,7 +108,7 @@ jobs:
           gcloud run deploy budgetos-worker --project "$PROJECT" --region "$REGION" --image "$IMAGE:$SHA" \
             --service-account "$RUNTIME_SA" --add-cloudsql-instances "$SQL" --ingress internal \
             --cpu 1 --memory 1Gi --min-instances 1 --max-instances 1 --no-cpu-throttling \
-            --set-secrets "DATABASE_URL=budgetos-database-url:latest,APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
+            --set-secrets "PUBLISHER_DATABASE_URL=budgetos-publisher-database-url:latest,APP_DATABASE_URL=budgetos-app-database-url:latest$OPTIONAL_SECRETS" \
             --set-env-vars "$COMMON,LISTEN_HOST=0.0.0.0,LOCAL_WORKSPACE_PREFIX=,PACING_EVERY_MS=900000" \
             --command sh --args="-c,cd /app/apps/workers && node_modules/.bin/tsx src/local-runner.ts"
       # Started from apps/api: tsx applies a tsconfig only to the files it includes, and the auth

@@ -44,6 +44,15 @@ import { handleSearchEvent, reindexWorkspace } from "./search-indexer/indexer.js
  * not wired into deploy.yml; nothing here should be read as "temporary". LISTEN_HOST=0.0.0.0 binds
  * Cloud Run's port; PACING_EVERY_MS evaluates the pacing rules of the org on that schedule (off by
  * default, as locally).
+ *
+ * Two Prisma connections (W2-3, audit S-2 — no owner role in this request path):
+ * - `publisher` (`PUBLISHER_DATABASE_URL`, role `budget_publisher`, ADR-010): claims, marks and
+ *   dead-letters outbox rows, and runs every discovery query that finds the runner's own orgs and
+ *   workspaces (`packages/db/src/runner.ts`) — never DATABASE_URL, never the owner role.
+ *   `budget_publisher` holds exactly the column-level grants those queries need (migration
+ *   `20261010040000_publisher_discovery_grants`); it is NOBYPASSRLS like every other login role.
+ * - `app` (`APP_DATABASE_URL`, role `budget_app`): runs the real consumer handlers inside
+ *   `withTenant()`, same as the API.
  */
 
 export const MAX_ATTEMPTS = Number(process.env["OUTBOX_MAX_ATTEMPTS"] ?? 8);
@@ -59,7 +68,15 @@ const NOTIFY: string[] = topicsFor("notify");
 const EXPORT: string[] = topicsFor("export");
 const TOPICS = [...new Set([...INGEST, ...ROLLUP, ...NOTIFY, ...EXPORT])];
 const slack = slackFromEnv();
-const owner = new PrismaClient({ datasources: { db: { url: process.env["DATABASE_URL"] ?? "" } } });
+// No owner role in this request path (audit S-2): the poll loop claims, marks and discovers its
+// workspaces as budget_publisher (ADR-010), least-privilege and NOBYPASSRLS, never DATABASE_URL.
+// Fail fast rather than silently falling back: a worker that quietly ran as the owner would be the
+// exact mistake this item closes.
+const publisherDatabaseUrl = process.env["PUBLISHER_DATABASE_URL"];
+if (!publisherDatabaseUrl) {
+  throw new Error("PUBLISHER_DATABASE_URL is required (the worker no longer runs its poll loop as the owner role)");
+}
+const publisher = new PrismaClient({ datasources: { db: { url: publisherDatabaseUrl } } });
 const app = new PrismaClient({ datasources: { db: { url: process.env["APP_DATABASE_URL"] ?? "" } } });
 const store = objectStoreFromEnv();
 
@@ -95,7 +112,7 @@ export interface RunnerHandlers {
 
 export interface RunnerDeps {
   app: PrismaClient;
-  owner: PrismaClient;
+  publisher: PrismaClient;
   store: ObjectStore;
   slack: SlackClient | null;
   maxAttempts: number;
@@ -112,7 +129,7 @@ const defaultHandlers: RunnerHandlers = {
 };
 
 /** The real dependencies main() runs against; a test builds its own RunnerDeps instead of mutating this one. */
-export const defaultDeps: RunnerDeps = { app, owner, store, slack, maxAttempts: MAX_ATTEMPTS, handlers: defaultHandlers };
+export const defaultDeps: RunnerDeps = { app, publisher, store, slack, maxAttempts: MAX_ATTEMPTS, handlers: defaultHandlers };
 
 const push = (row: LocalOutboxRow, subscription: string) => ({
   message: { data: Buffer.from(JSON.stringify(row.payload)).toString("base64"), attributes: { outboxId: row.id, workspaceId: row.workspaceId, orgId: row.orgId, topic: row.topic }, messageId: `local-${row.id}` },
@@ -148,12 +165,12 @@ async function runRow(deps: RunnerDeps, row: LocalOutboxRow): Promise<void> {
   if (EXPORT.includes(row.topic)) await attempt("export", () => deps.handlers.exportRequested(deps.app, deps.store, push(row, "export-worker")));
 
   if (failures.length === 0) {
-    await markLocalPublished(deps.owner, row.id);
+    await markLocalPublished(deps.publisher, row.id);
     return;
   }
   const first = failures[0] as { consumer: string; error: unknown };
   const message = first.error instanceof Error ? first.error.message : String(first.error);
-  await markLocalFailure(deps.owner, row.id, message, { maxAttempts: deps.maxAttempts });
+  await markLocalFailure(deps.publisher, row.id, message, { maxAttempts: deps.maxAttempts });
   log.error(
     { outboxId: row.id, workspaceId: row.workspaceId, topic: row.topic, attempts: row.attempts + 1, failedConsumers: failures.map((f) => f.consumer) },
     "outbox row failed; consumers that succeeded are kept (processed_event dedupe), the rest retry with backoff",
@@ -166,7 +183,7 @@ async function runRow(deps: RunnerDeps, row: LocalOutboxRow): Promise<void> {
  * row in flight and leaves the rest of the batch — and the next poll — unclaimed.
  */
 export async function pass(deps: RunnerDeps = defaultDeps): Promise<number> {
-  const rows = await claimLocalOutbox(deps.owner, scope, TOPICS, CLAIM_LIMIT);
+  const rows = await claimLocalOutbox(deps.publisher, scope, TOPICS, CLAIM_LIMIT);
   for (const row of rows) {
     if (stopping) break;
     await runRow(deps, row);
@@ -179,7 +196,7 @@ let lastPurge = 0;
 async function purgePass(): Promise<void> {
   if (Date.now() - lastPurge < 60_000) return;
   lastPurge = Date.now();
-  const orgs = await localOrgsPendingPurge(owner, scope);
+  const orgs = await localOrgsPendingPurge(publisher, scope);
   if (orgs.length) await purgeDueWorkspaces(app, orgs);
 }
 
@@ -190,7 +207,7 @@ async function retentionPass(): Promise<void> {
   const deps = retentionFromEnv(store);
   if (!deps.enabled || Date.now() - lastRetention < 86_400_000) return;
   lastRetention = Date.now();
-  const orgs = await localActiveOrgs(owner, scope);
+  const orgs = await localActiveOrgs(publisher, scope);
   if (orgs.length) await runRetention(app, orgs, deps);
 }
 
@@ -199,7 +216,7 @@ let lastIntegrity = 0;
 async function integrityPass(): Promise<void> {
   if (process.env["SNAPSHOT_INTEGRITY"] === "off" || Date.now() - lastIntegrity < 7 * 86_400_000) return;
   lastIntegrity = Date.now();
-  const orgs = await localAllOrgs(owner, scope);
+  const orgs = await localAllOrgs(publisher, scope);
   if (orgs.length) await checkSnapshotIntegrity(app, orgs);
 }
 
@@ -210,7 +227,7 @@ let checkedEmpty = false;
 async function reindexPass(): Promise<void> {
   const full = Date.now() - lastFullReindex > 86_400_000;
   if (!full && checkedEmpty) return;
-  const rows = await localWorkspacesForReindex(owner, scope);
+  const rows = await localWorkspacesForReindex(publisher, scope);
   const due = rows.filter((r) => full || r.empty);
   for (const w of due) await reindexWorkspace(app, { workspaceId: w.id, orgId: w.orgId });
   checkedEmpty = true;
@@ -224,7 +241,7 @@ async function pacingPass(): Promise<void> {
   const every = Number(process.env["PACING_EVERY_MS"] ?? 0);
   if (!every || Date.now() - lastPacing < every) return;
   lastPacing = Date.now();
-  const orgs = await localActiveOrgs(owner, scope);
+  const orgs = await localActiveOrgs(publisher, scope);
   if (orgs.length === 0) return;
   const now = new Date();
   const result = await runPacing(app, orgs, now.toISOString().slice(0, 10), now);
@@ -260,7 +277,7 @@ async function main(): Promise<void> {
   }
   log.info("local runner drained; closing Prisma connections");
   server.close();
-  await Promise.all([owner.$disconnect(), app.$disconnect()]);
+  await Promise.all([publisher.$disconnect(), app.$disconnect()]);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

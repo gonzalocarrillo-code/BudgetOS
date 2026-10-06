@@ -61,6 +61,10 @@ from the request path regardless of environment.
 - **Worker:** logs of `budgetos-worker`. It must stay at one instance. See `docs/runbooks/worker.md`
   for how the poll loop retries, backs off and dead-letters a failing outbox row, and how to list
   and replay one (W1-2, ADR-010 Decision D-3: this loop is the production design, not a stand-in).
+  Since W2-3 (audit S-2, S-3, S-21) it runs on two connections, neither the owner role:
+  `PUBLISHER_DATABASE_URL` (secret `budgetos-publisher-database-url`, role `budget_publisher`) for
+  the poll loop itself, `APP_DATABASE_URL` for the consumer handlers. The API also no longer falls
+  back to `DATABASE_URL` if `APP_DATABASE_URL` is missing — it refuses to start instead.
 - **"Unknown or inactive user" for the superadmin:** re-run the workflow. The bootstrap is idempotent.
 
 ## Before a risky migration
@@ -69,7 +73,7 @@ Take an extra backup first, on top of the daily one: `gcloud sql backups create 
 
 ## One-time setup (done 2026-09-29)
 The deployer may update only `budgetos-*` resources and never changes access, so these were done once, by hand, as a project owner:
-- **Data resources:** Cloud SQL `budgetos-db` with database `budget`, the `budgetos-*` secrets (DB passwords and the two connection URLs), bucket `dmus-gonzalo-budgetos-uploads`, dataset `budgetos_closures`, Artifact Registry `budgetos`.
+- **Data resources:** Cloud SQL `budgetos-db` with database `budget`, the `budgetos-*` secrets (DB passwords and the three connection URLs — owner, app and publisher, the last added in W2-3), bucket `dmus-gonzalo-budgetos-uploads`, dataset `budgetos_closures`, Artifact Registry `budgetos`.
 
   The instance and the bucket are now *described* in `infra/modules/cloudsql` (B-1, B-4 in
   `docs/STACK_AUDIT_2026-10-04.md`) — point-in-time recovery, 35 retained backups, deletion
