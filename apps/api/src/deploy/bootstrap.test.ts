@@ -2,7 +2,7 @@ import "../test-support/harness.js"; // side effect: loads packages/db/.env
 import { randomBytes, randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { bootstrap } from "./bootstrap.js";
+import { assertDeploySecrets, bootstrap, checkSecretsStatus } from "./bootstrap.js";
 
 /**
  * W2-3 (audit S-2, S-3, S-21): bootstrap() no longer grants itself BYPASSRLS (permanently or
@@ -52,6 +52,11 @@ beforeAll(async () => {
   // The metrics-seeding read touches workspace even for a brand-new org with none yet (it reads
   // zero rows under the ordinary org_read policy — RLS still requires the base table privilege).
   await admin.$executeRawUnsafe(`GRANT SELECT ON workspace TO ${roleName}`);
+  // S-9: this role also needs to rotate the three login roles' passwords (ALTER ROLE ... LOGIN
+  // PASSWORD) and call app_lock_placeholder_logins() (SECURITY DEFINER, owned by `budget`, whose
+  // EXECUTE is revoked from PUBLIC) and write app_role_state, exactly like the real owner.
+  await admin.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION app_lock_placeholder_logins() TO ${roleName}`);
+  await admin.$executeRawUnsafe(`GRANT SELECT, UPDATE ON app_role_state TO ${roleName}`);
 });
 
 afterAll(async () => {
@@ -121,5 +126,40 @@ describe("bootstrap() without BYPASSRLS (W2-3 done-when, audit S-2, S-3, S-21)",
     const second = await bootstrap(asThrowawayOwner, env(`two-${randomUUID()}@w23.test`, orgName));
     expect(second.orgId).toBe(first.orgId);
     expect(second.userId).not.toBe(first.userId);
+  });
+});
+
+// S-9 (docs/STACK_AUDIT_2026-10-04.md): `--check-secrets` must fail BEFORE `prisma migrate
+// deploy` runs, naming whichever of the four deploy secrets is missing, so a half-configured
+// deploy never reaches the database. These are pure unit tests (no process spawn, no DB): they
+// exercise the exact functions the `--check-secrets` CLI path (bottom of bootstrap.ts) calls.
+describe("assertDeploySecrets / checkSecretsStatus (S-9 --check-secrets)", () => {
+  const allFour = {
+    APP_DB_PASSWORD: "app-secret",
+    PUBLISHER_DB_PASSWORD: "publisher-secret",
+    MCP_DB_PASSWORD: "mcp-secret",
+    SUPERADMIN_EMAIL: "owner@example.com",
+  };
+
+  it("assertDeploySecrets passes when all four deploy secrets are set", () => {
+    expect(() => assertDeploySecrets(allFour)).not.toThrow();
+  });
+
+  for (const missing of ["APP_DB_PASSWORD", "PUBLISHER_DB_PASSWORD", "MCP_DB_PASSWORD", "SUPERADMIN_EMAIL"] as const) {
+    it(`assertDeploySecrets throws naming ${missing} when it is absent`, () => {
+      const envVars = { ...allFour, [missing]: undefined };
+      expect(() => assertDeploySecrets(envVars)).toThrow(new RegExp(`${missing} is required`));
+    });
+  }
+
+  it("checkSecretsStatus is ok (exit 0) when every secret is present", () => {
+    expect(checkSecretsStatus(allFour)).toEqual({ ok: true });
+  });
+
+  it("checkSecretsStatus is not ok (exit non-zero) and names the missing key", () => {
+    const rest = { ...allFour, MCP_DB_PASSWORD: undefined };
+    const status = checkSecretsStatus(rest);
+    expect(status.ok).toBe(false);
+    expect(status).toMatchObject({ message: expect.stringContaining("MCP_DB_PASSWORD is required") });
   });
 });

@@ -675,6 +675,7 @@ describe("pre-tenant identity lookup", () => {
 const withoutRls = new Map<string, string>([
   ["_prisma_migrations", "migration bookkeeping"],
   ["fx_rate", "global reference data"],
+  ["app_role_state", "cluster-wide role bookkeeping, owner-only"],
 ]);
 
 it("every other public table has RLS enabled and forced", async () => {

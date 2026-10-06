@@ -71,6 +71,47 @@ from the request path regardless of environment.
 
 Take an extra backup first, on top of the daily one: `gcloud sql backups create --instance budgetos-db --project dmus-gonzalo`. See `docs/runbooks/restore.md` for how to recover if it goes wrong.
 
+## Roles and passwords (S-9)
+
+The migrations that create `budget_app`, `budget_publisher` and `budget_mcp` (`0001_roles`,
+`20260924070000_outbox_publisher_role`, `20260925020000_mcp_role`) all carry the literal
+password `replace-in-secret-manager`, because a hand-written SQL migration cannot read a
+per-environment secret. `apps/api/src/deploy/bootstrap.ts` is what turns that into a real,
+per-environment password:
+
+1. **Before anything runs**, the `budgetos-migrate` job's command now calls
+   `tsx apps/api/src/deploy/bootstrap.ts --check-secrets` first. It only validates that
+   `APP_DB_PASSWORD`, `PUBLISHER_DB_PASSWORD`, `MCP_DB_PASSWORD` and `SUPERADMIN_EMAIL` are set
+   (no DB connection) and exits non-zero naming whichever is missing — so a misconfigured deploy
+   fails before `prisma migrate deploy` touches the database, not after.
+2. `prisma migrate deploy` runs, applying `20261010020000_role_placeholder_lock` on a fresh
+   database: it adds `app_role_state` (one row per login role, `placeholder` defaults to `true`)
+   and defines `app_lock_placeholder_logins()`, a `SECURITY DEFINER` function (owned by, and only
+   executable by, the role migrations run as) that sets `NOLOGIN` on every role `app_role_state`
+   still marks as a placeholder. **The migration only defines this function — it never calls it.**
+3. `bootstrap.ts` runs (no `--check-secrets`): it calls `app_lock_placeholder_logins()` first
+   (closing the password for any role it is about to rotate, and for any role a previous,
+   interrupted bootstrap run left on the placeholder), then for each role runs
+   `ALTER ROLE … LOGIN PASSWORD '<secret>'` and marks that role's `app_role_state.placeholder =
+   false, rotated_at = now()`.
+
+**The lock is only ever applied when bootstrap runs** (in this deployment, that means
+`NODE_ENV=production`, inside the `budgetos-migrate` job, right after `prisma migrate deploy`).
+Local development and CI apply the same migrations but never run `bootstrap.ts`, so the three
+roles keep the placeholder password and stay `LOGIN` — `packages/db/.env.example` and
+`.github/workflows/ci.yml` keep working unchanged. Do not call `app_lock_placeholder_logins()`
+from anywhere else (a migration, a seed script, a test against the shared local Postgres
+container) — these roles are cluster-wide, so a `NOLOGIN` applied outside bootstrap's own
+rotation would lock out every other local checkout and worktree sharing that container, not just
+yours.
+
+A residual gap this does not close: if the `budgetos-migrate` job's `bootstrap.ts` step is ever
+skipped entirely after a successful `migrate deploy` (as opposed to failing before it, which
+`--check-secrets` now catches), the three roles stay reachable with the placeholder password
+until the job is re-run. An API/worker **startup guard** that refuses to serve traffic against a
+role still carrying `rolbypassrls`/placeholder state is tracked separately (S-3, item W2-3) and
+is out of scope here.
+
 ## One-time setup (done 2026-09-29)
 The deployer may update only `budgetos-*` resources and never changes access, so these were done once, by hand, as a project owner:
 - **Data resources:** Cloud SQL `budgetos-db` with database `budget`, the `budgetos-*` secrets (DB passwords and the three connection URLs — owner, app and publisher, the last added in W2-3), bucket `dmus-gonzalo-budgetos-uploads`, dataset `budgetos_closures`, Artifact Registry `budgetos`.
