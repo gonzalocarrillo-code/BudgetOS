@@ -1,5 +1,5 @@
 import { FilterGroup, QueryRequest, RuleMetricArgs, newId, resolvePeriod, type FilterGroupT, type Predicate } from "@budget/domain";
-import { audit, lockWorkspacePacing, openAlert, outbox, plannerOptions, resolveElapsedThrough, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
+import { audit, ensurePartitions, lockWorkspacePacing, openAlert, outbox, plannerOptions, resolveElapsedThrough, saveRuleStates, withTenant, type RuleStateInput, type TenantContext, type Tx, fiscalCalendar } from "@budget/db";
 import { compileQuery, pageOf } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { PacingRule, PrismaClient } from "@prisma/client";
@@ -140,6 +140,11 @@ async function rowsFor(tx: Tx, tenant: { workspaceId: string; orgId: string }, r
 export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspaceId: string; orgId: string }, today: string, now: Date = new Date()): Promise<EvaluateResult> {
   const ctx: TenantContext = { workspaceId: tenant.workspaceId, orgId: tenant.orgId, userId: null, isOrgAdmin: false, actorType: "system", requestId: `pacing-${today}-${tenant.workspaceId}` };
   const result: EvaluateResult = { rules: 0, evaluated: 0, opened: [], reopened: [], resolved: [] };
+  // This month and the next three, as before — W3-10: in a short transaction of its own before the
+  // evaluation opens its long one (up to 300 s), not at the end of it.
+  const horizon = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
+  horizon.setUTCMonth(horizon.getUTCMonth() + 3);
+  await ensurePartitions(prisma, today, horizon.toISOString().slice(0, 10));
   await withTenant(
     prisma,
     ctx,
@@ -240,7 +245,6 @@ export async function evaluateWorkspace(prisma: PrismaClient, tenant: { workspac
           result.opened.push(id);
         }
       }
-      await tx.$executeRaw`SELECT ensure_fact_partitions(date_trunc('month', ${today}::date)::date, 3)`;
     },
     { timeoutMs: 300_000 },
   );

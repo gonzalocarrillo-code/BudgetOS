@@ -1,5 +1,5 @@
 import { CreatePolicyInput, CreateRuleInput, CreateWorkspaceInput, DomainError, PurgeDemoInput, TemplateSavedView, TourStep, newId, type Role } from "@budget/domain";
-import { audit, defaultAgencyTemplate, ensureDefaultTemplate, outbox, purgeDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
+import { audit, defaultAgencyTemplate, demoPeriod, ensureDefaultTemplate, ensurePartitions, outbox, purgeDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
 import type { Prisma, PrismaClient, WorkspaceTemplate } from "@prisma/client";
 import { z } from "zod";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
@@ -143,6 +143,9 @@ async function appointFirstAdmin(prisma: PrismaClient, auth: AuthContext, ctx: T
 }
 
 async function seedDemo(prisma: PrismaClient, auth: AuthContext, ctx: TenantContext, ws: { id: string; reportingCurrency: string; fiscalYearStartMonth: number }, now: Date) {
+  // W3-10: the demo year's month partitions, in short transactions of their own before the seed's.
+  const period = demoPeriod(now.toISOString().slice(0, 10), ws.fiscalYearStartMonth);
+  await ensurePartitions(prisma, period.start, period.end);
   return withTenant(
     prisma,
     ctx,

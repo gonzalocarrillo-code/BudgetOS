@@ -40,6 +40,18 @@ function amountFor(i: number): Decimal {
   return new Decimal(18_000 + ((i * 7_919) % 9) * 4_000);
 }
 
+/** The fiscal year containing `today` (yyyy-MM-dd), which the demo data covers. */
+export function demoPeriod(today: string, fiscalYearStartMonth: number): { start: string; end: string } {
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  const fyYear = m >= fiscalYearStartMonth ? y : y - 1;
+  return { start: iso(new Date(Date.UTC(fyYear, fiscalYearStartMonth - 1, 1))), end: iso(new Date(Date.UTC(fyYear + 1, fiscalYearStartMonth - 1, 0))) };
+}
+
+/**
+ * W3-10: the caller creates the demo period's month partitions first, outside this transaction
+ * (`ensurePartitions(prisma, ...demoPeriod(...))`); the call below is then a lock-free no-op.
+ */
 export async function seedDemoData(
   tx: Tx,
   ctx: { workspaceId: string; orgId: string; createdBy: string; reportingCurrency: string; fiscalYearStartMonth: number; today: string },

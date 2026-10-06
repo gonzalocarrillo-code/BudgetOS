@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Tx } from "./sql.js";
 import { asOrgAdmin, withIdentity, withTenant, type TenantContext } from "./tenant.js";
+import { dropFactPartitionsForTests } from "./test-support/partitions.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -769,5 +770,7 @@ it("ensure_fact_partitions is safe to call concurrently, for existing and for ne
   const name = `spend_fact_${month.slice(0, 4)}${month.slice(5, 7)}`;
   const created = await owner.$queryRawUnsafe<Array<{ ok: boolean }>>(`SELECT to_regclass($1) IS NOT NULL AS ok, has_table_privilege('budget_app', $1, 'SELECT') AS readable`, name);
   expect(created[0]).toMatchObject({ ok: true, readable: false });
-  await owner.$executeRawUnsafe(`DROP TABLE IF EXISTS ${name}, kpi_fact_${name.slice(11)}, projection_fact_${name.slice(11)}, audit_event_${name.slice(11)}`);
+  // W3-10: a plain DROP locks the parent and `workspace` ACCESS EXCLUSIVE and could deadlock the
+  // suites running alongside; this one gives up and retries instead.
+  await dropFactPartitionsForTests(owner, [name.slice(11)]);
 });

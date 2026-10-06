@@ -1,4 +1,5 @@
 import { DomainError } from "@budget/domain";
+import type { PrismaClient } from "@prisma/client";
 import { Decimal } from "decimal.js";
 import type { Tx } from "./sql.js";
 
@@ -55,15 +56,21 @@ export interface FactLoad {
 /**
  * Month partitions for every month in [from, to] (both yyyy-MM-dd). ensure_fact_partitions is
  * SECURITY DEFINER and takes at most 36 months per call (migration 20260924080000).
+ *
+ * W3-10: pass the PrismaClient itself, before opening the write transaction, so each call that
+ * creates a month runs as its own short transaction (a write path should not hold its locks while
+ * months are created). Inside a transaction it is a lock-free no-op for months that already exist,
+ * and creating one there is still deadlock-safe against readers and writers (migration
+ * 20261015020000: one advisory lock, then ATTACH PARTITION under SHARE UPDATE EXCLUSIVE).
  */
-export async function ensurePartitions(tx: Tx, from: string, to: string): Promise<void> {
+export async function ensurePartitions(db: Tx | PrismaClient, from: string, to: string): Promise<void> {
   const start = new Date(`${from.slice(0, 7)}-01T00:00:00Z`);
   const end = new Date(`${to.slice(0, 7)}-01T00:00:00Z`);
   let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
   const cursor = new Date(start);
   while (months >= 0) {
     const span = Math.min(months, 36);
-    await tx.$executeRaw`SELECT ensure_fact_partitions(${cursor.toISOString().slice(0, 10)}::date, ${span}::int)`;
+    await db.$executeRaw`SELECT ensure_fact_partitions(${cursor.toISOString().slice(0, 10)}::date, ${span}::int)`;
     cursor.setUTCMonth(cursor.getUTCMonth() + span + 1);
     months -= span + 1;
   }
