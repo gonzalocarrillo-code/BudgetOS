@@ -220,12 +220,32 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
          WHERE x.rk = 1
          GROUP BY x.id, x.period_date
        ),
-       d AS (
+       d0 AS (
          SELECT f.id, f.period_date, f.old_env, f.old_method, f.old_status, f.old_cands,
                 rc.envs IS NOT NULL AS by_rule, coalesce(rc.envs, tc.envs) AS envs
          FROM f
          LEFT JOIN rc ON rc.id = f.id AND rc.period_date = f.period_date
          LEFT JOIN tc ON tc.id = f.id AND tc.period_date = f.period_date
+       ),
+       -- Tied candidates on one ancestor chain: the deepest takes the fact (money lives on leaves,
+       -- ADR-016). It is the one candidate every other candidate is an ancestor of.
+       d AS (
+         SELECT d0.id, d0.period_date, d0.old_env, d0.old_method, d0.old_status, d0.old_cands, d0.by_rule,
+                CASE WHEN cardinality(d0.envs) > 1 THEN coalesce((
+                  SELECT ARRAY[c] FROM unnest(d0.envs) AS c
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM unnest(d0.envs) AS o
+                    WHERE o <> c AND o NOT IN (
+                      WITH RECURSIVE a (id, parent_id) AS (
+                        SELECT e.id, e.parent_id FROM envelope e WHERE e.id = c
+                        UNION ALL SELECT p.id, p.parent_id FROM envelope p JOIN a ON p.id = a.parent_id
+                      )
+                      SELECT a.id FROM a
+                    )
+                  )
+                  LIMIT 1
+                ), d0.envs) ELSE d0.envs END AS envs
+         FROM d0
        ),
        n AS (
          SELECT d.id, d.period_date, d.old_env, d.old_method, d.old_status, d.old_cands,

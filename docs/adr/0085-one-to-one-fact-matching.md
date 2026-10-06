@@ -34,8 +34,12 @@ visibly unassigned or ambiguous, never on an arbitrary one.
    date-covering envelopes of every live rule whose predicate holds and whose own window covers
    the date; if none, the tuple candidates at the highest key count (unchanged rule). Exactly one
    candidate → assigned (`match_method` `rule`, or `tuple` / the normalizer's `external_id` /
-   `match_key`). More than one → **ambiguous**. None → unmatched. **Never tie-broken by id.** A rule
-   conflict does not fall through to the tuple: it is ambiguous.
+   `match_key`). Several candidates **on one ancestor chain** (each an ancestor of the next, e.g. a
+   parent and its child with identical tuples, or rules naming both) → the **deepest** takes the
+   fact with the same method (money lives on leaves, ADR-016). Several candidates **not** on one
+   chain (siblings, cousins, unrelated budgets) → **ambiguous**. None → unmatched. **Never
+   tie-broken by id.** A rule conflict does not fall through to the tuple: the same chain rule
+   decides it, and otherwise it is ambiguous.
 4. **Ambiguity is its own nullable column**, not a `match_method` value: `match_status text NULL
    CHECK (match_status IN ('ambiguous'))` plus `match_candidates uuid[] NULL` on `spend_fact`,
    `kpi_fact`, `projection_fact`, with `envelope_id` NULL. `match_method` describes *how a fact
@@ -63,9 +67,10 @@ visibly unassigned or ambiguous, never on an arbitrary one.
 
 ## Consequences
 
-- A hierarchy where a parent and a child share the same tuple now leaves their facts ambiguous
-  instead of picking one by uuid. That is deliberate: the spend shows in the Campaign mapping with
-  both budgets as candidates, and a rule (or a more specific tuple) settles it.
+- A parent and a child with the same tuple send their facts to the child (deepest on the chain),
+  not to whichever uuid sorts first. Siblings or unrelated budgets with the same tuple leave the
+  facts ambiguous: the spend shows in the Campaign mapping with the budgets as candidates, and a
+  rule (or a more specific tuple) settles it.
 - A budget that is created or re-dated after facts loaded still does not pull unmatched facts by
   itself (unchanged); a rule, the workspace re-match, or the unmatched queue does.
 - A rule only assigns inside its budget's dates: a campaign running past its budget's end is

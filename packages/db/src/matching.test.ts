@@ -42,17 +42,18 @@ const ctx = (workspaceId = ws): TenantContext => ({ workspaceId, orgId, userId, 
 const asApp = <T>(fn: (tx: Tx) => Promise<T>, workspaceId = ws) => withTenant(app, ctx(workspaceId), fn);
 const asOwner = <T>(fn: (tx: Tx) => Promise<T>) => asOrgAdmin(owner, fn, orgId);
 
-async function envelope(name: string, dims: Record<string, string>, workspaceId = ws): Promise<string> {
+async function envelope(name: string, dims: Record<string, string>, workspaceId = ws, parentId: string | null = null): Promise<string> {
   const id = randomUUID();
   await asOwner((tx) =>
     tx.$executeRawUnsafe(
-      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at)
-       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now())`,
+      `INSERT INTO envelope (id, workspace_id, name, dimension_values, start_date, end_date, currency, status, created_by, updated_at, parent_id)
+       VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, '2026-01-01', '2026-12-31', 'USD', 'APPROVED', $5::uuid, now(), $6::uuid)`,
       id,
       workspaceId,
       name,
       JSON.stringify(dims),
       userId,
+      parentId,
     ),
   );
   env[name] = id;
@@ -116,10 +117,18 @@ beforeAll(async () => {
   await envelope("brMeta", { country: "BR", platform: "meta" });
   await envelope("ruleTarget", { country: "AR" });
   await envelope("ruleTarget2", { country: "CL" });
+  // A chain with identical tuples (parent > child > grandchild) and two siblings with identical tuples.
+  await envelope("peParent", { country: "PE" });
+  await envelope("peChild", { country: "PE" }, ws, env["peParent"]);
+  await envelope("peGrandchild", { country: "PE" }, ws, env["peChild"]);
+  await envelope("coParent", { country: "UY" });
+  await envelope("coA", { country: "CO" }, ws, env["coParent"]);
+  await envelope("coB", { country: "CO" }, ws, env["coParent"]);
 });
 
 afterAll(async () => {
   await asOwner(async (tx) => {
+    await tx.$executeRawUnsafe(`UPDATE envelope SET parent_id = NULL WHERE workspace_id = ANY($1::uuid[])`, [ws, otherWs]);
     for (const t of ["match_rule", "spend_fact", "kpi_fact", "projection_fact", "envelope"]) await tx.$executeRawUnsafe(`DELETE FROM ${t} WHERE workspace_id = ANY($1::uuid[])`, [ws, otherWs]);
     await tx.$executeRawUnsafe(`DELETE FROM workspace WHERE id = ANY($1::uuid[])`, [ws, otherWs]);
   });
@@ -133,6 +142,26 @@ describe("EX-1 matching order", () => {
     const f = await fact({ country: "MX", platform: "google" }, "10.00");
     await asApp((tx) => matchRunFacts(tx, ws, runId));
     expect(await state(f)).toEqual({ envelope_id: null, match_method: null, match_status: "ambiguous", match_candidates: [env["mx1"], env["mx2"]].sort() });
+  });
+
+  it("tied candidates on one ancestor chain: the deepest (the leaf) takes the fact, with the usual method", async () => {
+    const f = await fact({ country: "PE", campaign: "c-pe" }, "8.00");
+    await asApp((tx) => matchRunFacts(tx, ws, runId));
+    expect(await state(f)).toEqual({ envelope_id: env["peGrandchild"], match_method: "tuple", match_status: null, match_candidates: null });
+  });
+
+  it("two siblings with identical tuples are ambiguous", async () => {
+    const f = await fact({ country: "CO", campaign: "c-co" }, "9.00");
+    await asApp((tx) => matchRunFacts(tx, ws, runId));
+    expect(await state(f)).toEqual({ envelope_id: null, match_method: null, match_status: "ambiguous", match_candidates: [env["coA"], env["coB"]].sort() });
+  });
+
+  it("rule conflicts follow the same chain rule: parent and child → child", async () => {
+    const f = await fact({ country: "ZZ", campaign: "c-chain" }, "11.00");
+    await rule(env["peParent"] as string, campaignIs("c-chain"));
+    await rule(env["peChild"] as string, campaignIs("c-chain"));
+    await asApp((tx) => matchRunFacts(tx, ws, runId));
+    expect(await state(f)).toMatchObject({ envelope_id: env["peChild"], match_method: "rule", match_status: null });
   });
 
   it("a match rule beats the tuple match", async () => {
