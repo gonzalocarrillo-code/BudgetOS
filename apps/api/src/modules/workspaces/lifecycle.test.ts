@@ -118,6 +118,26 @@ describe("workspace lifecycle (ADR-052)", () => {
   });
 });
 
+describe("org people (I-26)", () => {
+  it("deactivating a person with no workspace role still writes one org-level audit row", async () => {
+    const loner = testUser("life-loner", randomUUID());
+    await owner.user.create({ data: { id: loner.id, orgId, email: loner.email, name: loner.sub, googleSub: `g-${loner.sub}` } });
+    try {
+      const res = await call(superadmin, "PATCH", `/org/people/${loner.id}`, { isActive: false }, null);
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+      const rows = await owner.$queryRawUnsafe<Array<{ n: number; ws: string | null }>>(
+        `SELECT count(*)::int AS n, min(workspace_id::text) AS ws FROM audit_event WHERE action = 'person.updated' AND entity_id = $1::uuid`,
+        loner.id,
+      );
+      expect(rows[0]?.n).toBe(1);
+      expect(rows[0]?.ws).toBeNull();
+    } finally {
+      await owner.$executeRawUnsafe(`DELETE FROM audit_event WHERE entity_id = $1::uuid`, loner.id).catch(() => undefined);
+      await owner.user.deleteMany({ where: { id: loner.id } });
+    }
+  });
+});
+
 describe("templates (I-26)", () => {
   it("GET /workspace-templates leaves row counts unchanged (read-only, no write on GET)", async () => {
     const countBefore = await owner.workspaceTemplate.count();
