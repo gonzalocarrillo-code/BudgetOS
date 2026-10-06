@@ -158,14 +158,20 @@ async function seedDemo(prisma: PrismaClient, auth: AuthContext, ctx: TenantCont
   );
 }
 
-/** GET /workspaces/:ws/demo-data — how many demo rows the workspace still has, and T-5: whether it has real budgets too (the Explorer shows demo rows only while it does not). */
+/**
+ * GET /workspaces/:ws/demo-data — how many demo rows the workspace still has, and T-5: whether it
+ * has real budgets too (the Explorer shows demo rows only while it does not). HF-1 (audit T-5
+ * follow-up): `hidden` is that same condition, named for what it means to the caller — the planner
+ * is excluding demo money from every total right now, with nothing else saying so.
+ */
 export async function demoStatus(prisma: PrismaClient, auth: AuthContext) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  return withTenant(prisma, auth.ctx, async (tx) => ({
-    envelopes: await tx.envelope.count({ where: { workspaceId, demo: true } }),
-    targets: await tx.target.count({ where: { workspaceId, demo: true } }),
-    hasRealBudgets: (await tx.envelope.count({ where: { workspaceId, demo: false } })) > 0,
-  }));
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const envelopes = await tx.envelope.count({ where: { workspaceId, demo: true } });
+    const targets = await tx.target.count({ where: { workspaceId, demo: true } });
+    const hasRealBudgets = (await tx.envelope.count({ where: { workspaceId, demo: false } })) > 0;
+    return { envelopes, targets, hasRealBudgets, hidden: envelopes > 0 && hasRealBudgets };
+  });
 }
 
 /** POST /workspaces/:ws/demo-data/purge — every demo row, in one transaction. I-3: the caller must confirm. */

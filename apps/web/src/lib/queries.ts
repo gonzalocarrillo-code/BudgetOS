@@ -54,8 +54,12 @@ export const meQuery = queryOptions({
   staleTime: 60_000,
 });
 
-/** T-5 (audit): demo rows left, and whether the workspace has real (non-demo) budgets too. */
-export const DemoStatus = z.object({ envelopes: z.number(), targets: z.number(), hasRealBudgets: z.boolean().default(false) });
+/**
+ * T-5 (audit): demo rows left, and whether the workspace has real (non-demo) budgets too. HF-1: `hidden`
+ * is true exactly when the planner is excluding demo money from totals right now (envelopes > 0 &&
+ * hasRealBudgets) — the condition every "demo data is hidden" banner and the Slack context line key off.
+ */
+export const DemoStatus = z.object({ envelopes: z.number(), targets: z.number(), hasRealBudgets: z.boolean().default(false), hidden: z.boolean().default(false) });
 export type DemoStatus = z.infer<typeof DemoStatus>;
 
 export const demoStatusQuery = (ws: string) =>

@@ -33,11 +33,15 @@ export async function insertEnvelopeRow(tx: Tx, auth: AuthContext, workspaceId: 
   const pairs = values.map((v) => ({ dimensionId: v.dimensionId, valueId: v.id }));
   assertInScope(auth, action, await scopeTargetForValues(tx, pairs));
   if (input.parentId !== null) {
-    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { id: true, status: true, endedAt: true } });
+    const parent = await tx.envelope.findUnique({ where: { id: input.parentId }, select: { id: true, status: true, endedAt: true, demo: true } });
     if (parent === null) throw new DomainError("NOT_FOUND", "Parent envelope not found");
     if (parent.endedAt !== null) throw new DomainError("LOCKED", "The parent budget has ended; reintroduce it first");
     if (parent.status === "LOCKED") throw new DomainError("LOCKED", "Parent period is closed");
     if (parent.status === "ARCHIVED") throw new DomainError("CONFLICT", "Parent envelope is archived");
+    // HF-1 (audit T-5 follow-up): this path never creates a demo row (the seeder writes those
+    // directly, packages/db/src/demo.ts), so a demo parent here always means a real budget about to
+    // sit where T-5's default exclusion would hide it. Refuse rather than create an unreachable budget.
+    if (parent.demo) throw new DomainError("VALIDATION", "A real budget cannot sit under a demo budget; remove the demo data first");
   }
   if (input.ownerId !== null) {
     const owner = await tx.user.findFirst({ where: { id: input.ownerId, orgId: auth.user.orgId }, select: { id: true } });

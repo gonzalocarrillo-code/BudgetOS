@@ -40,6 +40,7 @@ vi.mock("../../lib/api.js", () => ({
 }));
 
 const { ExplorerRowSource } = await import("./row-source.js");
+const { api } = await import("../../lib/api.js");
 const labels = { value: (_d: string, code: string) => code, none: (d: string) => `No ${d}`, notSplit: (name: string) => `${name} · not split` };
 
 describe("the Budgets tree folds no-value groups into the level above", () => {
@@ -56,6 +57,26 @@ describe("the Budgets tree folds no-value groups into the level above", () => {
     await tree.toggle("acme");
     const after = (await tree.getRows({ start: 0, end: 10 })).rows as Array<{ name: string; level: number }>;
     expect(after.map((r) => [r.name, r.level])).toEqual([["FY2026 Media", 0], ["EMEA", 0], ["acme", 0], ["LATAM", 1]]);
+  });
+});
+
+describe("HF-1 (audit T-5 follow-up): includeDemo follows the 'Show demo data' param", () => {
+  const post = api.POST as unknown as { mock: { calls: Array<[string, { body: { includeDemo?: boolean } }]> } };
+
+  it("/query carries includeDemo: true only when the source asks for it", async () => {
+    post.mock.calls.length = 0;
+    const shown = new ExplorerRowSource({ ws: "w", view: "pivot", filter: { logic: "and", children: [] }, period: {}, measures: ["budget"], levels: [], groupBy: [], expanded: [], sort: [], includeDemo: true }, labels, () => undefined);
+    await shown.getRows({ start: 0, end: 10 });
+    const queryCalls = post.mock.calls.filter(([path]) => path.endsWith("/query"));
+    expect(queryCalls.length).toBeGreaterThan(0);
+    expect(queryCalls.every(([, init]) => init.body.includeDemo === true)).toBe(true);
+
+    post.mock.calls.length = 0;
+    const hidden = new ExplorerRowSource({ ws: "w", view: "pivot", filter: { logic: "and", children: [] }, period: {}, measures: ["budget"], levels: [], groupBy: [], expanded: [], sort: [] }, labels, () => undefined);
+    await hidden.getRows({ start: 0, end: 10 });
+    const defaultCalls = post.mock.calls.filter(([path]) => path.endsWith("/query"));
+    expect(defaultCalls.length).toBeGreaterThan(0);
+    expect(defaultCalls.every(([, init]) => init.body.includeDemo === false)).toBe(true);
   });
 });
 

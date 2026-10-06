@@ -30,11 +30,13 @@ export interface TimelineSearch {
   period: PeriodSpec;
   asOf?: string | undefined;
   zoom: TimelineZoom;
+  /** HF-1 (audit T-5 follow-up): "Show demo data" — T-5's default exclusion lifted for this view. */
+  includeDemo?: boolean | undefined;
 }
 
 export const timelineQuery = (ws: string, s: TimelineSearch) =>
   queryOptions({
-    queryKey: ["timeline", ws, s.filter, s.structure ? "structure" : (s.templateId ?? null), s.period, s.asOf ?? null, s.zoom],
+    queryKey: ["timeline", ws, s.filter, s.structure ? "structure" : (s.templateId ?? null), s.period, s.asOf ?? null, s.zoom, s.includeDemo === true],
     queryFn: async (): Promise<TimelineResponse & { truncated: boolean }> => {
       let cursor: string | null = null;
       let first = null as TimelineResponse | null;
@@ -47,6 +49,7 @@ export const timelineQuery = (ws: string, s: TimelineSearch) =>
           ...(s.filter.children.length ? { filter: encodeFilter(s.filter) } : {}),
           ...(s.structure ? { structure: "true" } : s.templateId ? { templateId: s.templateId } : {}),
           ...(s.asOf ? { asOf: s.asOf } : {}),
+          ...(s.includeDemo ? { includeDemo: "true" } : {}),
           ...(cursor ? { cursor } : {}),
         };
         const page = TimelineResponse.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/timeline", { params: { path: { ws }, query: query as never } })));

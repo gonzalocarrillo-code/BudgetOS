@@ -28,6 +28,7 @@ import {
   MarkNotificationsReadInput,
   NotificationsResponse,
   DeleteWorkspaceInput,
+  DemoDataResponse,
   PurgeDemoInput,
   OrgPeopleResponse,
   OrgWorkspacesResponse,
@@ -522,7 +523,7 @@ export function openApiDocument(): Record<string, unknown> {
         patch: { operationId: "updateOrgPerson", parameters: [idParam], requestBody: json(UpdateOrgPersonInput), responses: { "200": { description: "Superadmins: deactivate or reactivate someone" } } },
       },
       "/api/v1/workspaces/{ws}/demo-data": {
-        get: { operationId: "getDemoData", parameters: [workspaceParam], responses: { "200": { description: "Demo rows left: envelopes and targets, and whether the workspace has real (non-demo) budgets too" } } },
+        get: { operationId: "getDemoData", parameters: [workspaceParam], responses: { "200": { description: "Demo rows left: envelopes and targets, whether the workspace has real (non-demo) budgets too, and `hidden` (HF-1): whether the planner is excluding demo money from totals right now", ...json(DemoDataResponse) } } },
       },
       "/api/v1/workspaces/{ws}/demo-data/purge": {
         post: { operationId: "purgeDemoData", parameters: [workspaceParam], requestBody: json(PurgeDemoInput), responses: { "201": { description: "Every demo-only row deleted in one transaction; a real fact matched onto a demo envelope is detached, not deleted, and re-matches on its next load; the template's configuration stays" }, "409": { description: "A real (non-demo) target is attached to a demo envelope; move or delete it first" } } },
@@ -559,6 +560,7 @@ export function openApiDocument(): Record<string, unknown> {
             { name: "zoom", in: "query", required: false, schema: { type: "string", enum: ["week", "month", "quarter", "fy"] } },
             { name: "cursor", in: "query", required: false, schema: { type: "string" } },
             { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 5000 } },
+            { name: "includeDemo", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] }, description: "HF-1: show demo money in every bar for this request" },
           ],
           responses: { "200": { description: "Group, envelope and target bars on the fiscal calendar, with markers and key dates; X-Data-Version header", ...json(TimelineResponse) } },
         },
@@ -641,7 +643,7 @@ export function openApiDocument(): Record<string, unknown> {
         patch: { operationId: "updateNamingTemplate", parameters: [idParam, workspaceHeader], requestBody: json(UpdateNamingTemplateInput), responses: { "200": { description: "A new version of the template" } } },
       },
       "/api/v1/workspaces/{ws}/overview": {
-        get: { operationId: "getOverview", parameters: [workspaceParam, { name: "period", in: "query", required: false, schema: { type: "string" }, description: "A relative preset (current_month, current_quarter, current_year, last_30_days, last_90_days, ytd, next_90_days) or fiscal:<key>, one of the workspace's periods (e.g. fiscal:2026-Q2)" }, { name: "rows", in: "query", required: false, schema: { type: "string" }, description: "Heatmap rows: a registry granularity key (default country)" }, { name: "cols", in: "query", required: false, schema: { type: "string" }, description: "Heatmap columns: another granularity key (default platform)" }, { name: "sort", in: "query", required: false, schema: { type: "string", enum: ["budget", "pace", "ahead"] }, description: "Heatmap row order: by budget (default), pace, or money ahead of plan" }, { name: "compareTo", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "A snapshot to compare with: the headline's change and each cell's budget then (default: the latest plan snapshot, headline only)" }], responses: { "200": { description: "The Overview dashboard: headline, heatmap with its margins (any two granularities), budgets that need attention by money at stake, KPI vs target, alerts by rule, the approval queue, data freshness", ...json(OverviewResponse) } } },
+        get: { operationId: "getOverview", parameters: [workspaceParam, { name: "period", in: "query", required: false, schema: { type: "string" }, description: "A relative preset (current_month, current_quarter, current_year, last_30_days, last_90_days, ytd, next_90_days) or fiscal:<key>, one of the workspace's periods (e.g. fiscal:2026-Q2)" }, { name: "rows", in: "query", required: false, schema: { type: "string" }, description: "Heatmap rows: a registry granularity key (default country)" }, { name: "cols", in: "query", required: false, schema: { type: "string" }, description: "Heatmap columns: another granularity key (default platform)" }, { name: "sort", in: "query", required: false, schema: { type: "string", enum: ["budget", "pace", "ahead"] }, description: "Heatmap row order: by budget (default), pace, or money ahead of plan" }, { name: "compareTo", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "A snapshot to compare with: the headline's change and each cell's budget then (default: the latest plan snapshot, headline only)" }, { name: "includeDemo", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] }, description: "HF-1: show demo money in every total for this request (T-5's default exclusion is otherwise on once the workspace has a real budget)" }], responses: { "200": { description: "The Overview dashboard: headline, heatmap with its margins (any two granularities), budgets that need attention by money at stake, KPI vs target, alerts by rule, the approval queue, data freshness", ...json(OverviewResponse) } } },
       },
       "/api/v1/workspaces/{ws}/pacing": {
         get: {

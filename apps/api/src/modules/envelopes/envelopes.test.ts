@@ -164,6 +164,21 @@ describe("create", () => {
     expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(before);
   });
 
+  it("refuses a real envelope under a demo parent, and writes nothing (HF-1)", async () => {
+    const demoParentId = randomUUID();
+    await owner.envelope.create({
+      data: { id: demoParentId, workspaceId: ws, name: "Demo parent", dimensionValues: { region: "br" }, startDate: new Date("2026-10-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: planner.id, demo: true },
+    });
+    const before = await owner.envelope.count({ where: { workspaceId: ws } });
+    const requestId = rid();
+    const res = await create(planner, envelopeBody({ parentId: demoParentId }), { "x-request-id": requestId });
+    expect(res.status).toBe(422);
+    expect(res.body["code"]).toBe("VALIDATION");
+    expect(await owner.envelope.count({ where: { workspaceId: ws } })).toBe(before);
+    expect(await auditFor(requestId, demoParentId)).toEqual([]);
+    expect(await outboxFor(demoParentId)).toBe(0);
+  });
+
   it("converts into the reporting currency with a stored fx_rate, and refuses to guess without one", async () => {
     expect((await create(planner, envelopeBody({ currency: TEST_CCY, amount: "100.00" }))).status).toBe(422);
     await owner.fxRate.create({ data: { id: randomUUID(), base: TEST_CCY, quote: "USD", rate: "1.25", asOfDate: new Date("2020-01-01"), source: "test" } });

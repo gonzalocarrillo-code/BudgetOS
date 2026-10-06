@@ -79,7 +79,15 @@ describe("workspace templates (T-040)", () => {
     expect(Date.now() - started).toBeLessThan(perfBudgetMs(60_000));
     const tours = await as("orgAdmin", "GET", "/tours?all=true", undefined, ws);
     expect((tours.body as unknown as Array<{ role: string; isDefault: boolean }>).map((t) => [t.role, t.isDefault]).sort()).toEqual(DEFAULT_TOURS.map((t) => [t.role, false]).sort());
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false });
+
+    // HF-1 (audit T-5 follow-up): `hidden` turns on the moment a real budget joins the demo ones —
+    // the Sandbox bug (demo roots hiding the one real budget underneath, with nothing saying why).
+    const realId = randomUUID();
+    await owner.envelope.create({ data: { id: realId, workspaceId: ws, name: "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.orgAdmin, demo: false } });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: true, hidden: true });
+    await owner.envelope.delete({ where: { id: realId } });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false });
 
     // I-3: purging without confirming is refused.
     expect((await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, {}, ws)).status).toBe(422);
@@ -88,7 +96,7 @@ describe("workspace templates (T-040)", () => {
     const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
     expect(purged.status, JSON.stringify(purged.body)).toBe(201);
     expect(purged.body).toMatchObject({ envelopes: 9, targets: 3, detachedFacts: 0 });
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0, hasRealBudgets: false });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0, hasRealBudgets: false, hidden: false });
     expect(await owner.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid`, ws)).toEqual([{ n: 0n }]);
     expect((await query()).body["totals"]).toMatchObject({ leafCount: "0" });
     expect(await owner.approvalPolicy.count({ where: { workspaceId: ws } })).toBe(DEFAULT_POLICIES.length);

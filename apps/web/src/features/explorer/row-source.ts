@@ -45,6 +45,8 @@ export interface ExplorerQuery {
   groupBy: string[];
   expanded: string[];
   sort: Array<{ key: string; dir: "asc" | "desc" }>;
+  /** HF-1 (audit T-5 follow-up): "Show demo data" — T-5's default exclusion lifted for this query. */
+  includeDemo?: boolean | undefined;
 }
 
 /** A value's label, and the label of a group with no value for `dimension` at tree `level` (0 = first). */
@@ -81,8 +83,10 @@ export class ExplorerRowSource implements RowSource {
     private readonly onLoaded: (s: ExplorerRowSource) => void = () => undefined,
   ) {
     this.expanded = new Set(q.expanded);
-    // The roll-up cache holds no snapshot: comparing reads /query.
-    this.cached = q.view === "tree" && !q.structure && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf && !q.compareTo;
+    // The roll-up cache holds no snapshot: comparing reads /query. HF-1: it also holds no demo
+    // rows once the workspace has a real budget (rebuilt from the same default-excluding /query),
+    // so "Show demo data" reads /query directly instead of the cache too.
+    this.cached = q.view === "tree" && !q.structure && q.templateId !== undefined && q.filter.children.length === 0 && !q.asOf && !q.compareTo && !q.includeDemo;
     this.ready = this.load();
   }
 
@@ -116,7 +120,7 @@ export class ExplorerRowSource implements RowSource {
     let cursor: string | null = null;
     let last: QueryResponse | undefined;
     do {
-      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : { unallocated: true }), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), ...(cursor ? { cursor } : {}) };
+      const body = { workspaceId: this.q.ws, filter: this.filterWith(extra), groupBy, measures: this.q.measures, period: this.q.period, sort, limit: PAGE, ...(this.structure ? { subtree: true } : { unallocated: true }), ...(this.q.asOf ? { asOf: this.q.asOf } : {}), ...(this.q.compareTo ? { compareTo: { baselineId: this.q.compareTo } } : {}), includeDemo: this.q.includeDemo === true, ...(cursor ? { cursor } : {}) };
       last = (await unwrap(api.POST("/api/v1/workspaces/{ws}/query", { params: { path: { ws: this.q.ws } }, body: body as never }))) as QueryResponse;
       rows.push(...last.rows);
       cursor = last.nextCursor;

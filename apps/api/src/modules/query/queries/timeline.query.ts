@@ -111,7 +111,8 @@ export async function timelineQuery(prisma: PrismaClient, auth: AuthContext, raw
     // Structure (ADR-050): every live budget, parents included, each with its subtree's spend.
     const cut = structure ? [LIVE_LEAVES[1] as (typeof LIVE_LEAVES)[number]] : LIVE_LEAVES;
     const filter: FilterGroupT = { logic: "and", children: [...cut, ...(userFilter && userFilter.children.length ? [userFilter] : [])] };
-    const base = scopedQuery(auth, { workspaceId, filter, period: { kind: "range", ...period }, measures: [...MEASURES], ...(q.asOf ? { asOf: q.asOf } : {}), ...(structure ? { subtree: true } : {}) });
+    // HF-1: "Show demo data" carries through to the Gantt the same as /query.
+    const base = scopedQuery(auth, { workspaceId, filter, period: { kind: "range", ...period }, measures: [...MEASURES], includeDemo: q.includeDemo === "true", ...(q.asOf ? { asOf: q.asOf } : {}), ...(structure ? { subtree: true } : {}) });
     const opts: CompileOptions = { ...(await plannerOptions(tx, { orgId: auth.user.orgId, workspaceId }, [], period)), groupDates: true };
 
     const bars: TimelineBar[] = [];

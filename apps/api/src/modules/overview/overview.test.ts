@@ -56,6 +56,16 @@ describe("GET /workspaces/:ws/overview (T-033)", () => {
     expect(head).toMatchObject({ basis: "top_level", budget: (top.body["totals"] as Record<string, string>)["budget"], actual: (top.body["totals"] as Record<string, string>)["actual"], assigned: o.totals["budget"] });
   });
 
+  // HF-1 (audit T-5 follow-up): `includeDemo` carries through to every query this endpoint runs
+  // (the same wiring as Budgets and the Gantt). The golden workspace has no demo rows, so this is a
+  // negative control: asking to include them changes nothing.
+  it("includeDemo=true is accepted and changes nothing when the workspace has no demo rows", async () => {
+    const withDemo = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?includeDemo=true`);
+    expect(withDemo.status, JSON.stringify(withDemo.body).slice(0, 300)).toBe(200);
+    const without = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview`);
+    expect((withDemo.body as Body)["totals"]).toEqual((without.body as Body)["totals"]);
+  });
+
   it("the heatmap's axes are any two granularities the caller picks; every column comes back (product feedback 8)", async () => {
     const res = await as("planner", "GET", `/api/v1/workspaces/${golden.workspaceId}/overview?rows=region&cols=objective`);
     expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);

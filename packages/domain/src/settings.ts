@@ -31,8 +31,9 @@ export const SETTINGS: readonly SettingEntry[] = [
   { id: id(11), title: "New data source", section: "Data", path: `/admin/sources${q({ wizard: "new" })}`, keywords: ["connect", "add source", "mapping"] },
   { id: id(12), title: "Display names", section: "Naming", path: `/admin/naming${q({ kind: "display" })}`, keywords: ["naming template", "budget names", "display name"] },
   { id: id(13), title: "Match keys", section: "Naming", path: `/admin/naming${q({ kind: "match_key" })}`, keywords: ["naming template", "matching", "campaign names", "match key"] },
-  { id: id(14), title: "Workspace templates", section: "Workspaces", path: "/admin/templates", keywords: ["new workspace", "create workspace", "template", "default agency"] },
-  { id: id(15), title: "Demo data", section: "Workspaces", path: "/admin/templates", keywords: ["remove demo data", "purge", "sample data"] },
+  // id(14) "Workspace templates" removed (HF-1, R11-004 / commit 9d299b8): only an org admin creates
+  // workspaces now, from the org console; /admin/templates no longer has a route.
+  { id: id(15), title: "Demo data", section: "Workspaces", path: "/admin/workspace#demo-data", keywords: ["remove demo data", "purge", "sample data"] },
   { id: id(16), title: "Guided tours", section: "Onboarding", path: "/admin/tours", keywords: ["tours", "onboarding", "walkthrough", "help"] },
   { id: id(17), title: "Manual results", section: "Data", path: "/sources/manual", keywords: ["manual entry", "offline", "TV", "out of home", "print", "radio", "paste results"] },
   { id: id(18), title: "Period closures", section: "Finance", path: "/closures", keywords: ["close period", "restate", "lock budgets", "month end", "quarter end"] },
