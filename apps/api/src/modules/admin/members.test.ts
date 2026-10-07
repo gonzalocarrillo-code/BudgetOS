@@ -73,19 +73,38 @@ afterAll(async () => {
   await owner.$disconnect();
 });
 
-describe("members (ORG-005: a workspace admin sees and adds only their workspace's people)", () => {
-  it("a workspace admin sees the people and groups with a role here; a superadmin sees the whole org; never other orgs", async () => {
+describe("members (ORG-005 / ADR-088: a workspace's people list is scoped to that workspace, for every caller)", () => {
+  it("a workspace admin sees the people and groups with a role here; a superadmin sees only their own role here plus whoever else has one; never other orgs", async () => {
     const res = await call(admin, "GET", `/workspaces/${ws}/members`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const m = res.body as unknown as Members;
     expect(m.users.map((u) => u.email).sort()).toEqual([admin.email, planner.email].sort());
     expect(m.users.find((u) => u.id === planner.id)).toMatchObject({ signedIn: true, orgAdmin: false, roles: [{ role: "PLANNER" }] });
     expect(m.groups).toEqual([]); // the Leads group has no role here
+    // ADR-088: the superadmin has no role of their own in `ws`, so they do not appear in it either.
     const all = (await call(orgAdmin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
-    expect(all.users.map((u) => u.email).sort()).toEqual([admin.email, planner.email, orgAdmin.email].sort());
-    expect(all.users.find((u) => u.id === orgAdmin.id)?.orgAdmin).toBe(true);
-    expect(all.groups).toEqual([expect.objectContaining({ id: groupId, memberCount: 1, roles: [] })]);
+    expect(all.users.map((u) => u.email).sort()).toEqual([admin.email, planner.email].sort());
+    expect(all.groups).toEqual([]);
     expect((await call(planner, "GET", `/workspaces/${ws}/members`)).status).toBe(403);
+  });
+
+  it("ADR-088: a superadmin's view of workspace A never includes someone who only holds a role in workspace B", async () => {
+    const ws2 = randomUUID();
+    const sandboxOnly = testUser("members-sandbox", randomUUID());
+    await owner.user.create({ data: { id: sandboxOnly.id, orgId, email: sandboxOnly.email, name: sandboxOnly.sub, googleSub: `g-${sandboxOnly.sub}` } });
+    await asOrgAdmin(owner, (tx) => tx.workspace.create({ data: { id: ws2, orgId, slug: `members-${ws2}`, name: "Sandbox", reportingCurrency: "USD" } }), orgId);
+    await owner.roleAssignment.createMany({
+      data: [
+        { id: randomUUID(), workspaceId: ws2, principalType: "user", principalId: admin.id, role: "WORKSPACE_ADMIN", createdBy: admin.id },
+        { id: randomUUID(), workspaceId: ws2, principalType: "user", principalId: sandboxOnly.id, role: "PLANNER", createdBy: admin.id },
+      ],
+    });
+    const byAdmin = (await call(admin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
+    expect(byAdmin.users.find((u) => u.id === sandboxOnly.id)).toBeUndefined();
+    const byOrgAdmin = (await call(orgAdmin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
+    expect(byOrgAdmin.users.find((u) => u.id === sandboxOnly.id)).toBeUndefined();
+    await deleteWorkspaceForTests(owner, ws2, orgId);
+    await owner.user.delete({ where: { id: sandboxOnly.id } });
   });
 
   it("a workspace admin adds someone by email with a role here (Viewer unless chosen); once; never another org's email", async () => {
@@ -102,9 +121,11 @@ describe("members (ORG-005: a workspace admin sees and adds only their workspace
 
     const m = (await call(admin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
     expect(m.users.find((u) => u.email === "new.person@members.test")).toMatchObject({ signedIn: false, roles: [{ role: "VIEWER" }, { role: "BUDGET_OWNER" }] });
-    // A superadmin may add someone with no role yet, to give one later.
+    // ADR-088: a superadmin adding with no role chosen now gets Viewer too, so the person shows up here.
     const bare = await call(orgAdmin, "POST", `/workspaces/${ws}/members`, { email: "later@members.test", name: "Later" });
-    expect(bare.body).toMatchObject({ created: true, role: null });
+    expect(bare.body).toMatchObject({ created: true, role: "VIEWER" });
+    const afterBare = (await call(admin, "GET", `/workspaces/${ws}/members`)).body as unknown as Members;
+    expect(afterBare.users.find((u) => u.email === "later@members.test")).toMatchObject({ roles: [{ role: "VIEWER" }] });
   });
 
   // W3-3 (audit I-19): assignRole()'s "duplicate" check is SELECT-then-INSERT; two concurrent

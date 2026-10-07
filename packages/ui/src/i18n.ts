@@ -794,6 +794,7 @@ const en = {
   "roles.taken": "They already have this role here",
   "roles.pickValues": "Pick at least one value",
   "roles.revoke": "Remove {role} from {name}",
+  "roles.removeFromWorkspace": "Remove {name} from workspace",
   "roles.orgAdmin": "Superadmin",
   "roles.notSignedIn": "Invited, not signed in yet",
   "roles.lastSeen": "Last seen {when}",
