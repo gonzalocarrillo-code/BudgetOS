@@ -41,7 +41,7 @@ export interface TestUser {
   email: string;
   sub: string;
 }
-export type Method = "GET" | "POST" | "PATCH" | "DELETE";
+export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 export interface MintOptions {
   key?: CryptoKey;
   aud?: string;

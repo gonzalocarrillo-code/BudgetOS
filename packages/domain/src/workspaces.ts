@@ -50,7 +50,9 @@ export const OrgPerson = z.object({
   superadmin: z.boolean(),
   /** S-14 (ADR-075): the Slack user id this person is pinned to, or null if never linked. */
   slackUserId: z.string().nullable(),
-  workspaces: z.array(z.object({ workspaceId: z.string().uuid(), name: z.string(), roles: z.array(z.string()) })),
+  /** Round 11 (PR 3): `viaGroup` is true when this workspace's access comes only from a Google
+   * group (decision D3: groups are not edited from the org console this round, shown read-only). */
+  workspaces: z.array(z.object({ workspaceId: z.string().uuid(), name: z.string(), roles: z.array(z.string()), viaGroup: z.boolean() })),
 });
 export type OrgPerson = z.infer<typeof OrgPerson>;
 export const OrgPeopleResponse = z.object({ people: z.array(OrgPerson) });
@@ -78,3 +80,36 @@ export const AddMemberInput = z.object({
   scope: ScopeFilter.default({}),
 });
 export type AddMemberInput = z.infer<typeof AddMemberInput>;
+
+/**
+ * POST /org/people (round 11, PR 3) — a superadmin adds someone to the org, always into one
+ * workspace with a role (decision D4: inviting always needs a workspace, because the per-workspace
+ * audit row that every write path requires needs one).
+ */
+export const InviteOrgPersonInput = z.object({
+  email: z.string().trim().toLowerCase().email().max(320),
+  name: z.string().trim().min(1).max(200),
+  workspaceId: z.string().uuid(),
+  role: RoleEnum.exclude(["ORG_ADMIN"]).default("VIEWER"),
+});
+export type InviteOrgPersonInput = z.infer<typeof InviteOrgPersonInput>;
+
+/**
+ * PUT /org/people/:id/workspaces/:wsId (round 11, PR 3) — set a person's direct roles in one
+ * workspace. An empty list removes them from it. Group-derived roles are not touched (decision D3:
+ * group membership is not edited from the org console this round).
+ */
+export const SetWorkspaceRolesInput = z.object({ roles: z.array(RoleEnum.exclude(["ORG_ADMIN"])).max(10) });
+export type SetWorkspaceRolesInput = z.infer<typeof SetWorkspaceRolesInput>;
+
+export const SetWorkspaceRolesResult = z.object({
+  userId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  roles: z.array(z.string()),
+  added: z.array(z.string()),
+  removed: z.array(z.string()),
+});
+export type SetWorkspaceRolesResult = z.infer<typeof SetWorkspaceRolesResult>;
+
+export const InviteOrgPersonResult = z.object({ id: z.string().uuid(), email: z.string(), name: z.string(), created: z.boolean() });
+export type InviteOrgPersonResult = z.infer<typeof InviteOrgPersonResult>;

@@ -1529,7 +1529,7 @@ export interface paths {
         };
         get: operations["listOrgPeople"];
         put?: never;
-        post?: never;
+        post: operations["inviteOrgPerson"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1550,6 +1550,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["updateOrgPerson"];
+        trace?: never;
+    };
+    "/api/v1/org/people/{id}/workspaces/{wsId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["setWorkspaceRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/workspaces/{ws}/demo-data": {
@@ -8176,10 +8192,54 @@ export interface operations {
                                 workspaceId: string;
                                 name: string;
                                 roles: string[];
+                                viaGroup: boolean;
                             }[];
                         }[];
                     };
                 };
+            };
+        };
+    };
+    inviteOrgPerson: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    name: string;
+                    /** Format: uuid */
+                    workspaceId: string;
+                    /**
+                     * @default VIEWER
+                     * @enum {string}
+                     */
+                    role?: "VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN";
+                };
+            };
+        };
+        responses: {
+            /** @description Superadmins: add someone to the org, always into one workspace with a role */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description That email belongs to another organisation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -8206,6 +8266,50 @@ export interface operations {
         responses: {
             /** @description Superadmins: deactivate or reactivate someone */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setWorkspaceRoles: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: string;
+                wsId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    roles: ("VIEWER" | "PLANNER" | "BUDGET_OWNER" | "APPROVER" | "FINANCE" | "DATA_ADMIN" | "WORKSPACE_ADMIN")[];
+                };
+            };
+        };
+        responses: {
+            /** @description Superadmins: the person's direct roles in this workspace become exactly `roles`; an empty list removes them from it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A workspace needs at least one admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The workspace is archived */
+            423: {
                 headers: {
                     [name: string]: unknown;
                 };
