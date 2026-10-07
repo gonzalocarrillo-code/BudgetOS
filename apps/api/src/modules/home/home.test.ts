@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { TOP_LEVEL, LIVE_LEAVES } from "@budget/domain";
 import type { Prisma } from "@prisma/client";
-import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS, asOrgAdmin, matchRunFacts } from "@budget/db";
+import { DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_TOURS, GOLDEN_ASSERTIONS, asOrgAdmin, matchRunFacts, upsertKpiFacts, upsertSpendFacts } from "@budget/db";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seedGolden, type GoldenResult } from "../../seed/golden.js";
@@ -256,6 +256,92 @@ describe("POST /workspaces/:ws/demo-data/campaigns (EX-3)", () => {
 
     const audits = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'workspace' AND entity_id = $1::uuid AND action = 'workspace.demo_campaigns_added' ORDER BY occurred_at`, ws));
     expect(audits.length).toBe(1); // the no-op second call wrote nothing
+  });
+});
+
+describe("POST /workspaces/:ws/demo-data/campaigns on a pre-EX-3 Sandbox (HF-3)", () => {
+  it("adds campaign data to a workspace seeded with the old monthly demo facts and a real budget under a demo one, as budget_app; the second call is a no-op", async () => {
+    const ws = await demoWorkspace("HF-3 Sandbox");
+    const wsShort = ws.replace(/-/g, "").slice(0, 8);
+    const leaves = await asOwner((tx) =>
+      tx.envelope.findMany({ where: { workspaceId: ws, demo: true, parentId: { not: null } }, select: { id: true, dimensionValues: true, currency: true, currentVersion: { select: { amount: true } }, dims: { select: { dimensionId: true, valueId: true } } }, orderBy: { name: "asc" } }),
+    );
+    expect(leaves.length).toBe(6);
+    const fy = await asOwner((tx) => tx.workspace.findUniqueOrThrow({ where: { id: ws }, select: { fiscalYearStartMonth: true, reportingCurrency: true } }));
+    const today = new Date().toISOString().slice(0, 10);
+    const brandId = randomUUID();
+    const y = Number(today.slice(0, 4));
+    const fyYear = Number(today.slice(5, 7)) >= fy.fiscalYearStartMonth ? y : y - 1;
+
+    // The state the production Sandbox was in (seeded by the pre-EX-3 seedDemoData, git 3193138):
+    // no campaign facts, values or demo experiment; one spend + one conversions fact per leaf per
+    // month from the fiscal-year start to today, matched to the leaf; and a real budget, "Brand",
+    // under a demo budget (HF-1 refuses to create one now, so it is inserted directly).
+    await asOwner(async (tx) => {
+      await tx.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM experiment WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM dimension_value WHERE code LIKE $1 AND dimension_id IN (SELECT id FROM dimension WHERE key = 'campaign')`, `${wsShort}\\_%`);
+      const runId = randomUUID();
+      const spend: Array<{ dimensionValues: Record<string, string>; periodDate: string; currency: string; amount: string; amountReporting: string; fxRateId: null; rowHash: string }> = [];
+      const kpis: Array<{ dimensionValues: Record<string, string>; periodDate: string; metric: string; value: string; attributionModel: null; rowHash: string }> = [];
+      leaves.forEach((leaf, k) => {
+        for (let n = 0; n < 12; n++) {
+          const date = new Date(Date.UTC(fyYear, fy.fiscalYearStartMonth - 1 + n, 1)).toISOString().slice(0, 10);
+          if (date > today) break;
+          const amount = new Decimal(leaf.currentVersion?.amount.toString() ?? "0").div(12).mul(new Decimal(85 + ((k * 13 + n * 7) % 21)).div(100)).toDecimalPlaces(2);
+          const hash = `demo:${runId}:${leaf.id}:${date}`;
+          const tuple = leaf.dimensionValues as Record<string, string>;
+          spend.push({ dimensionValues: tuple, periodDate: date, currency: fy.reportingCurrency, amount: amount.toFixed(2), amountReporting: amount.toFixed(2), fxRateId: null, rowHash: hash });
+          kpis.push({ dimensionValues: tuple, periodDate: date, metric: "conversions", value: amount.div(20).floor().toFixed(0), attributionModel: null, rowHash: `${hash}:conversions` });
+        }
+      });
+      const load = { workspaceId: ws, sourceSystem: "demo", sourceRunId: runId };
+      await upsertSpendFacts(tx, load, spend);
+      await upsertKpiFacts(tx, load, kpis);
+      await tx.$executeRawUnsafe(`UPDATE spend_fact SET demo = true WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid`, ws, runId);
+      await tx.$executeRawUnsafe(`UPDATE kpi_fact SET demo = true WHERE workspace_id = $1::uuid AND source_run_id = $2::uuid`, ws, runId);
+      await matchRunFacts(tx, ws, runId);
+      const parent = leaves[0];
+      if (!parent) throw new Error("no demo leaf");
+      await tx.envelope.create({
+        data: { id: brandId, workspaceId: ws, parentId: parent.id, name: "Brand", dimensionValues: parent.dimensionValues as Prisma.InputJsonValue, startDate: new Date(`${fyYear}-01-01T00:00:00Z`), endDate: new Date(`${fyYear}-12-31T00:00:00Z`), currency: parent.currency, status: "APPROVED", createdBy: golden.users.orgAdmin, demo: false, dims: { create: parent.dims } },
+      });
+      // EX-1's re-match moved the old monthly facts of the leaf's tuple onto "Brand", the deeper
+      // budget on the same chain (one month here is enough to cover it).
+      await tx.$executeRawUnsafe(`UPDATE spend_fact SET envelope_id = $1::uuid WHERE workspace_id = $2::uuid AND envelope_id = $3::uuid AND period_date = $4::date`, brandId, ws, parent.id, new Date(Date.UTC(fyYear, fy.fiscalYearStartMonth - 1, 1)).toISOString().slice(0, 10));
+    });
+    const oldFacts = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND superseded_at IS NULL`, ws));
+    expect(Number(oldFacts[0]?.n)).toBeGreaterThan(0);
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toMatchObject({ envelopes: 9, targets: 3, hasRealBudgets: true, hasCampaignData: false });
+
+    // Through the same path the web takes: every mutation carries an Idempotency-Key (W3-2).
+    const post = async () => {
+      const token = await h.mint({ sub: "ip-orgAdmin", email: `orgadmin@${slug}.golden.test` }, { googleSub: `golden-${slug}-orgAdmin` });
+      return h.call("POST", `/api/v1/workspaces/${ws}/demo-data/campaigns`, token, { headers: { "x-workspace-id": ws, "x-request-id": `hf3-${randomUUID()}`, "idempotency-key": randomUUID() }, body: {} });
+    };
+    const started = Date.now();
+    const res = await post();
+    const elapsedMs = Date.now() - started;
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ alreadyPresent: false, experiments: 1 });
+    expect((res.body as { facts: number }).facts).toBeGreaterThan(0);
+    expect((res.body as { supersededFacts: number }).supersededFacts).toBe(Number(oldFacts[0]?.n) * 2);
+    process.stderr.write(`HF-3: POST demo-data/campaigns took ${elapsedMs} ms for ${String((res.body as { facts: number }).facts)} facts\n`);
+    // Demo money stays on demo budgets: none of the new facts land on the real "Brand" (the matcher
+    // would pick it, the deepest budget on the leaf's chain), and nothing old stays live beside them.
+    const onReal = await asOwner((tx) =>
+      tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact f JOIN envelope e ON e.id = f.envelope_id WHERE f.workspace_id = $1::uuid AND f.demo AND f.superseded_at IS NULL AND NOT e.demo`, ws),
+    );
+    expect(Number(onReal[0]?.n)).toBe(0);
+    const unmatched = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid AND demo AND superseded_at IS NULL AND envelope_id IS NULL`, ws));
+    expect(Number(unmatched[0]?.n)).toBe(0);
+    expect(elapsedMs).toBeLessThan(perfBudgetMs(20_000));
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toMatchObject({ hasCampaignData: true });
+
+    const again = await post();
+    expect(again.status, JSON.stringify(again.body)).toBe(201);
+    expect(again.body).toMatchObject({ alreadyPresent: true, facts: 0, supersededFacts: 0 });
   });
 });
 

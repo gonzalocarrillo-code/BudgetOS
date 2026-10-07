@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { DomainError } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { DEFAULT_DIMENSIONS } from "../seed/defaults.registry.js";
-import { ensurePartitions, matchRunFacts, upsertKpiFacts, upsertSpendFacts, type KpiFactInput, type SpendFactInput } from "./facts.js";
+import { ensurePartitions, type KpiFactInput, type SpendFactInput } from "./facts.js";
 import { upsertDimensionValue } from "./registry.js";
 import type { Tx } from "./sql.js";
 
@@ -123,9 +123,13 @@ export interface CampaignLeafInput {
   index: number;
 }
 
+/** A demo fact and the demo leaf it belongs to (HF-3: written onto it directly, never matched). */
+export type DemoSpendFact = SpendFactInput & { envelopeId: string };
+export type DemoKpiFact = KpiFactInput & { envelopeId: string };
+
 export interface CampaignFactsResult {
-  spend: SpendFactInput[];
-  kpi: KpiFactInput[];
+  spend: DemoSpendFact[];
+  kpi: DemoKpiFact[];
   campaignsByLeaf: Map<string, DemoCampaign[]>;
 }
 
@@ -150,8 +154,8 @@ export function campaignFactsForLeaves(
   runId: string,
   reportingCurrency: string,
 ): CampaignFactsResult {
-  const spend: SpendFactInput[] = [];
-  const kpi: KpiFactInput[] = [];
+  const spend: DemoSpendFact[] = [];
+  const kpi: DemoKpiFact[] = [];
   const campaignsByLeaf = new Map<string, DemoCampaign[]>();
   const days = allDays(startIso, untilIso);
   const midStartDay = days.length > 1 ? days[Math.floor(days.length / 2)] : undefined;
@@ -187,7 +191,8 @@ export function campaignFactsForLeaves(
 
         const dimensionValues = { ...leaf.tuple, campaign: c.code };
         const hash = `demo:${runId}:${c.code}:${day}`;
-        spend.push({ dimensionValues, periodDate: day, currency: reportingCurrency, amount: amount.toFixed(2), amountReporting: amount.toFixed(2), fxRateId: null, rowHash: hash });
+        const envelopeId = leaf.id;
+        spend.push({ envelopeId, dimensionValues, periodDate: day, currency: reportingCurrency, amount: amount.toFixed(2), amountReporting: amount.toFixed(2), fxRateId: null, rowHash: hash });
 
         const cpaBase = new Decimal(15 + (hashStr(`cpa:${c.code}`) % 20));
         const cpa = cpaBase.mul(new Decimal(0.9).plus(new Decimal(rand01(`cpaday:${c.code}:${day}`)).mul(0.2)));
@@ -199,14 +204,42 @@ export function campaignFactsForLeaves(
         const aov = new Decimal(30 + (hashStr(`aov:${c.code}`) % 90));
         const revenue = conversions.mul(aov);
 
-        kpi.push({ dimensionValues, periodDate: day, metric: "conversions", value: conversions.toFixed(0), attributionModel: null, rowHash: `${hash}:conversions` });
-        kpi.push({ dimensionValues, periodDate: day, metric: "impressions", value: impressions.toFixed(0), attributionModel: null, rowHash: `${hash}:impressions` });
-        kpi.push({ dimensionValues, periodDate: day, metric: "clicks", value: clicks.toFixed(0), attributionModel: null, rowHash: `${hash}:clicks` });
-        kpi.push({ dimensionValues, periodDate: day, metric: "revenue", value: revenue.toFixed(2), attributionModel: null, rowHash: `${hash}:revenue` });
+        kpi.push({ envelopeId, dimensionValues, periodDate: day, metric: "conversions", value: conversions.toFixed(0), attributionModel: null, rowHash: `${hash}:conversions` });
+        kpi.push({ envelopeId, dimensionValues, periodDate: day, metric: "impressions", value: impressions.toFixed(0), attributionModel: null, rowHash: `${hash}:impressions` });
+        kpi.push({ envelopeId, dimensionValues, periodDate: day, metric: "clicks", value: clicks.toFixed(0), attributionModel: null, rowHash: `${hash}:clicks` });
+        kpi.push({ envelopeId, dimensionValues, periodDate: day, metric: "revenue", value: revenue.toFixed(2), attributionModel: null, rowHash: `${hash}:revenue` });
       }
     }
   });
   return { spend, kpi, campaignsByLeaf };
+}
+
+/**
+ * HF-3: writes the demo facts straight onto the demo leaf each was generated for — `demo = true`,
+ * `match_method = 'tuple'` (the leaf's tuple is a subset of the fact's) — in one multi-row INSERT
+ * per table, instead of upsert + `UPDATE … SET demo` + `matchRunFacts`. The generic matcher is
+ * wrong for demo data and slow on it: a real budget under a demo leaf with the same tuple is the
+ * deepest candidate on the chain, so the matcher would put demo money on it; and running it over
+ * a fiscal year of daily campaign facts (~28k rows) was most of this request's time, inside one
+ * interactive transaction. Each run's natural keys are new (they carry the run id), so this never
+ * conflicts with an existing fact.
+ */
+async function insertDemoFacts(tx: Tx, load: { workspaceId: string; sourceRunId: string }, spend: DemoSpendFact[], kpi: DemoKpiFact[]): Promise<void> {
+  if (spend.length > 0) {
+    await tx.$executeRaw`
+      INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, natural_key, match_method, demo)
+      SELECT ${load.workspaceId}::uuid, e::uuid, d::jsonb, p::date, c, a::numeric, ar::numeric, 'demo', ${load.sourceRunId}::uuid, h, h, 'tuple', true
+      FROM unnest(${spend.map((r) => r.envelopeId)}::text[], ${spend.map((r) => JSON.stringify(r.dimensionValues))}::text[], ${spend.map((r) => r.periodDate)}::text[],
+                  ${spend.map((r) => r.currency)}::text[], ${spend.map((r) => r.amount)}::text[], ${spend.map((r) => r.amountReporting)}::text[],
+                  ${spend.map((r) => r.rowHash)}::text[]) AS t(e, d, p, c, a, ar, h)`;
+  }
+  if (kpi.length > 0) {
+    await tx.$executeRaw`
+      INSERT INTO kpi_fact (workspace_id, envelope_id, dimension_values, period_date, metric, value, source_system, source_run_id, source_row_hash, natural_key, match_method, demo)
+      SELECT ${load.workspaceId}::uuid, e::uuid, d::jsonb, p::date, m, v::numeric, 'demo', ${load.sourceRunId}::uuid, h, h, 'tuple', true
+      FROM unnest(${kpi.map((r) => r.envelopeId)}::text[], ${kpi.map((r) => JSON.stringify(r.dimensionValues))}::text[], ${kpi.map((r) => r.periodDate)}::text[],
+                  ${kpi.map((r) => r.metric)}::text[], ${kpi.map((r) => r.value)}::text[], ${kpi.map((r) => r.rowHash)}::text[]) AS t(e, d, p, m, v, h)`;
+  }
 }
 
 /** The org-wide `campaign` dimension (plan §8, defaults.registry.ts), created the first time any workspace of the org needs it. */
@@ -353,7 +386,7 @@ export async function seedDemoData(
 
   // EX-3: campaign registry + daily, campaign-level spend and KPI facts for every leaf.
   const runId = randomUUID();
-  const load = { workspaceId: ctx.workspaceId, sourceSystem: "demo", sourceRunId: runId };
+  const load = { workspaceId: ctx.workspaceId, sourceRunId: runId };
   const leaves = usable.filter((e) => e.parentId !== null);
   const wsShort = ctx.workspaceId.replace(/-/g, "").slice(0, 8);
   const campaignLeaves: CampaignLeafInput[] = leaves.map((l, index) => ({ id: l.id, tuple: l.tuple, amount: l.amount, index }));
@@ -367,11 +400,7 @@ export async function seedDemoData(
       campaignCount += campaigns.length;
     }
     await ensurePartitions(tx, iso(start), iso(end));
-    await upsertSpendFacts(tx, load, spend);
-    await upsertKpiFacts(tx, load, kpi);
-    await tx.$executeRaw`UPDATE spend_fact SET demo = true WHERE workspace_id = ${ctx.workspaceId}::uuid AND source_run_id = ${runId}::uuid`;
-    await tx.$executeRaw`UPDATE kpi_fact SET demo = true WHERE workspace_id = ${ctx.workspaceId}::uuid AND source_run_id = ${runId}::uuid`;
-    await matchRunFacts(tx, ctx.workspaceId, runId);
+    await insertDemoFacts(tx, load, spend, kpi);
   }
 
   // One demo experiment: two campaigns of the first leaf that has at least two.
@@ -447,25 +476,20 @@ export async function reseedCampaignDemoData(
   }
 
   await ensurePartitions(tx, iso(start), iso(new Date(Date.UTC(fyYear + 1, ws.fiscalYearStartMonth - 1, 0))));
-  const load = { workspaceId: ctx.workspaceId, sourceSystem: "demo", sourceRunId: runId };
-  await upsertSpendFacts(tx, load, spend);
-  await upsertKpiFacts(tx, load, kpi);
-  await tx.$executeRaw`UPDATE spend_fact SET demo = true WHERE workspace_id = ${ctx.workspaceId}::uuid AND source_run_id = ${runId}::uuid`;
-  await tx.$executeRaw`UPDATE kpi_fact SET demo = true WHERE workspace_id = ${ctx.workspaceId}::uuid AND source_run_id = ${runId}::uuid`;
-  await matchRunFacts(tx, ctx.workspaceId, runId);
+  await insertDemoFacts(tx, { workspaceId: ctx.workspaceId, sourceRunId: runId }, spend, kpi);
 
   // ADR-071 supersede, by hand (no ingest_run/source_id for the demo source): every live demo fact
-  // of these leaves without a campaign (the old monthly seed) is superseded by this run, never deleted.
-  const leafIds = envelopes.map((e) => e.id);
+  // without a campaign (the old monthly seed) is superseded by this run, never deleted. HF-3: by
+  // `demo`, not by envelope — a re-match (EX-1) may have moved an old demo fact onto a real budget
+  // under its leaf, and that one must not stay live beside the new campaign facts.
   let supersededFacts = 0;
   for (const table of ["spend_fact", "kpi_fact"] as const) {
     supersededFacts += await tx.$executeRawUnsafe(
       `UPDATE ${table} SET superseded_at = now(), superseded_by_run_id = $1::uuid
        WHERE workspace_id = $2::uuid AND demo AND source_run_id <> $1::uuid AND superseded_at IS NULL
-         AND envelope_id = ANY($3::uuid[]) AND NOT (dimension_values ? 'campaign')`,
+         AND NOT (dimension_values ? 'campaign')`,
       runId,
       ctx.workspaceId,
-      leafIds,
     );
   }
 
