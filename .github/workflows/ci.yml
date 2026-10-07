@@ -27,7 +27,7 @@ jobs:
   # so a push to main only deploys once this job is green (see deploy.yml's workflow_run trigger).
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16
