@@ -283,10 +283,27 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
   const out: MatchPass = { spend: 0, kpi: 0, projection: 0, envelopeIds: [], gained: [] };
   const touched = new Set<string>();
   const gained = new Set<string>();
+  const named = await conventionTuples(tx, workspaceId, scope.runId ?? null);
+  // The statement's estimated cost (every month partition, the chain search per candidate) crosses
+  // the JIT thresholds even for a run of a handful of facts, and compiling it costs ~5 s per fact
+  // table while executing it takes milliseconds. JIT is off for the pass (transaction-local) and
+  // restored after it.
+  const [jit] = await tx.$queryRaw<Array<{ prev: string }>>`SELECT current_setting('jit') AS prev`;
+  await tx.$queryRaw`SELECT set_config('jit', 'off', true)`;
+  try {
+    await matchTables(tx, workspaceId, scope, named, out, touched, gained);
+  } finally {
+    await tx.$queryRaw`SELECT set_config('jit', ${jit?.prev ?? "on"}, true)`;
+  }
+  out.envelopeIds = [...touched].sort();
+  out.gained = [...gained].sort();
+  return out;
+}
+
+async function matchTables(tx: Tx, workspaceId: string, scope: MatchScope, named: ConventionTuples | null, out: MatchPass, touched: Set<string>, gained: Set<string>): Promise<void> {
   const predicate = scope.predicate === undefined ? null : JSON.stringify(scope.predicate);
   const hint = scope.predicate === undefined ? null : containmentHint(scope.predicate);
   const keep = scope.keep ?? [];
-  const named = await conventionTuples(tx, workspaceId, scope.runId ?? null);
   for (const [key, table] of FACT_TABLES) {
     const rows = await tx.$queryRawUnsafe<Array<{ old_env: string | null; new_env: string | null }>>(
       `WITH f AS (
@@ -416,9 +433,6 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
       }
     }
   }
-  out.envelopeIds = [...touched].sort();
-  out.gained = [...gained].sort();
-  return out;
 }
 
 /**
