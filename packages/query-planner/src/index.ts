@@ -18,5 +18,5 @@ export { NONE_SEGMENT, ROOT_PATH, compileTree, nodeDepth } from "./compile-tree.
 export type { CompiledTree, TreeRequest } from "./compile-tree.js";
 export { bigQuerySupported, compileAggregateBq, compileAggregateTotalsBq } from "./compile-aggregate.bq.js";
 export type { CompiledBqQuery } from "./compile-aggregate.bq.js";
-export { compileFactDimensionValues, compileFactFilter, compileFactSeries, compileFactTotals, factComputable, factWindow } from "./compile-fact-scope.js";
-export type { CompiledFactScope, FactScopeRequest, FactValuesRequest } from "./compile-fact-scope.js";
+export { compileFactFilter, compileFactSeries, compileFactTotals, factComputable, factWindow } from "./compile-fact-scope.js";
+export type { CompiledFactScope, FactScopeRequest } from "./compile-fact-scope.js";

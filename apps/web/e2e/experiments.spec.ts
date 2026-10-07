@@ -83,8 +83,7 @@ test("experiments: the create form explains what is missing and opens the new ex
   await dialog.getByTestId("experiment-kind").selectOption("GEO_HOLDOUT");
   await dialog.getByTestId("experiment-criterion").selectOption("absolute:gte");
   await dialog.getByTestId("experiment-value").fill("10");
-  // EX-2: a side compares a campaign by default; this one scopes budgets with the filter bar.
-  await dialog.getByTestId("experiment-test-kind").selectOption("envelope");
+  // EX-4: every side is the Budgets filter bar, evaluated on facts.
   await dialog.getByTestId("experiment-test-scope").getByRole("button", { name: /add filter/i }).click();
   await dialog.getByTestId("experiment-test-scope").locator("select").first().selectOption("country");
   await dialog.getByTestId("experiment-test-scope").locator("select[multiple]").selectOption("MX");

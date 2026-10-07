@@ -3,15 +3,16 @@ import { PrismaClient } from "@prisma/client";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
 import { concludeExperiment, createExperiment, deleteExperiment, linkEnvelope, transitionExperiment, updateExperiment } from "./commands/experiments.js";
-import { ConcludeExperimentDto, CreateExperimentDto, ExperimentScopeValuesQueryDto, LinkEnvelopeDto, ListExperimentsQueryDto, UpdateExperimentDto } from "./dto.js";
-import { getExperiment, listExperiments, listScopeValues } from "./queries/experiments.js";
+import { ConcludeExperimentDto, CreateExperimentDto, LinkEnvelopeDto, ListExperimentsQueryDto, UpdateExperimentDto } from "./dto.js";
+import { getExperiment, listExperiments } from "./queries/experiments.js";
 
 /**
  * Experiments (spec §25, §17 `experiments`). Reads need envelope.read; writes need
  * envelope.edit_draft (a test is a budget change in the making), and linking also checks the
  * envelope's scope. Entity routes take the workspace from X-Workspace-Id. EX-2: DELETE is permanent
  * and, beyond envelope.edit_draft, needs the experiment's owner or a workspace admin (checked in the
- * command); scope-values lists a fact dimension's values (campaigns) with spend in a window.
+ * command). EX-4: each side's scope is just the Budgets filter bar evaluated on facts — there is no
+ * separate campaign-picker route any more.
  */
 @Controller()
 export class ExperimentsController {
@@ -27,12 +28,6 @@ export class ExperimentsController {
   @Permission("envelope.edit_draft")
   create(@Tenant() auth: AuthContext, @Body() body: CreateExperimentDto) {
     return createExperiment(this.prisma, auth, body);
-  }
-
-  @Get("workspaces/:ws/experiments/scope-values")
-  @Permission("envelope.read")
-  scopeValues(@Tenant() auth: AuthContext, @Query() query: ExperimentScopeValuesQueryDto) {
-    return listScopeValues(this.prisma, auth, query);
   }
 
   @Get("experiments/:id")

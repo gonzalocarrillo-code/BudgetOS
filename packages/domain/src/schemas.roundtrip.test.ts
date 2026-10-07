@@ -390,8 +390,6 @@ const samples: Record<string, readonly unknown[]> = {
   MetricSet: [{ budget: "1000.00", actual: "400.00", metric: "18.5000", leafCount: 3 }],
   ExperimentReadout: [{ test: { budget: "1000.00", actual: "400.00", metric: "18.5", leafCount: 3 }, control: null, delta: null, criterionMet: null, daysRunning: 0 }],
   ExperimentScopeKind: ["envelope", "fact"],
-  ExperimentScopeValuesQuery: [{ start: "2026-01-01", end: "2026-01-31" }, { key: "campaign", start: "2026-01-01", end: "2026-01-31", includeDemo: "true" }],
-  ExperimentScopeValue: [{ code: "cmp_a", label: "Campaign A", spend: "100.00", days: 3 }],
   ExperimentDay: [{ date: "2026-01-01", hasData: false, spend: null, kpis: {}, metrics: { cpa: null } }, { date: "2026-01-02", hasData: true, spend: "10.00", kpis: { conversions: "2" }, metrics: { cpa: "5" } }],
   ExperimentSide: [{ scopeKind: "fact", totals: { spend: "10.00", kpis: { conversions: "2" }, metrics: { cpa: "5" }, daysWithData: 1, daysInWindow: 2 }, days: [] }],
   ExperimentSides: [{ test: { scopeKind: "envelope", totals: { spend: null, kpis: {}, metrics: {}, daysWithData: 0, daysInWindow: 0 }, days: [] }, control: null }],

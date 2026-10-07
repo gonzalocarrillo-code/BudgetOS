@@ -245,8 +245,6 @@ export {
   ExperimentReadout,
   ExperimentRole,
   ExperimentScopeKind,
-  ExperimentScopeValue,
-  ExperimentScopeValuesQuery,
   ExperimentSide,
   ExperimentSides,
   ExperimentStatus,
