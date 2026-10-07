@@ -3,6 +3,7 @@ import { t } from "@budget/ui/i18n";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { renderWithQuery } from "../../test/render.js";
 import { MappingRules, UnassignedCampaigns, parseAliases, predicateText } from "./campaign-mapping.js";
 
@@ -10,6 +11,14 @@ const { GET, POST, DELETE, PATCH } = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.
 vi.mock("../../lib/api.js", () => ({
   api: { GET: (...a: unknown[]) => GET(...a), POST: (...a: unknown[]) => POST(...a), DELETE: (...a: unknown[]) => DELETE(...a), PATCH: (...a: unknown[]) => PATCH(...a) },
   unwrap: vi.fn(async (p: Promise<unknown>) => p),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ to, children, className, ...rest }: { to: string; children?: ReactNode; className?: string; params?: unknown; search?: unknown; "data-testid"?: string }) => (
+    <a href={to} className={className} data-testid={rest["data-testid"]}>
+      {children}
+    </a>
+  ),
 }));
 
 const WS = "01927a00-0000-7000-8000-0000000000a1";
@@ -54,7 +63,14 @@ beforeEach(() => {
   });
   POST.mockImplementation(async (path: string, init: { body: { convention?: unknown } }) => {
     if (path === "/api/v1/workspaces/{ws}/naming-conventions/preview")
-      return { samples: [{ name: "BR_FB_Prospecting", campaign: "c-1", dimensionValues: { country: "BR", platform: "meta" }, problem: null }, { name: "Spring BR", campaign: "c-none", dimensionValues: null, problem: { kind: "parts", expected: 3, found: 1 } }] };
+      return {
+        samples: [
+          { name: "BR_FB_Prospecting", campaign: "c-1", dimensionValues: { country: "BR", platform: "meta" }, problem: null, parts: [{ position: 1, raw: "BR", dimension: "country", code: "BR", source: "registry" }, { position: 2, raw: "FB", dimension: "platform", code: "meta", source: "alias" }, { position: 3, raw: "Prospecting", dimension: null, code: null, source: null }] },
+          { name: "Spring BR", campaign: "c-none", dimensionValues: null, problem: { kind: "parts", expected: 3, found: 1 }, parts: [] },
+        ],
+        unresolved: [{ position: 1, dimension: "country", token: "Narnia", campaigns: 2, amount: "25.00" }],
+        currency: "USD",
+      };
     if (path === "/api/v1/workspaces/{ws}/naming-conventions") return { convention: { ...convention, ...(init.body as object) }, rematch: { spend: 3, kpi: 0, projection: 0, envelopeIds: [BR] } };
     return { rule, rematch: { spend: 1, kpi: 0, projection: 0, envelopeIds: [BR2] } };
   });
@@ -83,16 +99,15 @@ describe("MappingRules (EX-5)", () => {
     expect(rows[2]?.textContent).toContain(t("mapping.conventionLine", { delimiter: "_", parts: `country · platform (FB=meta) · ${t("mapping.ignored")}` }));
   });
 
-  it("deleting: a campaign rule, a convention, and a database reference (its column goes back to ignored)", async () => {
+  it("deleting: a campaign rule and a database reference (its column goes back to ignored); the convention is edited in Registry", async () => {
     rules = { rules: [rule], conventions: [convention], references: [{ sourceId: SRC, sourceName: "Warehouse", column: "budget_id" }] };
     source.mapping.columns.budget_id = { role: "budget_ref" };
     renderWithQuery(<MappingRules ws={WS} canEditBudgets />);
     await screen.findByTestId("mapping-rule-list");
     await screen.findAllByTestId("mapping-rule");
     const del = () => screen.getAllByTestId("mapping-rule-delete");
-    await userEvent.click(del()[2] as HTMLElement);
-    await waitFor(() => expect(DELETE).toHaveBeenCalledWith("/api/v1/naming-conventions/{id}", expect.objectContaining({ params: expect.objectContaining({ path: { id: CONV } }) })));
-    await waitFor(() => expect(del()[1]?.closest("[data-disabled-reason]")).toBeNull());
+    expect(del()).toHaveLength(2);
+    expect(within(screen.getAllByTestId("mapping-rule")[2] as HTMLElement).getByTestId("mapping-edit-naming").getAttribute("href")).toBe("/w/$ws/admin/registry");
     await userEvent.click(del()[1] as HTMLElement);
     await waitFor(() => expect(DELETE).toHaveBeenCalledWith("/api/v1/match-rules/{id}", expect.anything()));
     await waitFor(() => expect(del()[0]?.closest("[data-disabled-reason]")).toBeNull());
@@ -102,6 +117,19 @@ describe("MappingRules (EX-5)", () => {
     source.mapping.columns.budget_id = { role: "ignore" };
   });
 
+  it("EX-6: the convention is shown read-only with its preview (unresolved in words, no colours) and unresolved tokens, without Map to", async () => {
+    rules = { rules: [], conventions: [convention], references: [] };
+    renderWithQuery(<MappingRules ws={WS} canEditBudgets />);
+    const preview = await screen.findByTestId("naming-preview");
+    await waitFor(() => expect(within(preview).getAllByTestId("naming-preview-row")).toHaveLength(2));
+    const rows = within(preview).getAllByTestId("naming-preview-row");
+    expect(rows[0]?.textContent).toContain("meta");
+    expect(rows[1]?.textContent).toContain(t("mapping.problem.parts", { found: 1, expected: 3 }));
+    expect(within(preview).getAllByTestId("naming-unresolved-row")[0]?.textContent).toContain("Narnia");
+    expect(within(preview).queryByTestId("naming-map-to")).toBeNull();
+    expect(document.querySelector(".bg-success, .bg-warning, .bg-destructive")).toBeNull();
+  });
+
   it("without budget edit rights a campaign rule cannot be deleted, with a reason", async () => {
     rules = { rules: [rule], conventions: [], references: [] };
     renderWithQuery(<MappingRules ws={WS} canEditBudgets={false} />);
@@ -109,26 +137,14 @@ describe("MappingRules (EX-5)", () => {
     expect(screen.getByTestId("mapping-rule-delete").closest("[data-disabled-reason]")?.getAttribute("data-disabled-reason")).toBe(t("mapping.noEditReason"));
   });
 
-  it("Add rule → nomenclature: parts of a real campaign name get dimensions and aliases, previewed on real campaigns, then saved", async () => {
+  it("Add rule → nomenclature points to Registry, where the convention is defined", async () => {
     renderWithQuery(<MappingRules ws={WS} canEditBudgets />);
     await userEvent.click(await screen.findByTestId("mapping-add"));
     await userEvent.click(screen.getByTestId("mapping-kind-nomenclature"));
-    await waitFor(() => expect(screen.getAllByTestId("mapping-part")).toHaveLength(3)); // BR_FB_Prospecting split on _
-    expect(screen.getByTestId("mapping-save").closest("[data-disabled-reason]")?.getAttribute("data-disabled-reason")).toBe(t("mapping.needDimension"));
-    await waitFor(() => expect(screen.getAllByTestId("mapping-part-dimension")[0]?.querySelectorAll("option").length).toBe(3)); // Ignore, Country, Platform (never campaign)
-    await userEvent.selectOptions(screen.getAllByTestId("mapping-part-dimension")[0] as HTMLElement, "country");
-    await userEvent.selectOptions(screen.getAllByTestId("mapping-part-dimension")[1] as HTMLElement, "platform");
-    await userEvent.type(screen.getAllByTestId("mapping-part-aliases")[1] as HTMLElement, "FB=meta");
-    const preview = await screen.findByTestId("mapping-preview");
-    await waitFor(() => expect(within(preview).getAllByTestId("mapping-preview-row")).toHaveLength(2));
-    const rows = within(preview).getAllByTestId("mapping-preview-row");
-    expect(rows[0]?.textContent).toContain("country BR · platform meta");
-    expect(rows[1]?.textContent).toContain(t("mapping.problem.parts", { found: 1, expected: 3 }));
-    await userEvent.click(screen.getByTestId("mapping-save"));
-    await waitFor(() => expect(POST.mock.calls.some((c) => c[0] === "/api/v1/workspaces/{ws}/naming-conventions")).toBe(true));
-    const saved = POST.mock.calls.find((c) => c[0] === "/api/v1/workspaces/{ws}/naming-conventions");
-    expect((saved?.[1] as { body: unknown }).body).toEqual({ delimiter: "_", tokens: [{ dimension: "country", aliases: {} }, { dimension: "platform", aliases: { FB: "meta" } }, { dimension: null, aliases: {} }] });
-    expect(await screen.findByTestId("mapping-notice")).toHaveProperty("textContent", t("mapping.saved", { n: 3 }));
+    const box = screen.getByTestId("mapping-naming-in-registry");
+    expect(box.textContent).toContain(t("campaignNaming.setInRegistry"));
+    expect(within(box).getByTestId("mapping-edit-naming")).toBeTruthy();
+    expect(POST.mock.calls.some((c) => c[0] === "/api/v1/workspaces/{ws}/naming-conventions")).toBe(false);
   });
 
   it("Add rule → from the database: a source column becomes the budget reference (one per source)", async () => {

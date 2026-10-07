@@ -155,7 +155,7 @@ export const NamingConventionWriteResponse = z.object({ convention: NamingConven
 export type NamingConventionWriteResponse = z.infer<typeof NamingConventionWriteResponse>;
 
 /** POST /workspaces/:ws/naming-conventions/preview: a convention (saved or not) over campaign names (the largest real ones when none are given). */
-export const NamingConventionPreviewInput = z.object({ convention: CreateNamingConventionInput, names: z.array(z.string().min(1).max(500)).max(20).optional() }).strict();
+export const NamingConventionPreviewInput = z.object({ convention: CreateNamingConventionInput, names: z.array(z.string().min(1).max(500)).max(50).optional() }).strict();
 export type NamingConventionPreviewInput = z.infer<typeof NamingConventionPreviewInput>;
 
 /** Why a name does not fit a convention: wrong number of parts, an empty part, or a part that is no known value of its dimension. */
@@ -166,6 +166,27 @@ export const ConventionProblem = z.discriminatedUnion("kind", [
 ]);
 export type ConventionProblem = z.infer<typeof ConventionProblem>;
 
+/** EX-6 (ADR-0091): one part of a campaign name read with a convention. */
+export const ExplainedPart = z.object({
+  position: z.number().int(),
+  raw: z.string(),
+  dimension: z.string().nullable(),
+  /** The value code the part reads as; null when ignored or unresolved. */
+  code: z.string().nullable(),
+  source: z.enum(["alias", "registry", "dictionary"]).nullable(),
+});
+export type ExplainedPart = z.infer<typeof ExplainedPart>;
+
+/** A token no alias, registry value or dictionary reads, with the live spend of the campaigns that carry it (null for pasted names). */
+export const UnresolvedToken = z.object({
+  position: z.number().int(),
+  dimension: z.string(),
+  token: z.string(),
+  campaigns: z.number().int(),
+  amount: Money.nullable(),
+});
+export type UnresolvedToken = z.infer<typeof UnresolvedToken>;
+
 export const NamingConventionPreviewResponse = z.object({
   samples: z.array(
     z.object({
@@ -174,8 +195,14 @@ export const NamingConventionPreviewResponse = z.object({
       campaign: z.string().nullable(),
       dimensionValues: z.record(z.string(), z.string()).nullable(),
       problem: ConventionProblem.nullable(),
+      /** EX-6: every part and where its value came from (alias, registry, dictionary); empty when the name has another shape. */
+      parts: z.array(ExplainedPart).default([]),
     }),
   ),
+  /** EX-6: tokens nothing reads, per position, over every live campaign (or the names given), largest spend first. */
+  unresolved: z.array(UnresolvedToken).default([]),
+  /** The currency of `unresolved` amounts (the workspace's reporting currency). */
+  currency: z.string().nullable().default(null),
 });
 export type NamingConventionPreviewResponse = z.infer<typeof NamingConventionPreviewResponse>;
 

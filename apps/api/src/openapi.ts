@@ -1,5 +1,12 @@
 import { z } from "zod";
 import {
+  AddNamingAliasInput,
+  AnalyzeNamesInput,
+  AnalyzeNamesResponse,
+  NamingConventionSaveResponse,
+  NamingConventionState,
+  SuggestNamingInput,
+  SuggestNamingResponse,
   CreateMatchRuleInput,
   CreateNamingConventionInput,
   NamingConventionPreviewInput,
@@ -468,6 +475,19 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/naming-conventions/preview": {
         post: { operationId: "previewNamingConvention", parameters: [workspaceParam], requestBody: json(NamingConventionPreviewInput), responses: { "201": { description: "The convention read over the given names, or the largest real campaigns", ...json(NamingConventionPreviewResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-convention": {
+        get: { operationId: "getNamingConvention", parameters: [workspaceParam], responses: { "200": { description: "The workspace's campaign naming convention (EX-6, ADR-0091: the newest live one, edited in Registry) and whether Suggest with AI can run", ...json(NamingConventionState) } } },
+        put: { operationId: "saveNamingConvention", parameters: [workspaceParam], requestBody: json(CreateNamingConventionInput), responses: { "200": { description: "The convention replaces the live ones (a new row); values only a dictionary knows are created; the campaign facts are matched again", ...json(NamingConventionSaveResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-convention/aliases": {
+        post: { operationId: "addNamingAlias", parameters: [workspaceParam], requestBody: json(AddNamingAliasInput), responses: { "201": { description: "Map to…: the token of that dimension's position reads as the value (a new version of the convention); the campaign facts are matched again", ...json(NamingConventionSaveResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-conventions/analyze": {
+        post: { operationId: "analyzeCampaignNames", parameters: [workspaceParam], requestBody: json(AnalyzeNamesInput), responses: { "201": { description: "Deterministic analysis of the given or the workspace's campaign names: delimiter, positions, best dictionary per position, a proposed convention (nothing saved)", ...json(AnalyzeNamesResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-conventions/suggest": {
+        post: { operationId: "suggestNamingConvention", parameters: [workspaceParam], requestBody: json(SuggestNamingInput), responses: { "201": { description: "An AI-suggested convention from campaign names only (not applied); 503 without OPENAI_API_KEY", ...json(SuggestNamingResponse) } } },
       },
       "/api/v1/naming-conventions/{id}": {
         delete: { operationId: "deleteNamingConvention", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Convention soft-deleted; the campaign facts matched again without it", ...json(NamingConventionWriteResponse) } } },

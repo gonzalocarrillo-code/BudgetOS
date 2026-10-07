@@ -1,27 +1,15 @@
-import {
-  CAMPAIGN_DIMENSION,
-  MatchCoverageResponse,
-  MatchRuleWriteResponse,
-  MatchRulesResponse,
-  NamingConventionPreviewResponse,
-  NamingConventionWriteResponse,
-  equalsPredicate,
-  type ConventionProblem,
-  type CreateNamingConventionInput,
-  type MatchRuleGroupT,
-  type NamingConventionDelimiter,
-  type NamingConventionView,
-  type OpenCampaign,
-} from "@budget/domain";
+import { CAMPAIGN_DIMENSION, MatchCoverageResponse, MatchRuleWriteResponse, MatchRulesResponse, equalsPredicate, type MatchRuleGroupT, type NamingConventionView, type OpenCampaign } from "@budget/domain";
 import { Button, Input, Select } from "@budget/ui";
 import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { Card } from "../../components/page.js";
 import { api, unwrap } from "../../lib/api.js";
 import { moneyOrDash } from "../../lib/money.js";
 import { registryQuery, searchQuery } from "../../lib/queries.js";
+import { ConventionPreview, delimiterText } from "../registry/campaign-naming.js";
 import { sourcesQuery, type Source } from "./queries.js";
 
 /**
@@ -30,6 +18,9 @@ import { sourcesQuery, type Source } from "./queries.js";
  * each deletable; and "Add rule". The unassigned / ambiguous campaigns are a plain list under
  * "Unmatched spend" (UnassignedCampaigns), each with "Create rule". No colours, no coverage bar:
  * the coverage endpoint stays (the campaign list comes from it), the page does not draw it.
+ * EX-6 (ADR-0091): the naming convention is defined in Registry › Campaign names; here it is
+ * shown read-only (separator, position → granularity), with its preview and unresolved tokens,
+ * and a link to edit it there.
  */
 
 export const coverageQuery = (ws: string) =>
@@ -69,19 +60,7 @@ export function conventionText(c: Pick<NamingConventionView, "tokens">): string 
     .join(" · ");
 }
 
-export function problemText(p: ConventionProblem): string {
-  return p.kind === "parts" ? t("mapping.problem.parts", { found: p.found, expected: p.expected }) : p.kind === "empty" ? t("mapping.problem.empty", { position: p.position }) : t("mapping.problem.unknown_value", { value: p.value, dimension: p.dimension });
-}
-
-/** `FB=meta, IG=meta` → { FB: "meta", IG: "meta" }. */
-export function parseAliases(s: string): Record<string, string> {
-  return Object.fromEntries(
-    s
-      .split(",")
-      .map((pair) => pair.split("=").map((x) => x.trim()))
-      .filter((kv): kv is [string, string] => kv.length === 2 && kv[0] !== "" && kv[1] !== ""),
-  );
-}
+export { parseAliases, problemText } from "../registry/campaign-naming.js";
 
 type Kind = "campaign" | "database" | "nomenclature";
 const KINDS: Kind[] = ["campaign", "database", "nomenclature"];
@@ -96,10 +75,6 @@ export function MappingRules({ ws, canEditBudgets }: { ws: string; canEditBudget
     mutationFn: async (id: string) => unwrap(api.DELETE("/api/v1/match-rules/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } })),
     onSuccess: () => refresh(client, ws),
   });
-  const removeConvention = useMutation({
-    mutationFn: async (id: string) => unwrap(api.DELETE("/api/v1/naming-conventions/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } })),
-    onSuccess: () => refresh(client, ws),
-  });
   const removeReference = useMutation({
     mutationFn: async ({ sourceId, column }: { sourceId: string; column: string }) => {
       const source = sources.find((s) => s.id === sourceId);
@@ -109,7 +84,8 @@ export function MappingRules({ ws, canEditBudgets }: { ws: string; canEditBudget
     },
     onSuccess: () => refresh(client, ws),
   });
-  const busy = removeRule.isPending || removeConvention.isPending || removeReference.isPending;
+  const busy = removeRule.isPending || removeReference.isPending;
+  const { data: dims = [] } = useQuery(registryQuery(ws));
   const rules = data?.rules ?? [];
   const conventions = data?.conventions ?? [];
   const references = data?.references ?? [];
@@ -168,13 +144,14 @@ export function MappingRules({ ws, canEditBudgets }: { ws: string; canEditBudget
             {conventions.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm" data-testid="mapping-rule" data-kind="nomenclature">
                 <span className="w-48 shrink-0 text-xs text-muted-foreground">{t("mapping.kind.nomenclature")}</span>
-                <span>{t("mapping.conventionLine", { delimiter: c.delimiter === " " ? t("mapping.delimiterSpace") : c.delimiter, parts: conventionText(c) })}</span>
-                {del(deleting, () => removeConvention.mutate(c.id))}
+                <span>{t("mapping.conventionLine", { delimiter: delimiterText(c.delimiter), parts: conventionText(c) })}</span>
+                <RegistryLink ws={ws} />
               </li>
             ))}
           </ul>
         )}
-        {[removeRule.error, removeConvention.error, removeReference.error].map((e, i) => (e ? <p key={i} role="alert" className="text-xs text-destructive">{e.message}</p> : null))}
+        {conventions.length > 0 ? <ConventionPreview ws={ws} convention={conventions[conventions.length - 1] as NamingConventionView} dims={dims} mapTo={null} /> : null}
+        {[removeRule.error, removeReference.error].map((e, i) => (e ? <p key={i} role="alert" className="text-xs text-destructive">{e.message}</p> : null))}
       </div>
     </Card>
   );
@@ -194,12 +171,30 @@ function AddRule({ ws, sources, canEditBudgets, onCancel, onDone }: { ws: string
         ))}
       </fieldset>
       <p className="text-xs text-muted-foreground">{t(`mapping.kindHelp.${kind}` as MessageKey)}</p>
-      {kind === "campaign" ? <CampaignRuleForm ws={ws} canEditBudgets={canEditBudgets} onDone={onDone} /> : kind === "database" ? <DatabaseRuleForm ws={ws} sources={sources} onDone={onDone} /> : <NomenclatureForm ws={ws} onDone={onDone} />}
+      {kind === "campaign" ? <CampaignRuleForm ws={ws} canEditBudgets={canEditBudgets} onDone={onDone} /> : kind === "database" ? <DatabaseRuleForm ws={ws} sources={sources} onDone={onDone} /> : <NomenclatureInRegistry ws={ws} />}
       <div>
         <Button size="sm" variant="ghost" onClick={onCancel} data-testid="mapping-add-cancel">
           {t("mapping.cancel")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** The naming convention is edited in Registry › Campaign names (EX-6). */
+function RegistryLink({ ws }: { ws: string }): ReactElement {
+  return (
+    <Link to="/w/$ws/admin/registry" params={{ ws }} search={{ tab: "naming" } as never} className="ml-auto text-xs text-primary hover:underline" data-testid="mapping-edit-naming">
+      {t("campaignNaming.editInRegistry")}
+    </Link>
+  );
+}
+
+function NomenclatureInRegistry({ ws }: { ws: string }): ReactElement {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="mapping-naming-in-registry">
+      <p className="text-muted-foreground">{t("campaignNaming.setInRegistry")}</p>
+      <RegistryLink ws={ws} />
     </div>
   );
 }
@@ -301,105 +296,6 @@ function DatabaseRuleForm({ ws, sources, onDone }: { ws: string; sources: Source
         </label>
       </div>
       <p className="text-xs text-muted-foreground">{t("mapping.nextRun")}</p>
-      <div>
-        {why ? (
-          <Button size="sm" disabled reason={why} data-testid="mapping-save">
-            {t("mapping.save")}
-          </Button>
-        ) : (
-          <Button size="sm" onClick={() => save.mutate()} data-testid="mapping-save">
-            {t("mapping.save")}
-          </Button>
-        )}
-      </div>
-      {save.error ? <p role="alert" className="text-xs text-destructive">{save.error.message}</p> : null}
-    </div>
-  );
-}
-
-const DELIMITERS: NamingConventionDelimiter[] = ["_", "-", ".", "|", "/", ":", "·", "+", " "];
-
-function NomenclatureForm({ ws, onDone }: { ws: string; onDone: (msg: string) => void }): ReactElement {
-  const client = useQueryClient();
-  const { data: dims = [] } = useQuery(registryQuery(ws));
-  const { data: cov } = useQuery(coverageQuery(ws));
-  const firstName = cov?.byCampaign.find((c) => c.campaign !== null)?.label ?? cov?.byCampaign.find((c) => c.campaign !== null)?.campaign ?? "";
-  const [delimiter, setDelimiter] = useState<NamingConventionDelimiter>("_");
-  const [sample, setSample] = useState<string | null>(null);
-  const [picks, setPicks] = useState<Record<number, { dimension: string | null; aliases: string }>>({});
-  const name = sample ?? firstName;
-  const parts = name === "" ? [] : name.split(delimiter);
-  const convention: CreateNamingConventionInput = { delimiter, tokens: parts.map((_, i) => ({ dimension: picks[i]?.dimension ?? null, aliases: picks[i]?.dimension ? parseAliases(picks[i]?.aliases ?? "") : {} })) };
-  const ready = convention.tokens.some((tk) => tk.dimension !== null);
-  const preview = useQuery({
-    queryKey: ["naming-convention-preview", ws, JSON.stringify(convention)],
-    queryFn: async () => NamingConventionPreviewResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-conventions/preview", { params: { path: { ws } }, body: { convention } as never }))),
-    enabled: ready,
-  });
-  const save = useMutation({
-    mutationFn: async () => NamingConventionWriteResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-conventions", { params: { path: { ws } }, body: convention as never }))),
-    onSuccess: async (res) => {
-      await refresh(client, ws);
-      onDone(t("mapping.saved", { n: res.rematch.spend + res.rematch.kpi + res.rematch.projection }));
-    },
-  });
-  const set = (i: number, p: Partial<{ dimension: string | null; aliases: string }>) => setPicks({ ...picks, [i]: { dimension: picks[i]?.dimension ?? null, aliases: picks[i]?.aliases ?? "", ...p } });
-  const why = name === "" ? t("mapping.needSample") : !ready ? t("mapping.needDimension") : save.isPending ? t("mapping.saving") : null;
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t("mapping.delimiter")}
-          <Select value={delimiter} onChange={(e) => setDelimiter(e.target.value as NamingConventionDelimiter)} data-testid="mapping-delimiter">
-            {DELIMITERS.map((d) => (
-              <option key={d} value={d}>
-                {d === " " ? t("mapping.delimiterSpace") : d}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs text-muted-foreground">
-          {t("mapping.sampleName")}
-          <Input size="sm" value={name} onChange={(e) => setSample(e.target.value)} data-testid="mapping-sample" />
-        </label>
-      </div>
-      {parts.length > 0 ? (
-        <ol className="flex flex-col gap-1.5" data-testid="mapping-parts">
-          {parts.map((part, i) => (
-            <li key={i} className="flex flex-wrap items-center gap-2 text-sm" data-testid="mapping-part">
-              <span className="w-16 text-xs text-muted-foreground">{t("mapping.position", { n: i + 1 })}</span>
-              <span className="w-40 truncate font-mono text-xs">{part}</span>
-              <Select value={picks[i]?.dimension ?? ""} onChange={(e) => set(i, { dimension: e.target.value || null })} aria-label={t("mapping.dimensionFor", { n: i + 1 })} data-testid="mapping-part-dimension">
-                <option value="">{t("mapping.ignore")}</option>
-                {dims
-                  .filter((d) => d.isActive && d.key !== CAMPAIGN_DIMENSION)
-                  .map((d) => (
-                    <option key={d.key} value={d.key}>
-                      {d.label}
-                    </option>
-                  ))}
-              </Select>
-              {picks[i]?.dimension ? <Input size="sm" className="w-48" value={picks[i]?.aliases ?? ""} onChange={(e) => set(i, { aliases: e.target.value })} placeholder={t("mapping.aliases")} aria-label={t("mapping.aliasesFor", { n: i + 1 })} data-testid="mapping-part-aliases" /> : null}
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {ready ? (
-        <div className="flex flex-col gap-1" data-testid="mapping-preview">
-          <h4 className="text-xs font-medium text-muted-foreground">{t("mapping.preview")}</h4>
-          {preview.data && preview.data.samples.length === 0 ? <p className="text-xs text-muted-foreground">{t("mapping.previewNone")}</p> : null}
-          <ul className="flex flex-col gap-0.5 text-xs">
-            {(preview.data?.samples ?? []).map((s) => (
-              <li key={`${s.campaign ?? ""}:${s.name}`} className="flex flex-wrap gap-2" data-testid="mapping-preview-row">
-                <span className="font-mono">{s.name}</span>
-                <span className="text-muted-foreground">→</span>
-                <span>{s.dimensionValues ? Object.entries(s.dimensionValues).map(([k, v]) => `${k} ${v}`).join(" · ") : s.problem ? problemText(s.problem) : ""}</span>
-              </li>
-            ))}
-          </ul>
-          {preview.error ? <p role="alert" className="text-xs text-destructive">{preview.error.message}</p> : null}
-        </div>
-      ) : null}
       <div>
         {why ? (
           <Button size="sm" disabled reason={why} data-testid="mapping-save">

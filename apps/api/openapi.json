@@ -11288,7 +11288,7 @@
                   },
                   "names": {
                     "type": "array",
-                    "maxItems": 20,
+                    "maxItems": 50,
                     "items": {
                       "type": "string",
                       "minLength": 1,
@@ -11400,6 +11400,45 @@
                               }
                             ],
                             "nullable": true
+                          },
+                          "parts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "position": {
+                                  "type": "integer"
+                                },
+                                "raw": {
+                                  "type": "string"
+                                },
+                                "dimension": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "code": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "alias",
+                                    "registry",
+                                    "dictionary"
+                                  ],
+                                  "nullable": true
+                                }
+                              },
+                              "required": [
+                                "position",
+                                "raw",
+                                "dimension",
+                                "code",
+                                "source"
+                              ]
+                            },
+                            "default": []
                           }
                         },
                         "required": [
@@ -11409,10 +11448,995 @@
                           "problem"
                         ]
                       }
+                    },
+                    "unresolved": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "position": {
+                            "type": "integer"
+                          },
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "token": {
+                            "type": "string"
+                          },
+                          "campaigns": {
+                            "type": "integer"
+                          },
+                          "amount": {
+                            "type": "string",
+                            "pattern": "^-?\\d+(\\.\\d{1,2})?$",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "position",
+                          "dimension",
+                          "token",
+                          "campaigns",
+                          "amount"
+                        ]
+                      },
+                      "default": []
+                    },
+                    "currency": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     }
                   },
                   "required": [
                     "samples"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-convention": {
+      "get": {
+        "operationId": "getNamingConvention",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace's campaign naming convention (EX-6, ADR-0091: the newest live one, edited in Registry) and whether Suggest with AI can run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "convention": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "delimiter",
+                        "tokens",
+                        "createdBy",
+                        "createdAt"
+                      ],
+                      "nullable": true
+                    },
+                    "others": {
+                      "type": "integer"
+                    },
+                    "aiAvailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "convention",
+                    "others",
+                    "aiAvailable"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveNamingConvention",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delimiter": {
+                    "type": "string",
+                    "enum": [
+                      "_",
+                      "-",
+                      ".",
+                      "|",
+                      "/",
+                      ":",
+                      "·",
+                      " ",
+                      "+"
+                    ]
+                  },
+                  "tokens": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "dimension": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                          "nullable": true
+                        },
+                        "aliases": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "default": {}
+                        }
+                      },
+                      "required": [
+                        "dimension"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "delimiter",
+                  "tokens"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The convention replaces the live ones (a new row); values only a dictionary knows are created; the campaign facts are matched again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "convention": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "delimiter",
+                        "tokens",
+                        "createdBy",
+                        "createdAt"
+                      ]
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ]
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "convention",
+                    "rematch",
+                    "createdValues"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-convention/aliases": {
+      "post": {
+        "operationId": "addNamingAlias",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dimension": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{1,40}$"
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "dimension",
+                  "token",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Map to…: the token of that dimension's position reads as the value (a new version of the convention); the campaign facts are matched again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "convention": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "delimiter",
+                        "tokens",
+                        "createdBy",
+                        "createdAt"
+                      ]
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ]
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "convention",
+                    "rematch",
+                    "createdValues"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-conventions/analyze": {
+      "post": {
+        "operationId": "analyzeCampaignNames",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "names": {
+                    "type": "array",
+                    "maxItems": 1000,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "delimiter": {
+                    "type": "string",
+                    "enum": [
+                      "_",
+                      "-",
+                      ".",
+                      "|",
+                      "/",
+                      ":",
+                      "·",
+                      " ",
+                      "+"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Deterministic analysis of the given or the workspace's campaign names: delimiter, positions, best dictionary per position, a proposed convention (nothing saved)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "delimiter": {
+                      "type": "string",
+                      "enum": [
+                        "_",
+                        "-",
+                        ".",
+                        "|",
+                        "/",
+                        ":",
+                        "·",
+                        " ",
+                        "+"
+                      ]
+                    },
+                    "partCount": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "fitting": {
+                      "type": "integer"
+                    },
+                    "positions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "position": {
+                            "type": "integer"
+                          },
+                          "cardinality": {
+                            "type": "integer"
+                          },
+                          "examples": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "hits": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "country",
+                                    "language",
+                                    "region",
+                                    "platform",
+                                    "channel",
+                                    "objective",
+                                    "audience",
+                                    "funnel_stage",
+                                    "device",
+                                    "month",
+                                    "quarter",
+                                    "year"
+                                  ],
+                                  "nullable": true
+                                },
+                                "dimension": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "hitRate": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "dimension",
+                                "hitRate"
+                              ]
+                            }
+                          },
+                          "best": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "country",
+                                  "language",
+                                  "region",
+                                  "platform",
+                                  "channel",
+                                  "objective",
+                                  "audience",
+                                  "funnel_stage",
+                                  "device",
+                                  "month",
+                                  "quarter",
+                                  "year"
+                                ],
+                                "nullable": true
+                              },
+                              "dimension": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "hitRate": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "dimension",
+                              "hitRate"
+                            ],
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "position",
+                          "cardinality",
+                          "examples",
+                          "hits",
+                          "best"
+                        ]
+                      }
+                    },
+                    "proposal": {
+                      "type": "object",
+                      "properties": {
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "delimiter",
+                        "tokens"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "pasted",
+                        "facts"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "delimiter",
+                    "partCount",
+                    "total",
+                    "fitting",
+                    "positions",
+                    "proposal",
+                    "source"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-conventions/suggest": {
+      "post": {
+        "operationId": "suggestNamingConvention",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "names": {
+                    "type": "array",
+                    "maxItems": 300,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "An AI-suggested convention from campaign names only (not applied); 503 without OPENAI_API_KEY",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "suggestion": {
+                      "type": "object",
+                      "properties": {
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "positions": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 20,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "exclusiveMinimum": false,
+                                "maximum": 1,
+                                "exclusiveMaximum": false
+                              }
+                            },
+                            "required": [
+                              "dimension",
+                              "confidence"
+                            ]
+                          }
+                        },
+                        "mappings": {
+                          "type": "array",
+                          "maxItems": 500,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "position": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "exclusiveMinimum": false,
+                                "maximum": 20,
+                                "exclusiveMaximum": false
+                              },
+                              "token": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 100
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "exclusiveMinimum": false,
+                                "maximum": 1,
+                                "exclusiveMaximum": false
+                              }
+                            },
+                            "required": [
+                              "position",
+                              "token",
+                              "value",
+                              "confidence"
+                            ]
+                          },
+                          "default": []
+                        }
+                      },
+                      "required": [
+                        "delimiter",
+                        "positions"
+                      ]
+                    },
+                    "proposal": {
+                      "type": "object",
+                      "properties": {
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "delimiter",
+                        "tokens"
+                      ]
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "names": {
+                      "type": "integer"
+                    },
+                    "applied": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "suggestion",
+                    "proposal",
+                    "model",
+                    "names",
+                    "applied"
                   ]
                 }
               }

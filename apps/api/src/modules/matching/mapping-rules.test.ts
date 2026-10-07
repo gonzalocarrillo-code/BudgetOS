@@ -114,11 +114,12 @@ describe("naming conventions", () => {
     const res = await call(dataAdmin, "POST", `/workspaces/${ws}/naming-conventions/preview`, { convention });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body["samples"]).toEqual([
-      { name: "BR_FB_Q4", campaign: "c-1", dimensionValues: { country: "BR", platform: "meta" }, problem: null },
-      { name: "Brazil spring", campaign: "c-2", dimensionValues: null, problem: { kind: "parts", expected: 3, found: 1 } },
+      expect.objectContaining({ name: "BR_FB_Q4", campaign: "c-1", dimensionValues: { country: "BR", platform: "meta" }, problem: null }),
+      expect.objectContaining({ name: "Brazil spring", campaign: "c-2", dimensionValues: null, problem: { kind: "parts", expected: 3, found: 1 } }),
     ]);
-    const typed = await call(dataAdmin, "POST", `/workspaces/${ws}/naming-conventions/preview`, { convention, names: ["BR_TikTok_x"] });
-    expect(typed.body["samples"]).toEqual([{ name: "BR_TikTok_x", campaign: null, dimensionValues: null, problem: { kind: "unknown_value", position: 2, dimension: "platform", value: "TikTok" } }]);
+    // EX-6: TikTok is in the platform dictionary now; a token no dictionary knows is still unknown.
+    const typed = await call(dataAdmin, "POST", `/workspaces/${ws}/naming-conventions/preview`, { convention, names: ["BR_Zzz_x"] });
+    expect(typed.body["samples"]).toEqual([expect.objectContaining({ name: "BR_Zzz_x", campaign: null, dimensionValues: null, problem: { kind: "unknown_value", position: 2, dimension: "platform", value: "Zzz" } })]);
   });
 
   it("only a data admin writes one; its dimensions must exist", async () => {

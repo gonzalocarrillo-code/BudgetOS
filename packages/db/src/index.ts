@@ -42,6 +42,8 @@ export type { CurrentFilterTarget } from "./planner-options.js";
 export { matchCoverage } from "./match-coverage.js";
 export type { CoverageAmountsRow, MatchCoverage } from "./match-coverage.js";
 export { assignUnmatched, campaignNames, conventionResolver, conventionTuples, ensurePartitions, topCampaigns, insertProjectionFacts, matchFacts, matchRunFacts, spendThroughInCurrency, tuplesWithEnvelope, runCoverage, runEnvelopes, supersedeMovedFacts, supersedeUnseenFacts, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
+export { campaignSpend, ensureDictionaryValues, namingResolver } from "./naming-conventions.js";
+export type { CampaignSpend, DictionaryValue } from "./naming-conventions.js";
 export type { ConventionTuples, FactLoad, KpiFactInput, MatchHint, MatchMethod, MatchPass, MatchScope, ProjectionFactInput, RunCoverage, SpendFactInput, SpendInCurrency, Superseded, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
