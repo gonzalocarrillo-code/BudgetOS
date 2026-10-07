@@ -46,6 +46,7 @@ export const OrgPerson = z.object({
   email: z.string(),
   isActive: z.boolean(),
   signedIn: z.boolean(),
+  lastSignInAt: z.string().nullable(),
   superadmin: z.boolean(),
   /** S-14 (ADR-075): the Slack user id this person is pinned to, or null if never linked. */
   slackUserId: z.string().nullable(),

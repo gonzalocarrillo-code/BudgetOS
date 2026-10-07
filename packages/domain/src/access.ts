@@ -35,7 +35,7 @@ export type AddPersonInput = z.infer<typeof AddPersonInput>;
 /** GET /workspaces/:ws/members: the org's people and groups, each with its role assignments in this workspace. */
 const Assignment = z.object({ id: z.string().uuid(), role: z.string(), scope: z.unknown() });
 export const PeopleResponse = z.object({
-  users: z.array(z.object({ id: z.string().uuid(), email: z.string(), name: z.string(), isActive: z.boolean(), signedIn: z.boolean(), orgAdmin: z.boolean(), roles: z.array(Assignment) })),
+  users: z.array(z.object({ id: z.string().uuid(), email: z.string(), name: z.string(), isActive: z.boolean(), signedIn: z.boolean(), lastSignInAt: z.string().nullable(), orgAdmin: z.boolean(), roles: z.array(Assignment) })),
   groups: z.array(z.object({ id: z.string().uuid(), name: z.string(), googleGroup: z.string(), memberCount: z.number().int(), roles: z.array(Assignment) })),
 });
 export type PeopleResponse = z.infer<typeof PeopleResponse>;

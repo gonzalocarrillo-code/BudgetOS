@@ -92,6 +92,9 @@ model User {
   googleSub   String?  @unique @map("google_sub")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  /// Round 11 (PR 1): last successful sign-in, written by app_record_sign_in(). Null until the
+  /// person's first sign-in, so the Roles/org-console UI can show "Invited, not signed in yet".
+  lastSignInAt DateTime? @map("last_sign_in_at") @db.Timestamptz
   /// The person's own settings (S-010): `slack.defaultWorkspaceId`. Written only through app_set_my_slack_settings.
   settings    Json     @default("{}")
   /// S-14 (ADR-075): the Slack user id this app user's identity is pinned to, set on first contact

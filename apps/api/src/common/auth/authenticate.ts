@@ -27,6 +27,12 @@ export async function authenticate(deps: AuthDeps, input: { authorization: strin
   const user = await deps.access.findUser(identity);
   if (user === null || !user.isActive) throw new DomainError("FORBIDDEN", "Unknown or inactive user");
   const { workspaceId, requestId } = input;
+  // Round 11 (PR 1): remember the sign-in so "Not signed in yet" clears for someone who was added
+  // by email. Fire-and-forget: login latency doesn't change on it. Slack's verified-email path
+  // (authenticateVerifiedEmail) is not a sign-in, and MCP actors never go through here as "user".
+  if ((input.actorType ?? "user") === "user" && (user.lastSignInAt === null || user.googleSub === null || Date.now() - user.lastSignInAt.getTime() > 15 * 60_000)) {
+    void deps.access.recordSignIn(identity, user, requestId);
+  }
   let access: WorkspaceAccess | undefined = deps.cache.get(user.id, workspaceId);
   if (!access) {
     access = await deps.access.access(user, workspaceId, requestId);

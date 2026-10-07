@@ -8,6 +8,7 @@ import { useState, type ReactElement } from "react";
 import { Card, Page } from "../components/page.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery } from "../lib/queries.js";
+import { relativeTime } from "../lib/relative-time.js";
 
 /**
  * Org console › People (ADR-052): everyone in the organization, where they hold roles, and
@@ -54,6 +55,7 @@ function PeoplePage(): ReactElement {
                     {!p.isActive ? <StatusChip status="ARCHIVED" label={t("roles.inactive")} /> : !p.signedIn ? <StatusChip status="PENDING" label={t("roles.notSignedIn")} /> : null}
                   </span>
                   <span className="block text-xs text-muted-foreground">{p.email}</span>
+                  {p.signedIn && p.lastSignInAt ? <span className="block text-xs text-muted-foreground">{t("roles.lastSeen", { when: relativeTime(p.lastSignInAt) })}</span> : null}
                 </span>
                 <span className="flex min-w-0 flex-[2] flex-wrap gap-1.5">
                   {p.workspaces.length === 0 ? <span className="text-sm text-muted-foreground">{t("org.people.noWorkspace")}</span> : null}

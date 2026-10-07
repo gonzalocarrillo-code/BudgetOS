@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, registryQuery } from "../lib/queries.js";
+import { relativeTime } from "../lib/relative-time.js";
 
 /**
  * Roles and access (spec §7, plan §7; product feedback 6): who can do what in this workspace.
@@ -64,9 +65,9 @@ function RolesPage(): ReactElement {
     );
   }
 
-  const principals: Array<{ type: "user" | "group"; id: string; name: string; sub: string; badges: string[]; roles: Array<{ id: string; role: string; scope?: unknown }> }> = [
-    ...(data?.users ?? []).map((u) => ({ type: "user" as const, id: u.id, name: u.name, sub: u.email, badges: [...(u.orgAdmin ? [t("roles.orgAdmin")] : []), ...(!u.signedIn ? [t("roles.notSignedIn")] : []), ...(!u.isActive ? [t("roles.inactive")] : [])], roles: u.roles })),
-    ...(data?.groups ?? []).map((g) => ({ type: "group" as const, id: g.id, name: g.name, sub: t("roles.groupMembers", { count: g.memberCount, email: g.googleGroup }), badges: [t("roles.group")], roles: g.roles })),
+  const principals: Array<{ type: "user" | "group"; id: string; name: string; sub: string; badges: string[]; lastSeen: string | null; roles: Array<{ id: string; role: string; scope?: unknown }> }> = [
+    ...(data?.users ?? []).map((u) => ({ type: "user" as const, id: u.id, name: u.name, sub: u.email, badges: [...(u.orgAdmin ? [t("roles.orgAdmin")] : []), ...(!u.signedIn ? [t("roles.notSignedIn")] : []), ...(!u.isActive ? [t("roles.inactive")] : [])], lastSeen: u.signedIn && u.lastSignInAt ? t("roles.lastSeen", { when: relativeTime(u.lastSignInAt) }) : null, roles: u.roles })),
+    ...(data?.groups ?? []).map((g) => ({ type: "group" as const, id: g.id, name: g.name, sub: t("roles.groupMembers", { count: g.memberCount, email: g.googleGroup }), badges: [t("roles.group")], lastSeen: null, roles: g.roles })),
   ];
 
   return (
@@ -83,6 +84,7 @@ function RolesPage(): ReactElement {
                 {p.type === "group" ? <Users className="size-4 text-muted-foreground" aria-hidden /> : null}
                 <span className="font-medium">{p.name}</span>
                 <span className="text-xs text-muted-foreground">{p.sub}</span>
+                {p.lastSeen ? <span className="text-xs text-muted-foreground">{p.lastSeen}</span> : null}
                 {p.badges.map((b) => (
                   <span key={b} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{b}</span>
                 ))}

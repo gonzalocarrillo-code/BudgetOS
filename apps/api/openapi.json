@@ -299,6 +299,10 @@
                           "signedIn": {
                             "type": "boolean"
                           },
+                          "lastSignInAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "orgAdmin": {
                             "type": "boolean"
                           },
@@ -330,6 +334,7 @@
                           "name",
                           "isActive",
                           "signedIn",
+                          "lastSignInAt",
                           "orgAdmin",
                           "roles"
                         ]
@@ -15502,6 +15507,10 @@
                           "signedIn": {
                             "type": "boolean"
                           },
+                          "lastSignInAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "superadmin": {
                             "type": "boolean"
                           },
@@ -15542,6 +15551,7 @@
                           "email",
                           "isActive",
                           "signedIn",
+                          "lastSignInAt",
                           "superadmin",
                           "slackUserId",
                           "workspaces"
