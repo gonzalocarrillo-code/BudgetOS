@@ -47,10 +47,11 @@ registry label).
    **manual pin > database reference > campaign → budget rule > nomenclature-derived tuple > plain
    tuple.** A database reference that names no live budget leaves the fact unassigned with reason
    `unknown_budget_ref` (`budget_ref_outside_dates` when the budget exists but does not cover the
-   date) and never falls through. A campaign name that fits no convention (when the workspace has
-   at least one) leaves the fact unassigned with reason `name_mismatch` and does not fall through to
-   the plain tuple: a convention exists to make campaigns specific, so a misfit is shown, not sent
-   to a coarser budget. A fact without a campaign is not touched by conventions.
+   date) and never falls through. A campaign name that fits no convention adds nothing and **falls
+   through to the plain tuple** on the fact's own dimensions: adding a convention must never
+   unassign spend that matched before. Only when that plain match also finds no budget is the fact
+   marked `name_mismatch` (the reason it is unassigned). A fact without a campaign is not touched by
+   conventions.
 4. **Reasons live in `match_status`** (with `ambiguous`), its CHECK widened to `ambiguous`,
    `name_mismatch`, `unknown_budget_ref`, `budget_ref_outside_dates`; `match_method` gains
    `reference` and `naming` (`naming` when the winning budget needs a value read from the name).
@@ -75,9 +76,10 @@ registry label).
 ## Consequences
 
 - A workspace with no convention and no `budget_ref` column matches exactly as under ADR-0085.
-- Adding a convention can turn previously tuple-matched campaign facts into `name_mismatch` when
-  their names do not fit; the preview shows this before saving, and deleting the convention
-  restores the previous assignment.
+- Adding a convention never unassigns a fact that matched before: a name that does not fit keeps
+  its plain tuple match. A convention can only make a fact more specific (a deeper budget) or
+  explain why an already-unassigned campaign stays unassigned (`name_mismatch`). Deleting the
+  convention restores the previous assignment.
 - A database reference to an archived or deleted budget leaves the fact unassigned (visible), not
   on another budget.
 - The convention pass reads the distinct campaigns in scope each matching pass; with very many

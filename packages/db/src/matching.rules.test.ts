@@ -197,6 +197,7 @@ describe("naming convention", () => {
   let named: string;
   let aliased: string;
   let odd: string;
+  let lost: string;
   let plain: string;
   let ruled: string;
   let pinned: string;
@@ -206,6 +207,7 @@ describe("naming convention", () => {
     named = await fact({ country: "BR", campaign: await campaign("c-named", "BR_Meta_Prospecting_Q4_VideoA") }, "20.00", { run: randomUUID() });
     aliased = await fact({ campaign: await campaign("c-alias", "br_FB_prospecting_Q4_x") }, "6.00", { run: randomUUID() });
     odd = await fact({ country: "BR", campaign: await campaign("c-odd", "Spring sale Brazil") }, "5.00", { run: randomUUID() });
+    lost = await fact({ campaign: await campaign("c-lost", "Winter promo") }, "4.00", { run: randomUUID() });
     plain = await fact({ country: "BR" }, "1.00", { run: randomUUID() });
     ruled = await fact({ country: "BR", campaign: await campaign("c-ruled", "BR_Meta_Prospecting_Q4_x") }, "7.00", { run: randomUUID() });
     pinned = await fact({ country: "BR", campaign: "c-pinned" }, "8.00", { envelopeId: env["ruleTarget"] as string, method: "manual", run: randomUUID() });
@@ -217,13 +219,16 @@ describe("naming convention", () => {
     expect(await state(odd)).toMatchObject({ envelope_id: env["br"], match_method: "tuple" });
   });
 
-  it("creating a convention re-matches: names are parsed (aliases applied) into the tuple; a name that does not fit is unassigned with the reason", async () => {
+  it("creating a convention re-matches: names are parsed (aliases applied) into the tuple; a name that does not fit falls through to the plain tuple", async () => {
     conventionId = await convention();
     const pass = await asApp((tx) => matchFacts(tx, ws, { predicate: live("campaign") }));
     expect(pass.envelopeIds).toEqual([env["br"], env["brMetaPros"]].sort());
     expect(await state(named)).toEqual({ envelope_id: env["brMetaPros"], match_method: "naming", match_status: null });
     expect(await state(aliased)).toEqual({ envelope_id: env["brMetaPros"], match_method: "naming", match_status: null });
-    expect(await state(odd)).toEqual({ envelope_id: null, match_method: null, match_status: "name_mismatch" });
+    // An existing tuple-matched fact whose name does not fit the new convention stays on its budget.
+    expect(await state(odd)).toEqual({ envelope_id: env["br"], match_method: "tuple", match_status: null });
+    // Only when the plain tuple also finds nothing is "name doesn't match convention" the reason.
+    expect(await state(lost)).toEqual({ envelope_id: null, match_method: null, match_status: "name_mismatch" });
     // A fact without a campaign is not touched by conventions: the plain tuple decides.
     expect(await state(plain)).toMatchObject({ envelope_id: env["br"], match_method: "tuple" });
   });
@@ -238,7 +243,8 @@ describe("naming convention", () => {
 
   it("coverage lists the unassigned campaign with its reason", async () => {
     const cov = await asApp((tx) => matchCoverage(tx, ws, { limit: 100, campaignKey: "campaign" }));
-    expect(cov.open.find((o) => o.campaign === "c-odd")).toMatchObject({ status: "unmatched", reason: "name_mismatch", amount: "5.00", label: "Spring sale Brazil" });
+    expect(cov.open.find((o) => o.campaign === "c-lost")).toMatchObject({ status: "unmatched", reason: "name_mismatch", amount: "4.00", label: "Winter promo" });
+    expect(cov.open.some((o) => o.campaign === "c-odd")).toBe(false);
     expect(cov.open.find((o) => o.reason === "unknown_budget_ref")).toMatchObject({ status: "unmatched", campaign: null });
   });
 
@@ -247,6 +253,7 @@ describe("naming convention", () => {
     await asApp((tx) => matchFacts(tx, ws, { predicate: live("campaign") }));
     expect(await state(named)).toEqual({ envelope_id: env["br"], match_method: "tuple", match_status: null });
     expect(await state(odd)).toEqual({ envelope_id: env["br"], match_method: "tuple", match_status: null });
+    expect(await state(lost)).toEqual({ envelope_id: null, match_method: null, match_status: null });
     expect(await state(aliased)).toEqual({ envelope_id: null, match_method: null, match_status: null });
   });
 

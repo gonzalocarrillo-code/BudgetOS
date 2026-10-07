@@ -269,11 +269,12 @@ export async function topCampaigns(tx: Tx, workspaceId: string, limit: number): 
  *    fall-through to the levels below;
  * 3. match rules: the distinct live, date-covering envelopes of every live rule whose predicate the
  *    fact satisfies (and whose own window covers the fact's date);
- * 4. a campaign name that fits none of the workspace's naming conventions → unassigned
- *    (`name_mismatch`);
- * 5. otherwise the tuple — the fact's own dimension values plus those its campaign name gives
+ * 4. otherwise the tuple — the fact's own dimension values plus those its campaign name gives
  *    (`naming` when the winning budget needs one of those) — the live, date-covering envelopes whose
- *    non-empty tuple is a subset of it, at the highest key count.
+ *    non-empty tuple is a subset of it, at the highest key count. A campaign name that fits no
+ *    convention adds nothing: the fact's own dimensions decide, so adding a convention never
+ *    unassigns spend that matched before; only when that also finds no budget is the fact marked
+ *    `name_mismatch` (the reason it is unassigned).
  * The first level with candidates decides: exactly one → assigned; more than one on one ancestor
  * chain → the deepest; otherwise `ambiguous`, no envelope, candidates kept. Never tie-broken by id.
  * One statement per fact table.
@@ -334,16 +335,16 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
             AND e.dimension_values <@ f.tuple
             AND e.dimension_values <> '{}'::jsonb
             AND e.status <> 'ARCHIVED'
-           WHERE f.ref IS NULL AND NOT f.misfit
+           WHERE f.ref IS NULL
              AND NOT EXISTS (SELECT 1 FROM rc WHERE rc.id = f.id AND rc.period_date = f.period_date)
          ) x
          WHERE x.rk = 1
          GROUP BY x.id, x.period_date
        ),
        d0 AS (
-         SELECT f.id, f.period_date, f.dimension_values, f.old_env, f.old_method, f.old_status, f.old_cands,
-                CASE WHEN f.ref IS NOT NULL THEN 'reference' WHEN rc.envs IS NOT NULL THEN 'rule' WHEN f.misfit THEN 'misfit' ELSE 'tuple' END AS level,
-                CASE WHEN f.ref IS NOT NULL THEN xc.envs WHEN rc.envs IS NOT NULL THEN rc.envs WHEN f.misfit THEN NULL ELSE tc.envs END AS envs,
+         SELECT f.id, f.period_date, f.dimension_values, f.old_env, f.old_method, f.old_status, f.old_cands, f.misfit,
+                CASE WHEN f.ref IS NOT NULL THEN 'reference' WHEN rc.envs IS NOT NULL THEN 'rule' ELSE 'tuple' END AS level,
+                CASE WHEN f.ref IS NOT NULL THEN xc.envs WHEN rc.envs IS NOT NULL THEN rc.envs ELSE tc.envs END AS envs,
                 coalesce(xc.known, false) AS known
          FROM f
          LEFT JOIN xc ON xc.id = f.id AND xc.period_date = f.period_date
@@ -355,7 +356,7 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
        -- n reads envs several times (and inside a subquery); inlined, the chain search would run
        -- again for every read.
        d AS MATERIALIZED (
-         SELECT d0.id, d0.period_date, d0.dimension_values, d0.old_env, d0.old_method, d0.old_status, d0.old_cands, d0.level, d0.known,
+         SELECT d0.id, d0.period_date, d0.dimension_values, d0.old_env, d0.old_method, d0.old_status, d0.old_cands, d0.level, d0.known, d0.misfit,
                 CASE WHEN cardinality(d0.envs) > 1 THEN coalesce((
                   SELECT ARRAY[c] FROM unnest(d0.envs) AS c
                   WHERE NOT EXISTS (
@@ -382,7 +383,7 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
                        ELSE 'tuple' END
                 END AS new_method,
                 CASE WHEN cardinality(d.envs) > 1 THEN 'ambiguous'
-                     WHEN d.level = 'misfit' THEN 'name_mismatch'
+                     WHEN d.level = 'tuple' AND d.misfit AND d.envs IS NULL THEN 'name_mismatch'
                      WHEN d.level = 'reference' AND d.envs IS NULL THEN CASE WHEN d.known THEN 'budget_ref_outside_dates' ELSE 'unknown_budget_ref' END
                 END AS new_status,
                 CASE WHEN cardinality(d.envs) > 1 THEN d.envs END AS new_cands
