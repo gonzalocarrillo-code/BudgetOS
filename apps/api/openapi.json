@@ -15635,13 +15635,17 @@
                     },
                     "hidden": {
                       "type": "boolean"
+                    },
+                    "hasCampaignData": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
                     "envelopes",
                     "targets",
                     "hasRealBudgets",
-                    "hidden"
+                    "hidden",
+                    "hasCampaignData"
                   ]
                 }
               }
@@ -15690,6 +15694,69 @@
           },
           "409": {
             "description": "A real (non-demo) target is attached to a demo envelope; move or delete it first"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/demo-data/campaigns": {
+      "post": {
+        "operationId": "addCampaignDemoData",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "EX-3, org admins only: campaign-level demo facts and one demo experiment added (idempotent — a second call is a no-op); supersedes the old monthly demo facts of the same leaves",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "alreadyPresent": {
+                      "type": "boolean"
+                    },
+                    "campaigns": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": false
+                    },
+                    "facts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": false
+                    },
+                    "supersededFacts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": false
+                    },
+                    "experiments": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": false
+                    }
+                  },
+                  "required": [
+                    "alreadyPresent",
+                    "campaigns",
+                    "facts",
+                    "supersededFacts",
+                    "experiments"
+                  ]
+                }
+              }
+            }
           }
         }
       }

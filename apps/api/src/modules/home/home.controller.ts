@@ -6,7 +6,7 @@ import { CompleteTourDto, CreateWorkspaceDto, ListToursQueryDto, MarkNotificatio
 import { getHome } from "./home.js";
 import { myNotifications, readNotifications } from "./notifications.js";
 import { completeTour, listTours, updateTour } from "../tours/tours.js";
-import { createWorkspace, demoStatus, listTemplates, purgeDemo } from "../workspaces/workspaces.js";
+import { addCampaignDemoData, createWorkspace, demoStatus, listTemplates, purgeDemo } from "../workspaces/workspaces.js";
 
 /**
  * Home, tours and workspace templates (spec §27, §17 `home`). Entity routes take the workspace
@@ -76,5 +76,12 @@ export class HomeController {
   @Permission("user.manage")
   purge(@Tenant() auth: AuthContext, @Body() body: PurgeDemoDto) {
     return purgeDemo(this.prisma, auth, body);
+  }
+
+  /** EX-3: org admins only — how the production Sandbox (and any other pre-EX-3 demo workspace) picks up campaign-level demo data. */
+  @Post("workspaces/:ws/demo-data/campaigns")
+  @Permission("org.admin")
+  addCampaigns(@Tenant() auth: AuthContext) {
+    return addCampaignDemoData(this.prisma, auth);
   }
 }

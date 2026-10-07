@@ -87,15 +87,21 @@ describe("workspace templates (T-040)", () => {
     expect(Date.now() - started).toBeLessThan(perfBudgetMs(60_000));
     const tours = await as("orgAdmin", "GET", "/tours?all=true", undefined, ws);
     expect((tours.body as unknown as Array<{ role: string; isDefault: boolean }>).map((t) => [t.role, t.isDefault]).sort()).toEqual(DEFAULT_TOURS.map((t) => [t.role, false]).sort());
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false, hasCampaignData: true });
 
     // HF-1 (audit T-5 follow-up): `hidden` turns on the moment a real budget joins the demo ones —
     // the Sandbox bug (demo roots hiding the one real budget underneath, with nothing saying why).
     const realId = randomUUID();
     await asOwner((tx) => tx.envelope.create({ data: { id: realId, workspaceId: ws, name: "Real budget", dimensionValues: {}, startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T00:00:00Z"), currency: "USD", createdBy: golden.users.orgAdmin, demo: false } }));
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: true, hidden: true });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: true, hidden: true, hasCampaignData: true });
     await asOwner((tx) => tx.envelope.delete({ where: { id: realId } }));
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 9, targets: 3, hasRealBudgets: false, hidden: false, hasCampaignData: true });
+
+    // EX-3: campaign demo data is already there (seedDemoData writes it directly now), so the
+    // reseed endpoint is a no-op on a freshly-created workspace.
+    const addCampaigns = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/campaigns`, {}, ws);
+    expect(addCampaigns.status, JSON.stringify(addCampaigns.body)).toBe(201);
+    expect(addCampaigns.body).toMatchObject({ alreadyPresent: true, facts: 0, supersededFacts: 0 });
 
     // I-3: purging without confirming is refused.
     expect((await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, {}, ws)).status).toBe(422);
@@ -103,8 +109,8 @@ describe("workspace templates (T-040)", () => {
     // Purge: one call removes every demo row; the template's configuration stays.
     const purged = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/purge`, { confirm: true }, ws);
     expect(purged.status, JSON.stringify(purged.body)).toBe(201);
-    expect(purged.body).toMatchObject({ envelopes: 9, targets: 3, detachedFacts: 0 });
-    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0, hasRealBudgets: false, hidden: false });
+    expect(purged.body).toMatchObject({ envelopes: 9, targets: 3, detachedFacts: 0, experiments: 1 });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toEqual({ envelopes: 0, targets: 0, hasRealBudgets: false, hidden: false, hasCampaignData: false });
     expect(await asOwner((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM spend_fact WHERE workspace_id = $1::uuid`, ws))).toEqual([{ n: 0n }]);
     expect((await query()).body["totals"]).toMatchObject({ leafCount: "0" });
     expect(await asOwner((tx) => tx.approvalPolicy.count({ where: { workspaceId: ws } }))).toBe(DEFAULT_POLICIES.length);
@@ -207,6 +213,49 @@ describe("demo purge safety (I-3)", () => {
       ),
     );
     expect(rematched).toEqual([{ envelope_id: realEnvelopeId, match_method: "tuple" }]);
+  });
+});
+
+describe("POST /workspaces/:ws/demo-data/campaigns (EX-3)", () => {
+  it("org admins only; adds campaign data to a workspace that only has the old leaf-level monthly demo facts, superseding them (never deleting), without doubling totals", async () => {
+    const ws = await demoWorkspace("EX-3 Reseed Target");
+    // Simulate a pre-EX-3 workspace: drop its (already campaign-tagged) demo facts and the demo
+    // experiment, and write one old-style monthly fact with no `campaign` key instead.
+    const leaf = await asOwner((tx) => tx.envelope.findFirstOrThrow({ where: { workspaceId: ws, demo: true, parentId: { not: null } }, select: { id: true, dimensionValues: true } }));
+    await asOwner(async (tx) => {
+      await tx.$executeRawUnsafe(`DELETE FROM spend_fact WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM kpi_fact WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(`DELETE FROM experiment WHERE workspace_id = $1::uuid`, ws);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO spend_fact (workspace_id, envelope_id, dimension_values, period_date, currency, amount, amount_reporting, source_system, source_run_id, source_row_hash, natural_key, demo, match_method)
+         VALUES ($1::uuid, $2::uuid, $3::jsonb, '2026-01-01', 'USD', '1500.00', '1500.00', 'demo', $4::uuid, 'old-1', 'old-1', true, 'tuple')`,
+        ws,
+        leaf.id,
+        JSON.stringify(leaf.dimensionValues),
+        randomUUID(),
+      );
+    });
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toMatchObject({ hasCampaignData: false });
+
+    expect((await as("planner", "POST", `/workspaces/${ws}/demo-data/campaigns`, {}, ws)).status).toBe(403);
+
+    const res = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/campaigns`, {}, ws);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ alreadyPresent: false });
+    expect((res.body as { campaigns: number }).campaigns).toBeGreaterThanOrEqual(2);
+    expect((res.body as { facts: number }).facts).toBeGreaterThan(0);
+    expect((res.body as { supersededFacts: number }).supersededFacts).toBe(1);
+
+    expect((await as("orgAdmin", "GET", `/workspaces/${ws}/demo-data`, undefined, ws)).body).toMatchObject({ hasCampaignData: true });
+    const oldRow = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ superseded_at: Date | null }>>(`SELECT superseded_at FROM spend_fact WHERE source_row_hash = 'old-1'`));
+    expect(oldRow[0]?.superseded_at).not.toBeNull();
+
+    // Idempotent: a second call changes nothing.
+    const again = await as("orgAdmin", "POST", `/workspaces/${ws}/demo-data/campaigns`, {}, ws);
+    expect(again.body).toMatchObject({ alreadyPresent: true, facts: 0, supersededFacts: 0 });
+
+    const audits = await asOwner((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE entity_type = 'workspace' AND entity_id = $1::uuid AND action = 'workspace.demo_campaigns_added' ORDER BY occurred_at`, ws));
+    expect(audits.length).toBe(1); // the no-op second call wrote nothing
   });
 });
 

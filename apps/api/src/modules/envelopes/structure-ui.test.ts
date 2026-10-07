@@ -133,7 +133,8 @@ describe("add child: one action, through the policy", () => {
     expect(child.dimensionValues).toEqual({ ...parent.dimensionValues, audience: "lookalike" });
     expect(child["startDate"]).toBe(parent["startDate"]);
     const audits = (await admin((tx) => tx.$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_event WHERE request_id = $1 ORDER BY occurred_at`, requestId))).map((a) => a.action);
-    expect(audits[0]).toBe("envelope.created");
+    // Both rows share one transaction's occurred_at, so their order is not defined: assert membership.
+    expect(audits).toContain("envelope.created");
     expect(audits.length).toBeGreaterThanOrEqual(2); // and the submit (requested, or approved by policy)
     const out = await admin((tx) => tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM outbox WHERE workspace_id = $1::uuid AND payload::text LIKE $2`, golden.workspaceId, `%${String(res.body["envelopeId"])}%`));
     expect(Number(out[0]?.n)).toBeGreaterThanOrEqual(2);
