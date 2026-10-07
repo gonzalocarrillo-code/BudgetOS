@@ -1,5 +1,5 @@
 import { CreatePolicyInput, CreateRuleInput, CreateWorkspaceInput, DomainError, PurgeDemoInput, TemplateSavedView, TourStep, newId, type Role } from "@budget/domain";
-import { audit, defaultAgencyTemplate, demoPeriod, ensureDefaultTemplate, ensurePartitions, outbox, purgeDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
+import { audit, defaultAgencyTemplate, demoPeriod, ensureDefaultTemplate, ensurePartitions, outbox, purgeDemoData, reseedCampaignDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
 import type { Prisma, PrismaClient, WorkspaceTemplate } from "@prisma/client";
 import { z } from "zod";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
@@ -173,8 +173,42 @@ export async function demoStatus(prisma: PrismaClient, auth: AuthContext) {
     const envelopes = await tx.envelope.count({ where: { workspaceId, demo: true } });
     const targets = await tx.target.count({ where: { workspaceId, demo: true } });
     const hasRealBudgets = (await tx.envelope.count({ where: { workspaceId, demo: false } })) > 0;
-    return { envelopes, targets, hasRealBudgets, hidden: envelopes > 0 && hasRealBudgets };
+    const hasCampaignData =
+      (
+        await tx.$queryRaw<Array<{ present: boolean }>>`SELECT EXISTS(
+          SELECT 1 FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND demo AND dimension_values ? 'campaign' AND superseded_at IS NULL
+        ) AS present`
+      )[0]?.present === true;
+    return { envelopes, targets, hasRealBudgets, hidden: envelopes > 0 && hasRealBudgets, hasCampaignData };
   });
+}
+
+/**
+ * POST /workspaces/:ws/demo-data/campaigns (EX-3, org admins only): adds campaign-level demo data
+ * (and one demo experiment) to a workspace that only has the older, leaf-level monthly demo facts —
+ * how the production Sandbox picks this feature up. Idempotent: a workspace that already has
+ * campaign-tagged demo facts is unchanged, and nothing is audited or published for that no-op.
+ */
+export async function addCampaignDemoData(prisma: PrismaClient, auth: AuthContext) {
+  if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only an org admin can add demo campaign data");
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  const today = new Date().toISOString().slice(0, 10);
+  // W3-10: the demo period's month partitions, in a short transaction of their own before the write.
+  const fiscalYearStartMonth = await withTenant(prisma, auth.ctx, (tx) => tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { fiscalYearStartMonth: true } })).then((w) => w.fiscalYearStartMonth);
+  const period = demoPeriod(today, fiscalYearStartMonth);
+  await ensurePartitions(prisma, period.start, period.end);
+  return withTenant(
+    prisma,
+    auth.ctx,
+    async (tx) => {
+      const r = await reseedCampaignDemoData(tx, { workspaceId, orgId: auth.user.orgId, createdBy: auth.user.id, today }, newId);
+      if (r.alreadyPresent) return r;
+      await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "workspace.demo_campaigns_added", entityType: "workspace", entityId: workspaceId, after: r, requestId: auth.ctx.requestId });
+      await outbox(tx, { workspaceId, topic: "facts.loaded", payload: { sourceSystem: "demo", action: "demo.campaigns_added" } });
+      return r;
+    },
+    { timeoutMs: 60_000 },
+  );
 }
 
 /** POST /workspaces/:ws/demo-data/purge — every demo row, in one transaction. I-3: the caller must confirm. */

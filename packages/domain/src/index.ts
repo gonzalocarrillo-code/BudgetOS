@@ -272,7 +272,7 @@ export {
   issueSummary,
 } from "./manual-entry.js";
 
-export { CompleteTourInput, CreateWorkspaceInput, DemoDataResponse, HomeAlertGroup, HomeRequestCard, HomeResponse, HomeScope, ListToursQuery, PurgeDemoInput, TemplateSavedView, TourRole, TourStep, UpdateMeInput, UpdateTourInput, UpdateWorkspaceInput, tourRolesFor, MarkNotificationsReadInput, NotificationItem, NotificationsResponse } from "./home.js";
+export { AddCampaignDemoDataResponse, CompleteTourInput, CreateWorkspaceInput, DemoDataResponse, HomeAlertGroup, HomeRequestCard, HomeResponse, HomeScope, ListToursQuery, PurgeDemoInput, TemplateSavedView, TourRole, TourStep, UpdateMeInput, UpdateTourInput, UpdateWorkspaceInput, tourRolesFor, MarkNotificationsReadInput, NotificationItem, NotificationsResponse } from "./home.js";
 export { SETTINGS, settingById } from "./settings.js";
 export type { SettingEntry } from "./settings.js";
 export { elapsedFraction, groupRatios } from "./rollup-measures.js";

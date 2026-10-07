@@ -1600,6 +1600,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/demo-data/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addCampaignDemoData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/experiments": {
         parameters: {
             query?: never;
@@ -8323,6 +8339,7 @@ export interface operations {
                         targets: number;
                         hasRealBudgets: boolean;
                         hidden: boolean;
+                        hasCampaignData: boolean;
                     };
                 };
             };
@@ -8361,6 +8378,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    addCampaignDemoData: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description EX-3, org admins only: campaign-level demo facts and one demo experiment added (idempotent — a second call is a no-op); supersedes the old monthly demo facts of the same leaves */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        alreadyPresent: boolean;
+                        campaigns: number;
+                        facts: number;
+                        supersededFacts: number;
+                        experiments: number;
+                    };
+                };
             };
         };
     };

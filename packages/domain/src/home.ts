@@ -62,8 +62,12 @@ export type PurgeDemoInput = z.infer<typeof PurgeDemoInput>;
  * is silently dropping rows the workspace still has. The web banners and the Slack context line both
  * key off this one field instead of recomputing `envelopes > 0 && hasRealBudgets` themselves.
  */
-export const DemoDataResponse = z.object({ envelopes: z.number().int().min(0), targets: z.number().int().min(0), hasRealBudgets: z.boolean(), hidden: z.boolean() });
+export const DemoDataResponse = z.object({ envelopes: z.number().int().min(0), targets: z.number().int().min(0), hasRealBudgets: z.boolean(), hidden: z.boolean(), hasCampaignData: z.boolean() });
 export type DemoDataResponse = z.infer<typeof DemoDataResponse>;
+
+/** POST /workspaces/:ws/demo-data/campaigns (EX-3, org admins): no body — idempotent by itself. */
+export const AddCampaignDemoDataResponse = z.object({ alreadyPresent: z.boolean(), campaigns: z.number().int().min(0), facts: z.number().int().min(0), supersededFacts: z.number().int().min(0), experiments: z.number().int().min(0) });
+export type AddCampaignDemoDataResponse = z.infer<typeof AddCampaignDemoDataResponse>;
 
 export const CreateWorkspaceInput = z.object({
   name: z.string().trim().min(1).max(120),
