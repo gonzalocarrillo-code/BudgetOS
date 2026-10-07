@@ -1168,6 +1168,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/naming-convention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getNamingConvention"];
+        put: operations["saveNamingConvention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-convention/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addNamingAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-conventions/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["analyzeCampaignNames"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-conventions/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["suggestNamingConvention"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/naming-conventions/{id}": {
         parameters: {
             query?: never;
@@ -6736,7 +6800,325 @@ export interface operations {
                                 dimension: string;
                                 value: string;
                             }) | null;
+                            /** @default [] */
+                            parts: {
+                                position: number;
+                                raw: string;
+                                dimension: string | null;
+                                code: string | null;
+                                /** @enum {string|null} */
+                                source: "alias" | "registry" | "dictionary" | null;
+                            }[];
                         }[];
+                        /** @default [] */
+                        unresolved: {
+                            position: number;
+                            dimension: string;
+                            token: string;
+                            campaigns: number;
+                            amount: string | null;
+                        }[];
+                        /** @default null */
+                        currency: string | null;
+                    };
+                };
+            };
+        };
+    };
+    getNamingConvention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workspace's campaign naming convention (EX-6, ADR-0092: the newest live one, edited in Registry) and whether Suggest with AI can run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        convention: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        } | null;
+                        others: number;
+                        aiAvailable: boolean;
+                    };
+                };
+            };
+        };
+    };
+    saveNamingConvention: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                    tokens: {
+                        dimension: string | null;
+                        /** @default {} */
+                        aliases?: {
+                            [key: string]: string;
+                        };
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description The convention replaces the live ones (a new row); values only a dictionary knows are created; the campaign facts are matched again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        convention: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        };
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        };
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    addNamingAlias: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    dimension: string;
+                    token: string;
+                    value: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Map to…: the token of that dimension's position reads as the value (a new version of the convention); the campaign facts are matched again */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        convention: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        };
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        };
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    analyzeCampaignNames: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    names?: string[];
+                    /** @enum {string} */
+                    delimiter?: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                };
+            };
+        };
+        responses: {
+            /** @description Deterministic analysis of the given or the workspace's campaign names: delimiter, positions, best dictionary per position, a proposed convention (nothing saved) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                        partCount: number;
+                        total: number;
+                        fitting: number;
+                        positions: {
+                            position: number;
+                            cardinality: number;
+                            examples: string[];
+                            hits: {
+                                /** @enum {string|null} */
+                                kind: "country" | "language" | "region" | "platform" | "channel" | "objective" | "audience" | "funnel_stage" | "device" | "month" | "quarter" | "year" | null;
+                                dimension: string | null;
+                                hitRate: number;
+                            }[];
+                            best: {
+                                /** @enum {string|null} */
+                                kind: "country" | "language" | "region" | "platform" | "channel" | "objective" | "audience" | "funnel_stage" | "device" | "month" | "quarter" | "year" | null;
+                                dimension: string | null;
+                                hitRate: number;
+                            } | null;
+                        }[];
+                        proposal: {
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                        };
+                        /** @enum {string} */
+                        source: "pasted" | "facts";
+                    };
+                };
+            };
+        };
+    };
+    suggestNamingConvention: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    names?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description An AI-suggested convention from campaign names only (not applied); 503 without OPENAI_API_KEY */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        suggestion: {
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            positions: {
+                                dimension: string | null;
+                                confidence: number;
+                            }[];
+                            /** @default [] */
+                            mappings: {
+                                position: number;
+                                token: string;
+                                value: string;
+                                confidence: number;
+                            }[];
+                        };
+                        proposal: {
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                        };
+                        model: string;
+                        names: number;
+                        applied: boolean;
                     };
                 };
             };

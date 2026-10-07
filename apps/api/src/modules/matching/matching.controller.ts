@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { Permission } from "../../common/permission.decorator.js";
+import { RateLimit } from "../../common/rate-limit.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { CreateMatchRuleDto, CreateNamingConventionDto, NamingConventionPreviewDto } from "./dto.js";
+import { AddNamingAliasDto, AnalyzeNamesDto, CreateMatchRuleDto, CreateNamingConventionDto, NamingConventionPreviewDto, SuggestNamingDto } from "./dto.js";
 import { MatchingService } from "./matching.service.js";
 
 /**
@@ -9,6 +10,8 @@ import { MatchingService } from "./matching.service.js";
  * target budget's scope (checked in the service); coverage and the workspace re-match are data
  * operations (source.manage), like the unmatched queue. EX-5 (ADR-0090): naming conventions decide
  * where spend lands across budgets, so writing or previewing one is a data operation too.
+ * EX-6 (ADR-0092): the workspace's convention (edited in Registry), "map to…" aliases, "Analyze
+ * names" and "Suggest with AI" are data operations as well; reading the convention is not.
  */
 @Controller()
 export class MatchingController {
@@ -60,5 +63,37 @@ export class MatchingController {
   @Permission("source.manage")
   removeConvention(@Tenant() auth: AuthContext, @Param("id") id: string) {
     return this.matching.removeConvention(auth, id);
+  }
+
+  @Get("workspaces/:ws/naming-convention")
+  @Permission("envelope.read")
+  getConvention(@Tenant() auth: AuthContext) {
+    return this.matching.getConvention(auth);
+  }
+
+  @Put("workspaces/:ws/naming-convention")
+  @Permission("source.manage")
+  saveConvention(@Tenant() auth: AuthContext, @Body() body: CreateNamingConventionDto) {
+    return this.matching.saveConvention(auth, body);
+  }
+
+  @Post("workspaces/:ws/naming-convention/aliases")
+  @Permission("source.manage")
+  addAlias(@Tenant() auth: AuthContext, @Body() body: AddNamingAliasDto) {
+    return this.matching.addAlias(auth, body);
+  }
+
+  @Post("workspaces/:ws/naming-conventions/analyze")
+  @Permission("source.manage")
+  analyzeNames(@Tenant() auth: AuthContext, @Body() body: AnalyzeNamesDto) {
+    return this.matching.analyzeNames(auth, body);
+  }
+
+  /** Calls OpenAI (via @budget/ai): the stricter 10/min, like the source mapping suggestions. */
+  @Post("workspaces/:ws/naming-conventions/suggest")
+  @Permission("source.manage")
+  @RateLimit("ai-suggest", 10)
+  suggestNaming(@Tenant() auth: AuthContext, @Body() body: SuggestNamingDto) {
+    return this.matching.suggestNaming(auth, body);
   }
 }

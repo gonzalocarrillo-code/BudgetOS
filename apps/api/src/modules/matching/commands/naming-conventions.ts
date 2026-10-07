@@ -1,6 +1,18 @@
-import { CAMPAIGN_DIMENSION, CreateNamingConventionInput, DomainError, newId, type NamingConventionWriteResponse, type RematchResult } from "@budget/domain";
-import { audit, closedPeriods, matchFacts, outbox, withTenant, type MatchPass, type Tx } from "@budget/db";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import {
+  AddNamingAliasInput,
+  CAMPAIGN_DIMENSION,
+  CreateNamingConventionInput,
+  DomainError,
+  NamingConventionToken,
+  explainCampaignName,
+  newId,
+  normalizeToken,
+  type NamingConventionSaveResponse,
+  type NamingConventionWriteResponse,
+  type RematchResult,
+} from "@budget/domain";
+import { audit, campaignNames, campaignSpend, closedPeriods, ensureDictionaryValues, matchFacts, namingResolver, outbox, withTenant, type DictionaryValue, type MatchPass, type Tx } from "@budget/db";
+import type { NamingConvention, Prisma, PrismaClient } from "@prisma/client";
 import { parseId, parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { conventionView } from "../queries/match-rules.js";
@@ -66,6 +78,109 @@ export async function deleteNamingConvention(prisma: PrismaClient, auth: AuthCon
       await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "naming_convention.deleted", entityType: "naming_convention", entityId: id, before: conventionView(current), after: { deletedAt: row.deletedAt?.toISOString() ?? null, rematch: result(pass) }, requestId: auth.ctx.requestId });
       await outbox(tx, { workspaceId, topic: "facts.loaded", payload: { envelopeIds: pass.envelopeIds, namingConventionId: id, action: "naming_convention.deleted" } });
       return { convention: view, rematch: result(pass) };
+    },
+    { timeoutMs: REMATCH_TIMEOUT_MS },
+  );
+}
+
+// ---- EX-6 (ADR-0092): the workspace's convention, edited in Registry ------------------------------
+
+/** Every live campaign is read when values are created or tokens priced; more than this is cut. */
+export const MAX_CAMPAIGNS = 5000;
+
+async function assertDimensions(tx: Tx, orgId: string, workspaceId: string, keys: string[]): Promise<void> {
+  const found = await tx.dimension.findMany({ where: { orgId, isActive: true, key: { in: keys }, OR: [{ workspaceId: null }, { workspaceId }] }, select: { key: true } });
+  const missing = keys.filter((k) => !found.some((d) => d.key === k));
+  if (missing.length) throw new DomainError("VALIDATION", "The convention names dimensions the registry does not have", { missing });
+}
+
+/**
+ * The registry values a convention needs that only a dictionary knows (UK → GB when the registry
+ * has no GB): read every live campaign name with it and create those values (rows, not columns).
+ */
+async function createDictionaryValues(tx: Tx, workspaceId: string, convention: { delimiter: string; tokens: NamingConventionToken[] }): Promise<DictionaryValue[]> {
+  const keys = [...new Set(convention.tokens.flatMap((t) => (t.dimension === null ? [] : [t.dimension])))];
+  const resolve = await namingResolver(tx, workspaceId, keys);
+  const codes = (await campaignSpend(tx, workspaceId, MAX_CAMPAIGNS)).map((c) => c.campaign);
+  const names = await campaignNames(tx, workspaceId, codes, CAMPAIGN_DIMENSION);
+  const wanted: DictionaryValue[] = [];
+  for (const code of codes) {
+    for (const part of explainCampaignName(convention, names.get(code) ?? code, resolve).parts) {
+      if (part.dimension === null || part.code === null) continue;
+      const token = convention.tokens[part.position - 1];
+      const k = normalizeToken(part.raw);
+      const alias = Object.entries(token?.aliases ?? {}).find(([a]) => normalizeToken(a) === k);
+      const hit = resolve(part.dimension, alias ? alias[1] : part.raw);
+      if (hit && !hit.known) wanted.push({ dimension: part.dimension, code: hit.code, label: hit.label ?? hit.code });
+    }
+  }
+  return ensureDictionaryValues(tx, workspaceId, wanted, newId);
+}
+
+/** The newest live convention: the one Registry edits (EX-5 allowed several; matching still tries the older ones after it). */
+async function currentConvention(tx: Tx, workspaceId: string): Promise<NamingConvention | null> {
+  return tx.namingConvention.findFirst({ where: { workspaceId, deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+}
+
+/**
+ * PUT /workspaces/:ws/naming-convention: the workspace's convention (separator, the position of each
+ * granularity, its aliases). Never updated in place: the live ones are soft-deleted and a new row
+ * is written. Values only a dictionary knows are created; every campaign fact is matched again.
+ * One audit_event (`naming_convention.saved`) + one `facts.loaded` outbox row.
+ */
+export async function saveNamingConvention(prisma: PrismaClient, auth: AuthContext, raw: unknown): Promise<NamingConventionSaveResponse> {
+  const input = parseInput(CreateNamingConventionInput, raw);
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(
+    prisma,
+    auth.ctx,
+    async (tx) => {
+      await assertDimensions(tx, auth.user.orgId, workspaceId, [...new Set(input.tokens.flatMap((t) => (t.dimension === null ? [] : [t.dimension])))]);
+      const live = await tx.namingConvention.findMany({ where: { workspaceId, deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+      if (live.length > 0) await tx.namingConvention.updateMany({ where: { id: { in: live.map((c) => c.id) } }, data: { deletedAt: new Date(), deletedBy: auth.user.id } });
+      const row = await tx.namingConvention.create({ data: { id: newId(), workspaceId, delimiter: input.delimiter, tokens: input.tokens as unknown as Prisma.InputJsonValue, createdBy: auth.user.id } });
+      const createdValues = await createDictionaryValues(tx, workspaceId, input);
+      const pass = await rematchCampaigns(tx, workspaceId);
+      const view = conventionView(row);
+      await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "naming_convention.saved", entityType: "naming_convention", entityId: row.id, before: live.map(conventionView), after: { ...view, createdValues, rematch: result(pass) }, requestId: auth.ctx.requestId });
+      await outbox(tx, { workspaceId, topic: "facts.loaded", payload: { envelopeIds: pass.envelopeIds, namingConventionId: row.id, action: "naming_convention.saved" } });
+      return { convention: view, rematch: result(pass), createdValues };
+    },
+    { timeoutMs: REMATCH_TIMEOUT_MS },
+  );
+}
+
+/**
+ * POST /workspaces/:ws/naming-convention/aliases: "map to…" for an unresolved token. The token of
+ * the position that names `dimension` reads as `value` (which must resolve: a registry value or a
+ * dictionary entry, landing on its code). A new version of the convention; one audit_event
+ * (`naming_convention.alias_added`) + one `facts.loaded` outbox row.
+ */
+export async function addNamingAlias(prisma: PrismaClient, auth: AuthContext, raw: unknown): Promise<NamingConventionSaveResponse> {
+  const input = parseInput(AddNamingAliasInput, raw);
+  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
+  return withTenant(
+    prisma,
+    auth.ctx,
+    async (tx) => {
+      const current = await currentConvention(tx, workspaceId);
+      if (current === null) throw new DomainError("NOT_FOUND", "The workspace has no naming convention");
+      const tokens = NamingConventionToken.array().parse(current.tokens);
+      const at = tokens.findIndex((t) => t.dimension === input.dimension);
+      if (at < 0) throw new DomainError("VALIDATION", "No position of the naming convention is this dimension", { dimension: input.dimension });
+      const hit = (await namingResolver(tx, workspaceId, [input.dimension]))(input.dimension, input.value);
+      if (hit === null) throw new DomainError("VALIDATION", "The value is not a value of this dimension", { dimension: input.dimension, value: input.value });
+      const k = normalizeToken(input.token);
+      const next = tokens.map((t, i) => (i !== at ? t : { ...t, aliases: { ...Object.fromEntries(Object.entries(t.aliases).filter(([a]) => normalizeToken(a) !== k)), [input.token]: hit.code } }));
+      await tx.namingConvention.update({ where: { id: current.id }, data: { deletedAt: new Date(), deletedBy: auth.user.id } });
+      const row = await tx.namingConvention.create({ data: { id: newId(), workspaceId, delimiter: current.delimiter, tokens: next as unknown as Prisma.InputJsonValue, createdBy: auth.user.id } });
+      const createdValues = await createDictionaryValues(tx, workspaceId, { delimiter: row.delimiter, tokens: next });
+      const pass = await rematchCampaigns(tx, workspaceId);
+      const view = conventionView(row);
+      const alias = { dimension: input.dimension, token: input.token, value: hit.code };
+      await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "naming_convention.alias_added", entityType: "naming_convention", entityId: row.id, before: conventionView(current), after: { ...view, alias, createdValues, rematch: result(pass) }, requestId: auth.ctx.requestId });
+      await outbox(tx, { workspaceId, topic: "facts.loaded", payload: { envelopeIds: pass.envelopeIds, namingConventionId: row.id, action: "naming_convention.alias_added" } });
+      return { convention: view, rematch: result(pass), createdValues };
     },
     { timeoutMs: REMATCH_TIMEOUT_MS },
   );

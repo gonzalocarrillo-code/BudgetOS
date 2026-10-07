@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import type { ReactElement } from "react";
+import { dictionaryKindFor } from "@budget/domain";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { DimensionForm } from "../features/registry/dimension-form.js";
 import { DimensionIcon } from "../features/registry/dimension-icon.js";
 import { HierarchyBuilder } from "../features/registry/hierarchy-builder.js";
 import { MetricLibrary } from "../features/registry/metric-library.js";
+import { CampaignNaming, dictionaryName, namingQuery } from "../features/registry/campaign-naming.js";
 import { ValueTree } from "../features/registry/value-tree.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, registryQuery, templatesQuery, type Dimension } from "../lib/queries.js";
@@ -19,14 +21,17 @@ import { meQuery, registryQuery, templatesQuery, type Dimension } from "../lib/q
  * from the library, nest their values (`Parent > Child`), say which granularities they nest
  * under, arrange the hierarchies the Explorer follows, and keep the metric library. A change is
  * live at once: filters, search qualifiers and the tree read the registry on every request.
+ * EX-6 (ADR-0092): "Campaign names" — the campaign naming convention lives here, next to the
+ * granularities it reads into (separator, a position per granularity, dictionaries, aliases).
  */
-const RegistrySearch = z.object({ tab: z.enum(["granularities", "hierarchies", "metrics"]).default("granularities"), dim: z.string().optional() });
+const RegistrySearch = z.object({ tab: z.enum(["granularities", "naming", "hierarchies", "metrics"]).default("granularities"), dim: z.string().optional() });
 type RegistrySearch = z.infer<typeof RegistrySearch>;
 
 export const Route = createFileRoute("/w/$ws/admin/registry")({ validateSearch: RegistrySearch, component: RegistryPage });
 
 const TABS = [
   { id: "granularities", label: "registry.tab.granularities" },
+  { id: "naming", label: "registry.tab.naming" },
   { id: "hierarchies", label: "registry.tab.hierarchies" },
   { id: "metrics", label: "registry.tab.metrics" },
 ] as const;
@@ -42,6 +47,8 @@ function RegistryPage(): ReactElement {
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
   const isOrgAdmin = me?.isOrgAdmin ?? false;
   const canManage = perms.includes("registry.manage") || isOrgAdmin;
+  // The naming convention decides where spend lands: a data operation (source.manage), like the Spend data page's rules.
+  const canManageNaming = perms.includes("source.manage") || isOrgAdmin;
   const set = (s: Partial<RegistrySearch>) => void navigate({ search: (prev: RegistrySearch) => ({ ...prev, ...s }) });
   // Everything that reads the registry: the Explorer's filters and tree, ⌘K qualifiers.
   const refresh = async () => {
@@ -97,6 +104,11 @@ function RegistryPage(): ReactElement {
           </div>
         </div>
       ) : null}
+      {search.tab === "naming" ? (
+        <Card title={t("campaignNaming.title")} tour="registry-naming-card">
+          <CampaignNaming ws={ws} dims={dims} canManage={canManageNaming} />
+        </Card>
+      ) : null}
       {search.tab === "hierarchies" ? (
         <Card>
           <HierarchyBuilder ws={ws} dims={dims} templates={templates} blocked={canManage ? null : t("registry.blocked.role")} onSaved={refresh} />
@@ -144,6 +156,9 @@ function DimensionHeader({ ws, dim, blocked, onChanged }: { ws: string; dim: Dim
     onSuccess: onChanged,
   });
   const label = t(dim.isActive ? "registry.retireDim" : "registry.restoreDim");
+  const { data: naming } = useQuery(namingQuery(ws));
+  const position = (naming?.convention?.tokens.findIndex((tk) => tk.dimension === dim.key) ?? -1) + 1;
+  const kind = dictionaryKindFor(dim.key);
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-5 py-4 shadow-xs" data-testid="dimension-header">
       <span className="inline-flex size-10 items-center justify-center rounded-lg bg-secondary text-secondary-foreground" aria-hidden>
@@ -158,6 +173,11 @@ function DimensionHeader({ ws, dim, blocked, onChanged }: { ws: string; dim: Dim
           {!dim.isActive ? ` · ${t("registry.retired")}` : ""}
         </p>
         {dim.description ? <p className="mt-1 text-sm text-muted-foreground">{dim.description}</p> : null}
+        {position > 0 || kind ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="dimension-naming">
+            {[position > 0 ? t("campaignNaming.positionLine", { n: position }) : null, kind ? dictionaryName(kind) : null].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
       </div>
       {toggle.error ? <p role="alert" className="text-xs text-destructive">{toggle.error.message}</p> : null}
       {blocked || toggle.isPending ? (

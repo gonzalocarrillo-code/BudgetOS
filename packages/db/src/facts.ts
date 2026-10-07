@@ -1,6 +1,7 @@
-import { CAMPAIGN_DIMENSION, DomainError, NamingConventionToken, parseCampaignName } from "@budget/domain";
+import { CAMPAIGN_DIMENSION, DomainError, NamingConventionToken, explainCampaignName } from "@budget/domain";
 import type { PrismaClient } from "@prisma/client";
 import { Decimal } from "decimal.js";
+import { namingResolver } from "./naming-conventions.js";
 import type { Tx } from "./sql.js";
 
 /** Fact loading and matching for the ingest pipeline (spec §14). Every statement runs in withTenant(). */
@@ -186,24 +187,13 @@ export interface ConventionTuples {
 }
 
 /**
- * Registry lookup for convention parts: a value code (any case) or one of the value's aliases, in
- * the org-wide or this workspace's dimension of that key. Returns null for an unknown value.
+ * Registry lookup for convention parts (EX-5), with EX-6's dictionaries: a value code, label or alias
+ * (any case, accents and punctuation ignored) in the org-wide or this workspace's dimension of that
+ * key, else the dimension kind's built-in dictionary (ADR-0092). Returns null for an unknown value.
  */
 export async function conventionResolver(tx: Tx, workspaceId: string, keys: string[]): Promise<(dimension: string, value: string) => string | null> {
-  const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true } });
-  const dims = await tx.dimension.findMany({ where: { orgId: ws.orgId, key: { in: keys }, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true } });
-  const values = dims.length === 0 ? [] : await tx.dimensionValue.findMany({ where: { dimensionId: { in: dims.map((d) => d.id) }, mergedIntoId: null }, select: { dimensionId: true, code: true, aliases: true } });
-  const keyOf = new Map(dims.map((d) => [d.id, d.key]));
-  const index = new Map<string, Map<string, string>>();
-  for (const v of values) {
-    const key = keyOf.get(v.dimensionId);
-    if (!key) continue;
-    const m = index.get(key) ?? new Map<string, string>();
-    index.set(key, m);
-    for (const a of v.aliases) if (!m.has(a.toLowerCase())) m.set(a.toLowerCase(), v.code);
-    m.set(v.code.toLowerCase(), v.code);
-  }
-  return (dimension, value) => index.get(dimension)?.get(value.toLowerCase()) ?? null;
+  const resolve = await namingResolver(tx, workspaceId, keys);
+  return (dimension, value) => resolve(dimension, value)?.code ?? null;
 }
 
 /** Campaign value (code) → name (the registry label; the code itself when it has none). */
@@ -241,11 +231,12 @@ export async function conventionTuples(tx: Tx, workspaceId: string, runId: strin
   const out: ConventionTuples = { derived: {}, misfits: [] };
   if (codes.length === 0) return out;
   const names = await campaignNames(tx, workspaceId, codes);
-  const resolve = await conventionResolver(tx, workspaceId, [...new Set(conventions.flatMap((c) => c.tokens.flatMap((t) => (t.dimension ? [t.dimension] : []))))]);
+  const resolve = await namingResolver(tx, workspaceId, [...new Set(conventions.flatMap((c) => c.tokens.flatMap((t) => (t.dimension ? [t.dimension] : []))))]);
   for (const code of codes) {
     const name = names.get(code) ?? code;
-    const hit = conventions.map((c) => parseCampaignName(c, name, resolve)).find((p) => p.ok);
-    if (hit?.ok) out.derived[code] = hit.dimensionValues;
+    // EX-6: explainCampaignName is parseCampaignName with accent/punctuation-insensitive aliases and the dictionaries.
+    const hit = conventions.map((c) => explainCampaignName(c, name, resolve).dimensionValues).find((d) => d !== null);
+    if (hit) out.derived[code] = hit;
     else out.misfits.push(code);
   }
   return out;
