@@ -7,7 +7,7 @@ import type { AuthContext } from "../../../common/tenant.js";
 import { namingDimensions, workspaceCampaignNames } from "../queries/naming.js";
 
 /**
- * EX-6 (ADR-0091): POST /workspaces/:ws/naming-conventions/suggest — "Suggest with AI", support
+ * EX-6 (ADR-0092): POST /workspaces/:ws/naming-conventions/suggest — "Suggest with AI", support
  * only. 503 before anything is read when OpenAI is not configured. Only distinct campaign names
  * (the pasted ones, or the workspace's largest MAX_AI_NAMES) and dimension keys go to @budget/ai;
  * the validated answer comes back as a proposal the user reviews. Nothing is applied. The request

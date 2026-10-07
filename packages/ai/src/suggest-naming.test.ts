@@ -3,7 +3,7 @@ import type { ChatClient } from "./map-columns.js";
 import { buildNamingPrompt, parseNamingSuggestion, suggestNamingConvention } from "./suggest-naming.js";
 
 /**
- * EX-6 (ADR-0091): "Suggest with AI" sends only distinct campaign names (at most 300) and the
+ * EX-6 (ADR-0092): "Suggest with AI" sends only distinct campaign names (at most 300) and the
  * workspace's dimension keys; the answer is validated before anyone sees it. No network here.
  */
 const dims = [

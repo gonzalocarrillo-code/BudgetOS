@@ -24,7 +24,7 @@ import { moneyOrDash } from "../../lib/money.js";
 import type { Dimension } from "../../lib/queries.js";
 
 /**
- * EX-6 (ADR-0091): the workspace's campaign naming convention, defined in Registry next to the
+ * EX-6 (ADR-0092): the workspace's campaign naming convention, defined in Registry next to the
  * granularities. One separator; each granularity may have a position in the name, reads its
  * values through the built-in dictionary of its kind (shown, never typed) and has its aliases.
  * "Analyze names" (deterministic) and "Suggest with AI" (support only, nothing applied) fill the

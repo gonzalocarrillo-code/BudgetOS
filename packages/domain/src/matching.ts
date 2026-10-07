@@ -166,7 +166,7 @@ export const ConventionProblem = z.discriminatedUnion("kind", [
 ]);
 export type ConventionProblem = z.infer<typeof ConventionProblem>;
 
-/** EX-6 (ADR-0091): one part of a campaign name read with a convention. */
+/** EX-6 (ADR-0092): one part of a campaign name read with a convention. */
 export const ExplainedPart = z.object({
   position: z.number().int(),
   raw: z.string(),

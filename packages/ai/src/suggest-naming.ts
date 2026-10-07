@@ -2,7 +2,7 @@ import { DomainError, MAX_AI_NAMES, NamingAiSuggestion, type DictionaryKind } fr
 import { openAiClient, type ChatClient } from "./map-columns.js";
 
 /**
- * EX-6 (ADR-0091): "Suggest with AI" for campaign naming conventions — support only. Only the
+ * EX-6 (ADR-0092): "Suggest with AI" for campaign naming conventions — support only. Only the
  * distinct campaign names (at most MAX_AI_NAMES) and the workspace's dimension keys go to OpenAI;
  * no amounts, no ids. The answer must parse as `NamingAiSuggestion` and name only those
  * dimensions. Nothing is applied here: the user reviews the suggestion and saves it.

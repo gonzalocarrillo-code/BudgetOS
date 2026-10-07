@@ -72,7 +72,7 @@ export async function listMatchRules(prisma: PrismaClient, auth: AuthContext): P
 /**
  * POST /workspaces/:ws/naming-conventions/preview: a convention (saved or not) read over campaign
  * names — the given ones, or the eight campaigns with the most live spend (their registry labels) —
- * with exactly the reading matching uses. EX-6 (ADR-0091): every part says where its value came
+ * with exactly the reading matching uses. EX-6 (ADR-0092): every part says where its value came
  * from (alias, registry, dictionary), and `unresolved` lists the tokens nothing reads, per
  * position, over every live campaign (priced by their spend) or over the given names.
  */

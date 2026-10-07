@@ -189,7 +189,7 @@ export interface ConventionTuples {
 /**
  * Registry lookup for convention parts (EX-5), with EX-6's dictionaries: a value code, label or alias
  * (any case, accents and punctuation ignored) in the org-wide or this workspace's dimension of that
- * key, else the dimension kind's built-in dictionary (ADR-0091). Returns null for an unknown value.
+ * key, else the dimension kind's built-in dictionary (ADR-0092). Returns null for an unknown value.
  */
 export async function conventionResolver(tx: Tx, workspaceId: string, keys: string[]): Promise<(dimension: string, value: string) => string | null> {
   const resolve = await namingResolver(tx, workspaceId, keys);

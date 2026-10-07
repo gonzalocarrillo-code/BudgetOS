@@ -7,7 +7,7 @@ import { renderWithQuery } from "../../test/render.js";
 import { CampaignNaming, draftInput } from "./campaign-naming.js";
 
 /**
- * EX-6 (ADR-0091): Registry › Campaign names. Analyze names fills the positions; the dictionary of
+ * EX-6 (ADR-0092): Registry › Campaign names. Analyze names fills the positions; the dictionary of
  * each granularity is shown, never typed; Suggest with AI only suggests (disabled with a reason
  * without OpenAI); the preview says unresolved tokens in words; Map to… stores an alias; Save PUTs.
  */

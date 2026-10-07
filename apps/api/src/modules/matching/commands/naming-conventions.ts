@@ -83,7 +83,7 @@ export async function deleteNamingConvention(prisma: PrismaClient, auth: AuthCon
   );
 }
 
-// ---- EX-6 (ADR-0091): the workspace's convention, edited in Registry ------------------------------
+// ---- EX-6 (ADR-0092): the workspace's convention, edited in Registry ------------------------------
 
 /** Every live campaign is read when values are created or tokens priced; more than this is cut. */
 export const MAX_CAMPAIGNS = 5000;

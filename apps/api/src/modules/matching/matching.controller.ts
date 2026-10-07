@@ -10,7 +10,7 @@ import { MatchingService } from "./matching.service.js";
  * target budget's scope (checked in the service); coverage and the workspace re-match are data
  * operations (source.manage), like the unmatched queue. EX-5 (ADR-0090): naming conventions decide
  * where spend lands across budgets, so writing or previewing one is a data operation too.
- * EX-6 (ADR-0091): the workspace's convention (edited in Registry), "map to…" aliases, "Analyze
+ * EX-6 (ADR-0092): the workspace's convention (edited in Registry), "map to…" aliases, "Analyze
  * names" and "Suggest with AI" are data operations as well; reading the convention is not.
  */
 @Controller()

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CAMPAIGN_DIMENSION, NamingConventionDelimiter, NamingConventionToken, NamingConventionWriteResponse, type ConventionProblem, type CreateNamingConventionInput, type ExplainedPart } from "./matching.js";
 
 /**
- * EX-6 (ADR-0091): built-in dictionaries for campaign-name tokens. A dimension of a known kind
+ * EX-6 (ADR-0092): built-in dictionaries for campaign-name tokens. A dimension of a known kind
  * (country, language, region, platform, channel, objective, audience, funnel stage, device, month,
  * quarter, year) reads its tokens through the kind's dictionary, so nobody types the list of
  * countries or languages again: "UK", "GBR", "Reino Unido" and "United Kingdom" are all `GB`.

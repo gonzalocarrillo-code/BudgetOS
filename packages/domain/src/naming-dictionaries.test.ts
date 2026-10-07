@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeCampaignNames, dictionaryKindFor, explainCampaignName, lookupDictionary, makeTokenResolver, normalizeToken } from "./naming-dictionaries.js";
 
 /**
- * EX-6 (ADR-0091): built-in dictionaries read campaign-name tokens (countries, languages, regions,
+ * EX-6 (ADR-0092): built-in dictionaries read campaign-name tokens (countries, languages, regions,
  * platforms, objectives, audiences, devices, months, quarters, years) without anyone typing lists;
  * a token resolves workspace alias > registry value > dictionary > unresolved; "Analyze names"
  * finds the delimiter and which dictionary each position follows.

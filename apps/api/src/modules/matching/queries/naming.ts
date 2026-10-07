@@ -5,7 +5,7 @@ import { parseInput, requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
 import { conventionView } from "./match-rules.js";
 
-/** EX-6 (ADR-0091): reads behind the workspace's naming convention (Registry) and "Analyze names". */
+/** EX-6 (ADR-0092): reads behind the workspace's naming convention (Registry) and "Analyze names". */
 
 /** The names analysis reads from facts at most (largest spend first). */
 export const MAX_ANALYZED = 1000;

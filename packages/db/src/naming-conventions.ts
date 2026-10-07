@@ -3,7 +3,7 @@ import { Decimal } from "decimal.js";
 import type { Tx } from "./sql.js";
 
 /**
- * EX-6 (ADR-0091): registry reads and writes behind campaign naming conventions — the resolver
+ * EX-6 (ADR-0092): registry reads and writes behind campaign naming conventions — the resolver
  * (registry values, then the built-in dictionary of the dimension's kind), the live spend per
  * campaign (to rank names and price unresolved tokens) and creating dictionary values on demand.
  */

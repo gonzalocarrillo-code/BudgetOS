@@ -6836,7 +6836,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The workspace's campaign naming convention (EX-6, ADR-0091: the newest live one, edited in Registry) and whether Suggest with AI can run */
+            /** @description The workspace's campaign naming convention (EX-6, ADR-0092: the newest live one, edited in Registry) and whether Suggest with AI can run */
             200: {
                 headers: {
                     [name: string]: unknown;

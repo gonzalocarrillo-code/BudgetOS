@@ -18,7 +18,7 @@ import { sourcesQuery, type Source } from "./queries.js";
  * each deletable; and "Add rule". The unassigned / ambiguous campaigns are a plain list under
  * "Unmatched spend" (UnassignedCampaigns), each with "Create rule". No colours, no coverage bar:
  * the coverage endpoint stays (the campaign list comes from it), the page does not draw it.
- * EX-6 (ADR-0091): the naming convention is defined in Registry › Campaign names; here it is
+ * EX-6 (ADR-0092): the naming convention is defined in Registry › Campaign names; here it is
  * shown read-only (separator, position → granularity), with its preview and unresolved tokens,
  * and a link to edit it there.
  */

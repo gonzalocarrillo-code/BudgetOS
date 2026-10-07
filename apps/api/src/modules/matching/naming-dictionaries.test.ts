@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ownerDb, startHarness, testUser, type Harness, type Method, type TestUser } from "../../test-support/harness.js";
 
 /**
- * EX-6 (ADR-0091) API: the workspace's campaign naming convention (edited in Registry): built-in
+ * EX-6 (ADR-0092) API: the workspace's campaign naming convention (edited in Registry): built-in
  * dictionaries read tokens nobody listed, values are created from them on demand, "map to…" stores
  * an alias, "Analyze names" proposes a convention, "Suggest with AI" (mocked client here) only
  * suggests. Every write: one audit_event + one outbox row.

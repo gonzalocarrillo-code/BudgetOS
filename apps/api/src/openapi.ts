@@ -477,7 +477,7 @@ export function openApiDocument(): Record<string, unknown> {
         post: { operationId: "previewNamingConvention", parameters: [workspaceParam], requestBody: json(NamingConventionPreviewInput), responses: { "201": { description: "The convention read over the given names, or the largest real campaigns", ...json(NamingConventionPreviewResponse) } } },
       },
       "/api/v1/workspaces/{ws}/naming-convention": {
-        get: { operationId: "getNamingConvention", parameters: [workspaceParam], responses: { "200": { description: "The workspace's campaign naming convention (EX-6, ADR-0091: the newest live one, edited in Registry) and whether Suggest with AI can run", ...json(NamingConventionState) } } },
+        get: { operationId: "getNamingConvention", parameters: [workspaceParam], responses: { "200": { description: "The workspace's campaign naming convention (EX-6, ADR-0092: the newest live one, edited in Registry) and whether Suggest with AI can run", ...json(NamingConventionState) } } },
         put: { operationId: "saveNamingConvention", parameters: [workspaceParam], requestBody: json(CreateNamingConventionInput), responses: { "200": { description: "The convention replaces the live ones (a new row); values only a dictionary knows are created; the campaign facts are matched again", ...json(NamingConventionSaveResponse) } } },
       },
       "/api/v1/workspaces/{ws}/naming-convention/aliases": {

@@ -21,7 +21,7 @@ import { meQuery, registryQuery, templatesQuery, type Dimension } from "../lib/q
  * from the library, nest their values (`Parent > Child`), say which granularities they nest
  * under, arrange the hierarchies the Explorer follows, and keep the metric library. A change is
  * live at once: filters, search qualifiers and the tree read the registry on every request.
- * EX-6 (ADR-0091): "Campaign names" — the campaign naming convention lives here, next to the
+ * EX-6 (ADR-0092): "Campaign names" — the campaign naming convention lives here, next to the
  * granularities it reads into (separator, a position per granularity, dictionaries, aliases).
  */
 const RegistrySearch = z.object({ tab: z.enum(["granularities", "naming", "hierarchies", "metrics"]).default("granularities"), dim: z.string().optional() });
