@@ -107,3 +107,21 @@ describe("normalize", () => {
     expect(parseDate("2026-2", "yyyy-MM")).toBeNull();
   });
 });
+
+describe("budget_ref column (EX-5, ADR-0090)", () => {
+  const refMapping = SourceMapping.parse({ kind: "spend", columns: { DAY: { role: "period_date" }, SPEND: { role: "amount", currency: "USD" }, BUDGET: { role: "budget_ref" }, COUNTRY: { dimension: "country" } } });
+  it("carries the row's budget reference on every fact, without changing the fact's natural key", () => {
+    const withRef = normalize({ DAY: "2026-03-01", SPEND: "5", BUDGET: " 0190a000-0000-7000-8000-000000000001 ", COUNTRY: "BR" }, refMapping, registry, "s");
+    const without = normalize({ DAY: "2026-03-01", SPEND: "5", BUDGET: null, COUNTRY: "BR" }, refMapping, registry, "s");
+    if (!("facts" in withRef) || !("facts" in without)) throw new Error("rejected");
+    expect(withRef.facts[0]).toMatchObject({ budgetRef: "0190a000-0000-7000-8000-000000000001", dimensionValues: { country: "BR" } });
+    expect(without.facts[0]?.budgetRef).toBeUndefined();
+    expect(withRef.facts[0]?.rowHash).toBe(without.facts[0]?.rowHash);
+  });
+  it("a row with only a budget reference (no dimensions) is kept", () => {
+    const only = SourceMapping.parse({ kind: "spend", columns: { DAY: { role: "period_date" }, SPEND: { role: "amount", currency: "USD" }, BUDGET: { role: "budget_ref" } } });
+    const res = normalize({ DAY: "2026-03-01", SPEND: "5", BUDGET: "MX_Always_On" }, only, registry, "s");
+    expect("facts" in res && res.facts[0]).toMatchObject({ budgetRef: "MX_Always_On", dimensionValues: {} });
+    expect(normalize({ DAY: "2026-03-01", SPEND: "5", BUDGET: null }, only, registry, "s")).toEqual({ rejected: "no dimension values" });
+  });
+});

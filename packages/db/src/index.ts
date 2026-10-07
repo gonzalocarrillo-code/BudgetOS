@@ -41,8 +41,8 @@ export { currentFilterTargets, fiscalCalendar, hasProjections, metricLibrary, pl
 export type { CurrentFilterTarget } from "./planner-options.js";
 export { matchCoverage } from "./match-coverage.js";
 export type { CoverageAmountsRow, MatchCoverage } from "./match-coverage.js";
-export { assignUnmatched, ensurePartitions, insertProjectionFacts, matchFacts, matchRunFacts, spendThroughInCurrency, tuplesWithEnvelope, runCoverage, runEnvelopes, supersedeMovedFacts, supersedeUnseenFacts, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
-export type { FactLoad, KpiFactInput, MatchHint, MatchMethod, MatchPass, MatchScope, ProjectionFactInput, RunCoverage, SpendFactInput, SpendInCurrency, Superseded, UnmatchedGroup } from "./facts.js";
+export { assignUnmatched, campaignNames, conventionResolver, conventionTuples, ensurePartitions, topCampaigns, insertProjectionFacts, matchFacts, matchRunFacts, spendThroughInCurrency, tuplesWithEnvelope, runCoverage, runEnvelopes, supersedeMovedFacts, supersedeUnseenFacts, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
+export type { ConventionTuples, FactLoad, KpiFactInput, MatchHint, MatchMethod, MatchPass, MatchScope, ProjectionFactInput, RunCoverage, SpendFactInput, SpendInCurrency, Superseded, UnmatchedGroup } from "./facts.js";
 export type { NotificationInput } from "./notifications.js";
 export type { Tx } from "./sql.js";
 export { approvalRequestsBySuffix, eligibleApproverSql, lastActorId, lastRequestAuditAt, lockApprovalRequest, lockParentCap } from "./approvals.js";

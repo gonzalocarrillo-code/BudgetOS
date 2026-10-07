@@ -1,4 +1,4 @@
-import { DomainError } from "@budget/domain";
+import { CAMPAIGN_DIMENSION, DomainError, NamingConventionToken, parseCampaignName } from "@budget/domain";
 import type { PrismaClient } from "@prisma/client";
 import { Decimal } from "decimal.js";
 import type { Tx } from "./sql.js";
@@ -16,10 +16,12 @@ export interface SpendFactInput {
   rowHash: string;
   /** T-036: provisional `external_id` / `match_key` when the normalizer resolved the tuple that way; the match confirms it. */
   matchMethod?: MatchHint | null;
+  /** EX-5 (ADR-0090): the budget the source row names (a `budget_ref` column): a budget id or a budget's match key. */
+  budgetRef?: string | null;
 }
 
 export type MatchHint = "external_id" | "match_key";
-export type MatchMethod = MatchHint | "tuple" | "manual" | "rule";
+export type MatchMethod = MatchHint | "tuple" | "manual" | "rule" | "reference" | "naming";
 
 export interface KpiFactInput {
   dimensionValues: Record<string, string>;
@@ -30,6 +32,7 @@ export interface KpiFactInput {
   /** ADR-071: the fact's natural key, including the metric. */
   rowHash: string;
   matchMethod?: MatchHint | null;
+  budgetRef?: string | null;
 }
 
 export interface ProjectionFactInput {
@@ -45,6 +48,7 @@ export interface ProjectionFactInput {
   formulaVersion: string;
   horizonEnd: string;
   matchMethod?: MatchHint | null;
+  budgetRef?: string | null;
 }
 
 export interface FactLoad {
@@ -89,32 +93,34 @@ const json = (rows: Array<{ dimensionValues: Record<string, string> }>) => rows.
 export async function upsertSpendFacts(tx: Tx, load: FactLoad, rows: SpendFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO spend_fact (workspace_id, dimension_values, period_date, currency, amount, amount_reporting, fx_rate_id, source_system, source_run_id, source_row_hash, natural_key, match_method)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, c, a::numeric, ar::numeric, fx::uuid, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h, h, mm
+    INSERT INTO spend_fact (workspace_id, dimension_values, period_date, currency, amount, amount_reporting, fx_rate_id, source_system, source_run_id, source_row_hash, natural_key, match_method, budget_ref)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, c, a::numeric, ar::numeric, fx::uuid, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h, h, mm, br
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.currency)}::text[],
                 ${rows.map((r) => r.amount)}::text[], ${rows.map((r) => r.amountReporting)}::text[],
-                ${rows.map((r) => r.fxRateId)}::text[], ${rows.map((r) => r.rowHash)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, c, a, ar, fx, h, mm)
+                ${rows.map((r) => r.fxRateId)}::text[], ${rows.map((r) => r.rowHash)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[],
+                ${rows.map((r) => r.budgetRef ?? null)}::text[]) AS t(d, p, c, a, ar, fx, h, mm, br)
     ON CONFLICT (workspace_id, natural_key, period_date) WHERE natural_key IS NOT NULL DO UPDATE SET
       amount = EXCLUDED.amount, amount_reporting = EXCLUDED.amount_reporting, currency = EXCLUDED.currency,
       fx_rate_id = EXCLUDED.fx_rate_id, source_run_id = EXCLUDED.source_run_id, loaded_at = now(),
-      superseded_at = NULL, superseded_by_run_id = NULL, dimension_values = EXCLUDED.dimension_values,
-      envelope_id = CASE WHEN spend_fact.dimension_values = EXCLUDED.dimension_values THEN spend_fact.envelope_id END,
-      match_method = CASE WHEN spend_fact.envelope_id IS NOT NULL AND spend_fact.dimension_values = EXCLUDED.dimension_values THEN spend_fact.match_method ELSE EXCLUDED.match_method END`;
+      superseded_at = NULL, superseded_by_run_id = NULL, dimension_values = EXCLUDED.dimension_values, budget_ref = EXCLUDED.budget_ref,
+      envelope_id = CASE WHEN spend_fact.dimension_values = EXCLUDED.dimension_values AND spend_fact.budget_ref IS NOT DISTINCT FROM EXCLUDED.budget_ref THEN spend_fact.envelope_id END,
+      match_method = CASE WHEN spend_fact.envelope_id IS NOT NULL AND spend_fact.dimension_values = EXCLUDED.dimension_values AND spend_fact.budget_ref IS NOT DISTINCT FROM EXCLUDED.budget_ref THEN spend_fact.match_method ELSE EXCLUDED.match_method END`;
 }
 
 /** As upsertSpendFacts, for KPI facts (the natural key includes the metric). */
 export async function upsertKpiFacts(tx: Tx, load: FactLoad, rows: KpiFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO kpi_fact (workspace_id, dimension_values, period_date, metric, value, attribution_model, source_system, source_run_id, source_row_hash, natural_key, match_method)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, am, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h, h, mm
+    INSERT INTO kpi_fact (workspace_id, dimension_values, period_date, metric, value, attribution_model, source_system, source_run_id, source_row_hash, natural_key, match_method, budget_ref)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, am, ${load.sourceSystem}, ${load.sourceRunId}::uuid, h, h, mm, br
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.metric)}::text[],
-                ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.attributionModel)}::text[], ${rows.map((r) => r.rowHash)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, m, v, am, h, mm)
+                ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.attributionModel)}::text[], ${rows.map((r) => r.rowHash)}::text[], ${rows.map((r) => r.matchMethod ?? null)}::text[],
+                ${rows.map((r) => r.budgetRef ?? null)}::text[]) AS t(d, p, m, v, am, h, mm, br)
     ON CONFLICT (workspace_id, natural_key, period_date) WHERE natural_key IS NOT NULL DO UPDATE SET
       value = EXCLUDED.value, attribution_model = EXCLUDED.attribution_model, source_run_id = EXCLUDED.source_run_id, loaded_at = now(),
-      superseded_at = NULL, superseded_by_run_id = NULL, dimension_values = EXCLUDED.dimension_values,
-      envelope_id = CASE WHEN kpi_fact.dimension_values = EXCLUDED.dimension_values THEN kpi_fact.envelope_id END,
-      match_method = CASE WHEN kpi_fact.envelope_id IS NOT NULL AND kpi_fact.dimension_values = EXCLUDED.dimension_values THEN kpi_fact.match_method ELSE EXCLUDED.match_method END`;
+      superseded_at = NULL, superseded_by_run_id = NULL, dimension_values = EXCLUDED.dimension_values, budget_ref = EXCLUDED.budget_ref,
+      envelope_id = CASE WHEN kpi_fact.dimension_values = EXCLUDED.dimension_values AND kpi_fact.budget_ref IS NOT DISTINCT FROM EXCLUDED.budget_ref THEN kpi_fact.envelope_id END,
+      match_method = CASE WHEN kpi_fact.envelope_id IS NOT NULL AND kpi_fact.dimension_values = EXCLUDED.dimension_values AND kpi_fact.budget_ref IS NOT DISTINCT FROM EXCLUDED.budget_ref THEN kpi_fact.match_method ELSE EXCLUDED.match_method END`;
 }
 
 /**
@@ -126,12 +132,12 @@ export async function upsertKpiFacts(tx: Tx, load: FactLoad, rows: KpiFactInput[
 export async function insertProjectionFacts(tx: Tx, load: FactLoad, rows: ProjectionFactInput[]): Promise<number> {
   if (rows.length === 0) return 0;
   return tx.$executeRaw`
-    INSERT INTO projection_fact (workspace_id, dimension_values, period_date, metric, value, currency, value_reporting, fx_rate_id, formula_version, horizon_end, source_system, source_run_id, match_method)
-    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, c, vr::numeric, fx::uuid, f, he::date, ${load.sourceSystem}, ${load.sourceRunId}::uuid, mm
+    INSERT INTO projection_fact (workspace_id, dimension_values, period_date, metric, value, currency, value_reporting, fx_rate_id, formula_version, horizon_end, source_system, source_run_id, match_method, budget_ref)
+    SELECT ${load.workspaceId}::uuid, d::jsonb, p::date, m, v::numeric, c, vr::numeric, fx::uuid, f, he::date, ${load.sourceSystem}, ${load.sourceRunId}::uuid, mm, br
     FROM unnest(${json(rows)}::text[], ${rows.map((r) => r.periodDate)}::text[], ${rows.map((r) => r.metric)}::text[],
                 ${rows.map((r) => r.value)}::text[], ${rows.map((r) => r.currency)}::text[], ${rows.map((r) => r.valueReporting)}::text[],
                 ${rows.map((r) => r.fxRateId)}::text[], ${rows.map((r) => r.formulaVersion)}::text[], ${rows.map((r) => r.horizonEnd)}::text[],
-                ${rows.map((r) => r.matchMethod ?? null)}::text[]) AS t(d, p, m, v, c, vr, fx, f, he, mm)`;
+                ${rows.map((r) => r.matchMethod ?? null)}::text[], ${rows.map((r) => r.budgetRef ?? null)}::text[]) AS t(d, p, m, v, c, vr, fx, f, he, mm, br)`;
 }
 
 /**
@@ -171,16 +177,106 @@ const FACT_TABLES = [
   ["projection", "projection_fact"],
 ] as const;
 
+/** What the workspace's naming conventions make of the campaigns in scope (ADR-0090). */
+export interface ConventionTuples {
+  /** Campaign value (code) → the dimension values its name adds to the fact's tuple. */
+  derived: Record<string, Record<string, string>>;
+  /** Campaign values whose name fits no convention. */
+  misfits: string[];
+}
+
 /**
- * Spec §24.3 as amended by EX-1 (ADR-0085). For each fact in scope, in order:
+ * Registry lookup for convention parts: a value code (any case) or one of the value's aliases, in
+ * the org-wide or this workspace's dimension of that key. Returns null for an unknown value.
+ */
+export async function conventionResolver(tx: Tx, workspaceId: string, keys: string[]): Promise<(dimension: string, value: string) => string | null> {
+  const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true } });
+  const dims = await tx.dimension.findMany({ where: { orgId: ws.orgId, key: { in: keys }, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true } });
+  const values = dims.length === 0 ? [] : await tx.dimensionValue.findMany({ where: { dimensionId: { in: dims.map((d) => d.id) }, mergedIntoId: null }, select: { dimensionId: true, code: true, aliases: true } });
+  const keyOf = new Map(dims.map((d) => [d.id, d.key]));
+  const index = new Map<string, Map<string, string>>();
+  for (const v of values) {
+    const key = keyOf.get(v.dimensionId);
+    if (!key) continue;
+    const m = index.get(key) ?? new Map<string, string>();
+    index.set(key, m);
+    for (const a of v.aliases) if (!m.has(a.toLowerCase())) m.set(a.toLowerCase(), v.code);
+    m.set(v.code.toLowerCase(), v.code);
+  }
+  return (dimension, value) => index.get(dimension)?.get(value.toLowerCase()) ?? null;
+}
+
+/** Campaign value (code) → name (the registry label; the code itself when it has none). */
+export async function campaignNames(tx: Tx, workspaceId: string, codes: string[], campaignKey = CAMPAIGN_DIMENSION): Promise<Map<string, string>> {
+  const out = new Map(codes.map((c) => [c, c]));
+  if (codes.length === 0) return out;
+  const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { orgId: true } });
+  const dims = await tx.dimension.findMany({ where: { orgId: ws.orgId, key: campaignKey, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, workspaceId: true } });
+  // A workspace's own campaign dimension wins over the org-wide one.
+  dims.sort((a, b) => Number(a.workspaceId !== null) - Number(b.workspaceId !== null));
+  for (const d of dims) {
+    const values = await tx.dimensionValue.findMany({ where: { dimensionId: d.id, code: { in: codes } }, select: { code: true, label: true } });
+    for (const v of values) if (v.label) out.set(v.code, v.label);
+  }
+  return out;
+}
+
+/**
+ * EX-5 (ADR-0090): the workspace's live naming conventions (oldest first) applied to every campaign
+ * in scope: the first convention a name fits gives its dimension values; a name that fits none is
+ * a misfit. Null when the workspace has no convention (matching is then exactly ADR-0085's).
+ */
+export async function conventionTuples(tx: Tx, workspaceId: string, runId: string | null): Promise<ConventionTuples | null> {
+  const rows = await tx.namingConvention.findMany({ where: { workspaceId, deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  if (rows.length === 0) return null;
+  const conventions = rows.map((r) => ({ delimiter: r.delimiter, tokens: NamingConventionToken.array().parse(r.tokens) }));
+  const codes = (
+    await tx.$queryRaw<Array<{ c: string }>>`
+      SELECT DISTINCT c FROM (
+        SELECT dimension_values ->> ${CAMPAIGN_DIMENSION} AS c FROM spend_fact WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL AND (${runId}::uuid IS NULL OR source_run_id = ${runId}::uuid)
+        UNION SELECT dimension_values ->> ${CAMPAIGN_DIMENSION} FROM kpi_fact WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL AND (${runId}::uuid IS NULL OR source_run_id = ${runId}::uuid)
+        UNION SELECT dimension_values ->> ${CAMPAIGN_DIMENSION} FROM projection_fact WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL AND (${runId}::uuid IS NULL OR source_run_id = ${runId}::uuid)
+      ) x WHERE c IS NOT NULL`
+  ).map((r) => r.c);
+  const out: ConventionTuples = { derived: {}, misfits: [] };
+  if (codes.length === 0) return out;
+  const names = await campaignNames(tx, workspaceId, codes);
+  const resolve = await conventionResolver(tx, workspaceId, [...new Set(conventions.flatMap((c) => c.tokens.flatMap((t) => (t.dimension ? [t.dimension] : []))))]);
+  for (const code of codes) {
+    const name = names.get(code) ?? code;
+    const hit = conventions.map((c) => parseCampaignName(c, name, resolve)).find((p) => p.ok);
+    if (hit?.ok) out.derived[code] = hit.dimensionValues;
+    else out.misfits.push(code);
+  }
+  return out;
+}
+
+/** EX-5: the campaign values (codes) with the most live spend, for the naming-convention preview. */
+export async function topCampaigns(tx: Tx, workspaceId: string, limit: number): Promise<string[]> {
+  const rows = await tx.$queryRaw<Array<{ c: string }>>`
+    SELECT dimension_values ->> ${CAMPAIGN_DIMENSION} AS c FROM spend_fact
+    WHERE workspace_id = ${workspaceId}::uuid AND superseded_at IS NULL AND dimension_values ? ${CAMPAIGN_DIMENSION}
+    GROUP BY 1 ORDER BY sum(amount_reporting) DESC, 1 LIMIT ${limit}`;
+  return rows.map((r) => r.c);
+}
+
+/**
+ * Spec §24.3 as amended by EX-1 (ADR-0085) and EX-5 (ADR-0090). For each fact in scope, in order:
  * 1. a manual pin is never touched (it is out of scope);
- * 2. match rules: the distinct live, date-covering envelopes of every live rule whose predicate the
+ * 2. a database reference (`budget_ref`, the budget the source row names by id or match key): the
+ *    live, date-covering envelopes it names; none → unassigned (`unknown_budget_ref`, or
+ *    `budget_ref_outside_dates` when the budget exists but its dates miss the fact) — never a
+ *    fall-through to the levels below;
+ * 3. match rules: the distinct live, date-covering envelopes of every live rule whose predicate the
  *    fact satisfies (and whose own window covers the fact's date);
- * 3. otherwise the tuple: the live, date-covering envelopes whose non-empty tuple is a subset of
- *    the fact's, at the highest key count.
- * The first level with candidates decides: exactly one → assigned (`rule`, or `tuple` / the
- * normalizer's `external_id` / `match_key`); more than one → `ambiguous`, no envelope, candidates
- * kept; none → unmatched. Never tie-broken by id. One statement per fact table.
+ * 4. a campaign name that fits none of the workspace's naming conventions → unassigned
+ *    (`name_mismatch`);
+ * 5. otherwise the tuple — the fact's own dimension values plus those its campaign name gives
+ *    (`naming` when the winning budget needs one of those) — the live, date-covering envelopes whose
+ *    non-empty tuple is a subset of it, at the highest key count.
+ * The first level with candidates decides: exactly one → assigned; more than one on one ancestor
+ * chain → the deepest; otherwise `ambiguous`, no envelope, candidates kept. Never tie-broken by id.
+ * One statement per fact table.
  */
 export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope): Promise<MatchPass> {
   const out: MatchPass = { spend: 0, kpi: 0, projection: 0, envelopeIds: [], gained: [] };
@@ -189,11 +285,16 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
   const predicate = scope.predicate === undefined ? null : JSON.stringify(scope.predicate);
   const hint = scope.predicate === undefined ? null : containmentHint(scope.predicate);
   const keep = scope.keep ?? [];
+  const named = await conventionTuples(tx, workspaceId, scope.runId ?? null);
   for (const [key, table] of FACT_TABLES) {
     const rows = await tx.$queryRawUnsafe<Array<{ old_env: string | null; new_env: string | null }>>(
       `WITH f AS (
          SELECT f.id, f.period_date, f.dimension_values, f.envelope_id AS old_env, f.match_method AS old_method,
-                f.match_status AS old_status, f.match_candidates AS old_cands
+                f.match_status AS old_status, f.match_candidates AS old_cands,
+                nullif(btrim(f.budget_ref), '') AS ref,
+                CASE WHEN $7::jsonb IS NULL THEN f.dimension_values
+                     ELSE coalesce($7::jsonb -> (f.dimension_values ->> $9), '{}'::jsonb) || f.dimension_values END AS tuple,
+                coalesce((f.dimension_values ->> $9) = ANY ($8::text[]), false) AS misfit
          FROM ${table} f
          WHERE f.workspace_id = $1::uuid AND f.superseded_at IS NULL
            AND ($2::uuid IS NULL OR (f.source_run_id = $2::uuid AND f.envelope_id IS NULL))
@@ -202,13 +303,24 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
            AND ($3::jsonb IS NULL OR match_rule_matches($3::jsonb, f.dimension_values))
            AND NOT EXISTS (SELECT 1 FROM unnest($5::date[], $6::date[]) AS k(s, e) WHERE f.period_date BETWEEN k.s AND k.e)
        ),
+       -- The budget the source row names: by id, or by match key (any case).
+       xc AS (
+         SELECT f.id, f.period_date,
+                array_agg(DISTINCT e.id ORDER BY e.id) FILTER (WHERE f.period_date BETWEEN e.start_date AND e.end_date) AS envs,
+                count(e.id) > 0 AS known
+         FROM f
+         LEFT JOIN envelope e ON e.workspace_id = $1::uuid AND e.status <> 'ARCHIVED'
+          AND (e.id::text = lower(f.ref) OR lower(e.match_key) = lower(f.ref))
+         WHERE f.ref IS NOT NULL
+         GROUP BY f.id, f.period_date
+       ),
        rc AS (
          SELECT f.id, f.period_date, array_agg(DISTINCT r.envelope_id ORDER BY r.envelope_id) AS envs
          FROM f
          JOIN match_rule r ON r.workspace_id = $1::uuid AND r.deleted_at IS NULL
           AND (r.start_date IS NULL OR f.period_date >= r.start_date) AND (r.end_date IS NULL OR f.period_date <= r.end_date)
          JOIN envelope e ON e.id = r.envelope_id AND e.status <> 'ARCHIVED' AND f.period_date BETWEEN e.start_date AND e.end_date
-         WHERE match_rule_matches(r.predicate, f.dimension_values)
+         WHERE f.ref IS NULL AND match_rule_matches(r.predicate, f.dimension_values)
          GROUP BY f.id, f.period_date
        ),
        tc AS (
@@ -219,25 +331,29 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
            FROM f JOIN envelope e
              ON e.workspace_id = $1::uuid
             AND f.period_date BETWEEN e.start_date AND e.end_date
-            AND e.dimension_values <@ f.dimension_values
+            AND e.dimension_values <@ f.tuple
             AND e.dimension_values <> '{}'::jsonb
             AND e.status <> 'ARCHIVED'
-           WHERE NOT EXISTS (SELECT 1 FROM rc WHERE rc.id = f.id AND rc.period_date = f.period_date)
+           WHERE f.ref IS NULL AND NOT f.misfit
+             AND NOT EXISTS (SELECT 1 FROM rc WHERE rc.id = f.id AND rc.period_date = f.period_date)
          ) x
          WHERE x.rk = 1
          GROUP BY x.id, x.period_date
        ),
        d0 AS (
-         SELECT f.id, f.period_date, f.old_env, f.old_method, f.old_status, f.old_cands,
-                rc.envs IS NOT NULL AS by_rule, coalesce(rc.envs, tc.envs) AS envs
+         SELECT f.id, f.period_date, f.dimension_values, f.old_env, f.old_method, f.old_status, f.old_cands,
+                CASE WHEN f.ref IS NOT NULL THEN 'reference' WHEN rc.envs IS NOT NULL THEN 'rule' WHEN f.misfit THEN 'misfit' ELSE 'tuple' END AS level,
+                CASE WHEN f.ref IS NOT NULL THEN xc.envs WHEN rc.envs IS NOT NULL THEN rc.envs WHEN f.misfit THEN NULL ELSE tc.envs END AS envs,
+                coalesce(xc.known, false) AS known
          FROM f
+         LEFT JOIN xc ON xc.id = f.id AND xc.period_date = f.period_date
          LEFT JOIN rc ON rc.id = f.id AND rc.period_date = f.period_date
          LEFT JOIN tc ON tc.id = f.id AND tc.period_date = f.period_date
        ),
        -- Tied candidates on one ancestor chain: the deepest takes the fact (money lives on leaves,
        -- ADR-016). It is the one candidate every other candidate is an ancestor of.
        d AS (
-         SELECT d0.id, d0.period_date, d0.old_env, d0.old_method, d0.old_status, d0.old_cands, d0.by_rule,
+         SELECT d0.id, d0.period_date, d0.dimension_values, d0.old_env, d0.old_method, d0.old_status, d0.old_cands, d0.level, d0.known,
                 CASE WHEN cardinality(d0.envs) > 1 THEN coalesce((
                   SELECT ARRAY[c] FROM unnest(d0.envs) AS c
                   WHERE NOT EXISTS (
@@ -258,9 +374,15 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
          SELECT d.id, d.period_date, d.old_env, d.old_method, d.old_status, d.old_cands,
                 CASE WHEN cardinality(d.envs) = 1 THEN d.envs[1] END AS new_env,
                 CASE WHEN cardinality(d.envs) = 1 THEN
-                  CASE WHEN d.by_rule THEN 'rule' WHEN d.old_method IN ('external_id', 'match_key') THEN d.old_method ELSE 'tuple' END
+                  CASE WHEN d.level IN ('reference', 'rule') THEN d.level
+                       WHEN NOT ((SELECT e.dimension_values FROM envelope e WHERE e.id = d.envs[1]) <@ d.dimension_values) THEN 'naming'
+                       WHEN d.old_method IN ('external_id', 'match_key') THEN d.old_method
+                       ELSE 'tuple' END
                 END AS new_method,
-                CASE WHEN cardinality(d.envs) > 1 THEN 'ambiguous' END AS new_status,
+                CASE WHEN cardinality(d.envs) > 1 THEN 'ambiguous'
+                     WHEN d.level = 'misfit' THEN 'name_mismatch'
+                     WHEN d.level = 'reference' AND d.envs IS NULL THEN CASE WHEN d.known THEN 'budget_ref_outside_dates' ELSE 'unknown_budget_ref' END
+                END AS new_status,
                 CASE WHEN cardinality(d.envs) > 1 THEN d.envs END AS new_cands
          FROM d
        )
@@ -277,6 +399,9 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
       hint,
       keep.map((k) => k.start),
       keep.map((k) => k.end),
+      named === null ? null : JSON.stringify(named.derived),
+      named?.misfits ?? [],
+      CAMPAIGN_DIMENSION,
     );
     out[key] = rows.length;
     for (const r of rows) {

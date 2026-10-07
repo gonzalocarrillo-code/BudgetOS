@@ -2,7 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import type { AuthContext } from "../../common/tenant.js";
 import { createMatchRule, deleteMatchRule, rematchWorkspace } from "./commands/match-rules.js";
-import { getMatchCoverage, listMatchRules } from "./queries/match-rules.js";
+import { createNamingConvention, deleteNamingConvention } from "./commands/naming-conventions.js";
+import { getMatchCoverage, listMatchRules, previewNamingConvention } from "./queries/match-rules.js";
 
 @Injectable()
 export class MatchingService {
@@ -22,5 +23,14 @@ export class MatchingService {
   }
   coverage(auth: AuthContext, query: unknown) {
     return getMatchCoverage(this.prisma, auth, query);
+  }
+  createConvention(auth: AuthContext, body: unknown) {
+    return createNamingConvention(this.prisma, auth, body);
+  }
+  removeConvention(auth: AuthContext, id: string) {
+    return deleteNamingConvention(this.prisma, auth, id);
+  }
+  previewConvention(auth: AuthContext, body: unknown) {
+    return previewNamingConvention(this.prisma, auth, body);
   }
 }

@@ -28,6 +28,8 @@ export const RoleColumn = z.discriminatedUnion("role", [
   z.object({ role: z.literal("horizon_end") }).strict(),
   /** T-036 (§24.3): compared with envelope.match_key, or parsed with the source's parse_pattern. */
   z.object({ role: z.literal("match_key") }).strict(),
+  /** EX-5 (ADR-0090): the budget this row belongs to — a Budget OS budget id, or a budget's match key. Assigns the fact directly. */
+  z.object({ role: z.literal("budget_ref") }).strict(),
   /** ADR-071: the source's stable primary key. Required for incremental sources; a re-delivered row updates its fact. */
   z.object({ role: z.literal("row_id") }).strict(),
   z.object({ role: z.literal("ignore") }).strict(),
@@ -47,7 +49,8 @@ export const SourceMapping = z
     if (count("period_date") !== 1) issue("Map exactly one period_date column");
     if (count("match_key") > 1) issue("Map at most one match_key column");
     if (count("row_id") > 1) issue("Map at most one row_id column");
-    if (!Object.values(m.columns).some((c) => "dimension" in c) && count("match_key") === 0) issue("Map at least one dimension column, or a match_key column");
+    if (count("budget_ref") > 1) issue("Map at most one budget_ref column");
+    if (!Object.values(m.columns).some((c) => "dimension" in c) && count("match_key") === 0 && count("budget_ref") === 0) issue("Map at least one dimension column, a match_key column or a budget_ref column");
     if (m.kind === "spend" || m.kind === "spend+kpi") {
       if (count("amount") !== 1) issue("A spend source maps exactly one amount column");
       const amount = roles.find((r) => r.role === "amount");
@@ -175,7 +178,7 @@ export const normTerm = (s: string): string => s.toLowerCase().normalize("NFKD")
 /** What a column synonym maps a header to: a dimension, or a role without file-specific details. */
 export const ColumnSynonymTarget = z.union([
   z.object({ dimension: z.string().min(1) }).strict(),
-  z.object({ role: z.enum(["period_date", "amount", "currency", "match_key", "formula_version", "horizon_end", "ignore"]) }).strict(),
+  z.object({ role: z.enum(["period_date", "amount", "currency", "match_key", "budget_ref", "formula_version", "horizon_end", "ignore"]) }).strict(),
   z.object({ role: z.literal("kpi"), metric: FactMetric }).strict(),
   z.object({ role: z.literal("projection"), metric: FactMetric }).strict(),
 ]);
@@ -198,6 +201,7 @@ export const DEFAULT_COLUMN_SYNONYMS: ReadonlyArray<{ term: string; target: Colu
   ...col(["leads", "lead", "prospectos"], { role: "kpi", metric: "leads" }),
   ...col(["reach", "alcance"], { role: "kpi", metric: "reach" }),
   ...col(["campaign", "campaign name", "campana", "campaña"], { role: "match_key" }),
+  ...col(["budget id", "budget ref", "budget reference", "budget code", "budget os id"], { role: "budget_ref" }),
 ];
 
 const met = (terms: string[], metric: string) => terms.map((term) => ({ term: normTerm(term), target: { metric } }));

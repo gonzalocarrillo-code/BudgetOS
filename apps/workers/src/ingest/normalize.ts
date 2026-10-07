@@ -144,6 +144,7 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
   let dimensionValues: Record<string, string> = {};
   let viaExternalId = false;
   let matchKey: string | null = null;
+  let budgetRef: string | null = null;
   let rowId: string | null = null;
   let periodDate: string | null = null;
   let amount: string | null = null;
@@ -211,6 +212,9 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
       case "match_key":
         matchKey = v;
         break;
+      case "budget_ref":
+        budgetRef = v;
+        break;
       case "row_id":
         if (v === null) return { rejected: `missing ${column}` };
         rowId = v;
@@ -241,11 +245,12 @@ export function normalize(row: RawRow, mapping: SourceMapping, registry: Registr
     }
   }
   // A row with an unknown match key and no dimensions is unmatched, not rejected: the queue shows it.
-  if (Object.keys(dimensionValues).length === 0 && matchKey === null) return { rejected: "no dimension values" };
+  if (Object.keys(dimensionValues).length === 0 && matchKey === null && budgetRef === null) return { rejected: "no dimension values" };
   const matchHint = viaExternalId ? ("external_id" as const) : viaMatchKey ? ("match_key" as const) : undefined;
 
   const facts: NormalizedFact[] = [];
-  const base = { dimensionValues, periodDate, ...(matchHint ? { matchHint } : {}), ...(rowId !== null ? { byRowId: true as const } : {}) };
+  // EX-5: the budget reference rides along; it is not part of the natural key (a row that changes budget is the same fact).
+  const base = { dimensionValues, periodDate, ...(matchHint ? { matchHint } : {}), ...(rowId !== null ? { byRowId: true as const } : {}), ...(budgetRef !== null ? { budgetRef } : {}) };
   const identity: RowIdentity = rowId !== null ? { rowId } : { periodDate, dimensionValues, matchKey };
   const key = (part: string) => naturalKey(sourceId, identity, part);
   if (mapping.kind === "spend" || mapping.kind === "spend+kpi") {

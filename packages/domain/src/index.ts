@@ -286,9 +286,12 @@ export {
 
 export { ApiEnv, McpEnv, WorkerEnv, parseEnv } from "./env.js";
 export {
+  BudgetReferenceView,
   CAMPAIGN_DIMENSION,
+  ConventionProblem,
   CoverageAmounts,
   CreateMatchRuleInput,
+  CreateNamingConventionInput,
   MatchCandidate,
   MatchCoverageQuery,
   MatchCoverageResponse,
@@ -298,8 +301,16 @@ export {
   MatchRuleView,
   MatchRuleWriteResponse,
   MatchRulesResponse,
+  NamingConventionDelimiter,
+  NamingConventionPreviewInput,
+  NamingConventionPreviewResponse,
+  NamingConventionToken,
+  NamingConventionView,
+  NamingConventionWriteResponse,
   OpenCampaign,
   RematchResult,
+  UnassignedReason,
   equalsPredicate,
+  parseCampaignName,
 } from "./matching.js";
-export type { MatchRuleGroupT } from "./matching.js";
+export type { ConventionParse, MatchRuleGroupT } from "./matching.js";

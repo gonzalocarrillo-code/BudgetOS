@@ -1136,6 +1136,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/naming-conventions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createNamingConvention"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-conventions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewNamingConvention"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/naming-conventions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteNamingConvention"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{ws}/match-coverage": {
         parameters: {
             query?: never;
@@ -5214,6 +5262,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "budget_ref";
+                            } | {
+                                /** @enum {string} */
                                 role: "row_id";
                             } | {
                                 /** @enum {string} */
@@ -5332,6 +5383,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "budget_ref";
+                            } | {
+                                /** @enum {string} */
                                 role: "row_id";
                             } | {
                                 /** @enum {string} */
@@ -5433,6 +5487,9 @@ export interface operations {
                                         role: "match_key";
                                     } | {
                                         /** @enum {string} */
+                                        role: "budget_ref";
+                                    } | {
+                                        /** @enum {string} */
                                         role: "row_id";
                                     } | {
                                         /** @enum {string} */
@@ -5514,6 +5571,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "budget_ref";
+                            } | {
+                                /** @enum {string} */
                                 role: "row_id";
                             } | {
                                 /** @enum {string} */
@@ -5587,6 +5647,9 @@ export interface operations {
                                 } | {
                                     /** @enum {string} */
                                     role: "match_key";
+                                } | {
+                                    /** @enum {string} */
+                                    role: "budget_ref";
                                 } | {
                                     /** @enum {string} */
                                     role: "row_id";
@@ -5688,6 +5751,9 @@ export interface operations {
                                         role: "match_key";
                                     } | {
                                         /** @enum {string} */
+                                        role: "budget_ref";
+                                    } | {
+                                        /** @enum {string} */
                                         role: "row_id";
                                     } | {
                                         /** @enum {string} */
@@ -5772,6 +5838,9 @@ export interface operations {
                                 role: "match_key";
                             } | {
                                 /** @enum {string} */
+                                role: "budget_ref";
+                            } | {
+                                /** @enum {string} */
                                 role: "row_id";
                             } | {
                                 /** @enum {string} */
@@ -5847,6 +5916,9 @@ export interface operations {
                                     role: "match_key";
                                 } | {
                                     /** @enum {string} */
+                                    role: "budget_ref";
+                                } | {
+                                    /** @enum {string} */
                                     role: "row_id";
                                 } | {
                                     /** @enum {string} */
@@ -5893,7 +5965,7 @@ export interface operations {
                                 dimension: string;
                             } | {
                                 /** @enum {string} */
-                                role: "period_date" | "amount" | "currency" | "match_key" | "formula_version" | "horizon_end" | "ignore";
+                                role: "period_date" | "amount" | "currency" | "match_key" | "budget_ref" | "formula_version" | "horizon_end" | "ignore";
                             } | {
                                 /** @enum {string} */
                                 role: "kpi";
@@ -5920,7 +5992,7 @@ export interface operations {
                                 dimension: string;
                             } | {
                                 /** @enum {string} */
-                                role: "period_date" | "amount" | "currency" | "match_key" | "formula_version" | "horizon_end" | "ignore";
+                                role: "period_date" | "amount" | "currency" | "match_key" | "budget_ref" | "formula_version" | "horizon_end" | "ignore";
                             } | {
                                 /** @enum {string} */
                                 role: "kpi";
@@ -5968,7 +6040,7 @@ export interface operations {
                         dimension: string;
                     } | {
                         /** @enum {string} */
-                        role: "period_date" | "amount" | "currency" | "match_key" | "formula_version" | "horizon_end" | "ignore";
+                        role: "period_date" | "amount" | "currency" | "match_key" | "budget_ref" | "formula_version" | "horizon_end" | "ignore";
                     } | {
                         /** @enum {string} */
                         role: "kpi";
@@ -6082,6 +6154,9 @@ export interface operations {
                             } | {
                                 /** @enum {string} */
                                 role: "match_key";
+                            } | {
+                                /** @enum {string} */
+                                role: "budget_ref";
                             } | {
                                 /** @enum {string} */
                                 role: "row_id";
@@ -6337,6 +6412,30 @@ export interface operations {
                             createdBy: string;
                             createdAt: string;
                         }[];
+                        /** @default [] */
+                        conventions: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        }[];
+                        /** @default [] */
+                        references: {
+                            /** Format: uuid */
+                            sourceId: string;
+                            sourceName: string;
+                            column: string;
+                        }[];
                     };
                 };
             };
@@ -6508,6 +6607,190 @@ export interface operations {
             };
         };
     };
+    createNamingConvention: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                    tokens: {
+                        dimension: string | null;
+                        /** @default {} */
+                        aliases?: {
+                            [key: string]: string;
+                        };
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description The naming convention (EX-5, ADR-0090), and what re-matching the campaign facts changed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        convention: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        };
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        };
+                    };
+                };
+            };
+            /** @description The same convention already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewNamingConvention: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    convention: {
+                        /** @enum {string} */
+                        delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                        tokens: {
+                            dimension: string | null;
+                            /** @default {} */
+                            aliases?: {
+                                [key: string]: string;
+                            };
+                        }[];
+                    };
+                    names?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description The convention read over the given names, or the largest real campaigns */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        samples: {
+                            name: string;
+                            campaign: string | null;
+                            dimensionValues: {
+                                [key: string]: string;
+                            } | null;
+                            problem: ({
+                                /** @enum {string} */
+                                kind: "parts";
+                                expected: number;
+                                found: number;
+                            } | {
+                                /** @enum {string} */
+                                kind: "empty";
+                                position: number;
+                            } | {
+                                /** @enum {string} */
+                                kind: "unknown_value";
+                                position: number;
+                                dimension: string;
+                                value: string;
+                            }) | null;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    deleteNamingConvention: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Workspace-Id": string;
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Convention soft-deleted; the campaign facts matched again without it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        convention: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            delimiter: "_" | "-" | "." | "|" | "/" | ":" | "·" | " " | "+";
+                            tokens: {
+                                dimension: string | null;
+                                /** @default {} */
+                                aliases: {
+                                    [key: string]: string;
+                                };
+                            }[];
+                            /** Format: uuid */
+                            createdBy: string;
+                            createdAt: string;
+                        };
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        };
+                    };
+                };
+            };
+        };
+    };
     getMatchCoverage: {
         parameters: {
             query?: {
@@ -6574,6 +6857,11 @@ export interface operations {
                             label: string | null;
                             /** @enum {string} */
                             status: "unmatched" | "ambiguous";
+                            /**
+                             * @default null
+                             * @enum {string|null}
+                             */
+                            reason: "name_mismatch" | "unknown_budget_ref" | "budget_ref_outside_dates" | null;
                             amount: string;
                             rows: number;
                             firstDate: string;

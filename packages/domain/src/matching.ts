@@ -8,6 +8,9 @@ import { z } from "zod";
  * listed, never an arbitrary pick.
  */
 
+/** The dimension key campaigns live under on facts (EX-1..EX-3 shared contract). */
+export const CAMPAIGN_DIMENSION = "campaign";
+
 const IsoDate = z.string().date();
 const Money = z.string().regex(/^-?\d+(\.\d{1,2})?$/, "Money is a decimal string");
 
@@ -77,7 +80,63 @@ export const MatchRuleView = z.object({
 });
 export type MatchRuleView = z.infer<typeof MatchRuleView>;
 
-export const MatchRulesResponse = z.object({ rules: z.array(MatchRuleView) });
+/**
+ * EX-5 (ADR-0090): why a fact stays unassigned besides "nothing qualified": its campaign name does
+ * not fit the workspace's naming conventions, or the budget its source row names is unknown, or does
+ * not cover the fact's date. Stored in the fact's match_status (with `ambiguous`).
+ */
+export const UnassignedReason = z.enum(["name_mismatch", "unknown_budget_ref", "budget_ref_outside_dates"]);
+export type UnassignedReason = z.infer<typeof UnassignedReason>;
+
+/** The characters a campaign name may be split on. */
+export const NamingConventionDelimiter = z.enum(["_", "-", ".", "|", "/", ":", "·", " ", "+"]);
+export type NamingConventionDelimiter = z.infer<typeof NamingConventionDelimiter>;
+
+const DimensionKey = z.string().regex(/^[a-z][a-z0-9_]{1,40}$/, "a dimension key");
+
+/** One position of a campaign name: the dimension it names (null = ignored) and raw value → value code aliases. */
+export const NamingConventionToken = z
+  .object({
+    dimension: DimensionKey.nullable(),
+    aliases: z.record(z.string().min(1).max(100), z.string().min(1).max(200)).default({}),
+  })
+  .strict();
+export type NamingConventionToken = z.infer<typeof NamingConventionToken>;
+
+/** POST /workspaces/:ws/naming-conventions: `BR_Meta_Prospecting_Q4_VideoA` split on `_` → country, platform, objective, ignore, ignore. */
+export const CreateNamingConventionInput = z
+  .object({ delimiter: NamingConventionDelimiter, tokens: z.array(NamingConventionToken).min(1).max(20) })
+  .strict()
+  .superRefine((v, ctx) => {
+    const dims = v.tokens.flatMap((t) => (t.dimension === null ? [] : [t.dimension]));
+    if (dims.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Name at least one position's dimension", path: ["tokens"] });
+    if (new Set(dims).size !== dims.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Each dimension may come from one position only", path: ["tokens"] });
+    if (dims.includes(CAMPAIGN_DIMENSION)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "The campaign itself is what is parsed", path: ["tokens"] });
+    v.tokens.forEach((t, i) => {
+      if (t.dimension === null && Object.keys(t.aliases).length > 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "An ignored position has no aliases", path: ["tokens", i, "aliases"] });
+    });
+  });
+export type CreateNamingConventionInput = z.infer<typeof CreateNamingConventionInput>;
+
+export const NamingConventionView = z.object({
+  id: z.string().uuid(),
+  delimiter: NamingConventionDelimiter,
+  tokens: z.array(NamingConventionToken),
+  createdBy: z.string().uuid(),
+  createdAt: z.string(),
+});
+export type NamingConventionView = z.infer<typeof NamingConventionView>;
+
+/** A source mapping column with role `budget_ref`: the source row names its budget (id or match key). */
+export const BudgetReferenceView = z.object({ sourceId: z.string().uuid(), sourceName: z.string(), column: z.string() });
+export type BudgetReferenceView = z.infer<typeof BudgetReferenceView>;
+
+/** GET /workspaces/:ws/match-rules: the three kinds of mapping rule (ADR-0090). */
+export const MatchRulesResponse = z.object({
+  rules: z.array(MatchRuleView),
+  conventions: z.array(NamingConventionView).default([]),
+  references: z.array(BudgetReferenceView).default([]),
+});
 export type MatchRulesResponse = z.infer<typeof MatchRulesResponse>;
 
 /** What a re-match changed: facts per table whose envelope or status moved, and the envelopes to refresh. */
@@ -91,6 +150,64 @@ export type RematchResult = z.infer<typeof RematchResult>;
 
 export const MatchRuleWriteResponse = z.object({ rule: MatchRuleView, rematch: RematchResult });
 export type MatchRuleWriteResponse = z.infer<typeof MatchRuleWriteResponse>;
+
+export const NamingConventionWriteResponse = z.object({ convention: NamingConventionView, rematch: RematchResult });
+export type NamingConventionWriteResponse = z.infer<typeof NamingConventionWriteResponse>;
+
+/** POST /workspaces/:ws/naming-conventions/preview: a convention (saved or not) over campaign names (the largest real ones when none are given). */
+export const NamingConventionPreviewInput = z.object({ convention: CreateNamingConventionInput, names: z.array(z.string().min(1).max(500)).max(20).optional() }).strict();
+export type NamingConventionPreviewInput = z.infer<typeof NamingConventionPreviewInput>;
+
+/** Why a name does not fit a convention: wrong number of parts, an empty part, or a part that is no known value of its dimension. */
+export const ConventionProblem = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("parts"), expected: z.number().int(), found: z.number().int() }),
+  z.object({ kind: z.literal("empty"), position: z.number().int() }),
+  z.object({ kind: z.literal("unknown_value"), position: z.number().int(), dimension: z.string(), value: z.string() }),
+]);
+export type ConventionProblem = z.infer<typeof ConventionProblem>;
+
+export const NamingConventionPreviewResponse = z.object({
+  samples: z.array(
+    z.object({
+      name: z.string(),
+      /** The campaign value (code) the name belongs to; null for a name typed in. */
+      campaign: z.string().nullable(),
+      dimensionValues: z.record(z.string(), z.string()).nullable(),
+      problem: ConventionProblem.nullable(),
+    }),
+  ),
+});
+export type NamingConventionPreviewResponse = z.infer<typeof NamingConventionPreviewResponse>;
+
+export type ConventionParse = { ok: true; dimensionValues: Record<string, string> } | { ok: false; problem: ConventionProblem };
+
+/**
+ * EX-5 (ADR-0090): a campaign name read with a naming convention. The name is split on the
+ * delimiter and must have exactly one part per position; each named position's part goes through
+ * the position's aliases (case-insensitive) and then `resolve` (the registry: a value code, matched
+ * case-insensitively or by the value's own aliases), which returns null for an unknown value.
+ * Ignored positions only need to be there. The same function backs matching and the preview.
+ */
+export function parseCampaignName(
+  convention: { delimiter: string; tokens: ReadonlyArray<{ dimension: string | null; aliases?: Record<string, string> | undefined }> },
+  name: string,
+  resolve: (dimension: string, value: string) => string | null = (_d, v) => v,
+): ConventionParse {
+  const parts = name.trim().split(convention.delimiter);
+  if (parts.length !== convention.tokens.length) return { ok: false, problem: { kind: "parts", expected: convention.tokens.length, found: parts.length } };
+  const dimensionValues: Record<string, string> = {};
+  for (const [i, token] of convention.tokens.entries()) {
+    const raw = (parts[i] ?? "").trim();
+    if (raw === "") return { ok: false, problem: { kind: "empty", position: i + 1 } };
+    if (token.dimension === null) continue;
+    const alias = Object.entries(token.aliases ?? {}).find(([k]) => k.toLowerCase() === raw.toLowerCase());
+    const value = alias ? alias[1] : raw;
+    const code = resolve(token.dimension, value);
+    if (code === null) return { ok: false, problem: { kind: "unknown_value", position: i + 1, dimension: token.dimension, value: raw } };
+    dimensionValues[token.dimension] = code;
+  }
+  return { ok: true, dimensionValues };
+}
 
 /** GET /workspaces/:ws/match-coverage?from&to (both optional, yyyy-MM-dd, inclusive). */
 export const MatchCoverageQuery = z
@@ -118,6 +235,8 @@ export const OpenCampaign = z.object({
   campaign: z.string().nullable(),
   label: z.string().nullable(),
   status: z.enum(["unmatched", "ambiguous"]),
+  /** EX-5: why an unmatched campaign stays unassigned, when a rule says so (null: nothing qualified). */
+  reason: UnassignedReason.nullable().default(null),
   amount: Money,
   rows: z.number().int(),
   firstDate: IsoDate,
@@ -139,5 +258,3 @@ export const MatchCoverageResponse = z.object({
 });
 export type MatchCoverageResponse = z.infer<typeof MatchCoverageResponse>;
 
-/** The dimension key campaigns live under on facts (EX-1..EX-3 shared contract). */
-export const CAMPAIGN_DIMENSION = "campaign";

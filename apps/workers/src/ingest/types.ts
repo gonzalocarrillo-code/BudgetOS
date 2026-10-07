@@ -23,6 +23,8 @@ export interface NormalizedFact {
   byRowId?: true;
   /** §24.3: the tuple came from an external id or a match key (the match confirms it). */
   matchHint?: "external_id" | "match_key";
+  /** EX-5 (ADR-0090): the budget the row names (a `budget_ref` column): a budget id or a budget's match key. */
+  budgetRef?: string;
 }
 
 /** The fields of a data_source row a connector reads. */

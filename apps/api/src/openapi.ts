@@ -1,6 +1,10 @@
 import { z } from "zod";
 import {
   CreateMatchRuleInput,
+  CreateNamingConventionInput,
+  NamingConventionPreviewInput,
+  NamingConventionPreviewResponse,
+  NamingConventionWriteResponse,
   MatchCoverageResponse,
   MatchRuleWriteResponse,
   MatchRulesResponse,
@@ -457,6 +461,15 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/match-rules/{id}": {
         delete: { operationId: "deleteMatchRule", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Rule soft-deleted; the facts it covered matched again without it", ...json(MatchRuleWriteResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-conventions": {
+        post: { operationId: "createNamingConvention", parameters: [workspaceParam], requestBody: json(CreateNamingConventionInput), responses: { "201": { description: "The naming convention (EX-5, ADR-0090), and what re-matching the campaign facts changed", ...json(NamingConventionWriteResponse) }, "409": { description: "The same convention already exists" } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-conventions/preview": {
+        post: { operationId: "previewNamingConvention", parameters: [workspaceParam], requestBody: json(NamingConventionPreviewInput), responses: { "201": { description: "The convention read over the given names, or the largest real campaigns", ...json(NamingConventionPreviewResponse) } } },
+      },
+      "/api/v1/naming-conventions/{id}": {
+        delete: { operationId: "deleteNamingConvention", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Convention soft-deleted; the campaign facts matched again without it", ...json(NamingConventionWriteResponse) } } },
       },
       "/api/v1/workspaces/{ws}/match-coverage": {
         get: {

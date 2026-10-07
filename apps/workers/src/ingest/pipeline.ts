@@ -243,9 +243,9 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
                   reason = `no FX rate ${f.currency}→${setup.reporting} on ${f.periodDate}`;
                   break;
                 }
-                pending.spend.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, currency: f.currency, amount: f.amount, amountReporting: new Decimal(f.amount).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, rowHash: f.rowHash, matchMethod: f.matchHint ?? null });
+                pending.spend.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, currency: f.currency, amount: f.amount, amountReporting: new Decimal(f.amount).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, rowHash: f.rowHash, matchMethod: f.matchHint ?? null, budgetRef: f.budgetRef ?? null });
               } else if (f.kind === "kpi" && f.metric !== undefined && f.value !== undefined) {
-                pending.kpi.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, attributionModel: f.attributionModel ?? null, rowHash: f.rowHash, matchMethod: f.matchHint ?? null });
+                pending.kpi.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, attributionModel: f.attributionModel ?? null, rowHash: f.rowHash, matchMethod: f.matchHint ?? null, budgetRef: f.budgetRef ?? null });
               } else if (f.kind === "projection" && f.metric !== undefined && f.value !== undefined && f.formulaVersion !== undefined && f.horizonEnd !== undefined) {
                 if (f.metric === "spend") {
                   // W4-1: no column/constant resolved a currency for this row → the workspace's reporting currency.
@@ -255,9 +255,9 @@ export async function runIngest(deps: IngestDeps, tenant: { workspaceId: string;
                     reason = `no FX rate ${currency}→${setup.reporting} on ${f.periodDate}`;
                     break;
                   }
-                  pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, currency, valueReporting: new Decimal(f.value).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null });
+                  pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, currency, valueReporting: new Decimal(f.value).mul(rate.rate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2), fxRateId: rate.id, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null, budgetRef: f.budgetRef ?? null });
                 } else {
-                  pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, currency: null, valueReporting: null, fxRateId: null, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null });
+                  pending.projection.push({ dimensionValues: f.dimensionValues, periodDate: f.periodDate, metric: f.metric, value: f.value, currency: null, valueReporting: null, fxRateId: null, formulaVersion: f.formulaVersion, horizonEnd: f.horizonEnd, matchMethod: f.matchHint ?? null, budgetRef: f.budgetRef ?? null });
                 }
               }
             }

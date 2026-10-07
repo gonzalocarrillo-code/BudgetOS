@@ -78,6 +78,7 @@ model Workspace {
   mappingProfiles     MappingProfile[]
   mappingSynonyms     MappingSynonym[]
   matchRules          MatchRule[]
+  namingConventions   NamingConvention[]
   metricDefinitions   MetricDefinition[]
 
   @@unique([orgId, slug])
@@ -880,6 +881,22 @@ model MatchRule {
 
   @@index([envelopeId], map: "match_rule_envelope")
   @@map("match_rule")
+}
+
+/// EX-5 (ADR-0090): how campaign names are built (delimiter + ordered tokens → dimension keys, value
+/// aliases per token). Matching parses a fact's campaign name into dimension values added to its tuple.
+model NamingConvention {
+  id          String    @id @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  delimiter   String
+  tokens      Json
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  deletedBy   String?   @map("deleted_by") @db.Uuid
+
+  @@map("naming_convention")
 }
 
 /// T-036 (§24.1): how envelopes are named (`display`) and keyed for matching (`match_key`).
