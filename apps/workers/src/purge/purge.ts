@@ -75,6 +75,7 @@ export const OWN = [
   "pacing_rule",
   "data_source",
   "match_rule",
+  "naming_convention",
   "mapping_synonym",
   "mapping_profile",
   "saved_view",

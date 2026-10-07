@@ -1,3 +1,4 @@
+import type { UnassignedReason } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import type { Tx } from "./sql.js";
 
@@ -26,7 +27,7 @@ export interface MatchCoverage {
   totals: CoverageAmountsRow;
   bySource: Array<CoverageAmountsRow & { sourceId: string | null; sourceName: string | null; sourceSystem: string }>;
   byCampaign: Array<CoverageAmountsRow & { campaign: string | null; label: string | null }>;
-  open: Array<{ campaign: string | null; label: string | null; status: "unmatched" | "ambiguous"; amount: string; rows: number; firstDate: string; lastDate: string; candidates: Array<{ id: string; name: string }> }>;
+  open: Array<{ campaign: string | null; label: string | null; status: "unmatched" | "ambiguous"; reason: UnassignedReason | null; amount: string; rows: number; firstDate: string; lastDate: string; candidates: Array<{ id: string; name: string }> }>;
 }
 
 interface Agg {
@@ -51,7 +52,8 @@ const FACTS = `
   WITH f AS (
     SELECT sf.amount_reporting AS a, sf.source_system, sf.source_run_id, sf.dimension_values ->> $4 AS campaign,
            sf.period_date, sf.match_candidates,
-           CASE WHEN sf.envelope_id IS NOT NULL THEN 'matched' WHEN sf.match_status = 'ambiguous' THEN 'ambiguous' ELSE 'unmatched' END AS st
+           CASE WHEN sf.envelope_id IS NOT NULL THEN 'matched' WHEN sf.match_status = 'ambiguous' THEN 'ambiguous' ELSE 'unmatched' END AS st,
+           CASE WHEN sf.envelope_id IS NULL AND sf.match_status <> 'ambiguous' THEN sf.match_status END AS reason
     FROM spend_fact sf
     WHERE sf.workspace_id = $1::uuid AND sf.superseded_at IS NULL
       AND ($2::date IS NULL OR sf.period_date >= $2::date) AND ($3::date IS NULL OR sf.period_date <= $3::date)
@@ -95,14 +97,14 @@ export async function matchCoverage(tx: Tx, workspaceId: string, args: { from?: 
     ws?.org_id ?? workspaceId,
     args.limit,
   );
-  const open = await tx.$queryRawUnsafe<Array<{ campaign: string | null; label: string | null; st: "unmatched" | "ambiguous"; amount: string; rows: bigint; first: string; last: string; cands: string[] | null }>>(
+  const open = await tx.$queryRawUnsafe<Array<{ campaign: string | null; label: string | null; st: "unmatched" | "ambiguous"; reason: UnassignedReason | null; amount: string; rows: bigint; first: string; last: string; cands: string[] | null }>>(
     `${FACTS}, g AS (
-       SELECT campaign, st, sum(a) AS amount, count(*) AS rows, min(period_date) AS first, max(period_date) AS last,
+       SELECT campaign, st, reason, sum(a) AS amount, count(*) AS rows, min(period_date) AS first, max(period_date) AS last,
               (SELECT array_agg(DISTINCT c::text ORDER BY c::text) FROM f f2, unnest(f2.match_candidates) c WHERE f2.st = 'ambiguous' AND f2.campaign IS NOT DISTINCT FROM f.campaign AND f.st = 'ambiguous') AS cands
-       FROM f WHERE st <> 'matched' GROUP BY campaign, st
+       FROM f WHERE st <> 'matched' GROUP BY campaign, st, reason
      )
-     SELECT g.campaign, ${label} AS label, g.st, g.amount::text AS amount, g.rows, g.first::text AS first, g.last::text AS last, g.cands FROM g
-     ORDER BY g.amount DESC, g.campaign NULLS LAST, g.st LIMIT $6`,
+     SELECT g.campaign, ${label} AS label, g.st, g.reason, g.amount::text AS amount, g.rows, g.first::text AS first, g.last::text AS last, g.cands FROM g
+     ORDER BY g.amount DESC, g.campaign NULLS LAST, g.st, g.reason NULLS FIRST LIMIT $6`,
     ...p,
     ws?.org_id ?? workspaceId,
     args.limit,
@@ -124,6 +126,7 @@ export async function matchCoverage(tx: Tx, workspaceId: string, args: { from?: 
       campaign: o.campaign,
       label: o.label,
       status: o.st,
+      reason: o.reason,
       amount: new Decimal(o.amount).toFixed(2),
       rows: Number(o.rows),
       firstDate: o.first,

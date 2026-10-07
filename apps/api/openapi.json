@@ -6647,6 +6647,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "budget_ref"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "row_id"
                                       ]
                                     }
@@ -7079,6 +7093,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "budget_ref"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "row_id"
                                       ]
                                     }
@@ -7402,6 +7430,20 @@
                                             "role": {
                                               "type": "string",
                                               "enum": [
+                                                "budget_ref"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "role"
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "type": "string",
+                                              "enum": [
                                                 "row_id"
                                               ]
                                             }
@@ -7696,6 +7738,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "budget_ref"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "row_id"
                                       ]
                                     }
@@ -7969,6 +8025,20 @@
                                         "type": "string",
                                         "enum": [
                                           "match_key"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "budget_ref"
                                         ]
                                       }
                                     },
@@ -8321,6 +8391,20 @@
                                           "role": {
                                             "type": "string",
                                             "enum": [
+                                              "budget_ref"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "role"
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
                                               "row_id"
                                             ]
                                           }
@@ -8635,6 +8719,20 @@
                                     "role": {
                                       "type": "string",
                                       "enum": [
+                                        "budget_ref"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
                                         "row_id"
                                       ]
                                     }
@@ -8910,6 +9008,20 @@
                                       "role": {
                                         "type": "string",
                                         "enum": [
+                                          "budget_ref"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "role"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
                                           "row_id"
                                         ]
                                       }
@@ -9054,6 +9166,7 @@
                                           "amount",
                                           "currency",
                                           "match_key",
+                                          "budget_ref",
                                           "formula_version",
                                           "horizon_end",
                                           "ignore"
@@ -9190,6 +9303,7 @@
                                           "amount",
                                           "currency",
                                           "match_key",
+                                          "budget_ref",
                                           "formula_version",
                                           "horizon_end",
                                           "ignore"
@@ -9370,6 +9484,7 @@
                                   "amount",
                                   "currency",
                                   "match_key",
+                                  "budget_ref",
                                   "formula_version",
                                   "horizon_end",
                                   "ignore"
@@ -9694,6 +9809,20 @@
                                       "type": "string",
                                       "enum": [
                                         "match_key"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "role"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "role": {
+                                      "type": "string",
+                                      "enum": [
+                                        "budget_ref"
                                       ]
                                     }
                                   },
@@ -10316,6 +10445,96 @@
                           "createdAt"
                         ]
                       }
+                    },
+                    "conventions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "delimiter": {
+                            "type": "string",
+                            "enum": [
+                              "_",
+                              "-",
+                              ".",
+                              "|",
+                              "/",
+                              ":",
+                              "·",
+                              " ",
+                              "+"
+                            ]
+                          },
+                          "tokens": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "dimension": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                  "nullable": true
+                                },
+                                "aliases": {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "default": {}
+                                }
+                              },
+                              "required": [
+                                "dimension"
+                              ]
+                            }
+                          },
+                          "createdBy": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "delimiter",
+                          "tokens",
+                          "createdBy",
+                          "createdAt"
+                        ]
+                      },
+                      "default": []
+                    },
+                    "references": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "sourceId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "sourceName": {
+                            "type": "string"
+                          },
+                          "column": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sourceId",
+                          "sourceName",
+                          "column"
+                        ]
+                      },
+                      "default": []
                     }
                   },
                   "required": [
@@ -10809,6 +11028,534 @@
         }
       }
     },
+    "/api/v1/workspaces/{ws}/naming-conventions": {
+      "post": {
+        "operationId": "createNamingConvention",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delimiter": {
+                    "type": "string",
+                    "enum": [
+                      "_",
+                      "-",
+                      ".",
+                      "|",
+                      "/",
+                      ":",
+                      "·",
+                      " ",
+                      "+"
+                    ]
+                  },
+                  "tokens": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "dimension": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                          "nullable": true
+                        },
+                        "aliases": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "default": {}
+                        }
+                      },
+                      "required": [
+                        "dimension"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "delimiter",
+                  "tokens"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The naming convention (EX-5, ADR-0090), and what re-matching the campaign facts changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "convention": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "delimiter",
+                        "tokens",
+                        "createdBy",
+                        "createdAt"
+                      ]
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "convention",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The same convention already exists"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-conventions/preview": {
+      "post": {
+        "operationId": "previewNamingConvention",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "convention": {
+                    "type": "object",
+                    "properties": {
+                      "delimiter": {
+                        "type": "string",
+                        "enum": [
+                          "_",
+                          "-",
+                          ".",
+                          "|",
+                          "/",
+                          ":",
+                          "·",
+                          " ",
+                          "+"
+                        ]
+                      },
+                      "tokens": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                              "nullable": true
+                            },
+                            "aliases": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "default": {}
+                            }
+                          },
+                          "required": [
+                            "dimension"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "delimiter",
+                      "tokens"
+                    ]
+                  },
+                  "names": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  }
+                },
+                "required": [
+                  "convention"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The convention read over the given names, or the largest real campaigns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "samples": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "campaign": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "dimensionValues": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "nullable": true
+                          },
+                          "problem": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "parts"
+                                    ]
+                                  },
+                                  "expected": {
+                                    "type": "integer"
+                                  },
+                                  "found": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "expected",
+                                  "found"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "empty"
+                                    ]
+                                  },
+                                  "position": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "position"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "unknown_value"
+                                    ]
+                                  },
+                                  "position": {
+                                    "type": "integer"
+                                  },
+                                  "dimension": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "position",
+                                  "dimension",
+                                  "value"
+                                ]
+                              }
+                            ],
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "campaign",
+                          "dimensionValues",
+                          "problem"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "samples"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/naming-conventions/{id}": {
+      "delete": {
+        "operationId": "deleteNamingConvention",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Convention soft-deleted; the campaign facts matched again without it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "convention": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "delimiter": {
+                          "type": "string",
+                          "enum": [
+                            "_",
+                            "-",
+                            ".",
+                            "|",
+                            "/",
+                            ":",
+                            "·",
+                            " ",
+                            "+"
+                          ]
+                        },
+                        "tokens": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "dimension": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{1,40}$",
+                                "nullable": true
+                              },
+                              "aliases": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "default": {}
+                              }
+                            },
+                            "required": [
+                              "dimension"
+                            ]
+                          }
+                        },
+                        "createdBy": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "delimiter",
+                        "tokens",
+                        "createdBy",
+                        "createdAt"
+                      ]
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "convention",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{ws}/match-coverage": {
       "get": {
         "operationId": "getMatchCoverage",
@@ -11049,6 +11796,16 @@
                               "unmatched",
                               "ambiguous"
                             ]
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "name_mismatch",
+                              "unknown_budget_ref",
+                              "budget_ref_outside_dates"
+                            ],
+                            "nullable": true,
+                            "default": null
                           },
                           "amount": {
                             "type": "string",

@@ -6,7 +6,7 @@ import { CheckCircle2, Clock, Loader2, Play, RefreshCw, XCircle } from "lucide-r
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
-import { CampaignMapping } from "../features/ops/campaign-mapping.js";
+import { MappingRules, UnassignedCampaigns } from "../features/ops/campaign-mapping.js";
 import { can, runsQuery, sourcesQuery, unmatchedQuery, type Run, type Source, type Unmatched } from "../features/ops/queries.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, searchQuery } from "../lib/queries.js";
@@ -15,10 +15,11 @@ import { mappingSummary } from "./w.$ws.admin.sources.js";
 /**
  * Sources (spec §18.5, §14): each connector's runs — rows read, accepted and rejected, how much
  * spend matched a budget — with "Run now"; and the unmatched spend, largest first, which a data
- * admin assigns to a budget (every fact with that tuple, inside the budget's dates). EX-1: the
- * campaign mapping (coverage, unassigned / ambiguous campaigns, match rules) sits above it.
+ * admin assigns to a budget (every fact with that tuple, inside the budget's dates). EX-5 (ADR-0090):
+ * the mapping "Rules" (how mapping works, the rules of the three kinds, "Add rule") sit above it, and
+ * the unassigned / ambiguous campaigns are a plain list inside it, each with "Create rule".
  */
-const SourcesSearch = z.object({ source: z.string().uuid().optional(), mapFrom: z.string().date().optional(), mapTo: z.string().date().optional() });
+const SourcesSearch = z.object({ source: z.string().uuid().optional() });
 type SourcesSearch = z.infer<typeof SourcesSearch>;
 export const Route = createFileRoute("/w/$ws/sources/")({ validateSearch: SourcesSearch, component: SourcesPage });
 
@@ -49,6 +50,7 @@ function SourcesPage(): ReactElement {
   const { data: me } = useQuery(meQuery);
   const perms = me?.workspaces.find((w) => w.workspaceId === ws)?.permissions ?? [];
   const canManage = can(perms, me?.isOrgAdmin ?? false, "source.manage");
+  const canEditBudgets = can(perms, me?.isOrgAdmin ?? false, "envelope.edit_draft");
   const { data: sources = [], isPending } = useQuery({ ...sourcesQuery(ws), enabled: canManage });
   const selected = sources.find((s) => s.id === search.source) ?? sources[0] ?? null;
   const set = (s: { [K in keyof SourcesSearch]?: SourcesSearch[K] | undefined }) => void navigate({ search: (prev: SourcesSearch) => ({ ...prev, ...s }) });
@@ -88,8 +90,8 @@ function SourcesPage(): ReactElement {
         </Card>
         <div className="flex flex-col gap-5">
           {selected ? <SourceRuns key={selected.id} ws={ws} source={selected} /> : null}
-          <CampaignMapping ws={ws} from={search.mapFrom} to={search.mapTo} canEditBudgets={can(perms, me?.isOrgAdmin ?? false, "envelope.edit_draft")} onPeriod={(p) => set(p)} />
-          <UnmatchedSpend ws={ws} />
+          <MappingRules ws={ws} canEditBudgets={canEditBudgets} />
+          <UnmatchedSpend ws={ws} canEditBudgets={canEditBudgets} />
         </div>
       </div>
     </Page>
@@ -185,7 +187,7 @@ function SourceRuns({ ws, source }: { ws: string; source: Source }): ReactElemen
   );
 }
 
-function UnmatchedSpend({ ws }: { ws: string }): ReactElement {
+function UnmatchedSpend({ ws, canEditBudgets }: { ws: string; canEditBudgets: boolean }): ReactElement {
   const { data: rows = [], isPending } = useQuery(unmatchedQuery(ws));
   const [open, setOpen] = useState<string | null>(null);
   return (
@@ -215,6 +217,7 @@ function UnmatchedSpend({ ws }: { ws: string }): ReactElement {
             })}
           </ul>
         )}
+        <UnassignedCampaigns ws={ws} canEditBudgets={canEditBudgets} />
       </div>
     </Card>
   );

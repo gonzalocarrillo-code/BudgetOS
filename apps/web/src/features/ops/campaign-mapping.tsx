@@ -1,26 +1,41 @@
-import { CAMPAIGN_DIMENSION, MatchCoverageResponse, MatchRuleWriteResponse, MatchRulesResponse, equalsPredicate, type MatchRuleGroupT, type OpenCampaign } from "@budget/domain";
-import { Button, Input, StatusChip, cn } from "@budget/ui";
-import { t } from "@budget/ui/i18n";
+import {
+  CAMPAIGN_DIMENSION,
+  MatchCoverageResponse,
+  MatchRuleWriteResponse,
+  MatchRulesResponse,
+  NamingConventionPreviewResponse,
+  NamingConventionWriteResponse,
+  equalsPredicate,
+  type ConventionProblem,
+  type CreateNamingConventionInput,
+  type MatchRuleGroupT,
+  type NamingConventionDelimiter,
+  type NamingConventionView,
+  type OpenCampaign,
+} from "@budget/domain";
+import { Button, Input, Select } from "@budget/ui";
+import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Decimal } from "decimal.js";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { Card } from "../../components/page.js";
 import { api, unwrap } from "../../lib/api.js";
 import { moneyOrDash } from "../../lib/money.js";
-import { searchQuery } from "../../lib/queries.js";
+import { registryQuery, searchQuery } from "../../lib/queries.js";
+import { sourcesQuery, type Source } from "./queries.js";
 
 /**
- * EX-1 (ADR-0085): the Spend data page's "Campaign mapping". The coverage bar splits the period's
- * live spend into matched / unassigned / ambiguous (the server's sums; nothing is computed here but
- * the bar's widths); the open campaigns, largest first, each with "Assign to budget", which creates
- * a match rule `campaign = value` and re-matches at once; the rules, each deletable.
+ * EX-5 (ADR-0090): the Spend data page's "Rules" — how campaign mapping works, in one paragraph;
+ * the rules of the three kinds (campaign → budget, from the database, from campaign nomenclature),
+ * each deletable; and "Add rule". The unassigned / ambiguous campaigns are a plain list under
+ * "Unmatched spend" (UnassignedCampaigns), each with "Create rule". No colours, no coverage bar:
+ * the coverage endpoint stays (the campaign list comes from it), the page does not draw it.
  */
 
-export const coverageQuery = (ws: string, from: string | undefined, to: string | undefined) =>
+export const coverageQuery = (ws: string) =>
   queryOptions({
-    queryKey: ["match-coverage", ws, from ?? "", to ?? ""],
-    queryFn: async () => MatchCoverageResponse.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/match-coverage", { params: { path: { ws }, query: { ...(from ? { from } : {}), ...(to ? { to } : {}) } } }))),
+    queryKey: ["match-coverage", ws],
+    queryFn: async () => MatchCoverageResponse.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/match-coverage", { params: { path: { ws }, query: {} } }))),
   });
 
 export const matchRulesQuery = (ws: string) =>
@@ -29,7 +44,7 @@ export const matchRulesQuery = (ws: string) =>
     queryFn: async () => MatchRulesResponse.parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/match-rules", { params: { path: { ws } } }))),
   });
 
-const pct = (part: string, total: string) => (new Decimal(total).isZero() ? new Decimal(0) : new Decimal(part).div(total).mul(100));
+const refresh = (client: ReturnType<typeof useQueryClient>, ws: string) => Promise.all(["match-coverage", "match-rules", "unmatched", "sources"].map((k) => client.invalidateQueries({ queryKey: [k, ws] })));
 
 /** A rule's predicate in words: `campaign = spring_br`, `campaign in a, b`… */
 export function predicateText(g: MatchRuleGroupT): string {
@@ -43,214 +58,422 @@ export function predicateText(g: MatchRuleGroupT): string {
   return g.not ? `not (${s})` : s;
 }
 
-export function CampaignMapping({ ws, from, to, canEditBudgets, onPeriod }: { ws: string; from: string | undefined; to: string | undefined; canEditBudgets: boolean; onPeriod: (p: { mapFrom?: string | undefined; mapTo?: string | undefined }) => void }): ReactElement {
-  const { data: cov, isPending, error } = useQuery(coverageQuery(ws, from, to));
-  const [open, setOpen] = useState<string | null>(null);
+/** A convention in words: `country · platform (FB=meta) · (ignored)`. */
+export function conventionText(c: Pick<NamingConventionView, "tokens">): string {
+  return c.tokens
+    .map((tk) => {
+      if (tk.dimension === null) return t("mapping.ignored");
+      const aliases = Object.entries(tk.aliases).map(([k, v]) => `${k}=${v}`);
+      return aliases.length ? `${tk.dimension} (${aliases.join(", ")})` : tk.dimension;
+    })
+    .join(" · ");
+}
+
+export function problemText(p: ConventionProblem): string {
+  return p.kind === "parts" ? t("mapping.problem.parts", { found: p.found, expected: p.expected }) : p.kind === "empty" ? t("mapping.problem.empty", { position: p.position }) : t("mapping.problem.unknown_value", { value: p.value, dimension: p.dimension });
+}
+
+/** `FB=meta, IG=meta` → { FB: "meta", IG: "meta" }. */
+export function parseAliases(s: string): Record<string, string> {
+  return Object.fromEntries(
+    s
+      .split(",")
+      .map((pair) => pair.split("=").map((x) => x.trim()))
+      .filter((kv): kv is [string, string] => kv.length === 2 && kv[0] !== "" && kv[1] !== ""),
+  );
+}
+
+type Kind = "campaign" | "database" | "nomenclature";
+const KINDS: Kind[] = ["campaign", "database", "nomenclature"];
+
+export function MappingRules({ ws, canEditBudgets }: { ws: string; canEditBudgets: boolean }): ReactElement {
+  const client = useQueryClient();
+  const { data, isPending, error } = useQuery(matchRulesQuery(ws));
+  const { data: sources = [] } = useQuery(sourcesQuery(ws));
+  const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const removeRule = useMutation({
+    mutationFn: async (id: string) => unwrap(api.DELETE("/api/v1/match-rules/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } })),
+    onSuccess: () => refresh(client, ws),
+  });
+  const removeConvention = useMutation({
+    mutationFn: async (id: string) => unwrap(api.DELETE("/api/v1/naming-conventions/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } })),
+    onSuccess: () => refresh(client, ws),
+  });
+  const removeReference = useMutation({
+    mutationFn: async ({ sourceId, column }: { sourceId: string; column: string }) => {
+      const source = sources.find((s) => s.id === sourceId);
+      if (!source) throw new Error(t("mapping.needColumn"));
+      const mapping = { ...source.mapping, columns: { ...source.mapping.columns, [column]: { role: "ignore" } } };
+      return unwrap(api.PATCH("/api/v1/sources/{id}", { params: { path: { id: sourceId }, header: { "X-Workspace-Id": ws } }, body: { mapping } as never }));
+    },
+    onSuccess: () => refresh(client, ws),
+  });
+  const busy = removeRule.isPending || removeConvention.isPending || removeReference.isPending;
+  const rules = data?.rules ?? [];
+  const conventions = data?.conventions ?? [];
+  const references = data?.references ?? [];
+  const empty = rules.length + conventions.length + references.length === 0;
+  const del = (why: string | null, onClick: () => void) =>
+    why ? (
+      <Button size="sm" variant="ghost" className="ml-auto" disabled reason={why} aria-label={t("mapping.deleteRule")} data-testid="mapping-rule-delete">
+        <Trash2 className="size-4" aria-hidden />
+      </Button>
+    ) : (
+      <Button size="sm" variant="ghost" className="ml-auto" aria-label={t("mapping.deleteRule")} onClick={onClick} data-testid="mapping-rule-delete">
+        <Trash2 className="size-4" aria-hidden />
+      </Button>
+    );
+  const deleting = busy ? t("mapping.deleting") : null;
   return (
-    <Card title={t("mapping.title")} tour="campaign-mapping" testId="campaign-mapping">
+    <Card
+      title={t("mapping.title")}
+      tour="mapping-rules"
+      testId="mapping-rules"
+      actions={
+        adding ? null : (
+          <Button size="sm" variant="outline" onClick={() => (setAdding(true), setNotice(null))} data-testid="mapping-add">
+            <Plus className="size-4" aria-hidden />
+            {t("mapping.addRule")}
+          </Button>
+        )
+      }
+    >
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground">{t("mapping.help")}</p>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("mapping.from")}
-            <Input type="date" size="sm" value={from ?? ""} onChange={(e) => onPeriod({ mapFrom: e.target.value || undefined })} data-testid="mapping-from" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t("mapping.to")}
-            <Input type="date" size="sm" value={to ?? ""} onChange={(e) => onPeriod({ mapTo: e.target.value || undefined })} data-testid="mapping-to" />
-          </label>
-        </div>
+        <p className="text-sm text-muted-foreground" data-testid="mapping-help">{t("mapping.help")}</p>
         {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
-        {isPending || !cov ? (
+        {notice ? <p role="status" className="text-sm" data-testid="mapping-notice">{notice}</p> : null}
+        {adding ? <AddRule ws={ws} sources={sources} canEditBudgets={canEditBudgets} onCancel={() => setAdding(false)} onDone={(msg) => (setAdding(false), setNotice(msg))} /> : null}
+        {isPending ? (
           <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
+        ) : empty ? (
+          <p className="text-sm text-muted-foreground" data-testid="mapping-rules-empty">{t("mapping.rulesNone")}</p>
         ) : (
-          <>
-            <CoverageBar cov={cov} />
-            {notice ? <p role="status" className="text-sm text-success-text" data-testid="mapping-notice">{notice}</p> : null}
-            {cov.open.length === 0 ? (
-              <p className="text-sm text-muted-foreground" data-testid="mapping-all-matched">{t("mapping.allMatched")}</p>
-            ) : (
-              <table className="tabular w-full text-sm" data-testid="mapping-open" data-tour="campaign-mapping-open">
-                <thead className="text-left text-muted-foreground">
-                  <tr>
-                    <th className="py-2 pr-3 font-medium">{t("mapping.col.campaign")}</th>
-                    <th className="py-2 pr-3 font-medium">{t("mapping.col.status")}</th>
-                    <th className="py-2 pr-3 text-right font-medium">{t("mapping.col.spend")}</th>
-                    <th className="py-2 pr-3 font-medium">{t("mapping.col.dates")}</th>
-                    <th className="py-2 pr-3 font-medium">{t("mapping.col.candidates")}</th>
-                    <th className="py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {cov.open.map((o) => {
-                    const key = `${o.campaign ?? ""}|${o.status}`;
-                    return (
-                      <OpenRow
-                        key={key}
-                        ws={ws}
-                        o={o}
-                        currency={cov.currency}
-                        canEditBudgets={canEditBudgets}
-                        expanded={open === key}
-                        onToggle={() => setOpen(open === key ? null : key)}
-                        onAssigned={(msg) => {
-                          setOpen(null);
-                          setNotice(msg);
-                        }}
-                      />
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </>
+          <ul className="flex flex-col divide-y divide-border" data-testid="mapping-rule-list">
+            {references.map((r) => (
+              <li key={`${r.sourceId}:${r.column}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm" data-testid="mapping-rule" data-kind="database">
+                <span className="w-48 shrink-0 text-xs text-muted-foreground">{t("mapping.kind.database")}</span>
+                <span>{t("mapping.referenceLine", { source: r.sourceName, column: r.column })}</span>
+                {del(deleting, () => removeReference.mutate({ sourceId: r.sourceId, column: r.column }))}
+              </li>
+            ))}
+            {rules.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm" data-testid="mapping-rule" data-kind="campaign">
+                <span className="w-48 shrink-0 text-xs text-muted-foreground">{t("mapping.kind.campaign")}</span>
+                <span>{t("mapping.ruleLine", { predicate: predicateText(r.predicate), budget: r.envelopeName })}</span>
+                <span className="text-xs text-muted-foreground">{r.startDate || r.endDate ? t("mapping.ruleDates", { from: r.startDate ?? "…", to: r.endDate ?? "…" }) : t("mapping.ruleOpen")}</span>
+                {del(!canEditBudgets ? t("mapping.noEditReason") : deleting, () => removeRule.mutate(r.id))}
+              </li>
+            ))}
+            {conventions.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm" data-testid="mapping-rule" data-kind="nomenclature">
+                <span className="w-48 shrink-0 text-xs text-muted-foreground">{t("mapping.kind.nomenclature")}</span>
+                <span>{t("mapping.conventionLine", { delimiter: c.delimiter === " " ? t("mapping.delimiterSpace") : c.delimiter, parts: conventionText(c) })}</span>
+                {del(deleting, () => removeConvention.mutate(c.id))}
+              </li>
+            ))}
+          </ul>
         )}
-        <RulesList ws={ws} canEditBudgets={canEditBudgets} />
+        {[removeRule.error, removeConvention.error, removeReference.error].map((e, i) => (e ? <p key={i} role="alert" className="text-xs text-destructive">{e.message}</p> : null))}
       </div>
     </Card>
   );
 }
 
-function CoverageBar({ cov }: { cov: MatchCoverageResponse }): ReactElement {
-  const { totals, currency } = cov;
-  const segments = [
-    { key: "matched", label: t("mapping.matched"), amount: totals.matched, cls: "bg-success" },
-    { key: "unmatched", label: t("mapping.unmatched"), amount: totals.unmatched, cls: "bg-warning" },
-    { key: "ambiguous", label: t("mapping.ambiguous"), amount: totals.ambiguous, cls: "bg-destructive" },
-  ] as const;
-  const fmt = (v: string) => moneyOrDash(v, currency);
+function AddRule({ ws, sources, canEditBudgets, onCancel, onDone }: { ws: string; sources: Source[]; canEditBudgets: boolean; onCancel: () => void; onDone: (msg: string) => void }): ReactElement {
+  const [kind, setKind] = useState<Kind>("nomenclature");
   return (
-    <div className="flex flex-col gap-1.5" data-testid="mapping-coverage" data-tour="campaign-mapping-coverage">
-      <div
-        className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
-        role="img"
-        aria-label={t("mapping.bar", { matched: fmt(totals.matched), unmatched: fmt(totals.unmatched), ambiguous: fmt(totals.ambiguous), total: fmt(totals.total) })}
-      >
-        {segments.map((s) => (
-          <div key={s.key} className={s.cls} style={{ width: `${pct(s.amount, totals.total).toFixed(2)}%` }} data-testid={`mapping-bar-${s.key}`} />
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="mapping-add-form">
+      <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <legend className="mb-1 text-xs text-muted-foreground">{t("mapping.kindLabel")}</legend>
+        {KINDS.map((k) => (
+          <label key={k} className="flex items-center gap-1.5">
+            <input type="radio" name="mapping-kind" value={k} checked={kind === k} onChange={() => setKind(k)} data-testid={`mapping-kind-${k}`} />
+            {t(`mapping.kind.${k}` as MessageKey)}
+          </label>
         ))}
+      </fieldset>
+      <p className="text-xs text-muted-foreground">{t(`mapping.kindHelp.${kind}` as MessageKey)}</p>
+      {kind === "campaign" ? <CampaignRuleForm ws={ws} canEditBudgets={canEditBudgets} onDone={onDone} /> : kind === "database" ? <DatabaseRuleForm ws={ws} sources={sources} onDone={onDone} /> : <NomenclatureForm ws={ws} onDone={onDone} />}
+      <div>
+        <Button size="sm" variant="ghost" onClick={onCancel} data-testid="mapping-add-cancel">
+          {t("mapping.cancel")}
+        </Button>
       </div>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {segments.map((s) => (
-          <li key={s.key} className="flex items-center gap-1.5" data-testid={`mapping-share-${s.key}`}>
-            <span className={cn("inline-block size-2 rounded-full", s.cls)} aria-hidden />
-            {t("mapping.share", { label: s.label, amount: fmt(s.amount), pct: `${pct(s.amount, totals.total).toFixed(1)}%` })}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
 
-function OpenRow({ ws, o, currency, canEditBudgets, expanded, onToggle, onAssigned }: { ws: string; o: OpenCampaign; currency: string; canEditBudgets: boolean; expanded: boolean; onToggle: () => void; onAssigned: (msg: string) => void }): ReactElement {
-  const name = o.label ?? o.campaign ?? t("mapping.noCampaign");
-  const why = o.campaign === null ? t("mapping.noCampaignReason") : !canEditBudgets ? t("mapping.noEditReason") : null;
-  return (
-    <>
-      <tr className="border-t border-border" data-testid="mapping-open-row">
-        <td className="py-2 pr-3">
-          <span className="font-medium">{name}</span>
-          {o.label && o.campaign ? <span className="ml-2 text-xs text-muted-foreground">{o.campaign}</span> : null}
-        </td>
-        <td className="py-2 pr-3">
-          <StatusChip status={o.status} tone={o.status === "ambiguous" ? "danger" : "warning"} label={t(o.status === "ambiguous" ? "mapping.ambiguous" : "mapping.unmatched")} icon={null} />
-        </td>
-        <td className="py-2 pr-3 text-right">{moneyOrDash(o.amount, currency)}</td>
-        <td className="py-2 pr-3 text-xs text-muted-foreground">{t("mapping.ruleDates", { from: o.firstDate, to: o.lastDate })}</td>
-        <td className="py-2 pr-3 text-xs">{o.candidates.map((c) => c.name).join(", ") || t("common.noValue")}</td>
-        <td className="py-2 text-right">
-          {why ? (
-            <Button size="sm" variant="outline" disabled reason={why} data-testid="mapping-assign">
-              {t("mapping.assign")}
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" aria-expanded={expanded} onClick={onToggle} data-testid="mapping-assign">
-              {t("mapping.assign")}
-            </Button>
-          )}
-        </td>
-      </tr>
-      {expanded && o.campaign !== null ? (
-        <tr>
-          <td colSpan={6}>
-            <AssignCampaign ws={ws} campaign={o.campaign} name={name} candidates={o.candidates} onDone={onAssigned} />
-          </td>
-        </tr>
-      ) : null}
-    </>
-  );
-}
-
-function AssignCampaign({ ws, campaign, name, candidates, onDone }: { ws: string; campaign: string; name: string; candidates: OpenCampaign["candidates"]; onDone: (msg: string) => void }): ReactElement {
-  const client = useQueryClient();
-  const [q, setQ] = useState(name);
+/** Pick a budget by search; the picked one is highlighted by `aria-pressed`. */
+function BudgetPicker({ ws, initial, candidates = [], onPick, label }: { ws: string; initial: string; candidates?: Array<{ id: string; name: string }>; onPick: (b: { id: string; name: string }) => void; label: (name: string) => string }): ReactElement {
+  const [q, setQ] = useState(initial);
   const { data } = useQuery({ ...searchQuery(ws, q.trim(), { types: "envelope", limit: 6 }), enabled: q.trim().length > 1 });
   const hits = [...candidates.map((c) => ({ id: c.id, title: c.name, path: null as string | null })), ...(data?.groups.find((g) => g.type === "envelope")?.hits ?? []).filter((h) => !candidates.some((c) => c.id === h.id)).map((h) => ({ id: h.id, title: h.title, path: h.path ?? null }))];
-  const assign = useMutation({
-    mutationFn: async (envelopeId: string) =>
-      MatchRuleWriteResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/match-rules", { params: { path: { ws } }, body: { envelopeId, predicate: equalsPredicate(CAMPAIGN_DIMENSION, campaign) } as never }))),
-    onSuccess: async (res) => {
-      await Promise.all(["match-coverage", "match-rules", "unmatched"].map((k) => client.invalidateQueries({ queryKey: [k, ws] })));
-      onDone(t("mapping.assigned", { campaign: name, budget: res.rule.envelopeName, n: res.rematch.spend + res.rematch.kpi + res.rematch.projection }));
-    },
-  });
   return (
-    <div className="my-2 flex flex-col gap-1.5 rounded-lg bg-surface p-3" data-testid="mapping-picker">
-      <Input type="search" size="sm" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("sources.assignSearch")} placeholder={t("sources.assignSearch")} data-testid="mapping-search" />
+    <div className="flex flex-col gap-1.5" data-testid="mapping-picker">
+      <Input type="search" size="sm" value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("mapping.budgetSearch")} placeholder={t("mapping.budgetSearch")} data-testid="mapping-search" />
       <ul className="flex flex-col gap-1">
         {hits.map((h) => (
           <li key={h.id}>
-            <button type="button" className="w-full rounded-md px-2 py-1 text-left text-sm hover:bg-accent" aria-busy={assign.isPending} aria-label={t("mapping.assignTo", { campaign: name })} onClick={() => (assign.isPending ? undefined : assign.mutate(h.id))} data-testid="mapping-option">
+            <button type="button" className="w-full rounded-md px-2 py-1 text-left text-sm hover:bg-accent" aria-label={label(h.title)} onClick={() => onPick({ id: h.id, name: h.title })} data-testid="mapping-option">
               <span className="font-medium">{h.title}</span>
               {h.path ? <span className="ml-2 text-xs text-muted-foreground">{h.path}</span> : null}
             </button>
           </li>
         ))}
       </ul>
-      {assign.error ? <p role="alert" className="text-xs text-destructive">{assign.error.message}</p> : null}
     </div>
   );
 }
 
-function RulesList({ ws, canEditBudgets }: { ws: string; canEditBudgets: boolean }): ReactElement {
+function useCreateCampaignRule(ws: string, onDone: (msg: string) => void) {
   const client = useQueryClient();
-  const { data, isPending } = useQuery(matchRulesQuery(ws));
-  const remove = useMutation({
-    mutationFn: async (id: string) => unwrap(api.DELETE("/api/v1/match-rules/{id}", { params: { path: { id }, header: { "X-Workspace-Id": ws } } })),
-    onSuccess: () => Promise.all(["match-coverage", "match-rules", "unmatched"].map((k) => client.invalidateQueries({ queryKey: [k, ws] }))),
+  return useMutation({
+    mutationFn: async ({ campaign, envelopeId }: { campaign: string; name: string; envelopeId: string }) =>
+      MatchRuleWriteResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/match-rules", { params: { path: { ws } }, body: { envelopeId, predicate: equalsPredicate(CAMPAIGN_DIMENSION, campaign) } as never }))),
+    onSuccess: async (res, v) => {
+      await refresh(client, ws);
+      onDone(t("mapping.assigned", { campaign: v.name, budget: res.rule.envelopeName, n: res.rematch.spend + res.rematch.kpi + res.rematch.projection }));
+    },
   });
-  const rules = data?.rules ?? [];
+}
+
+function CampaignRuleForm({ ws, canEditBudgets, onDone }: { ws: string; canEditBudgets: boolean; onDone: (msg: string) => void }): ReactElement {
+  const [campaign, setCampaign] = useState("");
+  const create = useCreateCampaignRule(ws, onDone);
+  if (!canEditBudgets) return <p className="text-sm text-muted-foreground">{t("mapping.noEditReason")}</p>;
   return (
-    <div className="flex flex-col gap-1.5 border-t border-border pt-3" data-testid="mapping-rules" data-tour="campaign-mapping-rules">
-      <h3 className="text-sm font-medium">{t("mapping.rules")}</h3>
-      {isPending ? (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t("mapping.campaign")}
+        <Input size="sm" value={campaign} onChange={(e) => setCampaign(e.target.value)} data-testid="mapping-campaign" />
+      </label>
+      {campaign.trim() ? (
+        <BudgetPicker ws={ws} initial="" onPick={(b) => (create.isPending ? undefined : create.mutate({ campaign: campaign.trim(), name: campaign.trim(), envelopeId: b.id }))} label={() => t("mapping.assignTo", { campaign: campaign.trim() })} />
+      ) : (
+        <p className="text-xs text-muted-foreground">{t("mapping.needCampaign")}</p>
+      )}
+      {create.error ? <p role="alert" className="text-xs text-destructive">{create.error.message}</p> : null}
+    </div>
+  );
+}
+
+function DatabaseRuleForm({ ws, sources, onDone }: { ws: string; sources: Source[]; onDone: (msg: string) => void }): ReactElement {
+  const client = useQueryClient();
+  const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
+  const [column, setColumn] = useState("");
+  const source = sources.find((s) => s.id === sourceId);
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!source) throw new Error(t("mapping.needColumn"));
+      // One budget_ref column per source: any other one goes back to ignored.
+      const columns = Object.fromEntries(Object.entries(source.mapping.columns).map(([k, c]) => [k, c["role"] === "budget_ref" ? { role: "ignore" } : c]));
+      const mapping = { ...source.mapping, columns: { ...columns, [column.trim()]: { role: "budget_ref" } } };
+      return unwrap(api.PATCH("/api/v1/sources/{id}", { params: { path: { id: source.id }, header: { "X-Workspace-Id": ws } }, body: { mapping } as never }));
+    },
+    onSuccess: async () => {
+      await refresh(client, ws);
+      onDone(t("mapping.savedReference", { source: source?.name ?? "", column: column.trim() }));
+    },
+  });
+  const why = !source || column.trim() === "" ? t("mapping.needColumn") : save.isPending ? t("mapping.saving") : null;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {t("mapping.source")}
+          <Select value={sourceId} onChange={(e) => setSourceId(e.target.value)} data-testid="mapping-source">
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {t("mapping.column")}
+          <Input size="sm" list="mapping-columns" value={column} onChange={(e) => setColumn(e.target.value)} data-testid="mapping-column" />
+          <datalist id="mapping-columns">
+            {Object.keys(source?.mapping.columns ?? {}).map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("mapping.nextRun")}</p>
+      <div>
+        {why ? (
+          <Button size="sm" disabled reason={why} data-testid="mapping-save">
+            {t("mapping.save")}
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => save.mutate()} data-testid="mapping-save">
+            {t("mapping.save")}
+          </Button>
+        )}
+      </div>
+      {save.error ? <p role="alert" className="text-xs text-destructive">{save.error.message}</p> : null}
+    </div>
+  );
+}
+
+const DELIMITERS: NamingConventionDelimiter[] = ["_", "-", ".", "|", "/", ":", "·", "+", " "];
+
+function NomenclatureForm({ ws, onDone }: { ws: string; onDone: (msg: string) => void }): ReactElement {
+  const client = useQueryClient();
+  const { data: dims = [] } = useQuery(registryQuery(ws));
+  const { data: cov } = useQuery(coverageQuery(ws));
+  const firstName = cov?.byCampaign.find((c) => c.campaign !== null)?.label ?? cov?.byCampaign.find((c) => c.campaign !== null)?.campaign ?? "";
+  const [delimiter, setDelimiter] = useState<NamingConventionDelimiter>("_");
+  const [sample, setSample] = useState<string | null>(null);
+  const [picks, setPicks] = useState<Record<number, { dimension: string | null; aliases: string }>>({});
+  const name = sample ?? firstName;
+  const parts = name === "" ? [] : name.split(delimiter);
+  const convention: CreateNamingConventionInput = { delimiter, tokens: parts.map((_, i) => ({ dimension: picks[i]?.dimension ?? null, aliases: picks[i]?.dimension ? parseAliases(picks[i]?.aliases ?? "") : {} })) };
+  const ready = convention.tokens.some((tk) => tk.dimension !== null);
+  const preview = useQuery({
+    queryKey: ["naming-convention-preview", ws, JSON.stringify(convention)],
+    queryFn: async () => NamingConventionPreviewResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-conventions/preview", { params: { path: { ws } }, body: { convention } as never }))),
+    enabled: ready,
+  });
+  const save = useMutation({
+    mutationFn: async () => NamingConventionWriteResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-conventions", { params: { path: { ws } }, body: convention as never }))),
+    onSuccess: async (res) => {
+      await refresh(client, ws);
+      onDone(t("mapping.saved", { n: res.rematch.spend + res.rematch.kpi + res.rematch.projection }));
+    },
+  });
+  const set = (i: number, p: Partial<{ dimension: string | null; aliases: string }>) => setPicks({ ...picks, [i]: { dimension: picks[i]?.dimension ?? null, aliases: picks[i]?.aliases ?? "", ...p } });
+  const why = name === "" ? t("mapping.needSample") : !ready ? t("mapping.needDimension") : save.isPending ? t("mapping.saving") : null;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {t("mapping.delimiter")}
+          <Select value={delimiter} onChange={(e) => setDelimiter(e.target.value as NamingConventionDelimiter)} data-testid="mapping-delimiter">
+            {DELIMITERS.map((d) => (
+              <option key={d} value={d}>
+                {d === " " ? t("mapping.delimiterSpace") : d}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+          {t("mapping.sampleName")}
+          <Input size="sm" value={name} onChange={(e) => setSample(e.target.value)} data-testid="mapping-sample" />
+        </label>
+      </div>
+      {parts.length > 0 ? (
+        <ol className="flex flex-col gap-1.5" data-testid="mapping-parts">
+          {parts.map((part, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-2 text-sm" data-testid="mapping-part">
+              <span className="w-16 text-xs text-muted-foreground">{t("mapping.position", { n: i + 1 })}</span>
+              <span className="w-40 truncate font-mono text-xs">{part}</span>
+              <Select value={picks[i]?.dimension ?? ""} onChange={(e) => set(i, { dimension: e.target.value || null })} aria-label={t("mapping.dimensionFor", { n: i + 1 })} data-testid="mapping-part-dimension">
+                <option value="">{t("mapping.ignore")}</option>
+                {dims
+                  .filter((d) => d.isActive && d.key !== CAMPAIGN_DIMENSION)
+                  .map((d) => (
+                    <option key={d.key} value={d.key}>
+                      {d.label}
+                    </option>
+                  ))}
+              </Select>
+              {picks[i]?.dimension ? <Input size="sm" className="w-48" value={picks[i]?.aliases ?? ""} onChange={(e) => set(i, { aliases: e.target.value })} placeholder={t("mapping.aliases")} aria-label={t("mapping.aliasesFor", { n: i + 1 })} data-testid="mapping-part-aliases" /> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {ready ? (
+        <div className="flex flex-col gap-1" data-testid="mapping-preview">
+          <h4 className="text-xs font-medium text-muted-foreground">{t("mapping.preview")}</h4>
+          {preview.data && preview.data.samples.length === 0 ? <p className="text-xs text-muted-foreground">{t("mapping.previewNone")}</p> : null}
+          <ul className="flex flex-col gap-0.5 text-xs">
+            {(preview.data?.samples ?? []).map((s) => (
+              <li key={`${s.campaign ?? ""}:${s.name}`} className="flex flex-wrap gap-2" data-testid="mapping-preview-row">
+                <span className="font-mono">{s.name}</span>
+                <span className="text-muted-foreground">→</span>
+                <span>{s.dimensionValues ? Object.entries(s.dimensionValues).map(([k, v]) => `${k} ${v}`).join(" · ") : s.problem ? problemText(s.problem) : ""}</span>
+              </li>
+            ))}
+          </ul>
+          {preview.error ? <p role="alert" className="text-xs text-destructive">{preview.error.message}</p> : null}
+        </div>
+      ) : null}
+      <div>
+        {why ? (
+          <Button size="sm" disabled reason={why} data-testid="mapping-save">
+            {t("mapping.save")}
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => save.mutate()} data-testid="mapping-save">
+            {t("mapping.save")}
+          </Button>
+        )}
+      </div>
+      {save.error ? <p role="alert" className="text-xs text-destructive">{save.error.message}</p> : null}
+    </div>
+  );
+}
+
+/** Why a campaign is not on a budget, in words (no colours). */
+export function whyText(o: OpenCampaign): string {
+  if (o.status === "ambiguous") return t("mapping.why.ambiguous", { budgets: o.candidates.map((c) => c.name).join(", ") });
+  return t(`mapping.why.${o.reason ?? "none"}` as MessageKey);
+}
+
+/** The campaigns that land on no budget, largest first, each with "Create rule" (campaign → budget). */
+export function UnassignedCampaigns({ ws, canEditBudgets }: { ws: string; canEditBudgets: boolean }): ReactElement {
+  const { data: cov, isPending } = useQuery(coverageQuery(ws));
+  const [open, setOpen] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-border pt-3" data-testid="mapping-open" data-tour="mapping-open">
+      <h3 className="text-sm font-medium">{t("mapping.open")}</h3>
+      {notice ? <p role="status" className="text-sm" data-testid="mapping-open-notice">{notice}</p> : null}
+      {isPending || !cov ? (
         <p className="text-sm text-muted-foreground">{t("shell.loading")}</p>
-      ) : rules.length === 0 ? (
-        <p className="text-sm text-muted-foreground" data-testid="mapping-rules-empty">{t("mapping.rulesNone")}</p>
+      ) : cov.open.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="mapping-all-matched">{t("mapping.openNone")}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
-          {rules.map((r) => {
-            const why = !canEditBudgets ? t("mapping.noEditReason") : remove.isPending ? t("mapping.deleting") : null;
+          {cov.open.map((o) => {
+            const key = `${o.campaign ?? ""}|${o.status}|${o.reason ?? ""}`;
+            const name = o.label ?? o.campaign ?? t("mapping.noCampaign");
+            const why = o.campaign === null ? t("mapping.noCampaignReason") : !canEditBudgets ? t("mapping.noEditReason") : null;
             return (
-              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-sm" data-testid="mapping-rule">
-                <span>{t("mapping.ruleLine", { predicate: predicateText(r.predicate), budget: r.envelopeName })}</span>
-                <span className="text-xs text-muted-foreground">{r.startDate || r.endDate ? t("mapping.ruleDates", { from: r.startDate ?? "…", to: r.endDate ?? "…" }) : t("mapping.ruleOpen")}</span>
-                {why ? (
-                  <Button size="sm" variant="ghost" className="ml-auto" disabled reason={why} aria-label={t("mapping.deleteRule")} data-testid="mapping-rule-delete">
-                    <Trash2 className="size-4" aria-hidden />
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" className="ml-auto" aria-label={t("mapping.deleteRule")} onClick={() => remove.mutate(r.id)} data-testid="mapping-rule-delete">
-                    <Trash2 className="size-4" aria-hidden />
-                  </Button>
-                )}
+              <li key={key} className="py-2" data-testid="mapping-open-row">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <span className="font-medium">{name}</span>
+                  {o.label && o.campaign ? <span className="text-xs text-muted-foreground">{o.campaign}</span> : null}
+                  <span className="tabular text-muted-foreground">{t("mapping.openLine", { amount: moneyOrDash(o.amount, cov.currency), from: o.firstDate, to: o.lastDate })}</span>
+                  <span className="text-muted-foreground" data-testid="mapping-open-why">{whyText(o)}</span>
+                  {why ? (
+                    <Button size="sm" variant="outline" className="ml-auto" disabled reason={why} data-testid="mapping-create-rule">
+                      {t("mapping.createRule")}
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="ml-auto" aria-expanded={open === key} onClick={() => setOpen(open === key ? null : key)} data-testid="mapping-create-rule">
+                      {t("mapping.createRule")}
+                    </Button>
+                  )}
+                </div>
+                {open === key && o.campaign !== null ? <CreateRuleFor ws={ws} campaign={o.campaign} name={name} candidates={o.candidates} onDone={(msg) => (setOpen(null), setNotice(msg))} /> : null}
               </li>
             );
           })}
         </ul>
       )}
-      {remove.error ? <p role="alert" className="text-xs text-destructive">{remove.error.message}</p> : null}
+    </div>
+  );
+}
+
+function CreateRuleFor({ ws, campaign, name, candidates, onDone }: { ws: string; campaign: string; name: string; candidates: OpenCampaign["candidates"]; onDone: (msg: string) => void }): ReactElement {
+  const create = useCreateCampaignRule(ws, onDone);
+  return (
+    <div className="mt-2 flex flex-col gap-1.5 rounded-lg bg-surface p-3">
+      <BudgetPicker ws={ws} initial={name} candidates={candidates} onPick={(b) => (create.isPending ? undefined : create.mutate({ campaign, name, envelopeId: b.id }))} label={() => t("mapping.assignTo", { campaign: name })} />
+      {create.error ? <p role="alert" className="text-xs text-destructive">{create.error.message}</p> : null}
     </div>
   );
 }
