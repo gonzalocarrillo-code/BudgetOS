@@ -351,8 +351,10 @@ export async function matchFacts(tx: Tx, workspaceId: string, scope: MatchScope)
          LEFT JOIN tc ON tc.id = f.id AND tc.period_date = f.period_date
        ),
        -- Tied candidates on one ancestor chain: the deepest takes the fact (money lives on leaves,
-       -- ADR-016). It is the one candidate every other candidate is an ancestor of.
-       d AS (
+       -- ADR-016). It is the one candidate every other candidate is an ancestor of. MATERIALIZED:
+       -- n reads envs several times (and inside a subquery); inlined, the chain search would run
+       -- again for every read.
+       d AS MATERIALIZED (
          SELECT d0.id, d0.period_date, d0.dimension_values, d0.old_env, d0.old_method, d0.old_status, d0.old_cands, d0.level, d0.known,
                 CASE WHEN cardinality(d0.envs) > 1 THEN coalesce((
                   SELECT ARRAY[c] FROM unnest(d0.envs) AS c
