@@ -7,8 +7,10 @@ import type { AuthContext } from "../../../common/tenant.js";
 /**
  * GET /workspaces/:ws/members (the Roles page): the people and groups with a role in this
  * workspace, each with those roles (ORG-005: a workspace admin never sees who works only in other
- * workspaces). A superadmin sees the whole org, to give anyone a role here. `signedIn` is false for
- * someone added by email who has not signed in yet; `orgAdmin` marks a superadmin.
+ * workspaces; ADR-088: this is true for every caller, superadmins included — a superadmin acting in
+ * a workspace where they hold no role of their own is not a member of it, and browses the org from
+ * the org console instead). `signedIn` is false for someone added by email who has not signed in
+ * yet; `orgAdmin` marks a superadmin.
  */
 export async function listPeople(prisma: PrismaClient, auth: AuthContext): Promise<PeopleResponse> {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
@@ -22,7 +24,7 @@ export async function listPeople(prisma: PrismaClient, auth: AuthContext): Promi
     ]);
     const admins = new Set(orgAdmins.map((a) => a.principalId));
     const withRole = new Set(here.map((a) => `${a.principalType}:${a.principalId}`));
-    const visible = (type: string, id: string) => auth.isOrgAdmin || withRole.has(`${type}:${id}`);
+    const visible = (type: string, id: string) => withRole.has(`${type}:${id}`);
     const rolesOf = (type: string, id: string) => here.filter((a) => a.principalType === type && a.principalId === id).map((a) => ({ id: a.id, role: a.role, scope: a.scope }));
     return {
       users: users.filter((u) => visible("user", u.id)).map((u) => ({ id: u.id, email: u.email, name: u.name, isActive: u.isActive, signedIn: u.lastSignInAt !== null || u.googleSub !== null, lastSignInAt: u.lastSignInAt?.toISOString() ?? null, orgAdmin: admins.has(u.id), roles: rolesOf("user", u.id) })),

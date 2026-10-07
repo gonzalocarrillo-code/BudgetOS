@@ -8,14 +8,15 @@ import type { AuthContext } from "../../../common/tenant.js";
  * POST /workspaces/:ws/members (ORG-005): a workspace admin adds someone to their workspace by work
  * email, with a role here, so they can sign in with Google and find it waiting. Someone new to the
  * org is created in the caller's org (the one elevated write, below); someone already in it is
- * found by exact email, never by browsing the org. A workspace admin's addition always carries a
- * role here (Viewer unless they choose), so the person shows on their Roles page; a superadmin may
- * add someone with no role yet. An email in another org is refused.
+ * found by exact email, never by browsing the org. The addition always carries a role here (Viewer
+ * unless chosen) so the person shows on this workspace's Roles page (ADR-088: a person with no role
+ * here would otherwise be invisible on the very page that just added them). An email in another org
+ * is refused.
  */
 export async function addPerson(prisma: PrismaClient, auth: AuthContext, raw: unknown) {
   const input = parseInput(AddMemberInput, raw);
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const role: Role | null = input.role ?? (auth.isOrgAdmin ? null : "VIEWER");
+  const role: Role = input.role ?? "VIEWER";
   // app_user rows are org-level: RLS lets only the org-admin bypass write them. This transaction
   // does exactly one thing with it: create a person in the caller's own org.
   const person = await withTenant(prisma, { ...auth.ctx, workspaceId, isOrgAdmin: true }, async (tx) => {
@@ -33,7 +34,6 @@ export async function addPerson(prisma: PrismaClient, auth: AuthContext, raw: un
     await outbox(tx, { workspaceId, topic: "user.added", payload: { userId: user.id } });
     return { id: user.id, email: user.email, name: user.name, created: true };
   });
-  if (role === null) return { ...person, role: null };
   // The role, in the caller's own workspace session (RLS keeps it to this workspace).
   const assigned = await withTenant(prisma, auth.ctx, async (tx) => {
     const has = await tx.roleAssignment.findFirst({ where: { workspaceId, principalType: "user", principalId: person.id, role }, select: { id: true } });

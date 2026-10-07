@@ -75,7 +75,7 @@ function RolesPage(): ReactElement {
       <p className="max-w-3xl text-sm text-muted-foreground">{t("roles.intro")}</p>
       {error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : null}
       {problem ? <p role="alert" className="text-sm text-destructive" data-testid="roles-error">{problem}</p> : null}
-      {canManage ? <AddPerson ws={ws} superadmin={me?.isOrgAdmin === true} onDone={refresh} /> : null}
+      {canManage ? <AddPerson ws={ws} onDone={refresh} /> : null}
       <Card title={t("roles.people", { count: principals.length })}>
         <ul className="flex flex-col divide-y divide-border" data-testid="principals">
           {principals.map((p) => (
@@ -96,7 +96,7 @@ function RolesPage(): ReactElement {
                     <ShieldCheck className="size-3.5 text-primary" aria-hidden />
                     <span className="font-medium">{roleLabel(r.role)}</span>
                     <span className="text-muted-foreground">{scopeText(r.scope)}</span>
-                    <button type="button" className="ml-0.5 rounded p-0.5 hover:bg-accent" onClick={() => revoke.mutate(r.id)} aria-label={t("roles.revoke", { role: roleLabel(r.role), name: p.name })} data-testid="role-revoke">
+                    <button type="button" className="ml-0.5 rounded p-0.5 hover:bg-accent" onClick={() => revoke.mutate(r.id)} aria-label={p.roles.length === 1 ? t("roles.removeFromWorkspace", { name: p.name }) : t("roles.revoke", { role: roleLabel(r.role), name: p.name })} data-testid="role-revoke">
                       <X className="size-3" aria-hidden />
                     </button>
                   </span>
@@ -175,16 +175,17 @@ function AddRole({ ws, principal, onDone, onError }: { ws: string; principal: { 
 
 /**
  * ORG-005: a workspace admin adds someone to this workspace by work email, with a role here (the
- * person joins the organization if they are new to it). A superadmin may add someone with no role yet.
+ * person joins the organization if they are new to it). ADR-088: the role is always required
+ * (default Viewer) — a person with no role here would be invisible on this very page.
  */
-function AddPerson({ ws, superadmin, onDone }: { ws: string; superadmin: boolean; onDone: () => void }): ReactElement {
+function AddPerson({ ws, onDone }: { ws: string; onDone: () => void }): ReactElement {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<string>(superadmin ? "" : "VIEWER");
+  const [role, setRole] = useState<string>("VIEWER");
   const [note, setNote] = useState<string | null>(null);
   const add = useMutation({
     meta: { success: t("toast.personAdded") },
-    mutationFn: async () => z.object({ created: z.boolean(), email: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/members", { params: { path: { ws } }, body: { email, name, ...(role ? { role } : {}) } as never }))),
+    mutationFn: async () => z.object({ created: z.boolean(), email: z.string() }).parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/members", { params: { path: { ws } }, body: { email, name, role } as never }))),
     onSuccess: (r) => (setNote(r.created ? t("roles.added", { email: r.email }) : t("roles.already", { email: r.email })), setEmail(""), setName(""), onDone()),
   });
   const valid = /^\S+@\S+\.\S+$/.test(email.trim()) && name.trim() !== "";
@@ -204,7 +205,6 @@ function AddPerson({ ws, superadmin, onDone }: { ws: string; superadmin: boolean
           <label className="flex min-w-40 flex-col gap-1">
             <span className="text-muted-foreground">{t("roles.role")}</span>
             <Select className={field} value={role} onChange={(e) => setRole(e.target.value)} data-testid="person-role">
-              {superadmin ? <option value="">{t("roles.noRoleYet")}</option> : null}
               {ROLES.map((r) => (
                 <option key={r} value={r}>
                   {roleLabel(r)}
