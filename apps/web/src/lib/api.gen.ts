@@ -2558,6 +2558,7 @@ export interface operations {
                             name: string;
                             isActive: boolean;
                             signedIn: boolean;
+                            lastSignInAt: string | null;
                             orgAdmin: boolean;
                             roles: {
                                 /** Format: uuid */
@@ -8151,6 +8152,7 @@ export interface operations {
                             email: string;
                             isActive: boolean;
                             signedIn: boolean;
+                            lastSignInAt: string | null;
                             superadmin: boolean;
                             slackUserId: string | null;
                             workspaces: {

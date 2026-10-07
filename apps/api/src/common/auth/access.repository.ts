@@ -1,7 +1,8 @@
 import { ScopeFilter, type Role, type ScopedRole } from "@budget/domain";
 import { withIdentity, withTenant } from "@budget/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { recordFirstSignIn } from "./first-sign-in.js";
 import type { VerifiedIdentity } from "./jwt-verifier.js";
 import type { WorkspaceAccess } from "./role-cache.js";
 
@@ -11,6 +12,8 @@ export interface AppUserRef {
   email: string;
   name: string;
   isActive: boolean;
+  googleSub: string | null;
+  lastSignInAt: Date | null;
 }
 
 /**
@@ -20,6 +23,11 @@ export interface AppUserRef {
  */
 @Injectable()
 export class AccessRepository {
+  private readonly logger = new Logger(AccessRepository.name);
+  // Round 11 (PR 1): in-process throttle so recordSignIn doesn't open a transaction on every
+  // request once a user is already bound and recently seen. Keyed by app_user id.
+  private readonly lastRecorded = new Map<string, number>();
+
   constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
 
   /** Match on the Google account id or Identity Platform uid, else on a verified email. */
@@ -32,6 +40,39 @@ export class AccessRepository {
       if (email === null) return null;
       return tx.user.findUnique({ where: { email } });
     });
+  }
+
+  /**
+   * Round 11 (PR 1): remember the sign-in (at most every 15 min per identity) and bind the
+   * account id on the first email-matched sign-in, so later sign-ins match by id and "Not signed
+   * in yet" clears. `user` is the pre-call row from `findUser`, used only to decide whether this
+   * is the first bind (for the audit row) and which org/request to audit it under. Bookkeeping
+   * only: a failure here never blocks the request.
+   */
+  async recordSignIn(identity: VerifiedIdentity, user: AppUserRef, requestId: string): Promise<void> {
+    const now = Date.now();
+    const last = this.lastRecorded.get(identity.sub);
+    if (last !== undefined && now - last < 15 * 60_000) return;
+    this.lastRecorded.set(identity.sub, now);
+    const subs = [identity.sub, ...(identity.googleSub ? [identity.googleSub] : [])];
+    const email = identity.emailVerified ? identity.email : null;
+    const sub = identity.googleSub ?? identity.sub;
+    const wasFirstBind = user.googleSub === null;
+    try {
+      await withIdentity(this.prisma, { subs, email }, (tx) => tx.$executeRawUnsafe(`SELECT app_record_sign_in($1)`, sub));
+    } catch (e) {
+      // google_sub is UNIQUE: if another row already owns it, the UPDATE in app_record_sign_in
+      // raises 23505. Never block a login on bookkeeping.
+      this.logger.warn({ err: e }, "recordSignIn failed");
+      return;
+    }
+    if (wasFirstBind) {
+      try {
+        await recordFirstSignIn(this.prisma, user, requestId);
+      } catch (e) {
+        this.logger.warn({ err: e }, "recordFirstSignIn audit failed");
+      }
+    }
   }
 
   /** The workspace's org, or null when it does not exist or belongs to another org (RLS hides it). */

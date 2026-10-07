@@ -25,7 +25,7 @@ export async function listPeople(prisma: PrismaClient, auth: AuthContext): Promi
     const visible = (type: string, id: string) => auth.isOrgAdmin || withRole.has(`${type}:${id}`);
     const rolesOf = (type: string, id: string) => here.filter((a) => a.principalType === type && a.principalId === id).map((a) => ({ id: a.id, role: a.role, scope: a.scope }));
     return {
-      users: users.filter((u) => visible("user", u.id)).map((u) => ({ id: u.id, email: u.email, name: u.name, isActive: u.isActive, signedIn: u.googleSub !== null, orgAdmin: admins.has(u.id), roles: rolesOf("user", u.id) })),
+      users: users.filter((u) => visible("user", u.id)).map((u) => ({ id: u.id, email: u.email, name: u.name, isActive: u.isActive, signedIn: u.lastSignInAt !== null || u.googleSub !== null, lastSignInAt: u.lastSignInAt?.toISOString() ?? null, orgAdmin: admins.has(u.id), roles: rolesOf("user", u.id) })),
       groups: groups.filter((g) => visible("group", g.id)).map((g) => ({ id: g.id, name: g.name, googleGroup: g.googleGroup, memberCount: g._count.members, roles: rolesOf("group", g.id) })),
     };
   });
