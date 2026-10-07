@@ -174,7 +174,6 @@ const ROUTES: RouteCase[] = [
   { method: "PATCH", path: "/api/v1/naming-templates/{id}", permission: "registry.manage", url: () => `/api/v1/naming-templates/${randomUUID()}`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/experiments", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/experiments` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/experiments", permission: "envelope.edit_draft", url: () => `/api/v1/workspaces/${wsA}/experiments`, body: {} },
-  { method: "GET", path: "/api/v1/workspaces/{ws}/experiments/scope-values", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/experiments/scope-values?start=2026-01-01&end=2026-01-31` },
   { method: "GET", path: "/api/v1/experiments/{id}", permission: "envelope.read", url: () => `/api/v1/experiments/${rid}`, headers: X() },
   { method: "DELETE", path: "/api/v1/experiments/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/experiments/${rid}`, headers: X() },
   { method: "PATCH", path: "/api/v1/experiments/{id}", permission: "envelope.edit_draft", url: () => `/api/v1/experiments/${rid}`, headers: X(), body: {} },

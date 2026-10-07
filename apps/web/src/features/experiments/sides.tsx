@@ -9,12 +9,14 @@ import { Dialog } from "./components.js";
 import { metricsQuery, type Experiment } from "./queries.js";
 
 /**
- * EX-2 (ADR-086): each side's facts from the read-out — side-by-side totals, a daily line chart with
- * gaps where a side has no data, and the day-by-day table that says "No data" for those days. Every
- * number comes from the API (the planner); this file only formats and draws it.
+ * EX-2 (ADR-086) / EX-4 (ADR-089): each side's facts from the read-out — side-by-side totals with a
+ * metric chooser, a daily line chart with its own metric chooser and gaps where a side has no data,
+ * and the day-by-day table (collapsed by default) that says "No data" for those days. Every number
+ * comes from the API (the planner); this file only formats, chooses and draws it. The metric
+ * selections live in the URL (owner feedback: "we should be able to choose what metrics we see").
  */
 
-interface Row {
+export interface Row {
   key: string;
   label: string;
   money: boolean;
@@ -22,7 +24,7 @@ interface Row {
 }
 
 /** Spend, the KPI facts and the metric library's derived metrics, in that order (registry labels). */
-function useRows(ws: string, sides: ExperimentSides): Row[] {
+export function useRows(ws: string, sides: ExperimentSides): Row[] {
   const { data: library = [] } = useQuery(metricsQuery(ws));
   const labels = new Map(library.map((m) => [m.key, m.label]));
   const derived = [...new Set([...Object.keys(sides.test.totals.metrics), ...Object.keys(sides.control?.totals.metrics ?? {})])];
@@ -36,14 +38,64 @@ function useRows(ws: string, sides: ExperimentSides): Row[] {
 
 const show = (row: Row, v: string | null, currency: string) => (v === null ? "—" : row.money ? formatMoney(v, currency) : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
-export function SidesPanel({ ws, experiment, sides, currency }: { ws: string; experiment: Experiment; sides: ExperimentSides; currency: string }): ReactElement {
-  const rows = useRows(ws, sides);
-  const [chartKey, setChartKey] = useState(experiment.primaryMetric);
-  const chartRow = rows.find((r) => r.key === chartKey) ?? rows.find((r) => r.key === experiment.primaryMetric) ?? rows[0];
+/** A row of toggleable chips: the multi-select metric chooser (owner feedback, EX-4). */
+function MetricChooser({ rows, selected, onChange, testId }: { rows: Row[]; selected: string[]; onChange: (keys: string[]) => void; testId: string }): ReactElement {
+  const toggle = (key: string) => {
+    const next = selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key];
+    onChange(next.length ? next : [key]); // at least one metric stays selected
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("experiments.sides.chooseMetrics")} data-testid={testId}>
+      {rows.map((r) => {
+        const on = selected.includes(r.key);
+        return (
+          <button
+            key={r.key}
+            type="button"
+            aria-pressed={on}
+            className={cn("h-7 rounded-full border px-2.5 text-xs", on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground/80 hover:bg-accent")}
+            onClick={() => toggle(r.key)}
+            data-testid={`${testId}-${r.key}`}
+          >
+            {r.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function SidesPanel({
+  ws,
+  experiment,
+  sides,
+  currency,
+  metrics,
+  onMetricsChange,
+  chartMetric,
+  onChartMetricChange,
+}: {
+  ws: string;
+  experiment: Experiment;
+  sides: ExperimentSides;
+  currency: string;
+  /** Table metric chooser (URL `metrics`); defaults to spend + the primary metric. */
+  metrics: string[] | undefined;
+  onMetricsChange: (keys: string[]) => void;
+  /** Chart metric chooser (URL `chartMetric`); defaults to the primary metric. */
+  chartMetric: string | undefined;
+  onChartMetricChange: (key: string) => void;
+}): ReactElement {
+  const allRows = useRows(ws, sides);
+  const selected = metrics && metrics.length ? metrics : ["spend", experiment.primaryMetric];
+  const rows = allRows.filter((r) => selected.includes(r.key));
+  const chartKey = chartMetric ?? experiment.primaryMetric;
+  const chartRow = allRows.find((r) => r.key === chartKey) ?? allRows.find((r) => r.key === experiment.primaryMetric) ?? allRows[0];
   const days = sides.test.totals.daysInWindow;
   const scope = (s: ExperimentSide) => t(s.scopeKind === "fact" ? "experiments.sides.scope.fact" : "experiments.sides.scope.envelope");
   return (
     <div className="flex flex-col gap-4" data-testid="experiment-sides" data-tour="experiment-sides">
+      <MetricChooser rows={allRows} selected={selected} onChange={onMetricsChange} testId="sides-metric-chooser" />
       <div className="overflow-x-auto">
         <table className="w-full text-sm" data-testid="sides-table">
           <thead>
@@ -97,8 +149,8 @@ export function SidesPanel({ ws, experiment, sides, currency }: { ws: string; ex
           <div className="flex flex-col gap-2" data-tour="experiment-chart">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium">{t("experiments.chart.metric")}</span>
-              <Select size="sm" value={chartRow.key} onChange={(e) => setChartKey(e.target.value)} data-testid="chart-metric">
-                {rows.map((r) => (
+              <Select size="sm" value={chartRow.key} onChange={(e) => onChartMetricChange(e.target.value)} data-testid="chart-metric">
+                {allRows.map((r) => (
                   <option key={r.key} value={r.key}>
                     {r.label}
                   </option>
@@ -112,7 +164,7 @@ export function SidesPanel({ ws, experiment, sides, currency }: { ws: string; ex
             </div>
             <LineChart row={chartRow} test={sides.test.days} control={sides.control?.days ?? null} />
           </div>
-          <DayTable rows={rows} chartRow={chartRow} sides={sides} currency={currency} />
+          <DayTable spendRow={allRows.find((r) => r.key === "spend") as Row} chartRow={chartRow} sides={sides} currency={currency} />
         </>
       )}
     </div>
@@ -188,9 +240,8 @@ function LineChart({ row, test, control }: { row: Row; test: ExperimentDay[]; co
 }
 
 /** Every day of the window: spend and the charted metric per side; "No data" where a side has none. */
-function DayTable({ rows, chartRow, sides, currency }: { rows: Row[]; chartRow: Row; sides: ExperimentSides; currency: string }): ReactElement {
-  const spend = rows[0] as Row;
-  const cols = chartRow.key === "spend" ? [spend] : [spend, chartRow];
+function DayTable({ spendRow, chartRow, sides, currency }: { spendRow: Row; chartRow: Row; sides: ExperimentSides; currency: string }): ReactElement {
+  const cols = chartRow.key === "spend" ? [spendRow] : [spendRow, chartRow];
   const cell = (d: ExperimentDay | undefined, testId: string) =>
     d === undefined || !d.hasData ? (
       <td colSpan={cols.length} className="py-1.5 text-right text-muted-foreground" data-testid={testId} data-has-data="false">

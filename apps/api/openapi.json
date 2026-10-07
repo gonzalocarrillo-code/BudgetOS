@@ -15902,7 +15902,7 @@
                       "envelope",
                       "fact"
                     ],
-                    "default": "envelope"
+                    "default": "fact"
                   },
                   "controlScopeKind": {
                     "type": "string",
@@ -15910,7 +15910,7 @@
                       "envelope",
                       "fact"
                     ],
-                    "default": "envelope"
+                    "default": "fact"
                   }
                 },
                 "required": [
@@ -16424,98 +16424,6 @@
           },
           "403": {
             "description": "Not the experiment's owner nor a workspace admin"
-          }
-        }
-      }
-    },
-    "/api/v1/workspaces/{ws}/experiments/scope-values": {
-      "get": {
-        "operationId": "listExperimentScopeValues",
-        "parameters": [
-          {
-            "name": "ws",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "key",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Fact dimension key (default campaign)"
-          },
-          {
-            "name": "start",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "end",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "includeDemo",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "true",
-                "false"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The dimension's values found in spend facts in the window, largest spend first (the campaign picker)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "code": {
-                        "type": "string"
-                      },
-                      "label": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "spend": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "days": {
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "code",
-                      "label",
-                      "spend",
-                      "days"
-                    ]
-                  }
-                }
-              }
-            }
           }
         }
       }

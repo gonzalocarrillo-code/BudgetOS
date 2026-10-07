@@ -9,7 +9,7 @@ import { z } from "zod";
 import { FilterBar } from "../explorer/filter-bar.js";
 import { api, unwrap } from "../../lib/api.js";
 import type { Dimension } from "../../lib/queries.js";
-import { KINDS, metricsQuery, scopeValuesQuery, type Experiment } from "./queries.js";
+import { KINDS, metricsQuery, type Experiment } from "./queries.js";
 
 /**
  * Experiments UI pieces (spec §25): status and criterion badges, the side-by-side read-out, the
@@ -115,7 +115,12 @@ const Label = ({ text, children }: { text: string; children: ReactNode }) => (
   </label>
 );
 
-/** New experiment (spec §25.3): the question, the scopes, the metric and how success is judged. */
+/**
+ * New experiment (spec §25.3). EX-4: each side is just the Budgets filter bar's FilterGroup,
+ * evaluated on spend / KPI facts — campaign is one filterable dimension among others, not a
+ * separate picker. New experiments are fact-scoped (ADR-089); `envelope`-scoped experiments created
+ * before EX-4 keep reading the way they always did.
+ */
 export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: { ws: string; dimensions: Dimension[]; onClose: () => void; onCreated: (id: string) => void }): ReactElement {
   const { data: metrics = [] } = useQuery(metricsQuery(ws));
   const year = new Date().getUTCFullYear();
@@ -132,10 +137,6 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
     minDays: "14",
     startDate: `${year}-01-01`,
     endDate: `${year}-03-31`,
-    testKind: "fact" as SideKind,
-    controlKind: "fact" as SideKind,
-    testCampaign: "",
-    controlCampaign: "",
   });
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }));
   const create = useMutation({
@@ -148,10 +149,8 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
               name: f.name,
               hypothesis: f.hypothesis,
               kind: f.kind,
-              testScopeKind: f.testKind,
-              controlScopeKind: f.controlKind,
-              testFilter: f.testKind === "fact" ? campaignFilter(f.testCampaign) : f.testFilter,
-              controlFilter: f.controlKind === "fact" ? (f.controlCampaign ? campaignFilter(f.controlCampaign) : null) : f.controlFilter.children.length ? f.controlFilter : null,
+              testFilter: f.testFilter,
+              controlFilter: f.controlFilter.children.length ? f.controlFilter : null,
               primaryMetric: f.primaryMetric,
               criterion: { comparator: f.comparator, vs: f.vs, ...(f.vs === "absolute" ? { value: f.value } : {}), ...(f.minDays ? { minDays: Number(f.minDays) } : {}) },
               startDate: f.startDate,
@@ -165,10 +164,8 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
   const why =
     !f.name.trim() ? t("experiments.form.needName")
     : !f.hypothesis.trim() ? t("experiments.form.needHypothesis")
-    : f.testKind === "fact" && !f.testCampaign ? t("experiments.form.needTestCampaign")
-    : f.testKind === "envelope" && f.testFilter.children.length === 0 ? t("experiments.form.needTest")
-    : f.vs === "control" && f.controlKind === "fact" && !f.controlCampaign ? t("experiments.form.needControlCampaign")
-    : f.vs === "control" && f.controlKind === "envelope" && f.controlFilter.children.length === 0 ? t("experiments.form.needControl")
+    : f.testFilter.children.length === 0 ? t("experiments.form.needTest")
+    : f.vs === "control" && f.controlFilter.children.length === 0 ? t("experiments.form.needControl")
     : f.vs === "absolute" && !/^-?\d+(\.\d{1,4})?$/.test(f.value) ? t("experiments.form.needValue")
     : f.startDate > f.endDate ? t("experiments.form.badDates")
     : create.isPending ? t("shell.loading")
@@ -221,30 +218,8 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
           </Select>
         </Label>
       </div>
-      <SideScope
-        ws={ws}
-        side="test"
-        kind={f.testKind}
-        onKind={(testKind) => set({ testKind })}
-        campaign={f.testCampaign}
-        onCampaign={(testCampaign) => set({ testCampaign })}
-        filter={f.testFilter}
-        onFilter={(testFilter) => set({ testFilter })}
-        dimensions={dimensions}
-        window={{ start: f.startDate, end: f.endDate }}
-      />
-      <SideScope
-        ws={ws}
-        side="control"
-        kind={f.controlKind}
-        onKind={(controlKind) => set({ controlKind })}
-        campaign={f.controlCampaign}
-        onCampaign={(controlCampaign) => set({ controlCampaign })}
-        filter={f.controlFilter}
-        onFilter={(controlFilter) => set({ controlFilter })}
-        dimensions={dimensions}
-        window={{ start: f.startDate, end: f.endDate }}
-      />
+      <SideScope side="test" filter={f.testFilter} onFilter={(testFilter) => set({ testFilter })} dimensions={dimensions} />
+      <SideScope side="control" filter={f.controlFilter} onFilter={(controlFilter) => set({ controlFilter })} dimensions={dimensions} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Label text={t("experiments.form.success")}>
           <Select className={field} value={`${f.vs}:${f.comparator}`} onChange={(e) => { const [vs, comparator] = e.target.value.split(":") as ["control" | "absolute", "lte" | "gte"]; set({ vs, comparator }); }} data-testid="experiment-criterion">
@@ -277,54 +252,18 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
   );
 }
 
-type SideKind = "fact" | "envelope";
-const campaignFilter = (code: string): FilterGroupT => ({ logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: code }] });
-
 /**
- * EX-2: one side's scope in the create form — a campaign found in the spend data in the window
- * (fact-scoped, independent of budgets), or budgets picked with the filter bar (envelope-scoped).
+ * EX-4: one side's scope in the create form — the same filter bar as Budgets, evaluated on spend /
+ * KPI facts. Campaign is just one filterable dimension (owner feedback: "we already have filters
+ * that can be campaign" — this replaces EX-2's separate campaign picker, ADR-089).
  */
-function SideScope(props: {
-  ws: string;
-  side: "test" | "control";
-  kind: SideKind;
-  onKind: (k: SideKind) => void;
-  campaign: string;
-  onCampaign: (code: string) => void;
-  filter: FilterGroupT;
-  onFilter: (g: FilterGroupT) => void;
-  dimensions: Dimension[];
-  window: { start: string; end: string };
-}): ReactElement {
-  const { ws, side, kind, campaign, window } = props;
-  const { data: values = [], isFetching } = useQuery({ ...scopeValuesQuery(ws, window.start, window.end), enabled: kind === "fact" && window.start <= window.end && /^\d{4}-\d{2}-\d{2}$/.test(window.start) && /^\d{4}-\d{2}-\d{2}$/.test(window.end) });
+function SideScope({ side, filter, onFilter, dimensions }: { side: "test" | "control"; filter: FilterGroupT; onFilter: (g: FilterGroupT) => void; dimensions: Dimension[] }): ReactElement {
   return (
     <div className="flex flex-col gap-1.5 text-sm" data-testid={`experiment-${side}-side`} data-tour={`experiment-${side}-scope`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{t(side === "test" ? "experiments.readout.test" : "experiments.readout.control")}</span>
-        <span className="text-muted-foreground">· {t("experiments.scope.kind")}</span>
-        <Select size="sm" value={kind} onChange={(e) => props.onKind(e.target.value as SideKind)} data-testid={`experiment-${side}-kind`}>
-          <option value="fact">{t("experiments.scope.fact")}</option>
-          <option value="envelope">{t("experiments.scope.envelope")}</option>
-        </Select>
+      <span className="font-medium">{t(side === "test" ? "experiments.readout.test" : "experiments.readout.control")}</span>
+      <div data-testid={`experiment-${side}-scope`}>
+        <FilterBar filter={filter} dimensions={dimensions} onChange={onFilter} />
       </div>
-      {kind === "fact" ? (
-        <>
-          <Select className={field} value={campaign} onChange={(e) => props.onCampaign(e.target.value)} aria-label={t(side === "test" ? "experiments.scope.testCampaign" : "experiments.scope.controlCampaign")} data-testid={`experiment-${side}-campaign`}>
-            <option value="">{isFetching ? t("shell.loading") : values.length ? t("experiments.scope.pickCampaign", { count: values.length }) : t("experiments.scope.noCampaigns")}</option>
-            {values.map((v) => (
-              <option key={v.code} value={v.code}>
-                {t("experiments.scope.campaignOption", { name: v.label ?? v.code, spend: v.spend ? formatMoney(v.spend, "USD") : "—", days: v.days })}
-              </option>
-            ))}
-          </Select>
-          <span className="text-xs text-muted-foreground">{t("experiments.scope.campaignHelp")}</span>
-        </>
-      ) : (
-        <div data-testid={`experiment-${side}-scope`}>
-          <FilterBar filter={props.filter} dimensions={props.dimensions} onChange={props.onFilter} />
-        </div>
-      )}
     </div>
   );
 }

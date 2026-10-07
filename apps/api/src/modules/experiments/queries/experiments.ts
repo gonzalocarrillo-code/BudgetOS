@@ -1,7 +1,6 @@
 import {
   DomainError,
   ExperimentScopeKind,
-  ExperimentScopeValuesQuery,
   FilterGroup,
   LIVE_LEAVES,
   ListExperimentsQuery,
@@ -9,14 +8,13 @@ import {
   criterionMet,
   readScopeFilter,
   type ExperimentReadout,
-  type ExperimentScopeValue,
   type ExperimentSide,
   type ExperimentSides,
   type FilterGroupT,
   type MetricSet,
 } from "@budget/domain";
 import { metricLibrary, plannerOptions, withTenant, type Tx } from "@budget/db";
-import { compileFactDimensionValues, compileFactSeries, compileFactTotals, compileQuery, compileTotals, factComputable, pageOf, sanitize, type FactScopeRequest, type MetricDef } from "@budget/query-planner";
+import { compileFactSeries, compileFactTotals, compileQuery, compileTotals, factComputable, pageOf, sanitize, type FactScopeRequest, type MetricDef } from "@budget/query-planner";
 import { Decimal } from "decimal.js";
 import type { Experiment, ExperimentEnvelope, PrismaClient } from "@prisma/client";
 import { clock } from "../../../common/clock.js";
@@ -196,17 +194,5 @@ export async function getExperiment(prisma: PrismaClient, auth: AuthContext, raw
       readout: await readout(tx, auth, x, hasControlLinks, iso(now), sides),
       sides,
     };
-  });
-}
-
-/** GET /workspaces/:ws/experiments/scope-values?key=campaign&start&end — the campaign picker (EX-2). */
-export async function listScopeValues(prisma: PrismaClient, auth: AuthContext, raw: unknown, now: Date = clock.now()): Promise<ExperimentScopeValue[]> {
-  const q = parseInput(ExperimentScopeValuesQuery, raw);
-  const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const scope = readScope(auth);
-  return withTenant(prisma, auth.ctx, async (tx) => {
-    const c = compileFactDimensionValues({ workspaceId, key: q.key, start: q.start, end: q.end, includeDemo: q.includeDemo === "true", ...(scope ? { envelopeScope: scope } : {}), limit: 500 }, iso(now));
-    const rows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(c.sql, ...c.values);
-    return rows.map((r) => ({ code: String(r["code"]), label: r["label"] === null || r["label"] === undefined ? null : String(r["label"]), spend: money(r["spend"]), days: Number(r["days"] ?? 0) }));
   });
 }

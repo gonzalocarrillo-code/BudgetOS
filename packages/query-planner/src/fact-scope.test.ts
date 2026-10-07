@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FilterGroupT } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { compileFactDimensionValues, compileFactSeries, compileFactTotals, type FactScopeRequest, type MetricDef } from "./index.js";
+import { compileFactSeries, compileFactTotals, type FactScopeRequest, type MetricDef } from "./index.js";
 import { closePools, owner, runAsApp, type Row } from "./test-support/db.js";
 import { cleanupOrg, createOrg, createWorkspace, insertEnvelope, type FixtureOrg } from "./test-support/fixtures.js";
 
@@ -136,14 +136,5 @@ describe("fact-scoped totals and daily series (EX-2)", () => {
     expect((await totals(req({ filter: notA })))["spend"]).toBe("40");
     const like: FilterGroupT = { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "contains", value: "MP_B" }] };
     expect((await totals(req({ filter: like })))["spend"]).toBe("40");
-  });
-
-  it("the campaign picker lists the values found in spend facts in the window, largest spend first", async () => {
-    const c = compileFactDimensionValues({ workspaceId: ws, key: "campaign", ...WINDOW, limit: 50 }, TODAY);
-    const rows = await runAsApp({ ...c, orderKeys: [] }, { workspaceId: ws, userId: null });
-    expect(rows.map((r) => [r["code"], n(r["spend"]), r["days"], r["label"]])).toEqual([
-      ["cmp_a", "250", 4, null],
-      ["cmp_b", "40", 1, null],
-    ]);
   });
 });

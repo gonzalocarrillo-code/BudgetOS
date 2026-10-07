@@ -1,4 +1,4 @@
-import { ExperimentReadout, ExperimentScopeValue, ExperimentSides, FilterGroup, SuccessCriterion } from "@budget/domain";
+import { ExperimentReadout, ExperimentSides, FilterGroup, SuccessCriterion } from "@budget/domain";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { api, unwrap } from "../../lib/api.js";
@@ -51,13 +51,4 @@ export const metricsQuery = (ws: string) =>
     queryKey: ["metrics", ws],
     queryFn: async () => z.array(Metric).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/metrics", { params: { path: { ws } } }))),
     staleTime: 5 * 60_000,
-  });
-
-/** EX-2: the campaigns found in spend facts in a window, largest spend first (the campaign picker). */
-export const scopeValuesQuery = (ws: string, start: string, end: string, key = "campaign") =>
-  queryOptions({
-    queryKey: ["experiment-scope-values", ws, key, start, end],
-    enabled: /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end,
-    queryFn: async () => z.array(ExperimentScopeValue).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/experiments/scope-values", { params: { path: { ws }, query: { key, start, end } } }))),
-    staleTime: 60_000,
   });

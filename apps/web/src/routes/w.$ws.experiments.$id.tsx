@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactElement } from "react";
+import { z } from "zod";
 import { Card, Page } from "../components/page.js";
 import { useExplorerLabels } from "../features/explorer/labels.js";
 import { ExplorerRowSource } from "../features/explorer/row-source.js";
@@ -23,9 +24,18 @@ import { meQuery } from "../lib/queries.js";
  * control read-out cards from the planner, the linked budgets (the Explorer's grid on a fixed
  * filter) and the recorded decision. Conclude needs a decision and posts it on every linked budget.
  * EX-2: each side's facts (side-by-side totals, a daily chart with gaps, a day table with "No data"),
- * dates editable in every status, and a permanent delete behind a typed-name confirmation.
+ * dates editable in every status, and a permanent delete behind a typed-name confirmation. EX-4: the
+ * metric chooser for the totals table and the chart's own metric chooser live in the URL, not in
+ * component state or localStorage.
  */
-export const Route = createFileRoute("/w/$ws/experiments/$id")({ component: ExperimentPage });
+export const DetailSearch = z.object({
+  /** The "Results from spend and KPI data" metric chooser. Unset: spend + the experiment's primary metric. */
+  metrics: z.array(z.string()).optional(),
+  /** The daily chart's metric chooser. Unset: the experiment's primary metric. */
+  chartMetric: z.string().optional(),
+});
+export type DetailSearch = z.infer<typeof DetailSearch>;
+export const Route = createFileRoute("/w/$ws/experiments/$id")({ validateSearch: DetailSearch, component: ExperimentPage });
 
 const CURRENCY = "USD";
 type Move = "start" | "evaluate" | "abandon";
@@ -37,6 +47,8 @@ const MOVES: Array<{ move: Move; from: Experiment["status"][]; variant: "default
 
 function ExperimentPage(): ReactElement {
   const { ws, id } = Route.useParams();
+  const { metrics, chartMetric } = Route.useSearch();
+  const routeNavigate = Route.useNavigate();
   const client = useQueryClient();
   const { data: me } = useQuery(meQuery);
   const { data, isPending, error } = useQuery(experimentQuery(ws, id));
@@ -128,7 +140,16 @@ function ExperimentPage(): ReactElement {
       <ReadoutCards experiment={x} readout={readout} currency={CURRENCY} />
       {x.status === "CONCLUDED" ? <p className="-mt-2 text-xs text-muted-foreground">{t("dates.experimentAfterDecision")}</p> : null}
       <Card title={t("experiments.sides.title")}>
-        <SidesPanel ws={ws} experiment={x} sides={sides} currency={CURRENCY} />
+        <SidesPanel
+          ws={ws}
+          experiment={x}
+          sides={sides}
+          currency={CURRENCY}
+          metrics={metrics}
+          onMetricsChange={(next) => void routeNavigate({ search: (prev: DetailSearch) => ({ ...prev, metrics: next }) })}
+          chartMetric={chartMetric}
+          onChartMetricChange={(next) => void routeNavigate({ search: (prev: DetailSearch) => ({ ...prev, chartMetric: next }) })}
+        />
       </Card>
       {x.decision ? (
         <Card title={t("experiments.decision")}>

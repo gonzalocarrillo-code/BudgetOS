@@ -120,7 +120,9 @@ describe("experiments (T-038)", () => {
   it("lifecycle: create, link, start; conclude requires a decision and posts it on every linked envelope (done-when)", async () => {
     const approverCreate = await as("approver", "POST", `/workspaces/${golden.workspaceId}/experiments`, {});
     expect(approverCreate.status).toBe(403);
-    const body = { name: "Meta awareness vs consideration", hypothesis: "Consideration buys conversions cheaper in BR.", kind: "OBJECTIVE_TEST", testFilter: scope({ country: "BR", platform: "meta", objective: "consideration" }), controlFilter: scope({ country: "BR", platform: "meta", objective: "awareness" }), primaryMetric: "cpa", criterion: { comparator: "lte", vs: "control", minDays: 400 }, startDate: "2026-03-01", endDate: "2026-06-30" };
+    // Pre-EX-4 behavior: an envelope-scoped side picks budgets with the filter (EX-4 defaults a
+    // *new* side with no explicit scope kind to `fact`; this test pins `envelope` to keep exercising it).
+    const body = { name: "Meta awareness vs consideration", hypothesis: "Consideration buys conversions cheaper in BR.", kind: "OBJECTIVE_TEST", testScopeKind: "envelope", controlScopeKind: "envelope", testFilter: scope({ country: "BR", platform: "meta", objective: "consideration" }), controlFilter: scope({ country: "BR", platform: "meta", objective: "awareness" }), primaryMetric: "cpa", criterion: { comparator: "lte", vs: "control", minDays: 400 }, startDate: "2026-03-01", endDate: "2026-06-30" };
     expect((await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, { ...body, primaryMetric: "nope" })).status).toBe(422);
     const created = await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, body);
     expect(created.status, JSON.stringify(created.body)).toBe(201);
@@ -178,7 +180,7 @@ describe("experiments (T-038)", () => {
   });
 
   it("an experiment with no linked envelope cannot be concluded; abandon works from running", async () => {
-    const created = await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, { name: "Geo holdout MX", hypothesis: "Pausing MX awareness does not move conversions.", kind: "GEO_HOLDOUT", testFilter: scope({ country: "MX" }), primaryMetric: "cpa", criterion: { comparator: "gte", vs: "absolute", value: "10" }, startDate: "2026-02-01", endDate: "2026-04-30" });
+    const created = await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, { name: "Geo holdout MX", hypothesis: "Pausing MX awareness does not move conversions.", kind: "GEO_HOLDOUT", testScopeKind: "envelope", testFilter: scope({ country: "MX" }), primaryMetric: "cpa", criterion: { comparator: "gte", vs: "absolute", value: "10" }, startDate: "2026-02-01", endDate: "2026-04-30" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = String(created.body["id"]);
     // Absolute criterion: the delta is against the value; no control side.

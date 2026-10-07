@@ -360,7 +360,9 @@ export async function seedGolden(app: PrismaClient, owner: PrismaClient, opts: G
   // ---- T-038: one running experiment, a TEST and a CONTROL envelope linked, through the commands. ----
   const x = GOLDEN_EXPERIMENT;
   const scope = (dims: Record<string, string>) => ({ logic: "and" as const, children: Object.entries(dims).map(([key, value]) => ({ field: { kind: "dimension" as const, key }, op: "eq" as const, value })) });
-  const experiment = await createExperiment(app, auth("planner"), { name: x.name, hypothesis: x.hypothesis, kind: x.kind, testFilter: scope(x.test), controlFilter: scope(x.control), primaryMetric: x.metric, criterion: x.criterion, startDate: x.startDate, endDate: x.endDate });
+  // EX-4 defaults a *new* experiment's sides to a fact scope; this fixture is budget-scoped (its
+  // golden assertions are leaf counts and budget/actual), so it pins `envelope` explicitly.
+  const experiment = await createExperiment(app, auth("planner"), { name: x.name, hypothesis: x.hypothesis, kind: x.kind, testScopeKind: "envelope", controlScopeKind: "envelope", testFilter: scope(x.test), controlFilter: scope(x.control), primaryMetric: x.metric, criterion: x.criterion, startDate: x.startDate, endDate: x.endDate });
   await linkEnvelope(app, auth("planner"), experiment.id, { envelopeId: ids.get(x.linkTest) as string, role: "TEST" });
   await linkEnvelope(app, auth("planner"), experiment.id, { envelopeId: ids.get(x.linkControl) as string, role: "CONTROL" });
   await transitionExperiment(app, auth("planner"), experiment.id, "start");

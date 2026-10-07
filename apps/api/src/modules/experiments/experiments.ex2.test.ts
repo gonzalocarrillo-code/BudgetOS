@@ -132,19 +132,11 @@ describe("campaign vs campaign experiments (EX-2)", () => {
     expect(readout.delta.abs).toBe(new Decimal(15).minus(8).toString());
   });
 
-  it("validates fact sides at the boundary; the campaign picker lists campaigns with spend in the window", async () => {
+  it("validates fact sides at the boundary: dimension-only predicates, at least one, dates in order", async () => {
     const bad = await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, createBody({ testFilter: { logic: "and", children: [{ field: { kind: "measure", key: "actual" }, op: "gt", value: 1 }] } }));
     expect(bad.status).toBe(422);
     expect((await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, createBody({ testFilter: { logic: "and", children: [] } }))).status).toBe(422);
     expect((await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, createBody({ startDate: "2026-03-01", endDate: "2026-02-01" }))).status).toBe(422);
-    const values = await as("planner", "GET", `/workspaces/${golden.workspaceId}/experiments/scope-values?key=campaign&start=2026-02-01&end=2026-02-10`);
-    expect(values.status, JSON.stringify(values.body).slice(0, 300)).toBe(200);
-    const rows = values.body as unknown as Array<{ code: string; spend: string; days: number }>;
-    expect(rows.filter((r) => r.code === A || r.code === B).map((r) => [r.code, r.spend, r.days])).toEqual([
-      [A, "180.00", 3],
-      [B, "40.00", 1],
-    ]);
-    expect((await as("planner", "GET", `/workspaces/${golden.workspaceId}/experiments/scope-values?start=2026-03-01&end=2026-02-01`)).status).toBe(422);
   });
 
   it("dates stay editable after the decision: audit + outbox + a system comment; other fields stay locked (done-when)", async () => {
@@ -216,9 +208,9 @@ describe("campaign vs campaign experiments (EX-2)", () => {
     expect((await as("admin", "DELETE", `/experiments/${String(other.body["id"])}`)).status).toBe(200);
   });
 
-  it("envelope-scoped sides keep working and get a daily series from the facts matched to their budgets", async () => {
+  it("envelope-scoped sides (created before EX-4 defaulted new experiments to fact scope) keep working and get a daily series from the facts matched to their budgets", async () => {
     const scope = (dims: Record<string, string>): FilterGroupT => ({ logic: "and", children: Object.entries(dims).map(([key, value]) => ({ field: { kind: "dimension", key }, op: "eq", value })) });
-    const created = await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, { ...createBody(), testScopeKind: undefined, controlScopeKind: undefined, testFilter: scope({ country: "BR" }), controlFilter: scope({ country: "MX" }), startDate: "2026-01-01", endDate: "2026-01-31" });
+    const created = await as("planner", "POST", `/workspaces/${golden.workspaceId}/experiments`, { ...createBody(), testScopeKind: "envelope", controlScopeKind: "envelope", testFilter: scope({ country: "BR" }), controlFilter: scope({ country: "MX" }), startDate: "2026-01-01", endDate: "2026-01-31" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(created.body).toMatchObject({ testScopeKind: "envelope", controlScopeKind: "envelope" });
     const res = await as("planner", "GET", `/experiments/${String(created.body["id"])}`);

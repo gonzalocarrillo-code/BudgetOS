@@ -1632,22 +1632,6 @@ export interface paths {
         patch: operations["updateExperiment"];
         trace?: never;
     };
-    "/api/v1/workspaces/{ws}/experiments/scope-values": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listExperimentScopeValues"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/experiments/{id}/link": {
         parameters: {
             query?: never;
@@ -8367,12 +8351,12 @@ export interface operations {
                     /** Format: uuid */
                     ownerId?: string;
                     /**
-                     * @default envelope
+                     * @default fact
                      * @enum {string}
                      */
                     testScopeKind?: "envelope" | "fact";
                     /**
-                     * @default envelope
+                     * @default fact
                      * @enum {string}
                      */
                     controlScopeKind?: "envelope" | "fact";
@@ -8571,39 +8555,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    listExperimentScopeValues: {
-        parameters: {
-            query: {
-                /** @description Fact dimension key (default campaign) */
-                key?: string;
-                start: string;
-                end: string;
-                includeDemo?: "true" | "false";
-            };
-            header?: never;
-            path: {
-                ws: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The dimension's values found in spend facts in the window, largest spend first (the campaign picker) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: string;
-                        label: string | null;
-                        spend: string | null;
-                        days: number;
-                    }[];
-                };
             };
         };
     };

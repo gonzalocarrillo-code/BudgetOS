@@ -62,9 +62,14 @@ const Fields = {
   controlScopeKind: ExperimentScopeKind,
 };
 
-/** POST /workspaces/:ws/experiments. The owner defaults to the caller; a control scope is optional. */
+/**
+ * POST /workspaces/:ws/experiments. The owner defaults to the caller; a control scope is optional.
+ * EX-4: a side's scope kind defaults to `fact` — a new experiment's sides are defined with the same
+ * filter bar as Budgets, evaluated on spend/KPI facts (campaign is just one filterable dimension).
+ * `envelope` stays valid so experiments created before EX-4 keep reading the way they always did.
+ */
 export const CreateExperimentInput = z
-  .object({ ...Fields, controlFilter: Fields.controlFilter.default(null), ownerId: Fields.ownerId.optional(), testScopeKind: ExperimentScopeKind.default("envelope"), controlScopeKind: ExperimentScopeKind.default("envelope") })
+  .object({ ...Fields, controlFilter: Fields.controlFilter.default(null), ownerId: Fields.ownerId.optional(), testScopeKind: ExperimentScopeKind.default("fact"), controlScopeKind: ExperimentScopeKind.default("fact") })
   .refine((v) => v.startDate <= v.endDate, { message: "startDate after endDate", path: ["endDate"] })
   .refine((v) => v.criterion.vs === "absolute" || v.controlFilter !== null, { message: "A vs-control criterion needs a control scope", path: ["controlFilter"] })
   .refine((v) => factSideOk(v.testScopeKind, v.testFilter), { message: FACT_SIDE_MESSAGE, path: ["testFilter"] })
@@ -120,19 +125,6 @@ export const ExperimentReadout = z.object({
   daysRunning: z.number().int(),
 });
 export type ExperimentReadout = z.infer<typeof ExperimentReadout>;
-
-/** GET /workspaces/:ws/experiments/scope-values: the values of a fact dimension found in spend facts in a window (the campaign picker). */
-export const ExperimentScopeValuesQuery = z
-  .object({
-    key: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).default("campaign"),
-    start: IsoDate,
-    end: IsoDate,
-    includeDemo: z.enum(["true", "false"]).optional(),
-  })
-  .refine((v) => v.start <= v.end, { message: "start after end", path: ["end"] });
-export type ExperimentScopeValuesQuery = z.infer<typeof ExperimentScopeValuesQuery>;
-export const ExperimentScopeValue = z.object({ code: z.string(), label: z.string().nullable(), spend: z.string().nullable(), days: z.number().int() });
-export type ExperimentScopeValue = z.infer<typeof ExperimentScopeValue>;
 
 /**
  * EX-2: one day of a side. `hasData` false (no fact row for the side that day): every value is

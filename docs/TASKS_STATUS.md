@@ -544,3 +544,9 @@ Plan: `docs/ORG_SLACK_SEARCH_PLAN.md`.
 | R11-003 | Org console › Slack holds the connection; workspace Settings › Slack only routes | done |
 | R11-004 | Templates leave workspace Settings (org console creates workspaces); demo data in Settings › General; tours stay per workspace | done |
 
+## Experiments & campaign matching, round 2 (owner feedback on EX-1/EX-2/EX-3)
+
+| ID | Task | Status |
+|---|---|---|
+| EX-4 | Experiments: revert EX-2's campaign-picker UI (every side is the Budgets filter bar over fact `dimension_values`, campaign included); fact scope is the new default (`envelope` stays supported); metric choosers for the results table and the daily line chart live in the URL; day table stays collapsed by default (ADR-089) | done |
+
