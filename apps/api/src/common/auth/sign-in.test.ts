@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { asOrgAdmin } from "@budget/db";
 import { deleteWorkspaceForTests } from "@budget/workers";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { Logger } from "@nestjs/common";
+import type { PrismaClient } from "@prisma/client";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { appDb, ownerDb, startHarness, testUser, type Harness, type TestUser } from "../../test-support/harness.js";
 import { AccessRepository } from "./access.repository.js";
 import { authenticateVerifiedEmail } from "./authenticate.js";
@@ -48,6 +50,10 @@ beforeAll(async () => {
   });
   h = await startHarness();
 }, 60_000);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 afterAll(async () => {
   await h?.close();
@@ -109,6 +115,27 @@ describe("sign-in status (round 11 PR 1)", () => {
     expect(bound.length).toBe(1);
     await owner.roleAssignment.deleteMany({ where: { principalId: rival.id } });
     await owner.user.delete({ where: { id: rival.id } });
+  });
+
+  it("a non-unique-violation failure in app_record_sign_in is logged at error (not warn), and the login still succeeds", async () => {
+    const errorSpy = vi.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    // A fake prisma whose transaction lets set_config through but fails the RPC call itself with a
+    // plain error -- not a Prisma unique-constraint error (P2002) nor a raw-query P2010/23505, so
+    // isUniqueViolation() must classify it as unexpected.
+    const fakeTx = { $executeRawUnsafe: vi.fn((sql: string) => (sql.includes("app_record_sign_in") ? Promise.reject(new Error("connection reset")) : Promise.resolve())) };
+    const fakePrisma = { $transaction: (fn: (tx: typeof fakeTx) => Promise<unknown>) => fn(fakeTx) } as unknown as PrismaClient;
+    const access = new AccessRepository(fakePrisma);
+    const requestId = `signin-${randomUUID()}`;
+    const user = { id: invited.id, orgId, email: invited.email, name: "Invited Person", isActive: true, googleSub: null, lastSignInAt: null };
+
+    await expect(access.recordSignIn({ sub: "broken-sub", email: invited.email, emailVerified: true, googleSub: null }, user, requestId)).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [payload, message] = errorSpy.mock.calls[0] as [Record<string, unknown>, string];
+    expect(message).toBe("recordSignIn failed");
+    expect(payload).toMatchObject({ requestId, userId: invited.id });
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it("a Slack-vouched email (authenticateVerifiedEmail) is not a sign-in: last_sign_in_at stays null", async () => {
