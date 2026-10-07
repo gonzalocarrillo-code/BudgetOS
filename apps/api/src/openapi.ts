@@ -39,6 +39,8 @@ import {
   OrgWorkspacesResponse,
   UpdateOrgPersonInput,
   UpdateWorkspaceStatusInput,
+  InviteOrgPersonInput,
+  SetWorkspaceRolesInput,
   AddValuesInput,
   AssignRoleInput,
   MergeEnvelopesInput,
@@ -547,9 +549,18 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/org/people": {
         get: { operationId: "listOrgPeople", responses: { "200": { description: "Superadmins: everyone in the org and where they hold roles", ...json(OrgPeopleResponse) } } },
+        post: { operationId: "inviteOrgPerson", requestBody: json(InviteOrgPersonInput), responses: { "201": { description: "Superadmins: add someone to the org, always into one workspace with a role" }, "409": { description: "That email belongs to another organisation" } } },
       },
       "/api/v1/org/people/{id}": {
         patch: { operationId: "updateOrgPerson", parameters: [idParam], requestBody: json(UpdateOrgPersonInput), responses: { "200": { description: "Superadmins: deactivate or reactivate someone" } } },
+      },
+      "/api/v1/org/people/{id}/workspaces/{wsId}": {
+        put: {
+          operationId: "setWorkspaceRoles",
+          parameters: [idParam, { name: "wsId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: json(SetWorkspaceRolesInput),
+          responses: { "200": { description: "Superadmins: the person's direct roles in this workspace become exactly `roles`; an empty list removes them from it" }, "409": { description: "A workspace needs at least one admin" }, "423": { description: "The workspace is archived" } },
+        },
       },
       "/api/v1/workspaces/{ws}/demo-data": {
         get: { operationId: "getDemoData", parameters: [workspaceParam], responses: { "200": { description: "Demo rows left: envelopes and targets, whether the workspace has real (non-demo) budgets too, and `hidden` (HF-1): whether the planner is excluding demo money from totals right now", ...json(DemoDataResponse) } } },

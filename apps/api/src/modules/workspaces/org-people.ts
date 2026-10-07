@@ -14,17 +14,29 @@ const orgCtx = (auth: AuthContext) => ({ ...auth.ctx, workspaceId: null, isOrgAd
 export async function listOrgPeople(prisma: PrismaClient, auth: AuthContext): Promise<OrgPeopleResponse> {
   if (!auth.isOrgAdmin) throw new DomainError("FORBIDDEN", "Only a superadmin sees the whole organization");
   return withTenant(prisma, orgCtx(auth), async (tx) => {
-    const [users, roles, workspaces] = await Promise.all([
+    const [users, roles, workspaces, groupMembers, groupRoles] = await Promise.all([
       tx.user.findMany({ where: { orgId: auth.user.orgId }, orderBy: [{ name: "asc" }, { email: "asc" }] }),
       tx.roleAssignment.findMany({ where: { principalType: "user" }, select: { principalId: true, workspaceId: true, role: true } }),
       tx.workspace.findMany({ where: { orgId: auth.user.orgId, deletedAt: null }, select: { id: true, name: true } }),
+      tx.groupMember.findMany({ select: { groupId: true, userId: true } }),
+      tx.roleAssignment.findMany({ where: { principalType: "group", workspaceId: { not: null } }, select: { principalId: true, workspaceId: true, role: true } }),
     ]);
     const names = new Map(workspaces.map((w) => [w.id, w.name]));
+    const groupsOf = new Map<string, string[]>();
+    for (const gm of groupMembers) groupsOf.set(gm.userId, [...(groupsOf.get(gm.userId) ?? []), gm.groupId]);
     return {
       people: users.map((u) => {
         const mine = roles.filter((r) => r.principalId === u.id);
-        const byWs = new Map<string, string[]>();
-        for (const r of mine) if (r.workspaceId && names.has(r.workspaceId)) byWs.set(r.workspaceId, [...(byWs.get(r.workspaceId) ?? []), r.role]);
+        const myGroups = new Set(groupsOf.get(u.id) ?? []);
+        const viaGroups = groupRoles.filter((r) => myGroups.has(r.principalId));
+        const direct = new Map<string, Set<string>>();
+        for (const r of mine) if (r.workspaceId && names.has(r.workspaceId)) direct.set(r.workspaceId, (direct.get(r.workspaceId) ?? new Set()).add(r.role));
+        const byWs = new Map<string, Set<string>>();
+        for (const [ws, rs] of direct) byWs.set(ws, new Set(rs));
+        for (const r of viaGroups) {
+          if (!r.workspaceId || !names.has(r.workspaceId)) continue;
+          byWs.set(r.workspaceId, (byWs.get(r.workspaceId) ?? new Set()).add(r.role));
+        }
         return {
           id: u.id,
           name: u.name,
@@ -34,7 +46,9 @@ export async function listOrgPeople(prisma: PrismaClient, auth: AuthContext): Pr
           lastSignInAt: u.lastSignInAt?.toISOString() ?? null,
           superadmin: mine.some((r) => r.workspaceId === null && r.role === "ORG_ADMIN"),
           slackUserId: u.slackUserId,
-          workspaces: [...byWs.entries()].map(([workspaceId, rs]) => ({ workspaceId, name: names.get(workspaceId) as string, roles: [...new Set(rs)].sort() })).sort((a, b) => a.name.localeCompare(b.name)),
+          workspaces: [...byWs.entries()]
+            .map(([workspaceId, rs]) => ({ workspaceId, name: names.get(workspaceId) as string, roles: [...rs].sort(), viaGroup: !direct.has(workspaceId) }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
         };
       }),
     };

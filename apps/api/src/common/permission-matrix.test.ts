@@ -202,6 +202,10 @@ const ROUTES: RouteCase[] = [
   { method: "DELETE", path: "/api/v1/workspaces/{ws}", permission: "org.admin", url: () => `/api/v1/workspaces/${wsA}`, body: {} },
   { method: "POST", path: "/api/v1/workspaces/{ws}/undelete", permission: "org.admin", url: () => `/api/v1/workspaces/${wsA}/undelete`, body: {} },
   { method: "GET", path: "/api/v1/org/people", permission: "org.admin", url: () => "/api/v1/org/people" },
+  // Round 11 (PR 3): org console membership. Invite needs a real workspace (D4: the per-workspace
+  // audit row needs one); empty bodies for validation-gate coverage like the lifecycle routes above.
+  { method: "POST", path: "/api/v1/org/people", permission: "org.admin", url: () => "/api/v1/org/people", body: {} },
+  { method: "PUT", path: "/api/v1/org/people/{id}/workspaces/{wsId}", permission: "org.admin", url: () => `/api/v1/org/people/${rid}/workspaces/${wsA}`, body: { roles: [] } },
   // Phase E: snapshots. Saving and changing check their scope in the service (closure.close for the workspace).
   { method: "GET", path: "/api/v1/workspaces/{ws}/baselines", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/baselines` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/baselines", permission: "baseline.save", url: () => `/api/v1/workspaces/${wsA}/baselines`, body: {} },

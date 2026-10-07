@@ -1,12 +1,14 @@
-import { OrgWorkspacesResponse, type OrgWorkspace } from "@budget/domain";
-import { Button, EmptyState, SkeletonRows, StatusChip, cn, toast, Input, Select } from "@budget/ui";
+import { OrgPeopleResponse, OrgWorkspacesResponse, type OrgWorkspace } from "@budget/domain";
+import { Button, EmptyState, SheetContent, SkeletonRows, StatusChip, cn, toast, Input, Select } from "@budget/ui";
 import { t } from "@budget/ui/i18n";
+import { Dialog } from "@budget/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Archive, ArchiveRestore, Building2, Plus, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Building2, Plus, Trash2, Users, X } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { z } from "zod";
 import { Card, Page } from "../components/page.js";
+import { InvitePerson, WorkspaceChip } from "../components/org-membership.js";
 import { api, unwrap } from "../lib/api.js";
 
 /**
@@ -25,6 +27,7 @@ function WorkspacesPage(): ReactElement {
   const { data, isPending, error } = useQuery(workspacesQuery);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<OrgWorkspace | null>(null);
+  const [members, setMembers] = useState<OrgWorkspace | null>(null);
   const refresh = () => Promise.all([client.invalidateQueries({ queryKey: ["org-workspaces"] }), client.invalidateQueries({ queryKey: ["me"] })]);
   const status = useMutation({
     meta: { error: true },
@@ -55,7 +58,7 @@ function WorkspacesPage(): ReactElement {
         ) : active.length === 0 ? (
           <EmptyState icon={Building2} title={t("org.workspaces.empty")} body={t("org.workspaces.emptyBody")} action={<Button size="sm" onClick={() => setCreating(true)}>{t("templates.new")}</Button>} />
         ) : (
-          <WorkspaceTable rows={active} actions={(w) => (
+          <WorkspaceTable rows={active} onMembers={setMembers} actions={(w) => (
             <>
               <Button size="sm" variant="outline" asChild>
                 <Link to="/w/$ws/home" params={{ ws: w.id }}>{t("org.open")}</Link>
@@ -83,11 +86,12 @@ function WorkspacesPage(): ReactElement {
         </Card>
       ) : null}
       {deleting ? <DeleteWorkspace ws={deleting} onClose={() => setDeleting(null)} onDeleted={refresh} /> : null}
+      <MembersDrawer ws={members} onClose={() => setMembers(null)} />
     </Page>
   );
 }
 
-function WorkspaceTable({ rows, actions }: { rows: OrgWorkspace[]; actions: (w: OrgWorkspace) => ReactElement }): ReactElement {
+function WorkspaceTable({ rows, actions, onMembers }: { rows: OrgWorkspace[]; actions: (w: OrgWorkspace) => ReactElement; onMembers?: (w: OrgWorkspace) => void }): ReactElement {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm" data-testid="org-workspaces">
@@ -113,7 +117,15 @@ function WorkspaceTable({ rows, actions }: { rows: OrgWorkspace[]; actions: (w: 
                 <StatusChip status={w.status} label={t(w.status === "ARCHIVED" ? "status.word.ARCHIVED" : "status.word.ACTIVE")} />
               </td>
               <td className="py-2.5 pr-3 text-muted-foreground">{w.admins.length ? w.admins.map((a) => a.name).join(", ") : <span className="text-warning-text">{t("org.noAdmin")}</span>}</td>
-              <td className="tabular py-2.5 pr-3 text-right">{w.members}</td>
+              <td className="tabular py-2.5 pr-3 text-right">
+                {onMembers ? (
+                  <button type="button" className="underline-offset-2 hover:underline" onClick={() => onMembers(w)} data-testid="org-workspace-members">
+                    {t("org.workspaces.members", { count: w.members })}
+                  </button>
+                ) : (
+                  w.members
+                )}
+              </td>
               <td className="tabular py-2.5 pr-3 text-right">{w.budgets}</td>
               <td className="py-2.5 pr-3 text-muted-foreground">{when(w.lastActivityAt ?? w.createdAt)}</td>
               <td className="py-2.5">
@@ -253,5 +265,48 @@ function DeleteWorkspace({ ws, onClose, onDeleted }: { ws: OrgWorkspace; onClose
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Round 11 (PR 3): a workspace's people, from the org console's Workspaces page. Filters the
+ * already-fetched `["org-people"]` list client-side by this workspace (display filtering of a list
+ * the server already scoped to the org — not a roll-up) and reuses the same chip/popover/mutations
+ * as org.people.tsx (apps/web/src/components/org-membership.tsx).
+ */
+function MembersDrawer({ ws, onClose }: { ws: OrgWorkspace | null; onClose: () => void }): ReactElement {
+  const { data } = useQuery({ queryKey: ["org-people"], queryFn: async () => OrgPeopleResponse.parse(await unwrap(api.GET("/api/v1/org/people", {}))), enabled: ws !== null });
+  const client = useQueryClient();
+  const refresh = () => client.invalidateQueries({ queryKey: ["org-people"] });
+  const [inviting, setInviting] = useState(false);
+  const here = ws ? (data?.people ?? []).filter((p) => p.workspaces.some((w) => w.workspaceId === ws.id)) : [];
+  return (
+    <Dialog open={ws !== null} onOpenChange={(o) => (o ? undefined : onClose())}>
+      <SheetContent title={t("org.workspaces.membersTitle", { name: ws?.name ?? "" })} data-testid="org-workspace-members-drawer">
+        <div className="flex flex-col gap-3">
+          <Button size="sm" variant="outline" onClick={() => setInviting(true)} data-testid="org-workspace-invite-person">
+            <Plus className="size-3.5" aria-hidden /> {t("org.people.invite")}
+          </Button>
+          {here.length === 0 ? (
+            <EmptyState icon={Users} title={t("org.people.empty")} />
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {here.map((p) => {
+                const w = p.workspaces.find((x) => x.workspaceId === ws?.id);
+                if (!w || !ws) return null;
+                return (
+                  <li key={p.id} className="flex flex-col gap-1 py-2.5" data-testid="org-workspace-member" data-email={p.email}>
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-xs text-muted-foreground">{p.email}</span>
+                    <WorkspaceChip userId={p.id} workspaceId={ws.id} name={ws.name} roles={w.roles} viaGroup={w.viaGroup} onChanged={refresh} />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </SheetContent>
+      {ws ? <InvitePerson open={inviting} onOpenChange={setInviting} onDone={refresh} defaultWorkspaceId={ws.id} /> : null}
+    </Dialog>
   );
 }

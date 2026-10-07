@@ -15535,12 +15535,16 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "viaGroup": {
+                                  "type": "boolean"
                                 }
                               },
                               "required": [
                                 "workspaceId",
                                 "name",
-                                "roles"
+                                "roles",
+                                "viaGroup"
                               ]
                             }
                           }
@@ -15567,6 +15571,65 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "inviteOrgPerson",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 320
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "workspaceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "VIEWER",
+                      "PLANNER",
+                      "BUDGET_OWNER",
+                      "APPROVER",
+                      "FINANCE",
+                      "DATA_ADMIN",
+                      "WORKSPACE_ADMIN"
+                    ],
+                    "default": "VIEWER"
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "workspaceId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Superadmins: add someone to the org, always into one workspace with a role"
+          },
+          "409": {
+            "description": "That email belongs to another organisation"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ]
       }
     },
     "/api/v1/org/people/{id}": {
@@ -15604,6 +15667,75 @@
         "responses": {
           "200": {
             "description": "Superadmins: deactivate or reactivate someone"
+          }
+        }
+      }
+    },
+    "/api/v1/org/people/{id}/workspaces/{wsId}": {
+      "put": {
+        "operationId": "setWorkspaceRoles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "wsId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "roles": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "VIEWER",
+                        "PLANNER",
+                        "BUDGET_OWNER",
+                        "APPROVER",
+                        "FINANCE",
+                        "DATA_ADMIN",
+                        "WORKSPACE_ADMIN"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "roles"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Superadmins: the person's direct roles in this workspace become exactly `roles`; an empty list removes them from it"
+          },
+          "409": {
+            "description": "A workspace needs at least one admin"
+          },
+          "423": {
+            "description": "The workspace is archived"
           }
         }
       }
