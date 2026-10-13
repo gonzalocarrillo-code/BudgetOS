@@ -16,6 +16,8 @@ export interface RegistryDimensionSeed {
   readonly allowedParents: readonly string[];
   readonly isRequiredForLeaf: boolean;
   readonly sortOrder: number;
+  /** EX-9 (ADR-0094): `facts` = values come from the facts, never seeded or typed (campaign). */
+  readonly valuesSource: "registry" | "facts";
   readonly values: readonly RegistryValueSeed[];
 }
 
@@ -29,7 +31,7 @@ function values(pairs: ReadonlyArray<readonly [string, string]>): RegistryValueS
   return pairs.map(([code, label]) => ({ code, label }));
 }
 
-const specs: ReadonlyArray<Omit<RegistryDimensionSeed, "sortOrder">> = [
+const specs: ReadonlyArray<Omit<RegistryDimensionSeed, "sortOrder" | "valuesSource"> & { readonly valuesSource?: "facts" }> = [
   {
     key: "client",
     label: "Client",
@@ -146,6 +148,8 @@ const specs: ReadonlyArray<Omit<RegistryDimensionSeed, "sortOrder">> = [
     icon: "lucide:megaphone",
     allowedParents: ["account"],
     isRequiredForLeaf: false,
+    // EX-9 (ADR-0094): the list of campaigns is whatever the spend data carries.
+    valuesSource: "facts",
     values: [],
   },
   {
@@ -232,5 +236,6 @@ const specs: ReadonlyArray<Omit<RegistryDimensionSeed, "sortOrder">> = [
 
 export const DEFAULT_DIMENSIONS: readonly RegistryDimensionSeed[] = specs.map((spec, sortOrder) => ({
   ...spec,
+  valuesSource: spec.valuesSource ?? "registry",
   sortOrder,
 }));

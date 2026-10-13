@@ -12,7 +12,9 @@ import { updateDimension } from "./commands/update-dimension.js";
 import { updateValue } from "./commands/update-value.js";
 import { uploadAsset } from "./commands/upload-asset.js";
 import { parseInput } from "./context.js";
+import { listFactValues } from "./queries/list-fact-values.js";
 import { listDimensions, listHierarchyTemplates } from "./queries/list-registry.js";
+import type { AuthContext } from "../../common/tenant.js";
 
 @Injectable()
 export class RegistryService {
@@ -23,6 +25,11 @@ export class RegistryService {
 
   listDimensions(ctx: TenantContext, workspaceId: string) {
     return withTenant(this.prisma, { ...ctx, workspaceId }, (tx) => listDimensions(tx, workspaceId));
+  }
+
+  /** EX-9: a data-derived dimension's values, from the facts (search + pages). */
+  listFactValues(auth: AuthContext, workspaceId: string, key: string, query: unknown) {
+    return listFactValues(this.prisma, auth, workspaceId, key, query);
   }
 
   createDimension(ctx: TenantContext, roles: Role[], body: unknown) {

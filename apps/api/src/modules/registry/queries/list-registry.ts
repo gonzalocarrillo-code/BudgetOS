@@ -1,4 +1,4 @@
-import { dimensionValuePaths, dimensionValueStates, withTenant, type Tx } from "@budget/db";
+import { dimensionValuePaths, dimensionValueStates, listFactDimensionValues, withTenant, type FactDimensionValueRow, type Tx } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../../common/parse-input.js";
 import type { AuthContext } from "../../../common/tenant.js";
@@ -29,6 +29,8 @@ export interface ListedDimension {
   isRequiredForLeaf: boolean;
   workspaceId: string | null;
   sortOrder: number;
+  /** EX-9 (ADR-0094): `facts` — values come from the spend data (GET …/dimensions/:key/fact-values), `values` is empty. */
+  valuesSource: "registry" | "facts";
   values: ListedValue[];
 }
 
@@ -80,7 +82,9 @@ export async function listDimensions(tx: Tx, workspaceId: string): Promise<Liste
     isRequiredForLeaf: dimension.isRequiredForLeaf,
     workspaceId: dimension.workspaceId,
     sortOrder: dimension.sortOrder,
-    values: valuesByDimension.get(dimension.id) ?? [],
+    valuesSource: dimension.valuesSource === "facts" ? ("facts" as const) : ("registry" as const),
+    // A data-derived dimension has no hand-managed values; rows an older seed left stay in the table.
+    values: dimension.valuesSource === "facts" ? [] : (valuesByDimension.get(dimension.id) ?? []),
   }));
 }
 
@@ -97,8 +101,28 @@ export async function listHierarchyTemplates(tx: Tx, workspaceId: string): Promi
   }));
 }
 
-/** The registry an MCP client (or the web) builds filters from: dimensions with values, and hierarchy templates. */
-export async function describeRegistry(prisma: PrismaClient, auth: AuthContext) {
+/** How many of a data-derived dimension's values (largest spend first) the registry description carries. */
+export const DESCRIBED_FACT_VALUES = 100;
+
+export type DescribedDimension = ListedDimension & { factValues?: { items: FactDimensionValueRow[]; total: number } };
+
+/**
+ * The registry an MCP client (or the web) builds filters from: dimensions with values, and hierarchy
+ * templates. EX-9: a data-derived dimension (campaign) carries `factValues` instead — its first
+ * DESCRIBED_FACT_VALUES values from the facts (`total` says how many there are).
+ */
+export async function describeRegistry(prisma: PrismaClient, auth: AuthContext, opts: { factValues?: boolean } = {}) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  return withTenant(prisma, auth.ctx, async (tx) => ({ dimensions: await listDimensions(tx, workspaceId), hierarchyTemplates: await listHierarchyTemplates(tx, workspaceId) }));
+  return withTenant(prisma, auth.ctx, async (tx) => {
+    const listed = await listDimensions(tx, workspaceId);
+    const dimensions: DescribedDimension[] = [];
+    for (const d of listed) {
+      if (d.valuesSource !== "facts" || opts.factValues === false) dimensions.push(d);
+      else {
+        const page = await listFactDimensionValues(tx, { workspaceId, key: d.key, limit: DESCRIBED_FACT_VALUES });
+        dimensions.push({ ...d, factValues: { items: page.items, total: page.total } });
+      }
+    }
+    return { dimensions, hierarchyTemplates: await listHierarchyTemplates(tx, workspaceId) };
+  });
 }

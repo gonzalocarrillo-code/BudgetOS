@@ -184,6 +184,10 @@ const samples: Record<string, readonly unknown[]> = {
     },
   ],
   DimensionDataType: ["ENUM", "DATE_BUCKET"],
+  DimensionValuesSource: ["registry", "facts"],
+  FactValuesQuery: [{ limit: 50, offset: 0 }, { q: "spring", limit: 10, offset: 20, includeDemo: "true" }],
+  FactDimensionValue: [{ code: "Spring_Sale", spend: "100.30", currency: "USD", firstSeen: "2026-02-03", lastSeen: "2026-03-15", sourceSystems: ["bigquery", "snowflake"] }],
+  FactValuesResponse: [{ key: "campaign", valuesSource: "facts", items: [{ code: "Spring_Sale", spend: "0.00", currency: "USD", firstSeen: "2026-02-03", lastSeen: "2026-02-03", sourceSystems: [] }], total: 1, limit: 50, offset: 0 }],
   CreateDimensionInput: [
     {
       key: "country",

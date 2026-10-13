@@ -85,3 +85,4 @@ record with its status line; regenerate it when you add one.
 | [ADR-0081](0081-idempotency-keys.md) | Idempotency-Key on every mutating route, stored in Postgres | Accepted (W3-2, audit I-6, spec §17) |
 | [ADR-0084](0084-data-version-at-commit.md) | The data version moves at commit (deferred outbox trigger), off the workspace row | Accepted (W3-8, audit I-14) |
 | [ADR-0091](0091-demo-facts-written-onto-their-leaf.md) | Demo facts are written onto their demo leaf, not matched (amends ADR-0087) | Accepted (HF-3) |
+| [ADR-0094](0094-campaign-values-from-facts.md) | Campaign is a data-derived granularity: its values come from the facts (amends ADR-0087) | Accepted (EX-9) |

@@ -4,6 +4,7 @@ import { t } from "@budget/ui/i18n";
 import { Plus, X } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import type { Dimension } from "../../lib/queries.js";
+import { FactValuePicker } from "./fact-value-picker.js";
 import { ValuePicker } from "./value-picker.js";
 
 /**
@@ -32,7 +33,31 @@ function chipLabel(n: FilterGroupT["children"][number], dims: Dimension[]): stri
   return t("explorer.filter.chip", { dimension: dim?.label ?? key, values: values.map(label).join(", ") });
 }
 
-export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter: FilterGroupT; dimensions: Dimension[]; onChange: (f: FilterGroupT) => void; tags?: Array<{ name: string }> }): ReactElement {
+/**
+ * What the filter is evaluated on (EX-9 review, ADR-0094). `budgets`: the planner's envelope filter
+ * (Budgets tree/pivot/timeline, saved views) — a data-derived granularity (campaign) never sits on
+ * a budget, so it is not offered there. `facts`: filters evaluated on spend/KPI facts (experiment
+ * sides, rules), where it is.
+ */
+export type FilterTarget = "budgets" | "facts";
+
+export function FilterBar({
+  ws,
+  filter,
+  dimensions: all,
+  onChange,
+  tags = [],
+  evaluatedOn,
+}: {
+  ws: string;
+  filter: FilterGroupT;
+  dimensions: Dimension[];
+  onChange: (f: FilterGroupT) => void;
+  tags?: Array<{ name: string }>;
+  evaluatedOn: FilterTarget;
+}): ReactElement {
+  // Chips still name every dimension; only the "Add filter" choices depend on the target.
+  const dimensions = evaluatedOn === "facts" ? all : all.filter((d) => d.valuesSource !== "facts");
   const [adding, setAdding] = useState(false);
   const [dimKey, setDimKey] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -48,7 +73,7 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
   return (
     <div className="flex flex-wrap items-center gap-2" data-tour="filter-bar" data-testid="filter-bar">
       {filter.children.map((n, i) => {
-        const label = chipLabel(n, dimensions);
+        const label = chipLabel(n, all);
         return (
           <span key={i} className="inline-flex h-8 items-center gap-1 rounded-full border border-border bg-secondary pl-3 pr-1 text-sm text-secondary-foreground" data-testid="filter-chip">
             {label}
@@ -69,7 +94,10 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
             ))}
             {tags.length ? <option value={TAG_KEY}>{t("explorer.filter.tag")}</option> : null}
           </Select>
-          {dim ? (
+          {dim && "valuesSource" in dim && dim.valuesSource === "facts" ? (
+            // EX-9: campaign's values are the spend data's, searched on the server.
+            <FactValuePicker ws={ws} dimKey={dim.key} picked={picked} onChange={setPicked} placeholder={t("explorer.filter.searchValues", { dimension: dim.label })} />
+          ) : dim ? (
             <ValuePicker values={dim.values} picked={picked} onChange={setPicked} placeholder={t("explorer.filter.searchValues", { dimension: dim.label })} />
           ) : null}
           {picked.length ? (

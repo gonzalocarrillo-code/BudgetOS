@@ -2,7 +2,7 @@ import { DomainError, UpdateValueInput, type Role } from "@budget/domain";
 import { reparentDimensionValue, type TenantContext } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { assertCanManage, inWorkspace, parseInput, recordChange } from "../context.js";
-import { assertCanEditDimension, requireDimension } from "../dimensions.js";
+import { assertCanEditDimension, assertRegistryValues, requireDimension } from "../dimensions.js";
 
 export async function updateValue(
   prisma: PrismaClient,
@@ -23,6 +23,7 @@ export async function updateValue(
     }
     const dimension = await requireDimension(tx, value.dimensionId, workspace.orgId);
     assertCanEditDimension(dimension, ctx);
+    assertRegistryValues(dimension);
     let parentValueId = value.parentValueId;
     if (input.parentCode !== undefined) {
       if (input.parentCode === null) parentValueId = null;

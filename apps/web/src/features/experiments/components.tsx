@@ -218,8 +218,8 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
           </Select>
         </Label>
       </div>
-      <SideScope side="test" filter={f.testFilter} onFilter={(testFilter) => set({ testFilter })} dimensions={dimensions} />
-      <SideScope side="control" filter={f.controlFilter} onFilter={(controlFilter) => set({ controlFilter })} dimensions={dimensions} />
+      <SideScope ws={ws} side="test" filter={f.testFilter} onFilter={(testFilter) => set({ testFilter })} dimensions={dimensions} />
+      <SideScope ws={ws} side="control" filter={f.controlFilter} onFilter={(controlFilter) => set({ controlFilter })} dimensions={dimensions} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Label text={t("experiments.form.success")}>
           <Select className={field} value={`${f.vs}:${f.comparator}`} onChange={(e) => { const [vs, comparator] = e.target.value.split(":") as ["control" | "absolute", "lte" | "gte"]; set({ vs, comparator }); }} data-testid="experiment-criterion">
@@ -257,12 +257,12 @@ export function CreateExperimentDialog({ ws, dimensions, onClose, onCreated }: {
  * KPI facts. Campaign is just one filterable dimension (owner feedback: "we already have filters
  * that can be campaign" — this replaces EX-2's separate campaign picker, ADR-089).
  */
-function SideScope({ side, filter, onFilter, dimensions }: { side: "test" | "control"; filter: FilterGroupT; onFilter: (g: FilterGroupT) => void; dimensions: Dimension[] }): ReactElement {
+function SideScope({ ws, side, filter, onFilter, dimensions }: { ws: string; side: "test" | "control"; filter: FilterGroupT; onFilter: (g: FilterGroupT) => void; dimensions: Dimension[] }): ReactElement {
   return (
     <div className="flex flex-col gap-1.5 text-sm" data-testid={`experiment-${side}-side`} data-tour={`experiment-${side}-scope`}>
       <span className="font-medium">{t(side === "test" ? "experiments.readout.test" : "experiments.readout.control")}</span>
       <div data-testid={`experiment-${side}-scope`}>
-        <FilterBar filter={filter} dimensions={dimensions} onChange={onFilter} />
+        <FilterBar ws={ws} evaluatedOn="facts" filter={filter} dimensions={dimensions} onChange={onFilter} />
       </div>
     </div>
   );

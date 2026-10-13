@@ -656,6 +656,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/dimensions/{key}/fact-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDimensionFactValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dimensions/{id}": {
         parameters: {
             query?: never;
@@ -4805,12 +4821,70 @@ export interface operations {
                     sortOrder?: number;
                     /** Format: uuid */
                     workspaceId: string | null;
+                    /**
+                     * @default registry
+                     * @enum {string}
+                     */
+                    valuesSource?: "registry" | "facts";
                 };
             };
         };
         responses: {
             /** @description Created dimension */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listDimensionFactValues: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive part of the value */
+                q?: string;
+                limit?: number;
+                offset?: number;
+                /** @description ADR-082: demo facts count only while the workspace is pure demo, unless true */
+                includeDemo?: "true" | "false";
+            };
+            header?: never;
+            path: {
+                ws: string;
+                /** @description A granularity whose values come from the data (valuesSource = facts), e.g. campaign */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description EX-9: the distinct values on the workspace's live spend and KPI facts (largest spend first), with spend, first/last seen and source systems — read-only, never registry rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        key: string;
+                        /** @enum {string} */
+                        valuesSource: "facts";
+                        items: {
+                            code: string;
+                            spend: string;
+                            currency: string;
+                            firstSeen: string;
+                            lastSeen: string;
+                            sourceSystems: string[];
+                        }[];
+                        total: number;
+                        limit: number;
+                        offset: number;
+                    };
+                };
+            };
+            /** @description Not a data-derived granularity */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4893,6 +4967,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Invalid values, or the granularity's values come from the data (EX-9) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     updateDimensionValue: {
@@ -4929,6 +5010,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Invalid change, or the granularity's values come from the data (EX-9) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     mergeDimensionValues: {
@@ -4955,6 +5043,13 @@ export interface operations {
         responses: {
             /** @description Merged dimension value */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid merge, or the granularity's values come from the data (EX-9) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

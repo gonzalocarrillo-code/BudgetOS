@@ -16,7 +16,22 @@ export interface PickerValue {
 const MAX_SHOWN = 50;
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-export function ValuePicker({ values, picked, onChange, placeholder, testId = "filter-values" }: { values: PickerValue[]; picked: string[]; onChange: (codes: string[]) => void; placeholder: string; testId?: string }): ReactElement {
+export function ValuePicker({
+  values,
+  picked,
+  onChange,
+  placeholder,
+  testId = "filter-values",
+  onQueryChange,
+}: {
+  values: PickerValue[];
+  picked: string[];
+  onChange: (codes: string[]) => void;
+  placeholder: string;
+  testId?: string;
+  /** EX-9: the typed text, for a caller that searches on the server (a data-derived granularity). */
+  onQueryChange?: (q: string) => void;
+}): ReactElement {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -35,6 +50,7 @@ export function ValuePicker({ values, picked, onChange, placeholder, testId = "f
   const pick = (code: string) => {
     onChange([...picked, code]);
     setQuery("");
+    onQueryChange?.("");
     setActive(0);
     input.current?.focus();
   };
@@ -82,7 +98,7 @@ export function ValuePicker({ values, picked, onChange, placeholder, testId = "f
             className="h-6 min-w-0 flex-1 border-0 bg-transparent px-0 shadow-none hover:border-0 focus:ring-0"
             placeholder={picked.length ? "" : placeholder}
             value={query}
-            onChange={(e) => (setQuery(e.target.value), setOpen(true), setActive(0))}
+            onChange={(e) => (setQuery(e.target.value), onQueryChange?.(e.target.value), setOpen(true), setActive(0))}
             onFocus={() => setOpen(true)}
             onBlur={() => setOpen(false)}
             onKeyDown={onKey}

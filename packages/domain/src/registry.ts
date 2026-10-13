@@ -5,6 +5,14 @@ const ValueCode = z.string().regex(/^[A-Za-z0-9_]{1,80}$/);
 
 export const DimensionDataType = z.enum(["ENUM", "TEXT", "REFERENCE", "DATE_BUCKET"]);
 
+/**
+ * EX-9 (ADR-0094): where a dimension's values come from. `registry`: hand-managed values (add,
+ * edit, nest, merge, retire). `facts`: the distinct values found on the workspace's live spend and
+ * KPI facts — read-only, never typed by hand (`campaign`).
+ */
+export const DimensionValuesSource = z.enum(["registry", "facts"]);
+export type DimensionValuesSource = z.infer<typeof DimensionValuesSource>;
+
 export const CreateDimensionInput = z.object({
   key: DimensionKey,
   label: z.string().min(1).max(200),
@@ -16,6 +24,7 @@ export const CreateDimensionInput = z.object({
   isRequiredForLeaf: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   workspaceId: z.string().uuid().nullable(),
+  valuesSource: DimensionValuesSource.default("registry"),
 });
 export type CreateDimensionInput = z.infer<typeof CreateDimensionInput>;
 
@@ -81,3 +90,39 @@ export const UploadAssetInput = z.object({
   svg: z.string().min(1),
 });
 export type UploadAssetInput = z.infer<typeof UploadAssetInput>;
+
+/** GET /workspaces/:ws/dimensions/:key/fact-values (EX-9): one page of a data-derived dimension's values. */
+export const FactValuesQuery = z.object({
+  /** Case-insensitive substring of the value. */
+  q: z.string().trim().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  /** ADR-082: demo facts count only while the workspace is pure demo, unless asked for. */
+  includeDemo: z.enum(["true", "false"]).optional(),
+});
+export type FactValuesQuery = z.infer<typeof FactValuesQuery>;
+
+/** One value of a data-derived dimension, as the facts say it: never a registry row. */
+export const FactDimensionValue = z.object({
+  code: z.string(),
+  /** Live spend in the workspace's reporting currency (Decimal string, 2 dp); "0.00" for a KPI-only value. */
+  spend: z.string(),
+  currency: z.string(),
+  /** First and last fact date (YYYY-MM-DD) across spend and KPI facts. */
+  firstSeen: z.string(),
+  lastSeen: z.string(),
+  /** The facts' source systems (sorted). */
+  sourceSystems: z.array(z.string()),
+});
+export type FactDimensionValue = z.infer<typeof FactDimensionValue>;
+
+export const FactValuesResponse = z.object({
+  key: z.string(),
+  valuesSource: z.literal("facts"),
+  items: z.array(FactDimensionValue),
+  /** Values matching `q` (all pages). */
+  total: z.number().int(),
+  limit: z.number().int(),
+  offset: z.number().int(),
+});
+export type FactValuesResponse = z.infer<typeof FactValuesResponse>;

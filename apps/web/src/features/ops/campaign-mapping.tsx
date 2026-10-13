@@ -4,11 +4,11 @@ import { t, type MessageKey } from "@budget/ui/i18n";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { useDeferredValue, useState, type ReactElement } from "react";
 import { Card } from "../../components/page.js";
 import { api, unwrap } from "../../lib/api.js";
 import { moneyOrDash } from "../../lib/money.js";
-import { registryQuery, searchQuery } from "../../lib/queries.js";
+import { factValuesQuery, registryQuery, searchQuery } from "../../lib/queries.js";
 import { ConventionPreview, delimiterText } from "../registry/campaign-naming.js";
 import { sourcesQuery, type Source } from "./queries.js";
 
@@ -239,6 +239,10 @@ function useCreateCampaignRule(ws: string, onDone: (msg: string) => void) {
 function CampaignRuleForm({ ws, canEditBudgets, onDone }: { ws: string; canEditBudgets: boolean; onDone: (msg: string) => void }): ReactElement {
   const [campaign, setCampaign] = useState("");
   const create = useCreateCampaignRule(ws, onDone);
+  // EX-9 (ADR-0094): the campaigns in the spend data, as you type (a rule may still name one not loaded yet).
+  const typed = useDeferredValue(campaign.trim());
+  const { data: found } = useQuery({ ...factValuesQuery(ws, CAMPAIGN_DIMENSION, { q: typed, limit: 8 }), retry: false, enabled: canEditBudgets });
+  const suggestions = (found?.items ?? []).filter((v) => v.code !== campaign.trim());
   if (!canEditBudgets) return <p className="text-sm text-muted-foreground">{t("mapping.noEditReason")}</p>;
   return (
     <div className="flex flex-col gap-2">
@@ -246,6 +250,20 @@ function CampaignRuleForm({ ws, canEditBudgets, onDone }: { ws: string; canEditB
         {t("mapping.campaign")}
         <Input size="sm" value={campaign} onChange={(e) => setCampaign(e.target.value)} data-testid="mapping-campaign" />
       </label>
+      {suggestions.length ? (
+        <div className="flex flex-col gap-1" data-testid="mapping-campaign-found">
+          <p className="text-xs text-muted-foreground">{t("mapping.campaignFound")}</p>
+          <ul className="flex flex-wrap gap-1">
+            {suggestions.map((v) => (
+              <li key={v.code}>
+                <button type="button" className="rounded-full border border-border px-2 py-0.5 text-xs hover:bg-accent" aria-label={t("mapping.pickCampaign", { campaign: v.code })} onClick={() => setCampaign(v.code)} data-testid="mapping-campaign-option">
+                  {v.code}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {campaign.trim() ? (
         <BudgetPicker ws={ws} initial="" onPick={(b) => (create.isPending ? undefined : create.mutate({ campaign: campaign.trim(), name: campaign.trim(), envelopeId: b.id }))} label={() => t("mapping.assignTo", { campaign: campaign.trim() })} />
       ) : (

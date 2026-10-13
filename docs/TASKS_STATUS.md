@@ -549,4 +549,5 @@ Plan: `docs/ORG_SLACK_SEARCH_PLAN.md`.
 | ID | Task | Status |
 |---|---|---|
 | EX-4 | Experiments: revert EX-2's campaign-picker UI (every side is the Budgets filter bar over fact `dimension_values`, campaign included); fact scope is the new default (`envelope` stays supported); metric choosers for the results table and the daily line chart live in the URL; day table stays collapsed by default (ADR-089) | done |
+| EX-9 | Campaign is a data-derived granularity: `dimension.values_source = 'facts'`; one query (`listFactDimensionValues`) lists the facts' distinct campaigns with spend, first/last seen and source; Registry shows it read-only ("From your spend data"); value writes on it are 422; filter bar, rule form, ⌘K and MCP read the same list; ingest takes the data's campaign as is; the demo seed writes no campaign registry rows (ADR-0094) | done |
 

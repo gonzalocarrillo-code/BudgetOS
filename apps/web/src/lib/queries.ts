@@ -1,4 +1,4 @@
-import { PeriodRow } from "@budget/domain";
+import { FactValuesResponse, PeriodRow } from "@budget/domain";
 import { t } from "@budget/ui/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
@@ -43,6 +43,8 @@ export const Dimension = z
     isRequiredForLeaf: z.boolean().default(false),
     workspaceId: z.string().nullable().default(null),
     isActive: z.boolean().default(true),
+    /** EX-9 (ADR-0094): `facts` — the values come from the spend data (factValuesQuery), `values` is empty. Absent means `registry`. */
+    valuesSource: z.enum(["registry", "facts"]).optional(),
     values: z.array(DimensionValue),
   })
   .passthrough();
@@ -73,6 +75,21 @@ export const registryQuery = (ws: string) =>
     queryKey: ["registry", ws],
     queryFn: async () => z.array(Dimension).parse(await unwrap(api.GET("/api/v1/workspaces/{ws}/dimensions", { params: { path: { ws } } }))),
     staleTime: 10_000,
+  });
+
+/** EX-9: one page of a data-derived granularity's values (campaign), searched on the server. */
+export const factValuesQuery = (ws: string, key: string, params: { q?: string; limit?: number; offset?: number } = {}) =>
+  queryOptions({
+    queryKey: ["fact-values", ws, key, params.q ?? "", params.limit ?? 50, params.offset ?? 0],
+    queryFn: async () =>
+      FactValuesResponse.parse(
+        await unwrap(
+          api.GET("/api/v1/workspaces/{ws}/dimensions/{key}/fact-values", {
+            params: { path: { ws, key }, query: { ...(params.q ? { q: params.q } : {}), limit: params.limit ?? 50, offset: params.offset ?? 0 } },
+          }),
+        ),
+      ),
+    staleTime: 30_000,
   });
 
 export const Template = z.object({ id: z.string().uuid(), name: z.string(), path: z.array(z.string()), isDefault: z.boolean() });

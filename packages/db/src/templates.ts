@@ -20,7 +20,7 @@ export function defaultAgencyTemplate() {
     key: DEFAULT_TEMPLATE_KEY,
     name: "Agency (default)",
     description: "The default registry (market, platform, objective, audience…), a Default hierarchy, the standard approval policies and pacing rules, a sample view and a tour per role.",
-    registry: DEFAULT_DIMENSIONS.map((d) => ({ key: d.key, label: d.label, dataType: d.dataType, icon: d.icon, allowedParents: [...d.allowedParents], isRequiredForLeaf: d.isRequiredForLeaf, sortOrder: d.sortOrder, values: d.values.map((v) => ({ ...v })) })),
+    registry: DEFAULT_DIMENSIONS.map((d) => ({ key: d.key, label: d.label, dataType: d.dataType, icon: d.icon, allowedParents: [...d.allowedParents], isRequiredForLeaf: d.isRequiredForLeaf, sortOrder: d.sortOrder, valuesSource: d.valuesSource, values: d.values.map((v) => ({ ...v })) })),
     hierarchyTemplates: [{ name: DEFAULT_HIERARCHY.name, path: [...DEFAULT_HIERARCHY.path], isDefault: true }, { name: "Market first", path: ["country", "platform", "objective"], isDefault: false }],
     policies: DEFAULT_POLICIES.map((p) => ({ ...p })),
     rules: DEFAULT_RULES.map((r) => ({ ...r })),

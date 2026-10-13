@@ -45,7 +45,7 @@ export async function describeWorkspace(prisma: PrismaClient, auth: AuthContext,
     };
     return { ws, calendar, usage, distinct, metrics, counts, lastFact: await lastFactDate(tx, workspaceId) };
   });
-  const registry = await describeRegistry(prisma, auth);
+  const registry = await describeRegistry(prisma, auth, { factValues: false });
   const idToKey = new Map(registry.dimensions.map((d) => [d.id, d.key]));
   const used = new Map(base.usage.map((u) => [idToKey.get(u.dimensionId), u._count._all]));
   const valuesInUse = new Map<string, number>();
@@ -131,7 +131,7 @@ export async function describeWorkspace(prisma: PrismaClient, auth: AuthContext,
  */
 export async function workspaceGlossary(prisma: PrismaClient, auth: AuthContext) {
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
-  const registry = await describeRegistry(prisma, auth);
+  const registry = await describeRegistry(prisma, auth, { factValues: false });
   const synonyms = await listMappingSynonyms(prisma, auth);
   const metrics = await withTenant(prisma, auth.ctx, (tx) => tx.metricDefinition.findMany({ where: { orgId: auth.user.orgId, OR: [{ workspaceId: null }, { workspaceId }] }, select: { key: true, label: true, numerator: true, denominator: true } }));
   return {

@@ -146,7 +146,10 @@ export async function buildImportPlan(tx: Tx, auth: AuthContext, workspaceId: st
       if (!c || v === "") return;
       if (c.kind === "fixed") row.cells.set(c.name, v);
       else if (c.kind === "month") row.months.push({ month: c.month, amount: plainAmount(v) });
-      else {
+      else if (registry.isFromData(c.key)) {
+        // EX-9 (ADR-0094, ADR-0087 §1): a data-derived granularity (campaign) is never part of a budget's tuple.
+        row.problems.push({ column: header[j] ?? c.key, message: `${dims.get(c.key)?.label ?? c.key} comes from your spend data; budgets are not set per ${dims.get(c.key)?.label.toLowerCase() ?? c.key}` });
+      } else {
         const hit = registry.resolve(c.key, v);
         const code = "error" in hit ? byLabel.get(c.key)?.get(normTerm(v)) : hit.code;
         if (code) row.dimensionValues[c.key] = code;

@@ -5305,6 +5305,14 @@
                     "type": "string",
                     "format": "uuid",
                     "nullable": true
+                  },
+                  "valuesSource": {
+                    "type": "string",
+                    "enum": [
+                      "registry",
+                      "facts"
+                    ],
+                    "default": "registry"
                   }
                 },
                 "required": [
@@ -5321,6 +5329,153 @@
         "responses": {
           "200": {
             "description": "Created dimension"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/dimensions/{key}/fact-values": {
+      "get": {
+        "operationId": "listDimensionFactValues",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity whose values come from the data (valuesSource = facts), e.g. campaign"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Case-insensitive part of the value"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "includeDemo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "ADR-082: demo facts count only while the workspace is pure demo, unless true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "EX-9: the distinct values on the workspace's live spend and KPI facts (largest spend first), with spend, first/last seen and source systems — read-only, never registry rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "valuesSource": {
+                      "type": "string",
+                      "enum": [
+                        "facts"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "spend": {
+                            "type": "string"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "firstSeen": {
+                            "type": "string"
+                          },
+                          "lastSeen": {
+                            "type": "string"
+                          },
+                          "sourceSystems": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "spend",
+                          "currency",
+                          "firstSeen",
+                          "lastSeen",
+                          "sourceSystems"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "valuesSource",
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a data-derived granularity"
           }
         }
       }
@@ -5490,6 +5645,9 @@
         "responses": {
           "200": {
             "description": "Upserted dimension values"
+          },
+          "422": {
+            "description": "Invalid values, or the granularity's values come from the data (EX-9)"
           }
         }
       }
@@ -5560,6 +5718,9 @@
         "responses": {
           "200": {
             "description": "Updated dimension value"
+          },
+          "422": {
+            "description": "Invalid change, or the granularity's values come from the data (EX-9)"
           }
         }
       }
@@ -5616,6 +5777,9 @@
         "responses": {
           "200": {
             "description": "Merged dimension value"
+          },
+          "422": {
+            "description": "Invalid merge, or the granularity's values come from the data (EX-9)"
           }
         }
       }

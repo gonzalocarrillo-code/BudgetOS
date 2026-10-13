@@ -31,6 +31,7 @@ export async function seedDefaultRegistry(
         isRequiredForLeaf: dimension.isRequiredForLeaf,
         sortOrder: dimension.sortOrder,
         workspaceId: null,
+        valuesSource: dimension.valuesSource,
       },
       store,
     );

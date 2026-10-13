@@ -43,6 +43,8 @@ export { matchCoverage } from "./match-coverage.js";
 export type { CoverageAmountsRow, MatchCoverage } from "./match-coverage.js";
 export { assignUnmatched, campaignNames, conventionResolver, conventionTuples, ensurePartitions, topCampaigns, insertProjectionFacts, matchFacts, matchRunFacts, spendThroughInCurrency, tuplesWithEnvelope, runCoverage, runEnvelopes, supersedeMovedFacts, supersedeUnseenFacts, unmatchedSpend, upsertKpiFacts, upsertSpendFacts } from "./facts.js";
 export { campaignSpend, ensureDictionaryValues, namingResolver } from "./naming-conventions.js";
+export { FACT_VALUES_DEFAULT_LIMIT, FACT_VALUES_MAX_LIMIT, listFactDimensionValues } from "./fact-dimension-values.js";
+export type { FactDimensionValueRow, FactDimensionValuesInput, FactDimensionValuesPage } from "./fact-dimension-values.js";
 export type { CampaignSpend, DictionaryValue } from "./naming-conventions.js";
 export { deleteDictionaryEntry, dictionaryEntryCounts, ensureDictionarySeeded, listDictionaryEntries, liveDictionaryEntry, loadNamingDictionaries, migrateConventionAliases, pendingConventionAliases, resetDictionaryToBuiltin, writeDictionaryEntries } from "./naming-dictionaries.js";
 export type { EntryWrite, WriteResult } from "./naming-dictionaries.js";

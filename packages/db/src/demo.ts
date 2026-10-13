@@ -3,7 +3,6 @@ import { DomainError } from "@budget/domain";
 import { Decimal } from "decimal.js";
 import { DEFAULT_DIMENSIONS } from "../seed/defaults.registry.js";
 import { ensurePartitions, type KpiFactInput, type SpendFactInput } from "./facts.js";
-import { upsertDimensionValue } from "./registry.js";
 import type { Tx } from "./sql.js";
 
 /**
@@ -242,7 +241,11 @@ async function insertDemoFacts(tx: Tx, load: { workspaceId: string; sourceRunId:
   }
 }
 
-/** The org-wide `campaign` dimension (plan §8, defaults.registry.ts), created the first time any workspace of the org needs it. */
+/**
+ * The org-wide `campaign` dimension (plan §8, defaults.registry.ts), created the first time any
+ * workspace of the org needs it. EX-9 (ADR-0094): it is data-derived (`values_source = 'facts'`) —
+ * the demo facts carry the campaign and no registry value row is written for it.
+ */
 async function ensureCampaignDimension(tx: Tx, orgId: string, createdBy: string, newId: () => string): Promise<string> {
   const existing = await tx.dimension.findFirst({ where: { orgId, workspaceId: null, key: "campaign" }, select: { id: true } });
   if (existing) return existing.id;
@@ -250,7 +253,7 @@ async function ensureCampaignDimension(tx: Tx, orgId: string, createdBy: string,
   if (!spec) throw new DomainError("NOT_FOUND", "campaign is not in the registry defaults");
   try {
     const created = await tx.dimension.create({
-      data: { id: newId(), orgId, workspaceId: null, key: spec.key, label: spec.label, dataType: spec.dataType, icon: spec.icon, allowedParents: [...spec.allowedParents], isRequiredForLeaf: spec.isRequiredForLeaf, sortOrder: spec.sortOrder, createdBy },
+      data: { id: newId(), orgId, workspaceId: null, key: spec.key, label: spec.label, dataType: spec.dataType, icon: spec.icon, allowedParents: [...spec.allowedParents], isRequiredForLeaf: spec.isRequiredForLeaf, sortOrder: spec.sortOrder, valuesSource: spec.valuesSource, createdBy },
     });
     return created.id;
   } catch (e) {
@@ -259,13 +262,6 @@ async function ensureCampaignDimension(tx: Tx, orgId: string, createdBy: string,
       if (row) return row.id;
     }
     throw e;
-  }
-}
-
-/** Idempotent: a campaign value already at this code keeps its id (ON CONFLICT (dimension_id, code)). */
-async function ensureCampaignValues(tx: Tx, dimensionId: string, campaigns: DemoCampaign[], newId: () => string): Promise<void> {
-  for (const c of campaigns) {
-    await upsertDimensionValue(tx, { id: newId(), dimensionId, code: c.code, label: c.label, parentValueId: null, aliases: [], externalIds: {} });
   }
 }
 
@@ -384,7 +380,8 @@ export async function seedDemoData(
     targets += 1;
   }
 
-  // EX-3: campaign registry + daily, campaign-level spend and KPI facts for every leaf.
+  // EX-3: daily, campaign-level spend and KPI facts for every leaf. EX-9: the campaign dimension
+  // exists (data-derived); its values are the facts' own, so no registry value is written.
   const runId = randomUUID();
   const load = { workspaceId: ctx.workspaceId, sourceRunId: runId };
   const leaves = usable.filter((e) => e.parentId !== null);
@@ -394,11 +391,8 @@ export async function seedDemoData(
 
   let campaignCount = 0;
   if (spend.length) {
-    const campaignDimId = await ensureCampaignDimension(tx, ctx.orgId, ctx.createdBy, newId);
-    for (const campaigns of campaignsByLeaf.values()) {
-      await ensureCampaignValues(tx, campaignDimId, campaigns, newId);
-      campaignCount += campaigns.length;
-    }
+    await ensureCampaignDimension(tx, ctx.orgId, ctx.createdBy, newId);
+    for (const campaigns of campaignsByLeaf.values()) campaignCount += campaigns.length;
     await ensurePartitions(tx, iso(start), iso(end));
     await insertDemoFacts(tx, load, spend, kpi);
   }
@@ -468,12 +462,9 @@ export async function reseedCampaignDemoData(
   const { spend, kpi, campaignsByLeaf } = campaignFactsForLeaves(campaignLeaves, wsShort, fyYear, ws.fiscalYearStartMonth, iso(start), until, runId, ws.reportingCurrency);
   if (spend.length === 0) return { alreadyPresent: false, campaigns: 0, facts: 0, supersededFacts: 0, experiments: 0 };
 
-  const campaignDimId = await ensureCampaignDimension(tx, ctx.orgId, ctx.createdBy, newId);
+  await ensureCampaignDimension(tx, ctx.orgId, ctx.createdBy, newId);
   let campaignCount = 0;
-  for (const campaigns of campaignsByLeaf.values()) {
-    await ensureCampaignValues(tx, campaignDimId, campaigns, newId);
-    campaignCount += campaigns.length;
-  }
+  for (const campaigns of campaignsByLeaf.values()) campaignCount += campaigns.length;
 
   await ensurePartitions(tx, iso(start), iso(new Date(Date.UTC(fyYear + 1, ws.fiscalYearStartMonth - 1, 0))));
   await insertDemoFacts(tx, { workspaceId: ctx.workspaceId, sourceRunId: runId }, spend, kpi);
@@ -529,9 +520,10 @@ export interface PurgeSummary {
  * demo dataset never writes projections, spec §27): every row of it on a demo envelope is real and
  * is always detached, never deleted. A real target cannot be silently dropped this way — scopeType
  * is fixed to an envelope, there is no "unmatch" for it — so the whole purge refuses first. EX-3:
- * the demo experiment and its links go too; the `campaign` dimension's values are removed only when
- * no live (non-superseded) fact anywhere in the org still uses them — a campaign dimension is
- * org-wide, so another workspace's real data may share it.
+ * the demo experiment and its links go too. EX-9 (ADR-0094): campaign values are the facts' own,
+ * so deleting the demo facts is all there is to purge — the seed writes no campaign registry rows
+ * any more. The legacy-row step below only tidies rows a pre-EX-9 seed left in the org-wide
+ * registry, and only when no live fact anywhere in the org still uses the code.
  */
 export async function purgeDemoData(tx: Tx, workspaceId: string): Promise<PurgeSummary> {
   const ids = (await tx.envelope.findMany({ where: { workspaceId, demo: true }, select: { id: true } })).map((e) => e.id);
@@ -543,8 +535,9 @@ export async function purgeDemoData(tx: Tx, workspaceId: string): Promise<PurgeS
     throw new DomainError("CONFLICT", "Real targets are attached to demo budgets; move or delete them first", { targetIds: realTargets });
   }
 
-  // EX-3 campaign codes this workspace's demo facts used, so they can be dropped from the org-wide
-  // registry once no live fact (anywhere in the org) still references them.
+  // Campaign codes this workspace's demo facts used: a pre-EX-9 seed (EX-3) also wrote them as
+  // org-wide registry rows, dropped below once no live fact (anywhere in the org) references them.
+  // A workspace seeded since EX-9 has no such rows and the DELETE matches nothing.
   const campaignCodes = ids.length
     ? (
         await tx.$queryRaw<Array<{ code: string }>>`

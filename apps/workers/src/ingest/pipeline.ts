@@ -81,9 +81,9 @@ function systemCtx(workspaceId: string, orgId: string, runId: string): TenantCon
 }
 
 export async function loadRegistry(tx: Tx, orgId: string, workspaceId: string): Promise<RegistryIndex> {
-  const dims = await tx.dimension.findMany({ where: { orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, workspaceId: true } });
+  const dims = await tx.dimension.findMany({ where: { orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, workspaceId: true, valuesSource: true } });
   // A workspace dimension shadows an org-wide one with the same key.
-  const byKey = new Map<string, { id: string; workspaceId: string | null }>();
+  const byKey = new Map<string, { id: string; workspaceId: string | null; valuesSource: string }>();
   for (const d of dims) if (!byKey.has(d.key) || d.workspaceId !== null) byKey.set(d.key, d);
   const values = await tx.dimensionValue.findMany({
     where: { dimensionId: { in: [...byKey.values()].map((d) => d.id) } },
@@ -105,7 +105,9 @@ export async function loadRegistry(tx: Tx, orgId: string, workspaceId: string): 
         })),
     );
   }
-  return new RegistryIndex(out);
+  // EX-9 (ADR-0094): a data-derived dimension (campaign) takes the source's values as they are.
+  const fromData = new Set([...byKey].filter(([, d]) => d.valuesSource === "facts").map(([key]) => key));
+  return new RegistryIndex(out, fromData);
 }
 
 /** FX into the reporting currency: the latest rate on or before the fact's date (cached per currency and date). */

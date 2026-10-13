@@ -137,6 +137,7 @@ const ROUTES: RouteCase[] = [
   { method: "GET", path: "/api/v1/me", permission: "authenticated", url: () => "/api/v1/me" },
   { method: "PATCH", path: "/api/v1/me", permission: "authenticated", url: () => "/api/v1/me", headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/dimensions", permission: "workspace.member", url: () => `/api/v1/workspaces/${wsA}/dimensions` },
+  { method: "GET", path: "/api/v1/workspaces/{ws}/dimensions/{key}/fact-values", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/dimensions/campaign/fact-values` },
   { method: "POST", path: "/api/v1/workspaces/{ws}/dimensions", permission: "registry.manage", url: () => `/api/v1/workspaces/${wsA}/dimensions`, body: {} },
   { method: "PATCH", path: "/api/v1/dimensions/{id}", permission: "registry.manage", url: () => `/api/v1/dimensions/${rid}`, headers: X(), body: {} },
   { method: "GET", path: "/api/v1/workspaces/{ws}/periods", permission: "envelope.read", url: () => `/api/v1/workspaces/${wsA}/periods` },

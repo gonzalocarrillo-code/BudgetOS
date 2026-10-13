@@ -2,7 +2,7 @@ import { DomainError, MergeValuesInput, type Role } from "@budget/domain";
 import { insertRewriteAudits, rewriteMergedValue, type TenantContext } from "@budget/db";
 import type { PrismaClient } from "@prisma/client";
 import { assertCanManage, inWorkspace, parseInput, recordChange } from "../context.js";
-import { assertCanEditDimension, requireDimension } from "../dimensions.js";
+import { assertCanEditDimension, assertRegistryValues, requireDimension } from "../dimensions.js";
 
 export async function mergeValues(
   prisma: PrismaClient,
@@ -19,6 +19,7 @@ export async function mergeValues(
   return inWorkspace(prisma, ctx, async (tx, workspace) => {
     const dimension = await requireDimension(tx, dimensionId, workspace.orgId);
     assertCanEditDimension(dimension, ctx);
+    assertRegistryValues(dimension);
     const from = await tx.dimensionValue.findFirst({
       where: { dimensionId: dimension.id, code: input.fromCode },
     });
