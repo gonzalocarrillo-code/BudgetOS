@@ -123,6 +123,17 @@ describe("fact-scoped totals and daily series (EX-2)", () => {
     expect(await totals(req({ envelopeScope: elsewhere }))).toMatchObject({ days_with_data: 0, spend: null, cpa: null });
   });
 
+  it("EX-9: campaign filters read the facts' own values — no campaign registry row exists or is needed", async () => {
+    const { rows: [registry] } = await owner.query<{ n: number }>(`SELECT count(*)::int AS n FROM dimension_value v JOIN dimension d ON d.id = v.dimension_id WHERE d.org_id = $1 AND d.key = 'campaign'`, [org.orgId]);
+    expect(registry?.["n"]).toBe(0);
+    const both: FilterGroupT = { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "in", value: ["cmp_a", "cmp_b"] }] };
+    expect(await totals(req({ filter: both }))).toMatchObject({ spend: "220", conversions: "17" });
+    const notA: FilterGroupT = { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "neq", value: "cmp_a" }] };
+    expect(await totals(req({ filter: notA }))).toMatchObject({ spend: "40", conversions: "5" });
+    const unknown: FilterGroupT = { logic: "and", children: [{ field: { kind: "dimension", key: "campaign" }, op: "eq", value: "never_seen" }] };
+    expect(await totals(req({ filter: unknown }))).toMatchObject({ days_with_data: 0, spend: null });
+  });
+
   it("a window that has not started has no days; budget-based metrics and non-dimension predicates are refused", async () => {
     expect(await totals(req({ start: "2026-02-01", end: "2026-02-28" }))).toMatchObject({ days_in_window: 0, days_with_data: 0, spend: null });
     expect(() => compileFactTotals(req({ derived: new Map([["burn", { numerator: "spend", denominator: "budget" }]]) }), TODAY)).toThrow(/budget/);

@@ -348,7 +348,7 @@ function ExplorerPage(): ReactElement {
       </div>
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
-          <FilterBar filter={search.filter} dimensions={dimensions} tags={tags} onChange={(filter: FilterGroupT) => setSearch({ filter, expanded: [] })} />
+          <FilterBar ws={ws} filter={search.filter} dimensions={dimensions} tags={tags} onChange={(filter: FilterGroupT) => setSearch({ filter, expanded: [] })} />
         </div>
         {search.view !== "timeline" ? (
           <Button size="sm" variant={selecting ? "default" : "outline"} aria-pressed={selecting} onClick={() => (setSelecting((v) => !v), setTicked([]))} data-testid="select-mode">

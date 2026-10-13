@@ -13,6 +13,7 @@ import { HierarchyBuilder } from "../features/registry/hierarchy-builder.js";
 import { MetricLibrary } from "../features/registry/metric-library.js";
 import { CampaignNaming, dictionaryName, namingQuery } from "../features/registry/campaign-naming.js";
 import { NamingDictionaries } from "../features/registry/naming-dictionaries.js";
+import { FactValues } from "../features/registry/fact-values.js";
 import { ValueTree } from "../features/registry/value-tree.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, registryQuery, templatesQuery, type Dimension } from "../lib/queries.js";
@@ -32,6 +33,9 @@ const RegistrySearch = z.object({
   view: z.enum(["positions", "dictionaries"]).optional(),
   dict: z.string().optional(),
   dq: z.string().optional(),
+  // EX-9: search text and page of a data-derived granularity's values (campaign).
+  vq: z.string().max(200).optional(),
+  vp: z.number().int().min(0).optional(),
 });
 type RegistrySearch = z.infer<typeof RegistrySearch>;
 
@@ -90,7 +94,7 @@ function RegistryPage(): ReactElement {
                   {t("registry.new")}
                 </Button>
               )}
-              <DimensionList ws={ws} dims={dims} selectedId={creating ? null : (selected?.id ?? null)} onPick={(id) => set({ dim: id })} />
+              <DimensionList ws={ws} dims={dims} selectedId={creating ? null : (selected?.id ?? null)} onPick={(id) => set({ dim: id, vq: undefined, vp: undefined })} />
             </div>
           </Card>
           <div className="flex flex-col gap-5">
@@ -101,9 +105,15 @@ function RegistryPage(): ReactElement {
             ) : selected ? (
               <>
                 <DimensionHeader ws={ws} dim={selected} blocked={blockedFor(selected)} onChanged={refresh} />
-                <Card title={t("registry.values.title", { name: selected.label })}>
-                  <ValueTree key={selected.id} ws={ws} dim={selected} blocked={blockedFor(selected)} onChanged={refresh} />
-                </Card>
+                {selected.valuesSource === "facts" ? (
+                  <Card title={t("registry.facts.title", { name: selected.label })}>
+                    <FactValues key={selected.id} ws={ws} dim={selected} q={search.vq ?? ""} page={search.vp ?? 0} onSearch={(vq) => set({ vq: vq || undefined, vp: undefined })} onPage={(vp) => set({ vp: vp || undefined })} />
+                  </Card>
+                ) : (
+                  <Card title={t("registry.values.title", { name: selected.label })}>
+                    <ValueTree key={selected.id} ws={ws} dim={selected} blocked={blockedFor(selected)} onChanged={refresh} />
+                  </Card>
+                )}
                 <Card title={t("registry.settings")}>
                   <DimensionForm key={selected.id} ws={ws} dims={dims} dim={selected} isOrgAdmin={isOrgAdmin} blocked={blockedFor(selected)} onSaved={refresh} />
                 </Card>
@@ -158,7 +168,7 @@ function DimensionList({ ws, dims, selectedId, onPick }: { ws: string; dims: Dim
                 <button type="button" aria-current={selectedId === d.id} className={cn("flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm", selectedId === d.id ? "bg-primary text-primary-foreground" : "hover:bg-accent", !d.isActive ? "opacity-60" : "")} onClick={() => onPick(d.id)} data-testid="dimension-item" data-key={d.key}>
                   <DimensionIcon ws={ws} icon={d.icon} />
                   <span className="min-w-0 flex-1 truncate">{d.label}</span>
-                  <span className={cn("text-xs", selectedId === d.id ? "text-primary-foreground/80" : "text-muted-foreground")}>{d.isActive ? d.values.filter((v) => v.isActive).length : t("registry.retired")}</span>
+                  <span className={cn("text-xs", selectedId === d.id ? "text-primary-foreground/80" : "text-muted-foreground")}>{!d.isActive ? t("registry.retired") : d.valuesSource === "facts" ? t("registry.facts.badge") : d.values.filter((v) => v.isActive).length}</span>
                 </button>
               </li>
             ))}
@@ -191,6 +201,11 @@ function DimensionHeader({ ws, dim, blocked, onChanged }: { ws: string; dim: Dim
           {dim.isRequiredForLeaf ? ` · ${t("registry.requiredShort")}` : ""}
           {!dim.isActive ? ` · ${t("registry.retired")}` : ""}
         </p>
+        {dim.valuesSource === "facts" ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="dimension-from-data">
+            {t("registry.facts.readOnly")}
+          </p>
+        ) : null}
         {dim.description ? <p className="mt-1 text-sm text-muted-foreground">{dim.description}</p> : null}
         {position > 0 || kind ? (
           <p className="mt-1 text-xs text-muted-foreground" data-testid="dimension-naming">

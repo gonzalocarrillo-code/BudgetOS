@@ -31,6 +31,16 @@ export function assertCanEditDimension(dimension: { workspaceId: string | null }
   }
 }
 
+/**
+ * EX-9 (ADR-0094): a data-derived dimension's values are whatever the facts carry (campaign); none
+ * is ever added, edited, nested, merged or retired by hand. Refused, never silently accepted.
+ */
+export function assertRegistryValues(dimension: { key: string; valuesSource: string }): void {
+  if (dimension.valuesSource === "facts") {
+    throw new DomainError("VALIDATION", `${dimension.key} values come from your spend data and cannot be changed in the registry`, { dimension: dimension.key, valuesSource: "facts" });
+  }
+}
+
 export async function requireDimension(tx: Tx, dimensionId: string, orgId: string): Promise<Dimension> {
   const dimension = await tx.dimension.findUnique({ where: { id: dimensionId } });
   if (dimension === null || dimension.orgId !== orgId) {

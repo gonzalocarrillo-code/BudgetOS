@@ -280,7 +280,7 @@ function RuleEditor({ ws, rule, from, blocked, onDone, onDuplicate }: { ws: stri
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium">{t("rules.scope")}</p>
         <p className="text-xs text-muted-foreground">{t("rules.scopeHelp")}</p>
-        <FilterBar filter={scope} dimensions={dims} tags={tags} onChange={setScope} />
+        <FilterBar ws={ws} filter={scope} dimensions={dims} tags={tags} onChange={setScope} />
       </div>
       <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
         <legend className="px-1 text-sm font-medium">{t("rules.delivery")}</legend>

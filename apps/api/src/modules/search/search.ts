@@ -1,5 +1,5 @@
 import { DomainError, can, parseSearch, settingById, type ScopeFilter, threadPath } from "@budget/domain";
-import { withTenant } from "@budget/db";
+import { listFactDimensionValues, withTenant } from "@budget/db";
 import { SEARCH_CANDIDATES, SEARCH_TYPES, compileSearch, searchTypes } from "@budget/query-planner";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspace } from "../../common/parse-input.js";
@@ -100,7 +100,7 @@ export async function suggest(prisma: PrismaClient, auth: AuthContext, rawPrefix
   const workspaceId = requireWorkspace(auth.ctx.workspaceId);
   const prefix = (rawPrefix ?? "").trim().toLowerCase().slice(0, 100);
   return withTenant(prisma, auth.ctx, async (tx) => {
-    const dims = await tx.dimension.findMany({ where: { orgId: auth.user.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, label: true }, orderBy: [{ sortOrder: "asc" }, { key: "asc" }] });
+    const dims = await tx.dimension.findMany({ where: { orgId: auth.user.orgId, isActive: true, OR: [{ workspaceId: null }, { workspaceId }] }, select: { id: true, key: true, label: true, valuesSource: true }, orderBy: [{ sortOrder: "asc" }, { key: "asc" }] });
     const colon = prefix.indexOf(":");
     if (colon === -1) {
       const keys = [...FIXED_KEYS.map((k) => ({ ...k, kind: "fixed" as const })), ...dims.map((d) => ({ key: d.key, label: d.label, kind: "dimension" as const }))];
@@ -131,6 +131,11 @@ export async function suggest(prisma: PrismaClient, auth: AuthContext, rawPrefix
         default: {
           const dim = dims.find((d) => d.key === key);
           if (!dim) return [];
+          if (dim.valuesSource === "facts") {
+            // EX-9 (ADR-0094): campaign values are the facts' own.
+            const page = await listFactDimensionValues(tx, { workspaceId, key, q: partial, limit: 10 });
+            return page.items.map((v) => ({ value: v.code, label: v.code }));
+          }
           const rows = await tx.dimensionValue.findMany({
             where: { dimensionId: dim.id, isActive: true, OR: [{ code: { startsWith: partial, mode: "insensitive" } }, { label: { startsWith: partial, mode: "insensitive" } }] },
             select: { code: true, label: true },

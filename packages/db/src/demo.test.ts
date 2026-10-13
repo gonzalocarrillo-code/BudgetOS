@@ -140,6 +140,19 @@ async function seedRegistry(orgId: string): Promise<void> {
   );
 }
 
+/** EX-9: the org's campaign dimension (values source) and how many registry value rows it has. */
+async function campaignRegistry(orgId: string): Promise<{ valuesSource: string | null; values: number }> {
+  const rows = await asOrgAdmin(
+    prisma,
+    (tx) =>
+      tx.$queryRaw<Array<{ values_source: string; n: bigint }>>`
+        SELECT d.values_source, (SELECT count(*) FROM dimension_value v WHERE v.dimension_id = d.id) AS n
+        FROM dimension d WHERE d.org_id = ${orgId}::uuid AND d.key = 'campaign'`,
+    orgId,
+  );
+  return { valuesSource: rows[0]?.values_source ?? null, values: rows.reduce((s, r) => s + Number(r.n), 0) };
+}
+
 describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)", () => {
   it("seeds campaign-level daily facts and one RUNNING demo experiment; reseed on a fresh workspace is a no-op; purge removes everything including the experiment", async () => {
     const orgId = randomUUID();
@@ -181,6 +194,9 @@ describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)
       orgId,
     );
     expect(Number(campaignFacts[0]?.n ?? 0)).toBeGreaterThan(0);
+    // EX-9 (ADR-0094): the campaign granularity is data-derived — the facts carry the campaign, and
+    // no registry value row is written for it.
+    expect(await campaignRegistry(orgId)).toEqual({ valuesSource: "facts", values: 0 });
 
     // Reseed is idempotent: a workspace that already has campaign facts changes nothing.
     const reseed1 = await asOrgAdmin(prisma, (tx) => reseedCampaignDemoData(tx, { workspaceId, orgId, createdBy, today }, () => randomUUID()), orgId);
@@ -276,6 +292,7 @@ describe("seedDemoData / reseedCampaignDemoData / purgeDemoData (EX-3, Postgres)
     );
     expect(Number(live[0]?.n)).toBe(result.facts);
     expect(live[0]?.has_campaign).toBe(true);
+    expect(await campaignRegistry(orgId)).toEqual({ valuesSource: "facts", values: 0 }); // EX-9
     const oldRow = await asOrgAdmin(prisma, (tx) => tx.$queryRaw<Array<{ superseded_at: Date | null }>>`SELECT superseded_at FROM spend_fact WHERE natural_key = 'old-monthly-1'`, orgId);
     expect(oldRow[0]?.superseded_at).not.toBeNull(); // superseded, not deleted (ADR-071)
 

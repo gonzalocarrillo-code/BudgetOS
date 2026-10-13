@@ -2,7 +2,7 @@ import { AddValuesInput, DomainError, newId, type Role } from "@budget/domain";
 import { upsertDimensionValue, type TenantContext } from "@budget/db";
 import type { Dimension, PrismaClient } from "@prisma/client";
 import { assertCanManage, inWorkspace, parseInput, recordChange } from "../context.js";
-import { assertCanEditDimension, requireDimension } from "../dimensions.js";
+import { assertCanEditDimension, assertRegistryValues, requireDimension } from "../dimensions.js";
 import type { Tx } from "@budget/db";
 
 export interface SavedValue {
@@ -34,6 +34,7 @@ export async function addValues(
     async (tx, workspace) => {
       const dimension = await requireDimension(tx, dimensionId, workspace.orgId);
       assertCanEditDimension(dimension, ctx);
+      assertRegistryValues(dimension);
       const ordered = orderValues(input.values);
       const parentIds = new Map<string, string>();
       const saved: SavedValue[] = [];

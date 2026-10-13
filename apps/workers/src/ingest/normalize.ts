@@ -24,7 +24,14 @@ export class RegistryIndex {
   private readonly exact = new Map<string, Map<string, { v: RegistryValue; via: Via }>>();
   private readonly folded = new Map<string, Map<string, { v: RegistryValue; via: Via }>>();
 
-  constructor(dimensions: Map<string, RegistryValue[]>) {
+  /**
+   * `fromData`: EX-9 (ADR-0094) data-derived dimensions (`values_source = 'facts'`, campaign) — the
+   * source's value is the value, as it is; there is no registry row to resolve it against.
+   */
+  constructor(
+    dimensions: Map<string, RegistryValue[]>,
+    private readonly fromData: ReadonlySet<string> = new Set(),
+  ) {
     for (const [key, values] of dimensions) {
       const exact = new Map<string, { v: RegistryValue; via: Via }>();
       const folded = new Map<string, { v: RegistryValue; via: Via }>();
@@ -43,12 +50,18 @@ export class RegistryIndex {
     }
   }
 
+  /** EX-9: true for a data-derived dimension (its values are whatever the data says). */
+  isFromData(dimension: string): boolean {
+    return this.fromData.has(dimension);
+  }
+
   has(dimension: string): boolean {
-    return this.exact.has(dimension);
+    return this.exact.has(dimension) || this.fromData.has(dimension);
   }
 
   /** The registry code for a raw value (and whether it was an external id, §24.3 step 1), or an error message. */
   resolve(dimension: string, raw: string): { code: string; via: Via } | { error: string } {
+    if (this.fromData.has(dimension)) return { code: raw, via: "code" };
     const hit = this.exact.get(dimension)?.get(raw) ?? this.folded.get(dimension)?.get(raw.toLowerCase());
     if (hit === undefined) return { error: `unknown ${dimension} "${raw}"` };
     const { v, via } = hit;

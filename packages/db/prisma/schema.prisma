@@ -185,6 +185,8 @@ model Dimension {
   isRequiredForLeaf  Boolean             @default(false) @map("is_required_for_leaf")
   sortOrder          Int                 @default(0) @map("sort_order")
   isActive           Boolean             @default(true) @map("is_active")
+  /// EX-9 (ADR-0094): 'registry' = hand-managed dimension_value rows; 'facts' = the distinct values on live facts (read-only).
+  valuesSource       String              @default("registry") @map("values_source")
   version            Int                 @default(1)
   createdBy          String              @map("created_by") @db.Uuid
   createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz

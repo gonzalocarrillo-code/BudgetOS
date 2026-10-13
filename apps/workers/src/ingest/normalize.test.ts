@@ -38,6 +38,23 @@ const mapping = SourceMapping.parse({
 });
 const row = (over: Record<string, string | number | null> = {}) => ({ COUNTRY: "BR", PLATFORM: "Meta", MONTH: "2026-03", SPEND: "100.005", CCY: "usd", CONV: "4", REV: null, NOTE: "x", ...over });
 
+describe("a data-derived dimension (EX-9, ADR-0094)", () => {
+  // campaign's values come from the data: whatever the source says is the value, never "unknown".
+  const withCampaign = new RegistryIndex(new Map([["campaign", []], ["country", [{ code: "BR", aliases: [], externalIds: [], mergedInto: null, isActive: true }]]]), new Set(["campaign"]));
+  const m = SourceMapping.parse({ kind: "spend", columns: { CAMPAIGN: { dimension: "campaign" }, COUNTRY: { dimension: "country" }, DAY: { role: "period_date", format: "yyyy-MM-dd" }, SPEND: { role: "amount", currency: "USD" } } });
+
+  it("takes the source's value as it is, with no registry row", () => {
+    expect(withCampaign.has("campaign")).toBe(true);
+    const res = normalize({ CAMPAIGN: " BR_Meta_Spring Sale ", COUNTRY: "BR", DAY: "2026-03-02", SPEND: "10" }, m, withCampaign, "s");
+    if (!("facts" in res)) throw new Error(res.rejected);
+    expect(res.facts[0]?.dimensionValues).toEqual({ campaign: "BR_Meta_Spring Sale", country: "BR" });
+  });
+
+  it("registry dimensions still refuse unknown values", () => {
+    expect(normalize({ CAMPAIGN: "x", COUNTRY: "ZZ", DAY: "2026-03-02", SPEND: "10" }, m, withCampaign, "s")).toEqual({ rejected: 'unknown country "ZZ"' });
+  });
+});
+
 describe("normalize", () => {
   it("maps a row to one spend fact and one KPI fact per filled KPI column", () => {
     const res = normalize(row(), mapping, registry, "src-1");

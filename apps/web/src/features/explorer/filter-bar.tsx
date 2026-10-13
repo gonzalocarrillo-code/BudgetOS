@@ -4,6 +4,7 @@ import { t } from "@budget/ui/i18n";
 import { Plus, X } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import type { Dimension } from "../../lib/queries.js";
+import { FactValuePicker } from "./fact-value-picker.js";
 import { ValuePicker } from "./value-picker.js";
 
 /**
@@ -32,7 +33,7 @@ function chipLabel(n: FilterGroupT["children"][number], dims: Dimension[]): stri
   return t("explorer.filter.chip", { dimension: dim?.label ?? key, values: values.map(label).join(", ") });
 }
 
-export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter: FilterGroupT; dimensions: Dimension[]; onChange: (f: FilterGroupT) => void; tags?: Array<{ name: string }> }): ReactElement {
+export function FilterBar({ ws, filter, dimensions, onChange, tags = [] }: { ws: string; filter: FilterGroupT; dimensions: Dimension[]; onChange: (f: FilterGroupT) => void; tags?: Array<{ name: string }> }): ReactElement {
   const [adding, setAdding] = useState(false);
   const [dimKey, setDimKey] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -69,7 +70,10 @@ export function FilterBar({ filter, dimensions, onChange, tags = [] }: { filter:
             ))}
             {tags.length ? <option value={TAG_KEY}>{t("explorer.filter.tag")}</option> : null}
           </Select>
-          {dim ? (
+          {dim && "valuesSource" in dim && dim.valuesSource === "facts" ? (
+            // EX-9: campaign's values are the spend data's, searched on the server.
+            <FactValuePicker ws={ws} dimKey={dim.key} picked={picked} onChange={setPicked} placeholder={t("explorer.filter.searchValues", { dimension: dim.label })} />
+          ) : dim ? (
             <ValuePicker values={dim.values} picked={picked} onChange={setPicked} placeholder={t("explorer.filter.searchValues", { dimension: dim.label })} />
           ) : null}
           {picked.length ? (

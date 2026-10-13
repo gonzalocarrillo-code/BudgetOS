@@ -120,7 +120,7 @@ export function buildServer(deps: McpDeps): McpServer {
 
   server.registerTool(
     "describe_dimensions",
-    { description: "Dimension registry with values and hierarchy templates. Call before building filters: FilterGroup dimension keys and value codes come from here.", inputSchema: { workspaceId: ws }, annotations: readOnly },
+    { description: "Dimension registry with values and hierarchy templates. Call before building filters: FilterGroup dimension keys and value codes come from here. A dimension with valuesSource 'facts' (campaign) has no registry values: its factValues are the values found in the spend data (largest spend first, with spend, first/last seen and source; total says how many exist).", inputSchema: { workspaceId: ws }, annotations: readOnly },
     async (args, extra) => run("describe_dimensions", "workspace.member", args.workspaceId, extra, args, (auth) => q.describeRegistry(deps.prisma, auth)),
   );
 

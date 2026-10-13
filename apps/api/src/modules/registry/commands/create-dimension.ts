@@ -65,6 +65,7 @@ export async function createDimension(
         allowedParents,
         isRequiredForLeaf,
         sortOrder,
+        valuesSource: input.valuesSource,
         createdBy: actorId,
       },
     });
@@ -75,7 +76,7 @@ export async function createDimension(
       entityType: "dimension",
       entityId: id,
       kind: "dimension.created",
-      after: { dimensionId: id, key: input.key },
+      after: { dimensionId: id, key: input.key, valuesSource: input.valuesSource },
     });
     return { id, key: input.key, label: input.label, icon: input.icon, version: 1 };
   });

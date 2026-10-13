@@ -1,5 +1,5 @@
 import { CreatePolicyInput, CreateRuleInput, CreateWorkspaceInput, DomainError, PurgeDemoInput, TemplateSavedView, TourStep, newId, type Role } from "@budget/domain";
-import { audit, defaultAgencyTemplate, demoPeriod, ensureDefaultTemplate, ensurePartitions, outbox, purgeDemoData, reseedCampaignDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
+import { DEFAULT_DIMENSIONS, audit, defaultAgencyTemplate, demoPeriod, ensureDefaultTemplate, ensurePartitions, outbox, purgeDemoData, reseedCampaignDemoData, seedDemoData, withTenant, type TenantContext } from "@budget/db";
 import type { Prisma, PrismaClient, WorkspaceTemplate } from "@prisma/client";
 import { z } from "zod";
 import { parseInput, requireWorkspace } from "../../common/parse-input.js";
@@ -21,7 +21,7 @@ import { createDimension } from "../registry/commands/create-dimension.js";
  */
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
-const Registry = z.array(z.object({ key: z.string(), label: z.string(), dataType: z.enum(["ENUM", "TEXT", "REFERENCE", "DATE_BUCKET"]), icon: z.string(), allowedParents: z.array(z.string()), isRequiredForLeaf: z.boolean(), sortOrder: z.number(), values: z.array(z.object({ code: z.string(), label: z.string(), parentCode: z.string().optional(), externalIds: z.record(z.string(), z.string()).optional() })) }));
+const Registry = z.array(z.object({ key: z.string(), label: z.string(), dataType: z.enum(["ENUM", "TEXT", "REFERENCE", "DATE_BUCKET"]), icon: z.string(), allowedParents: z.array(z.string()), isRequiredForLeaf: z.boolean(), sortOrder: z.number(), valuesSource: z.enum(["registry", "facts"]).optional(), values: z.array(z.object({ code: z.string(), label: z.string(), parentCode: z.string().optional(), externalIds: z.record(z.string(), z.string()).optional() })) }));
 const Hierarchies = z.array(z.object({ name: z.string(), path: z.array(z.string()), isDefault: z.boolean() }));
 const Tours = z.array(z.object({ role: z.enum(["planner", "approver", "finance", "data_admin"]), name: z.string(), steps: z.array(TourStep) }));
 
@@ -108,7 +108,7 @@ export async function createWorkspace(prisma: PrismaClient, auth: AuthContext, r
   const roles: Role[] = ["ORG_ADMIN"];
   let dimensionsAdded = 0;
   for (const d of registry.filter((x) => !have.has(x.key))) {
-    const dim = await createDimension(prisma, ctx, roles, { key: d.key, label: d.label, dataType: d.dataType, icon: d.icon, allowedParents: d.allowedParents.filter((p) => have.has(p) || registry.some((x) => x.key === p)), isRequiredForLeaf: d.isRequiredForLeaf, sortOrder: d.sortOrder, workspaceId }, store);
+    const dim = await createDimension(prisma, ctx, roles, { key: d.key, label: d.label, dataType: d.dataType, icon: d.icon, allowedParents: d.allowedParents.filter((p) => have.has(p) || registry.some((x) => x.key === p)), isRequiredForLeaf: d.isRequiredForLeaf, sortOrder: d.sortOrder, workspaceId, valuesSource: d.valuesSource ?? DEFAULT_DIMENSIONS.find((x) => x.key === d.key)?.valuesSource ?? "registry" }, store);
     if (d.values.length) await addValues(prisma, ctx, roles, dim.id, { values: d.values.map((v) => ({ code: v.code, label: v.label, ...(v.parentCode ? { parentCode: v.parentCode } : {}), ...(v.externalIds ? { externalIds: v.externalIds } : {}) })) });
     have.add(d.key);
     dimensionsAdded += 1;

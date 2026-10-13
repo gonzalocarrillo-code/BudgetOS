@@ -62,6 +62,7 @@ import {
   InviteOrgPersonInput,
   SetWorkspaceRolesInput,
   AddValuesInput,
+  FactValuesResponse,
   AssignRoleInput,
   MergeEnvelopesInput,
   AddChildInput,
@@ -364,17 +365,34 @@ export function openApiDocument(): Record<string, unknown> {
         get: { operationId: "listDimensions", parameters: [workspaceParam], responses: { "200": { description: "Registry dimensions visible to the workspace" } } },
         post: { operationId: "createDimension", parameters: [workspaceParam], requestBody: json(CreateDimensionInput), responses: { "200": { description: "Created dimension" } } },
       },
+      "/api/v1/workspaces/{ws}/dimensions/{key}/fact-values": {
+        get: {
+          operationId: "listDimensionFactValues",
+          parameters: [
+            workspaceParam,
+            { name: "key", in: "path", required: true, schema: { type: "string" }, description: "A granularity whose values come from the data (valuesSource = facts), e.g. campaign" },
+            { name: "q", in: "query", required: false, schema: { type: "string", maxLength: 200 }, description: "Case-insensitive part of the value" },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 200 } },
+            { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0 } },
+            { name: "includeDemo", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] }, description: "ADR-082: demo facts count only while the workspace is pure demo, unless true" },
+          ],
+          responses: {
+            "200": { description: "EX-9: the distinct values on the workspace's live spend and KPI facts (largest spend first), with spend, first/last seen and source systems — read-only, never registry rows", ...json(FactValuesResponse) },
+            "404": { description: "Not a data-derived granularity" },
+          },
+        },
+      },
       "/api/v1/dimensions/{id}": {
         patch: { operationId: "updateDimension", parameters: [idParam, workspaceHeader], requestBody: json(UpdateDimensionInput), responses: { "200": { description: "Updated dimension" } } },
       },
       "/api/v1/dimensions/{id}/values": {
-        post: { operationId: "addDimensionValues", parameters: [idParam, workspaceHeader], requestBody: json(AddValuesInput), responses: { "200": { description: "Upserted dimension values" } } },
+        post: { operationId: "addDimensionValues", parameters: [idParam, workspaceHeader], requestBody: json(AddValuesInput), responses: { "200": { description: "Upserted dimension values" }, "422": { description: "Invalid values, or the granularity's values come from the data (EX-9)" } } },
       },
       "/api/v1/values/{id}": {
-        patch: { operationId: "updateDimensionValue", parameters: [idParam, workspaceHeader], requestBody: json(UpdateValueInput), responses: { "200": { description: "Updated dimension value" } } },
+        patch: { operationId: "updateDimensionValue", parameters: [idParam, workspaceHeader], requestBody: json(UpdateValueInput), responses: { "200": { description: "Updated dimension value" }, "422": { description: "Invalid change, or the granularity's values come from the data (EX-9)" } } },
       },
       "/api/v1/values/{id}/merge": {
-        post: { operationId: "mergeDimensionValues", parameters: [idParam, workspaceHeader], requestBody: json(MergeValuesInput), responses: { "200": { description: "Merged dimension value" } } },
+        post: { operationId: "mergeDimensionValues", parameters: [idParam, workspaceHeader], requestBody: json(MergeValuesInput), responses: { "200": { description: "Merged dimension value" }, "422": { description: "Invalid merge, or the granularity's values come from the data (EX-9)" } } },
       },
       "/api/v1/workspaces/{ws}/hierarchy-templates": {
         get: { operationId: "listHierarchyTemplates", parameters: [workspaceParam], responses: { "200": { description: "Hierarchy templates" } } },

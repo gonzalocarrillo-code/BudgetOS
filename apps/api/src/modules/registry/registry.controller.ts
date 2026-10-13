@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { Permission } from "../../common/permission.decorator.js";
 import { Tenant, orgAdminCtx, type AuthContext } from "../../common/tenant.js";
 import { RegistryService } from "./registry.service.js";
@@ -23,6 +23,13 @@ export class RegistryController {
   listDimensions(@Tenant() auth: AuthContext, @Param("ws") workspaceId: string) {
     const ctx = orgAdminCtx(auth);
     return this.registry.listDimensions(ctx, workspaceId);
+  }
+
+  /** EX-9 (ADR-0094): the values of a data-derived granularity (campaign), straight from the spend data. */
+  @Get("workspaces/:ws/dimensions/:key/fact-values")
+  @Permission("envelope.read")
+  listFactValues(@Tenant() auth: AuthContext, @Param("ws") workspaceId: string, @Param("key") key: string, @Query() query: Record<string, string>) {
+    return this.registry.listFactValues(auth, workspaceId, key, query);
   }
 
   @Post("workspaces/:ws/dimensions")
