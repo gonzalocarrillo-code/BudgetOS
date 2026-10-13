@@ -262,7 +262,7 @@ function SideScope({ ws, side, filter, onFilter, dimensions }: { ws: string; sid
     <div className="flex flex-col gap-1.5 text-sm" data-testid={`experiment-${side}-side`} data-tour={`experiment-${side}-scope`}>
       <span className="font-medium">{t(side === "test" ? "experiments.readout.test" : "experiments.readout.control")}</span>
       <div data-testid={`experiment-${side}-scope`}>
-        <FilterBar ws={ws} filter={filter} dimensions={dimensions} onChange={onFilter} />
+        <FilterBar ws={ws} evaluatedOn="facts" filter={filter} dimensions={dimensions} onChange={onFilter} />
       </div>
     </div>
   );

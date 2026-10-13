@@ -36,8 +36,8 @@ never part of an envelope's tuple), and every campaign filter already reads fact
    substring) and limit/offset. Demo facts follow ADR-082 / T-5 exactly as the planner does
    (`demo_mode`): they count only while the workspace has no real, live budget, unless
    `includeDemo`. Every consumer reads it: `GET /workspaces/:ws/dimensions/:key/fact-values`
-   (`envelope.read`; Registry page, filter bar — and so Budgets, experiment sides and pacing-rule
-   scopes, which all use the filter bar — and the match-rule form's campaign suggestions), ⌘K's
+   (`envelope.read`; Registry page, the filter bar where it is evaluated on facts — experiment
+   sides and rules — and the match-rule form's campaign suggestions), ⌘K's
    `campaign:` suggestions, and MCP `describe_dimensions` (`factValues`, first 100).
 3. **Read-only.** The registry list returns a `facts` dimension with `valuesSource: "facts"` and no
    `values`; the Registry page shows "From your spend data" with a searchable, paged table (name,
@@ -62,6 +62,11 @@ never part of an envelope's tuple), and every campaign filter already reads fact
    cost was the grouping: with `dimension_values ? key` Postgres estimated ~500 rows for 50k and
    sorted all 100k rows to disk (~450 ms). Filtering on `(dimension_values ->> key) <> ''` (same
    meaning, estimated correctly) and grouping by (value, source) first lets it hash: ~70 ms.
+
+7. **Offered only where filters run on facts.** `FilterBar` takes `evaluatedOn: "budgets" |
+   "facts"`; a `budgets` bar (Budgets tree/pivot/timeline and the saved views on them) does not
+   offer a `facts` dimension in "Add filter", since a budget never carries one and the filter could
+   only match nothing. Existing chips still render.
 
 ## Consequences
 

@@ -33,7 +33,31 @@ function chipLabel(n: FilterGroupT["children"][number], dims: Dimension[]): stri
   return t("explorer.filter.chip", { dimension: dim?.label ?? key, values: values.map(label).join(", ") });
 }
 
-export function FilterBar({ ws, filter, dimensions, onChange, tags = [] }: { ws: string; filter: FilterGroupT; dimensions: Dimension[]; onChange: (f: FilterGroupT) => void; tags?: Array<{ name: string }> }): ReactElement {
+/**
+ * What the filter is evaluated on (EX-9 review, ADR-0094). `budgets`: the planner's envelope filter
+ * (Budgets tree/pivot/timeline, saved views) — a data-derived granularity (campaign) never sits on
+ * a budget, so it is not offered there. `facts`: filters evaluated on spend/KPI facts (experiment
+ * sides, rules), where it is.
+ */
+export type FilterTarget = "budgets" | "facts";
+
+export function FilterBar({
+  ws,
+  filter,
+  dimensions: all,
+  onChange,
+  tags = [],
+  evaluatedOn,
+}: {
+  ws: string;
+  filter: FilterGroupT;
+  dimensions: Dimension[];
+  onChange: (f: FilterGroupT) => void;
+  tags?: Array<{ name: string }>;
+  evaluatedOn: FilterTarget;
+}): ReactElement {
+  // Chips still name every dimension; only the "Add filter" choices depend on the target.
+  const dimensions = evaluatedOn === "facts" ? all : all.filter((d) => d.valuesSource !== "facts");
   const [adding, setAdding] = useState(false);
   const [dimKey, setDimKey] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -49,7 +73,7 @@ export function FilterBar({ ws, filter, dimensions, onChange, tags = [] }: { ws:
   return (
     <div className="flex flex-wrap items-center gap-2" data-tour="filter-bar" data-testid="filter-bar">
       {filter.children.map((n, i) => {
-        const label = chipLabel(n, dimensions);
+        const label = chipLabel(n, all);
         return (
           <span key={i} className="inline-flex h-8 items-center gap-1 rounded-full border border-border bg-secondary pl-3 pr-1 text-sm text-secondary-foreground" data-testid="filter-chip">
             {label}
