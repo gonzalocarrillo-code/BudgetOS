@@ -1232,6 +1232,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{ws}/naming-dictionaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNamingDictionaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getNamingDictionary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addNamingDictionaryEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteNamingDictionaryEntry"];
+        options?: never;
+        head?: never;
+        patch: operations["updateNamingDictionaryEntry"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["bulkNamingDictionary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resetNamingDictionary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/ai-fill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["fillNamingDictionaryWithAi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/naming-conventions/{id}": {
         parameters: {
             query?: never;
@@ -6488,6 +6600,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                             /** Format: uuid */
                             createdBy: string;
@@ -6694,6 +6811,11 @@ export interface operations {
                         aliases?: {
                             [key: string]: string;
                         };
+                        /** @enum {string} */
+                        kind?: "dimension" | "ignore" | "date" | "free_text";
+                        /** @enum {string} */
+                        datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                        attribute?: string;
                     }[];
                 };
             };
@@ -6717,6 +6839,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                             /** Format: uuid */
                             createdBy: string;
@@ -6764,6 +6891,11 @@ export interface operations {
                             aliases?: {
                                 [key: string]: string;
                             };
+                            /** @enum {string} */
+                            kind?: "dimension" | "ignore" | "date" | "free_text";
+                            /** @enum {string} */
+                            datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                            attribute?: string;
                         }[];
                     };
                     names?: string[];
@@ -6799,6 +6931,11 @@ export interface operations {
                                 position: number;
                                 dimension: string;
                                 value: string;
+                            } | {
+                                /** @enum {string} */
+                                kind: "date";
+                                position: number;
+                                value: string;
                             }) | null;
                             /** @default [] */
                             parts: {
@@ -6808,7 +6945,16 @@ export interface operations {
                                 code: string | null;
                                 /** @enum {string|null} */
                                 source: "alias" | "registry" | "dictionary" | null;
+                                /**
+                                 * @default dimension
+                                 * @enum {string}
+                                 */
+                                kind: "dimension" | "ignore" | "date" | "free_text";
                             }[];
+                            /** @default {} */
+                            attributes: {
+                                [key: string]: string;
+                            };
                         }[];
                         /** @default [] */
                         unresolved: {
@@ -6854,6 +7000,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                             /** Format: uuid */
                             createdBy: string;
@@ -6889,6 +7040,11 @@ export interface operations {
                         aliases?: {
                             [key: string]: string;
                         };
+                        /** @enum {string} */
+                        kind?: "dimension" | "ignore" | "date" | "free_text";
+                        /** @enum {string} */
+                        datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                        attribute?: string;
                     }[];
                 };
             };
@@ -6912,6 +7068,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                             /** Format: uuid */
                             createdBy: string;
@@ -6973,6 +7134,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                             /** Format: uuid */
                             createdBy: string;
@@ -7044,6 +7210,11 @@ export interface operations {
                                 dimension: string | null;
                                 hitRate: number;
                             } | null;
+                            /**
+                             * @default null
+                             * @enum {string|null}
+                             */
+                            datePattern: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD" | null;
                         }[];
                         proposal: {
                             /** @enum {string} */
@@ -7054,6 +7225,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                         };
                         /** @enum {string} */
@@ -7096,6 +7272,11 @@ export interface operations {
                             positions: {
                                 dimension: string | null;
                                 confidence: number;
+                                /** @enum {string} */
+                                role?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                newGranularity?: string;
                             }[];
                             /** @default [] */
                             mappings: {
@@ -7114,10 +7295,424 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                         };
                         model: string;
                         names: number;
+                        applied: boolean;
+                        /** @default [] */
+                        newGranularities: {
+                            position: number;
+                            label: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    listNamingDictionaries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ws: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every granularity's campaign-naming dictionary (EX-7, ADR-0093): built-in kind, seeded, entries, position; and whether AI fill can run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dictionaries: {
+                            dimension: string;
+                            label: string;
+                            /** @enum {string|null} */
+                            kind: "country" | "language" | "region" | "platform" | "channel" | "objective" | "audience" | "funnel_stage" | "device" | "month" | "quarter" | "year" | null;
+                            seeded: boolean;
+                            builtinCount: number | null;
+                            /** Format: uuid */
+                            syncSourceId: string | null;
+                            position: number | null;
+                            entries: number;
+                        }[];
+                        aiAvailable: boolean;
+                    };
+                };
+            };
+        };
+    };
+    getNamingDictionary: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A granularity's dictionary entries (code, meaning, value, source), EX-6 aliases not yet copied listed read-only */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        label: string;
+                        /** @enum {string|null} */
+                        kind: "country" | "language" | "region" | "platform" | "channel" | "objective" | "audience" | "funnel_stage" | "device" | "month" | "quarter" | "year" | null;
+                        seeded: boolean;
+                        builtinCount: number | null;
+                        /** Format: uuid */
+                        syncSourceId: string | null;
+                        position: number | null;
+                        total: number;
+                        entries: {
+                            /** Format: uuid */
+                            id: string | null;
+                            code: string;
+                            meaning: string;
+                            value: string;
+                            notes: string | null;
+                            /** @enum {string} */
+                            source: "builtin" | "user" | "ai" | "sync";
+                            /** Format: uuid */
+                            syncSourceId: string | null;
+                            legacy: boolean;
+                            createdAt: string | null;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    addNamingDictionaryEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    code: string;
+                    meaning: string;
+                    value?: string;
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Entry written (an existing code replaced); values created and campaign facts re-matched when the convention reads this granularity */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        written: number;
+                        skipped: number;
+                        removed: number;
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        } | null;
+                    };
+                };
+            };
+        };
+    };
+    deleteNamingDictionaryEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entry soft-deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        written: number;
+                        skipped: number;
+                        removed: number;
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        } | null;
+                    };
+                };
+            };
+            /** @description A synced entry is read-only */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateNamingDictionaryEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    code?: string;
+                    meaning?: string;
+                    value?: string;
+                    notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Entry edited (a new row; the old one soft-deleted) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        written: number;
+                        skipped: number;
+                        removed: number;
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        } | null;
+                    };
+                };
+            };
+            /** @description A synced entry is read-only */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    bulkNamingDictionary: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    entries: {
+                        code: string;
+                        meaning: string;
+                        value?: string;
+                        notes?: string;
+                    }[];
+                    /**
+                     * @default user
+                     * @enum {string}
+                     */
+                    source?: "user" | "ai";
+                    /**
+                     * @default replace
+                     * @enum {string}
+                     */
+                    onConflict?: "replace" | "skip";
+                };
+            };
+        };
+        responses: {
+            /** @description Pasted, imported or accepted AI entries written in one change */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        written: number;
+                        skipped: number;
+                        removed: number;
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        } | null;
+                    };
+                };
+            };
+        };
+    };
+    resetNamingDictionary: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reset to built-in: your, AI and built-in entries removed (soft), the built-in seed copied again; synced entries stay */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        written: number;
+                        skipped: number;
+                        removed: number;
+                        createdValues: {
+                            dimension: string;
+                            code: string;
+                            label: string;
+                        }[];
+                        rematch: {
+                            spend: number;
+                            kpi: number;
+                            projection: number;
+                            envelopeIds: string[];
+                        } | null;
+                    };
+                };
+            };
+        };
+    };
+    fillNamingDictionaryWithAi: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. The same key from the same person in the same workspace (or org) within 24 h replays the first response (status and JSON body, with `Idempotent-Replayed: true`) instead of running the change again; a failed attempt does not use up the key. The same key on a different request is 422; while the first is still running a repeat waits, then 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                ws: string;
+                /** @description A granularity key (not campaign) */
+                dimension: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    position?: number;
+                    codes?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description AI-proposed meanings for a position's unresolved codes (not applied); 503 without OPENAI_API_KEY */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        dimension: string;
+                        proposals: {
+                            code: string;
+                            meaning: string;
+                            value: string | null;
+                            confidence: number;
+                        }[];
+                        model: string;
+                        codes: number;
+                        examples: number;
                         applied: boolean;
                     };
                 };
@@ -7157,6 +7752,11 @@ export interface operations {
                                 aliases: {
                                     [key: string]: string;
                                 };
+                                /** @enum {string} */
+                                kind?: "dimension" | "ignore" | "date" | "free_text";
+                                /** @enum {string} */
+                                datePattern?: "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD";
+                                attribute?: string;
                             }[];
                             /** Format: uuid */
                             createdBy: string;

@@ -94,14 +94,54 @@ export type NamingConventionDelimiter = z.infer<typeof NamingConventionDelimiter
 
 const DimensionKey = z.string().regex(/^[a-z][a-z0-9_]{1,40}$/, "a dimension key");
 
-/** One position of a campaign name: the dimension it names (null = ignored) and raw value → value code aliases. */
+/**
+ * EX-7 (ADR-0093): what a position of a campaign name is. `dimension`: a granularity read through
+ * its dictionary; `ignore`: anything (even empty), never makes a name non-conforming; `date`: a
+ * launch date in `datePattern`, kept as an attribute (default `launch_date`); `free_text`: kept as
+ * an attribute value (default `position_<n>`), no dictionary. EX-6 tokens have no kind: a dimension
+ * means `dimension`, null means `ignore`.
+ */
+export const NamingPositionKind = z.enum(["dimension", "ignore", "date", "free_text"]);
+export type NamingPositionKind = z.infer<typeof NamingPositionKind>;
+
+export const NamingDatePattern = z.enum(["MMDDYY", "DDMMYY", "YYYYMMDD", "YYMMDD"]);
+export type NamingDatePattern = z.infer<typeof NamingDatePattern>;
+
+const AttributeKey = z.string().regex(/^[a-z][a-z0-9_]{0,40}$/, "an attribute key");
+
+/** One position of a campaign name: the dimension it names (null = not a dimension), raw value → value code aliases (EX-6, still read), and its kind (EX-7). */
 export const NamingConventionToken = z
   .object({
     dimension: DimensionKey.nullable(),
     aliases: z.record(z.string().min(1).max(100), z.string().min(1).max(200)).default({}),
+    kind: NamingPositionKind.optional(),
+    datePattern: NamingDatePattern.optional(),
+    attribute: AttributeKey.optional(),
   })
   .strict();
 export type NamingConventionToken = z.infer<typeof NamingConventionToken>;
+
+/** A position's kind: its own, else EX-6's reading (a dimension, or ignored). */
+export const positionKind = (t: { dimension: string | null; kind?: NamingPositionKind | undefined }): NamingPositionKind => t.kind ?? (t.dimension === null ? "ignore" : "dimension");
+
+/** The attribute a date or free-text position writes. */
+export const positionAttribute = (t: { kind?: NamingPositionKind | undefined; attribute?: string | undefined; dimension: string | null }, position: number): string | null => {
+  const k = positionKind(t);
+  return k === "date" ? (t.attribute ?? "launch_date") : k === "free_text" ? (t.attribute ?? `position_${position}`) : null;
+};
+
+/** A date part of a campaign name in its pattern → ISO yyyy-MM-dd, or null when it is not a real date. Two-digit years are 20yy. */
+export function parseNamingDate(raw: string, pattern: NamingDatePattern): string | null {
+  const s = raw.trim();
+  const want = pattern === "YYYYMMDD" ? 8 : 6;
+  if (!/^\d+$/.test(s) || s.length !== want) return null;
+  const n = (a: number, b: number) => Number(s.slice(a, b));
+  const [y, m, d] =
+    pattern === "MMDDYY" ? [2000 + n(4, 6), n(0, 2), n(2, 4)] : pattern === "DDMMYY" ? [2000 + n(4, 6), n(2, 4), n(0, 2)] : pattern === "YYMMDD" ? [2000 + n(0, 2), n(2, 4), n(4, 6)] : [n(0, 4), n(4, 6), n(6, 8)];
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  return date.toISOString().slice(0, 10);
+}
 
 /** POST /workspaces/:ws/naming-conventions: `BR_Meta_Prospecting_Q4_VideoA` split on `_` → country, platform, objective, ignore, ignore. */
 export const CreateNamingConventionInput = z
@@ -112,8 +152,21 @@ export const CreateNamingConventionInput = z
     if (dims.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Name at least one position's dimension", path: ["tokens"] });
     if (new Set(dims).size !== dims.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Each dimension may come from one position only", path: ["tokens"] });
     if (dims.includes(CAMPAIGN_DIMENSION)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "The campaign itself is what is parsed", path: ["tokens"] });
+    const attrs: string[] = [];
     v.tokens.forEach((t, i) => {
-      if (t.dimension === null && Object.keys(t.aliases).length > 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "An ignored position has no aliases", path: ["tokens", i, "aliases"] });
+      const kind = positionKind(t);
+      const issue = (message: string, field: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: ["tokens", i, field] });
+      if (t.dimension === null && Object.keys(t.aliases).length > 0) issue("An ignored position has no aliases", "aliases");
+      if (kind === "dimension" && t.dimension === null) issue("A granularity position names its granularity", "dimension");
+      if (kind !== "dimension" && t.dimension !== null) issue("Only a granularity position names a granularity", "dimension");
+      if (kind === "date" && t.datePattern === undefined) issue("A date position has a pattern", "datePattern");
+      if (kind !== "date" && t.datePattern !== undefined) issue("Only a date position has a pattern", "datePattern");
+      if ((kind === "dimension" || kind === "ignore") && t.attribute !== undefined) issue("Only date and free-text positions keep an attribute", "attribute");
+      const attr = positionAttribute(t, i + 1);
+      if (attr !== null) {
+        if (attrs.includes(attr)) issue("Each attribute may come from one position only", "attribute");
+        attrs.push(attr);
+      }
     });
   });
 export type CreateNamingConventionInput = z.infer<typeof CreateNamingConventionInput>;
@@ -163,6 +216,8 @@ export const ConventionProblem = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("parts"), expected: z.number().int(), found: z.number().int() }),
   z.object({ kind: z.literal("empty"), position: z.number().int() }),
   z.object({ kind: z.literal("unknown_value"), position: z.number().int(), dimension: z.string(), value: z.string() }),
+  /** EX-7: a date position whose part is not a date in its pattern. */
+  z.object({ kind: z.literal("date"), position: z.number().int(), value: z.string() }),
 ]);
 export type ConventionProblem = z.infer<typeof ConventionProblem>;
 
@@ -171,9 +226,11 @@ export const ExplainedPart = z.object({
   position: z.number().int(),
   raw: z.string(),
   dimension: z.string().nullable(),
-  /** The value code the part reads as; null when ignored or unresolved. */
+  /** The value code the part reads as (a date position: the ISO date; free text: the text); null when ignored or unresolved. */
   code: z.string().nullable(),
   source: z.enum(["alias", "registry", "dictionary"]).nullable(),
+  /** EX-7: the position's kind. */
+  kind: NamingPositionKind.default("dimension"),
 });
 export type ExplainedPart = z.infer<typeof ExplainedPart>;
 
@@ -197,6 +254,8 @@ export const NamingConventionPreviewResponse = z.object({
       problem: ConventionProblem.nullable(),
       /** EX-6: every part and where its value came from (alias, registry, dictionary); empty when the name has another shape. */
       parts: z.array(ExplainedPart).default([]),
+      /** EX-7: what date and free-text positions read (launch_date → ISO date, …). */
+      attributes: z.record(z.string(), z.string()).default({}),
     }),
   ),
   /** EX-6: tokens nothing reads, per position, over every live campaign (or the names given), largest spend first. */
@@ -216,7 +275,7 @@ export type ConventionParse = { ok: true; dimensionValues: Record<string, string
  * Ignored positions only need to be there. The same function backs matching and the preview.
  */
 export function parseCampaignName(
-  convention: { delimiter: string; tokens: ReadonlyArray<{ dimension: string | null; aliases?: Record<string, string> | undefined }> },
+  convention: { delimiter: string; tokens: ReadonlyArray<{ dimension: string | null; aliases?: Record<string, string> | undefined; kind?: NamingPositionKind | undefined; datePattern?: NamingDatePattern | undefined }> },
   name: string,
   resolve: (dimension: string, value: string) => string | null = (_d, v) => v,
 ): ConventionParse {
@@ -225,8 +284,15 @@ export function parseCampaignName(
   const dimensionValues: Record<string, string> = {};
   for (const [i, token] of convention.tokens.entries()) {
     const raw = (parts[i] ?? "").trim();
+    const kind = positionKind(token);
+    // EX-7: ignored and free-text parts never make a name non-conforming.
+    if (kind === "ignore" || kind === "free_text") continue;
     if (raw === "") return { ok: false, problem: { kind: "empty", position: i + 1 } };
-    if (token.dimension === null) continue;
+    if (kind === "date") {
+      if (token.datePattern === undefined || parseNamingDate(raw, token.datePattern) === null) return { ok: false, problem: { kind: "date", position: i + 1, value: raw } };
+      continue;
+    }
+    if (token.dimension === null || token.dimension === undefined) continue;
     const alias = Object.entries(token.aliases ?? {}).find(([k]) => k.toLowerCase() === raw.toLowerCase());
     const value = alias ? alias[1] : raw;
     const code = resolve(token.dimension, value);

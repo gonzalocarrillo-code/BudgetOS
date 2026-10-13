@@ -53,6 +53,9 @@ export function predicateText(g: MatchRuleGroupT): string {
 export function conventionText(c: Pick<NamingConventionView, "tokens">): string {
   return c.tokens
     .map((tk) => {
+      // EX-7: a date or free-text position says so.
+      if (tk.kind === "date") return `${t("campaignNaming.kind.date")} (${tk.datePattern ?? ""})`;
+      if (tk.kind === "free_text") return t("campaignNaming.kind.free_text");
       if (tk.dimension === null) return t("mapping.ignored");
       const aliases = Object.entries(tk.aliases).map(([k, v]) => `${k}=${v}`);
       return aliases.length ? `${tk.dimension} (${aliases.join(", ")})` : tk.dimension;

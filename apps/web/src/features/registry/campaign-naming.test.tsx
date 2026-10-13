@@ -1,15 +1,17 @@
 import "../../test/dom-polyfills.js";
 import { t } from "@budget/ui/i18n";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "../../test/render.js";
 import { CampaignNaming, draftInput } from "./campaign-naming.js";
 
 /**
- * EX-6 (ADR-0092): Registry › Campaign names. Analyze names fills the positions; the dictionary of
- * each granularity is shown, never typed; Suggest with AI only suggests (disabled with a reason
- * without OpenAI); the preview says unresolved tokens in words; Map to… stores an alias; Save PUTs.
+ * EX-6 (ADR-0092) / EX-7 (ADR-0093): Registry › Campaign names. Analyze names fills the positions;
+ * each position is a granularity (with its dictionary and "Edit dictionary"), ignored, a date or free
+ * text; a new granularity is created inline; Suggest with AI only suggests (disabled with a reason
+ * without OpenAI); the preview says unresolved tokens in words, per position, and "Define" adds a
+ * dictionary entry; Save PUTs.
  */
 
 const { GET, POST, PUT, DELETE } = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }));
@@ -75,13 +77,16 @@ beforeEach(() => {
   for (const m of [GET, POST, PUT, DELETE]) m.mockReset();
   GET.mockImplementation(async (path: string) => {
     if (path === "/api/v1/workspaces/{ws}/naming-convention") return state;
+    if (path === "/api/v1/workspaces/{ws}/naming-dictionaries")
+      return { dictionaries: [{ dimension: "country", label: "Country", kind: "country", seeded: true, builtinCount: 1200, syncSourceId: null, position: 1, entries: 1200 }], aiAvailable: state["aiAvailable"] };
     throw new Error(`unmocked GET ${path}`);
   });
   POST.mockImplementation(async (path: string) => {
     if (path === "/api/v1/workspaces/{ws}/naming-conventions/analyze") return analysis;
     if (path === "/api/v1/workspaces/{ws}/naming-conventions/preview") return preview;
     if (path === "/api/v1/workspaces/{ws}/naming-conventions/suggest") return suggestion;
-    if (path === "/api/v1/workspaces/{ws}/naming-convention/aliases") return saveResponse;
+    if (path === "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries") return { dimension: "audience", written: 1, skipped: 0, removed: 0, createdValues: [], rematch: null };
+    if (path === "/api/v1/workspaces/{ws}/dimensions") return { id: "d9", key: "product" };
     throw new Error(`unmocked POST ${path}`);
   });
   PUT.mockImplementation(async () => saveResponse);
@@ -90,7 +95,9 @@ afterEach(() => cleanup());
 
 const reason = (testId: string) => screen.getByTestId(testId).closest("[data-disabled-reason]")?.getAttribute("data-disabled-reason") ?? null;
 
-describe("CampaignNaming (EX-6)", () => {
+const proposalInput = { delimiter: "_", tokens: ["country", "platform", "audience"].map((d) => ({ dimension: d, aliases: {}, kind: "dimension" })) };
+
+describe("CampaignNaming (EX-6, EX-7)", () => {
   it("Analyze names fills the positions; each granularity shows its dictionary; the preview says unresolved tokens in words; Save PUTs", async () => {
     renderWithQuery(<CampaignNaming ws={WS} dims={dims} canManage />);
     await waitFor(() => expect(reason("naming-save")).toBe(t("campaignNaming.needDimension")));
@@ -100,20 +107,19 @@ describe("CampaignNaming (EX-6)", () => {
     expect(POST.mock.calls.find((c) => c[0] === "/api/v1/workspaces/{ws}/naming-conventions/analyze")?.[1]).toMatchObject({ body: {} });
     await userEvent.click(screen.getByTestId("naming-analysis-use"));
     const selects = screen.getAllByTestId("naming-position-dimension") as HTMLSelectElement[];
-    expect(selects.map((s) => s.value)).toEqual(["country", "platform", "audience"]);
-    expect(screen.getAllByTestId("naming-position-dictionary")[0]?.textContent).toBe(t("campaignNaming.dict.country"));
-    expect([...(selects[0]?.querySelectorAll("option") ?? [])].map((o) => o.getAttribute("value"))).not.toContain("campaign");
+    expect(selects.map((s) => s.value)).toEqual(["dim:country", "dim:platform", "dim:audience"]);
+    await waitFor(() => expect(screen.getAllByTestId("naming-position-dictionary")[0]?.textContent).toBe(`${t("campaignNaming.dict.country")} · ${t("campaignNaming.entries", { n: 1200 })}`));
+    expect([...(selects[0]?.querySelectorAll("option") ?? [])].map((o) => o.getAttribute("value"))).toEqual(["ignore", "date", "free_text", "dim:country", "dim:client", "new"]);
     const p = await screen.findByTestId("naming-preview");
     await waitFor(() => expect(within(p).getAllByTestId("naming-preview-row")).toHaveLength(1));
     const cells = within(p).getAllByTestId("naming-preview-cell");
     expect(cells.map((c) => c.getAttribute("data-resolved"))).toEqual(["yes", "yes", "no"]);
     expect(cells[2]?.textContent).toBe(t("campaignNaming.unresolvedCell", { token: "Zzz" }));
     expect(p.querySelector(".bg-success, .bg-warning, .bg-destructive")).toBeNull();
-    // Not saved yet: Map to… says why.
-    expect(reason("naming-map-to")).toBe(t("campaignNaming.mapNeedsSave"));
+    expect(within(p).getAllByTestId("naming-unresolved-position")[0]?.textContent).toContain(t("campaignNaming.unresolvedPosition", { position: 3, dimension: "Audience", n: 1 }));
     await userEvent.click(screen.getByTestId("naming-save"));
     await waitFor(() => expect(PUT).toHaveBeenCalled());
-    expect((PUT.mock.calls[0]?.[1] as { body: unknown }).body).toEqual(analysis.proposal);
+    expect((PUT.mock.calls[0]?.[1] as { body: unknown }).body).toEqual(proposalInput);
     expect(await screen.findByTestId("naming-notice")).toHaveProperty("textContent", t("campaignNaming.saved", { n: 3, created: t("campaignNaming.created", { n: 1 }) }));
   });
 
@@ -137,26 +143,75 @@ describe("CampaignNaming (EX-6)", () => {
     expect(POST.mock.calls.find((c) => c[0] === "/api/v1/workspaces/{ws}/naming-conventions/suggest")?.[1]).toMatchObject({ body: { names: ["BR_FB_Prospecting", "UK_Meta_Retargeting"] } });
     expect(within(s).getAllByTestId("naming-suggestion-row")[2]?.textContent).toContain("Zzz → retargeting");
     expect(PUT).not.toHaveBeenCalled();
-    expect((screen.getAllByTestId("naming-position-dimension") as HTMLSelectElement[]).map((x) => x.value)).toEqual([""]);
+    expect((screen.getAllByTestId("naming-position-dimension") as HTMLSelectElement[]).map((x) => x.value)).toEqual(["ignore"]);
     await userEvent.click(screen.getByTestId("naming-suggestion-use"));
-    expect((screen.getAllByTestId("naming-position-aliases")[2] as HTMLInputElement).value).toBe("Zzz=retargeting");
+    expect((screen.getAllByTestId("naming-position-dimension") as HTMLSelectElement[]).map((x) => x.value)).toEqual(["dim:country", "dim:platform", "dim:audience"]);
+    // Aliases are not typed any more: the AI's mappings are shown, codes are defined in the dictionaries.
+    expect(screen.queryByTestId("naming-position-aliases")).toBeNull();
+    expect(screen.queryByTestId("naming-position-legacy")).toBeNull();
     expect(PUT).not.toHaveBeenCalled();
   });
 
-  it("on the saved convention, Map to… stores an alias", async () => {
+  it("'Define' on an unresolved code adds it to the granularity's dictionary; Edit dictionary opens it", async () => {
     state = { convention: savedConvention, others: 0, aiAvailable: false };
-    renderWithQuery(<CampaignNaming ws={WS} dims={dims} canManage />);
+    const onEdit = vi.fn();
+    renderWithQuery(<CampaignNaming ws={WS} dims={dims} canManage onEditDictionary={onEdit} />);
     await waitFor(() => expect(reason("naming-save")).toBe(t("campaignNaming.unchanged")));
     const p = await screen.findByTestId("naming-preview");
-    await userEvent.click(await within(p).findByTestId("naming-map-to"));
-    await userEvent.type(screen.getByTestId("naming-map-value"), "retargeting");
-    await userEvent.click(screen.getByTestId("naming-map-save"));
-    await waitFor(() => expect(POST.mock.calls.some((c) => c[0] === "/api/v1/workspaces/{ws}/naming-convention/aliases")).toBe(true));
-    expect((POST.mock.calls.find((c) => c[0] === "/api/v1/workspaces/{ws}/naming-convention/aliases")?.[1] as { body: unknown }).body).toEqual({ dimension: "audience", token: "Zzz", value: "retargeting" });
+    await userEvent.click(await within(p).findByTestId("naming-define"));
+    expect(reason("naming-define-save")).toBe(t("namingDict.needMeaning"));
+    await userEvent.type(screen.getByTestId("naming-define-meaning"), "Retargeting");
+    await userEvent.click(screen.getByTestId("naming-define-save"));
+    const call = await waitFor(() => {
+      const c = POST.mock.calls.find((x) => x[0] === "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries");
+      expect(c).toBeDefined();
+      return c?.[1] as { params: { path: { dimension: string } }; body: unknown };
+    });
+    expect(call.params.path.dimension).toBe("audience");
+    expect(call.body).toEqual({ code: "Zzz", meaning: "Retargeting" });
+    await userEvent.click(screen.getAllByTestId("naming-edit-dictionary")[0] as HTMLElement);
+    expect(onEdit).toHaveBeenCalledWith("country");
   });
 
-  it("draftInput drops aliases of ignored positions and needs one granularity", () => {
-    expect(draftInput({ delimiter: "-", tokens: [{ dimension: null, aliases: "x=y" }] })).toBeNull();
-    expect(draftInput({ delimiter: "-", tokens: [{ dimension: "platform", aliases: "FB=meta, IG = meta" }, { dimension: null, aliases: "x=y" }] })).toEqual({ delimiter: "-", tokens: [{ dimension: "platform", aliases: { FB: "meta", IG: "meta" } }, { dimension: null, aliases: {} }] });
+  it("a position can be a date (pattern), free text or ignored; a new granularity is created inline", async () => {
+    renderWithQuery(<CampaignNaming ws={WS} dims={dims} canManage canManageRegistry={false} />);
+    await waitFor(() => expect(reason("naming-save")).toBe(t("campaignNaming.needDimension")));
+    fireEvent.change(screen.getByTestId("naming-part-count"), { target: { value: "3" } });
+    const selects = () => screen.getAllByTestId("naming-position-dimension") as HTMLSelectElement[];
+    await userEvent.selectOptions(selects()[0] as HTMLSelectElement, "dim:country");
+    await userEvent.selectOptions(selects()[1] as HTMLSelectElement, "date");
+    await userEvent.selectOptions(screen.getByTestId("naming-position-pattern"), "DDMMYY");
+    await userEvent.selectOptions(selects()[2] as HTMLSelectElement, "new");
+    expect(reason("naming-new-create")).toBe(t("registry.blocked.role"));
+    await userEvent.selectOptions(selects()[2] as HTMLSelectElement, "free_text");
+    await userEvent.type(screen.getAllByTestId("naming-position-attribute")[1] as HTMLElement, "audience_note");
+    await userEvent.click(screen.getByTestId("naming-save"));
+    await waitFor(() => expect(PUT).toHaveBeenCalled());
+    expect((PUT.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({
+      delimiter: "_",
+      tokens: [
+        { dimension: "country", aliases: {}, kind: "dimension" },
+        { dimension: null, aliases: {}, kind: "date", datePattern: "DDMMYY" },
+        { dimension: null, aliases: {}, kind: "free_text", attribute: "audience_note" },
+      ],
+    });
+    cleanup();
+    renderWithQuery(<CampaignNaming ws={WS} dims={dims} canManage canManageRegistry />);
+    await userEvent.selectOptions((await screen.findAllByTestId("naming-position-dimension"))[0] as HTMLSelectElement, "new");
+    await userEvent.type(screen.getByTestId("naming-new-label"), "Match type");
+    await userEvent.click(screen.getByTestId("naming-new-create"));
+    await waitFor(() => expect(POST.mock.calls.find((c) => c[0] === "/api/v1/workspaces/{ws}/dimensions")?.[1]).toMatchObject({ body: { key: "match_type", label: "Match type", workspaceId: WS } }));
+  });
+
+  it("draftInput keeps each position's kind, drops aliases and needs one granularity", () => {
+    const tk = { datePattern: "MMDDYY" as const, attribute: "", aliases: { FB: "meta" } };
+    expect(draftInput({ delimiter: "-", tokens: [{ ...tk, kind: "ignore", dimension: null }] })).toBeNull();
+    expect(draftInput({ delimiter: "-", tokens: [{ ...tk, kind: "dimension", dimension: "platform" }, { ...tk, kind: "date", dimension: null }] })).toEqual({
+      delimiter: "-",
+      tokens: [
+        { dimension: "platform", aliases: {}, kind: "dimension" },
+        { dimension: null, aliases: {}, kind: "date", datePattern: "MMDDYY" },
+      ],
+    });
   });
 });

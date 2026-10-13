@@ -326,6 +326,11 @@ export {
   parseCampaignName,
   ExplainedPart,
   UnresolvedToken,
+  NamingDatePattern,
+  NamingPositionKind,
+  parseNamingDate,
+  positionAttribute,
+  positionKind,
 } from "./matching.js";
 export type { ConventionParse, MatchRuleGroupT } from "./matching.js";
 export {
@@ -356,3 +361,28 @@ export {
   proposalFromSuggestion,
 } from "./naming-dictionaries.js";
 export type { DictionaryHit, ExplainedName, RegistryValueRef, TokenHit, TokenResolver, TokenSource } from "./naming-dictionaries.js";
+export {
+  BulkDictionaryInput,
+  DictionaryAiAnswer,
+  DictionaryAiProposal,
+  DictionaryEntryInput,
+  DictionaryEntrySource,
+  DictionaryEntryView,
+  DictionaryQuery,
+  DictionaryWriteResponse,
+  FillDictionaryAiInput,
+  FillDictionaryAiResponse,
+  MAX_AI_CODES,
+  MAX_AI_EXAMPLES,
+  MAX_AI_VALUES,
+  MAX_BULK_ENTRIES,
+  NamingDictionariesResponse,
+  NamingDictionaryView,
+  SEEDABLE_KINDS,
+  UpdateDictionaryEntryInput,
+  builtinDictionaryRows,
+  dictionaryToCsv,
+  parseDictionaryCsv,
+  parseDictionaryPaste,
+} from "./naming-dictionary-entries.js";
+export type { BuiltinRow, DictionaryRows, ParsedEntries } from "./naming-dictionary-entries.js";

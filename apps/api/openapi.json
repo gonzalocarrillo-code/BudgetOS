@@ -10487,6 +10487,28 @@
                                     "maxLength": 200
                                   },
                                   "default": {}
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "dimension",
+                                    "ignore",
+                                    "date",
+                                    "free_text"
+                                  ]
+                                },
+                                "datePattern": {
+                                  "type": "string",
+                                  "enum": [
+                                    "MMDDYY",
+                                    "DDMMYY",
+                                    "YYYYMMDD",
+                                    "YYMMDD"
+                                  ]
+                                },
+                                "attribute": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_]{0,40}$"
                                 }
                               },
                               "required": [
@@ -11085,6 +11107,28 @@
                             "maxLength": 200
                           },
                           "default": {}
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "dimension",
+                            "ignore",
+                            "date",
+                            "free_text"
+                          ]
+                        },
+                        "datePattern": {
+                          "type": "string",
+                          "enum": [
+                            "MMDDYY",
+                            "DDMMYY",
+                            "YYYYMMDD",
+                            "YYMMDD"
+                          ]
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_]{0,40}$"
                         }
                       },
                       "required": [
@@ -11148,6 +11192,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
@@ -11273,6 +11339,28 @@
                                 "maxLength": 200
                               },
                               "default": {}
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "dimension",
+                                "ignore",
+                                "date",
+                                "free_text"
+                              ]
+                            },
+                            "datePattern": {
+                              "type": "string",
+                              "enum": [
+                                "MMDDYY",
+                                "DDMMYY",
+                                "YYYYMMDD",
+                                "YYMMDD"
+                              ]
+                            },
+                            "attribute": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_]{0,40}$"
                             }
                           },
                           "required": [
@@ -11397,6 +11485,28 @@
                                   "dimension",
                                   "value"
                                 ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "date"
+                                    ]
+                                  },
+                                  "position": {
+                                    "type": "integer"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "position",
+                                  "value"
+                                ]
                               }
                             ],
                             "nullable": true
@@ -11428,6 +11538,16 @@
                                     "dictionary"
                                   ],
                                   "nullable": true
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "dimension",
+                                    "ignore",
+                                    "date",
+                                    "free_text"
+                                  ],
+                                  "default": "dimension"
                                 }
                               },
                               "required": [
@@ -11439,6 +11559,13 @@
                               ]
                             },
                             "default": []
+                          },
+                          "attributes": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "default": {}
                           }
                         },
                         "required": [
@@ -11559,6 +11686,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
@@ -11657,6 +11806,28 @@
                             "maxLength": 200
                           },
                           "default": {}
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "dimension",
+                            "ignore",
+                            "date",
+                            "free_text"
+                          ]
+                        },
+                        "datePattern": {
+                          "type": "string",
+                          "enum": [
+                            "MMDDYY",
+                            "DDMMYY",
+                            "YYYYMMDD",
+                            "YYMMDD"
+                          ]
+                        },
+                        "attribute": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_]{0,40}$"
                         }
                       },
                       "required": [
@@ -11720,6 +11891,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
@@ -11899,6 +12092,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
@@ -12156,6 +12371,17 @@
                               "hitRate"
                             ],
                             "nullable": true
+                          },
+                          "datePattern": {
+                            "type": "string",
+                            "enum": [
+                              "MMDDYY",
+                              "DDMMYY",
+                              "YYYYMMDD",
+                              "YYMMDD"
+                            ],
+                            "nullable": true,
+                            "default": null
                           }
                         },
                         "required": [
@@ -12202,6 +12428,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
@@ -12319,6 +12567,29 @@
                                 "exclusiveMinimum": false,
                                 "maximum": 1,
                                 "exclusiveMaximum": false
+                              },
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "newGranularity": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 60
                               }
                             },
                             "required": [
@@ -12408,6 +12679,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
@@ -12429,6 +12722,25 @@
                     },
                     "applied": {
                       "type": "boolean"
+                    },
+                    "newGranularities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "position": {
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "position",
+                          "label"
+                        ]
+                      },
+                      "default": []
                     }
                   },
                   "required": [
@@ -12436,6 +12748,1103 @@
                     "proposal",
                     "model",
                     "names",
+                    "applied"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries": {
+      "get": {
+        "operationId": "listNamingDictionaries",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every granularity's campaign-naming dictionary (EX-7, ADR-0093): built-in kind, seeded, entries, position; and whether AI fill can run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dictionaries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "country",
+                              "language",
+                              "region",
+                              "platform",
+                              "channel",
+                              "objective",
+                              "audience",
+                              "funnel_stage",
+                              "device",
+                              "month",
+                              "quarter",
+                              "year"
+                            ],
+                            "nullable": true
+                          },
+                          "seeded": {
+                            "type": "boolean"
+                          },
+                          "builtinCount": {
+                            "type": "integer",
+                            "nullable": true
+                          },
+                          "syncSourceId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "position": {
+                            "type": "integer",
+                            "nullable": true
+                          },
+                          "entries": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "label",
+                          "kind",
+                          "seeded",
+                          "builtinCount",
+                          "syncSourceId",
+                          "position",
+                          "entries"
+                        ]
+                      }
+                    },
+                    "aiAvailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "dictionaries",
+                    "aiAvailable"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}": {
+      "get": {
+        "operationId": "getNamingDictionary",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A granularity's dictionary entries (code, meaning, value, source), EX-6 aliases not yet copied listed read-only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "country",
+                        "language",
+                        "region",
+                        "platform",
+                        "channel",
+                        "objective",
+                        "audience",
+                        "funnel_stage",
+                        "device",
+                        "month",
+                        "quarter",
+                        "year"
+                      ],
+                      "nullable": true
+                    },
+                    "seeded": {
+                      "type": "boolean"
+                    },
+                    "builtinCount": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "syncSourceId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "position": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "meaning": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "builtin",
+                              "user",
+                              "ai",
+                              "sync"
+                            ]
+                          },
+                          "syncSourceId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "legacy": {
+                            "type": "boolean"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "code",
+                          "meaning",
+                          "value",
+                          "notes",
+                          "source",
+                          "syncSourceId",
+                          "legacy",
+                          "createdAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "label",
+                    "kind",
+                    "seeded",
+                    "builtinCount",
+                    "syncSourceId",
+                    "position",
+                    "total",
+                    "entries"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries": {
+      "post": {
+        "operationId": "addNamingDictionaryEntry",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "meaning": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "code",
+                  "meaning"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Entry written (an existing code replaced); values created and campaign facts re-matched when the convention reads this granularity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "written": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    },
+                    "removed": {
+                      "type": "integer"
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "written",
+                    "skipped",
+                    "removed",
+                    "createdValues",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries/{id}": {
+      "patch": {
+        "operationId": "updateNamingDictionaryEntry",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "meaning": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Entry edited (a new row; the old one soft-deleted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "written": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    },
+                    "removed": {
+                      "type": "integer"
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "written",
+                    "skipped",
+                    "removed",
+                    "createdValues",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "A synced entry is read-only"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteNamingDictionaryEntry",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entry soft-deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "written": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    },
+                    "removed": {
+                      "type": "integer"
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "written",
+                    "skipped",
+                    "removed",
+                    "createdValues",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "A synced entry is read-only"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/bulk": {
+      "post": {
+        "operationId": "bulkNamingDictionary",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5000,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "meaning": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "notes": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "meaning"
+                      ]
+                    }
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "ai"
+                    ],
+                    "default": "user"
+                  },
+                  "onConflict": {
+                    "type": "string",
+                    "enum": [
+                      "replace",
+                      "skip"
+                    ],
+                    "default": "replace"
+                  }
+                },
+                "required": [
+                  "entries"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pasted, imported or accepted AI entries written in one change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "written": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    },
+                    "removed": {
+                      "type": "integer"
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "written",
+                    "skipped",
+                    "removed",
+                    "createdValues",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/reset": {
+      "post": {
+        "operationId": "resetNamingDictionary",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Reset to built-in: your, AI and built-in entries removed (soft), the built-in seed copied again; synced entries stay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "written": {
+                      "type": "integer"
+                    },
+                    "skipped": {
+                      "type": "integer"
+                    },
+                    "removed": {
+                      "type": "integer"
+                    },
+                    "createdValues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "code",
+                          "label"
+                        ]
+                      }
+                    },
+                    "rematch": {
+                      "type": "object",
+                      "properties": {
+                        "spend": {
+                          "type": "integer"
+                        },
+                        "kpi": {
+                          "type": "integer"
+                        },
+                        "projection": {
+                          "type": "integer"
+                        },
+                        "envelopeIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      },
+                      "required": [
+                        "spend",
+                        "kpi",
+                        "projection",
+                        "envelopeIds"
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "written",
+                    "skipped",
+                    "removed",
+                    "createdValues",
+                    "rematch"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/ai-fill": {
+      "post": {
+        "operationId": "fillNamingDictionaryWithAi",
+        "parameters": [
+          {
+            "name": "ws",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A granularity key (not campaign)"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 20,
+                    "exclusiveMaximum": false
+                  },
+                  "codes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "AI-proposed meanings for a position's unresolved codes (not applied); 503 without OPENAI_API_KEY",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "proposals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "meaning": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "confidence": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "meaning",
+                          "value",
+                          "confidence"
+                        ]
+                      }
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "codes": {
+                      "type": "integer"
+                    },
+                    "examples": {
+                      "type": "integer"
+                    },
+                    "applied": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "dimension",
+                    "proposals",
+                    "model",
+                    "codes",
+                    "examples",
                     "applied"
                   ]
                 }
@@ -12518,6 +13927,28 @@
                                   "maxLength": 200
                                 },
                                 "default": {}
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dimension",
+                                  "ignore",
+                                  "date",
+                                  "free_text"
+                                ]
+                              },
+                              "datePattern": {
+                                "type": "string",
+                                "enum": [
+                                  "MMDDYY",
+                                  "DDMMYY",
+                                  "YYYYMMDD",
+                                  "YYMMDD"
+                                ]
+                              },
+                              "attribute": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,40}$"
                               }
                             },
                             "required": [
