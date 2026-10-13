@@ -1,5 +1,6 @@
 import { CAMPAIGN_DIMENSION, makeTokenResolver, type RegistryValueRef, type TokenResolver } from "@budget/domain";
 import { Decimal } from "decimal.js";
+import { loadNamingDictionaries } from "./naming-dictionaries.js";
 import type { Tx } from "./sql.js";
 
 /**
@@ -19,9 +20,10 @@ async function dimensionsByKey(tx: Tx, workspaceId: string, keys: string[]): Pro
 }
 
 /**
- * Token → value code for convention parts: a registry value (code, value alias or label; org-wide
- * or this workspace's dimension of that key), else the dimension kind's dictionary (`@budget/domain`
- * makeTokenResolver). Merged values are skipped.
+ * Token → value code for convention parts: the workspace dictionary's own entries (EX-7), a
+ * registry value (code, value alias or label; org-wide or this workspace's dimension of that key),
+ * else the built-in entries (seeded rows, or the static dictionary of the dimension's kind)
+ * (`@budget/domain` makeTokenResolver). Merged values are skipped.
  */
 export async function namingResolver(tx: Tx, workspaceId: string, keys: string[]): Promise<TokenResolver> {
   const dims = await dimensionsByKey(tx, workspaceId, keys);
@@ -34,7 +36,8 @@ export async function namingResolver(tx: Tx, workspaceId: string, keys: string[]
     const key = keyOf.get(v.dimensionId);
     if (key) registry[key]?.push({ code: v.code, label: v.label, aliases: v.aliases });
   }
-  return makeTokenResolver(registry);
+  // EX-7 (ADR-0093): the workspace's dictionaries (yours before the registry, built-in rows after it).
+  return makeTokenResolver(registry, undefined, await loadNamingDictionaries(tx, workspaceId, keys));
 }
 
 export interface CampaignSpend {

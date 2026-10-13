@@ -1,5 +1,18 @@
 import { z } from "zod";
-import { CAMPAIGN_DIMENSION, NamingConventionDelimiter, NamingConventionToken, NamingConventionWriteResponse, type ConventionProblem, type CreateNamingConventionInput, type ExplainedPart } from "./matching.js";
+import {
+  CAMPAIGN_DIMENSION,
+  NamingConventionDelimiter,
+  NamingConventionToken,
+  NamingConventionWriteResponse,
+  NamingDatePattern,
+  parseNamingDate,
+  positionAttribute,
+  positionKind,
+  type ConventionProblem,
+  type CreateNamingConventionInput,
+  type ExplainedPart,
+  type NamingPositionKind,
+} from "./matching.js";
 
 /**
  * EX-6 (ADR-0092): built-in dictionaries for campaign-name tokens. A dimension of a known kind
@@ -349,6 +362,39 @@ export function dictionarySize(kind: DictionaryKind): number | null {
   return dictionary(kind).entries.length;
 }
 
+/** The kinds whose dictionary is a list of entries (seedable into a workspace); quarter and year are patterns. */
+export const SEEDABLE_KINDS = DictionaryKind.options.filter((k): k is Exclude<DictionaryKind, "quarter" | "year"> => k !== "quarter" && k !== "year");
+
+export interface BuiltinRow {
+  /** As written: a code or a synonym. */
+  code: string;
+  /** The canonical code it means. */
+  value: string;
+  label: string;
+}
+
+/**
+ * EX-7 (ADR-0093): a built-in dictionary as rows, the seed copied into a workspace's dictionary
+ * the first time a granularity of that kind is used for naming: every code and synonym once
+ * (normalized; the first writer wins, as in lookups), each → its canonical code. Empty for the
+ * pattern kinds (quarter, year).
+ */
+export function builtinDictionaryRows(kind: DictionaryKind): BuiltinRow[] {
+  if (kind === "quarter" || kind === "year") return [];
+  const d = dictionary(kind);
+  const text = new Map<string, string>();
+  for (const e of d.entries) for (const s of [e.code, ...e.synonyms]) {
+    const k = normalizeToken(s);
+    if (k !== "" && !text.has(k)) text.set(k, s);
+  }
+  const rows: BuiltinRow[] = [];
+  for (const [k, i] of d.index) {
+    const e = d.entries[i];
+    if (e) rows.push({ code: (text.get(k) ?? k).slice(0, 200), value: e.code, label: e.label.slice(0, 200) });
+  }
+  return rows;
+}
+
 /** Dimension keys (normalized) → the dictionary kind they use, besides the kind's own name. */
 const KIND_KEYS: Record<DictionaryKind, string[]> = {
   country: ["country", "countries", "market", "markets", "geo", "pais", "paises", "mercado", "cntry", "ctry", "nation"],
@@ -386,6 +432,20 @@ export interface RegistryValueRef {
 
 export type TokenSource = "alias" | "registry" | "dictionary";
 
+/** Where a workspace dictionary entry came from (EX-7): the built-in seed, a person, an accepted AI proposal, an external source (EX-8). */
+export const DictionaryEntrySource = z.enum(["builtin", "user", "ai", "sync"]);
+export type DictionaryEntrySource = z.infer<typeof DictionaryEntrySource>;
+
+/**
+ * EX-7 (ADR-0093): a granularity's workspace dictionary, as the resolver reads it. `seeded`: the
+ * built-in entries were copied into it, so its rows replace the static dictionary (a built-in entry
+ * deleted there no longer reads); until then the static dictionary of the granularity's kind does.
+ */
+export interface DictionaryRows {
+  seeded: boolean;
+  entries: ReadonlyArray<{ code: string; value: string; label: string; source: DictionaryEntrySource }>;
+}
+
 /** A token resolved to a value code. `known`: the code is a registry value; otherwise `label` is the dictionary's, for creating it. */
 export interface TokenHit {
   code: string;
@@ -397,13 +457,19 @@ export interface TokenHit {
 export type TokenResolver = (dimension: string, token: string) => TokenHit | null;
 
 /**
- * Registry values (per dimension key) + the dimension's dictionary → a resolver. A token matches a
- * registry value by code, then value alias, then label (normalized); otherwise the dictionary of
- * the dimension's kind reads it, and its entry lands on the registry value whose code, label or
- * alias is any of the entry's synonyms (so a registry that says `UK` keeps `UK` for "GB"), else
- * on the dictionary's canonical code.
+ * Registry values (per dimension key) + the workspace dictionaries + the static dictionaries → a
+ * resolver. Order: the workspace dictionary's own entries (user, AI, synced: explicit overrides,
+ * like EX-6's aliases) > a registry value by code, then value alias, then label (normalized) >
+ * the built-in entries (the workspace's seeded rows, else the static dictionary of the dimension's
+ * kind; quarter and year are patterns) > null. A dictionary hit lands on the registry value whose
+ * code, label or alias is the entry's value or any of its synonyms (so a registry that says `UK`
+ * keeps `UK` for "GB"), else on the entry's value (created in the registry on demand).
  */
-export function makeTokenResolver(registry: Readonly<Record<string, readonly RegistryValueRef[]>>, kindFor: (dimension: string) => DictionaryKind | null = dictionaryKindFor): TokenResolver {
+export function makeTokenResolver(
+  registry: Readonly<Record<string, readonly RegistryValueRef[]>>,
+  kindFor: (dimension: string) => DictionaryKind | null = dictionaryKindFor,
+  dictionaries: Readonly<Record<string, DictionaryRows>> = {},
+): TokenResolver {
   const indexes = new Map<string, Map<string, string>>();
   for (const [dim, values] of Object.entries(registry)) {
     const m = new Map<string, string>();
@@ -416,67 +482,109 @@ export function makeTokenResolver(registry: Readonly<Record<string, readonly Reg
     for (const v of values) put(v.label, v.code);
     indexes.set(dim, m);
   }
-  return (dimension, token) => {
-    const k = normalizeToken(token);
-    if (k === "") return null;
-    const idx = indexes.get(dimension);
-    const own = idx?.get(k);
-    if (own !== undefined) return { code: own, source: "registry", known: true };
-    const kind = kindFor(dimension);
-    if (kind === null) return null;
-    const hit = lookupDictionary(kind, token);
-    if (hit === null) return null;
+  type Row = DictionaryRows["entries"][number];
+  const own = new Map<string, { overrides: Map<string, Row>; builtin: Map<string, Row>; byValue: Map<string, string[]>; seeded: boolean }>();
+  for (const [dim, d] of Object.entries(dictionaries)) {
+    const overrides = new Map<string, Row>();
+    const builtin = new Map<string, Row>();
+    const byValue = new Map<string, string[]>();
+    for (const e of d.entries) {
+      const k = normalizeToken(e.code);
+      if (k === "") continue;
+      const target = e.source === "builtin" ? builtin : overrides;
+      if (!target.has(k)) target.set(k, e);
+      byValue.set(e.value, [...(byValue.get(e.value) ?? []), k]);
+    }
+    own.set(dim, { overrides, builtin, byValue, seeded: d.seeded });
+  }
+  const codes = new Map(Object.entries(registry).map(([dim, values]) => [dim, new Map(values.map((v) => [normalizeToken(v.code), v.code] as const))]));
+  const land = (idx: Map<string, string> | undefined, value: string, label: string, synonyms: Iterable<string>): TokenHit => {
     if (idx) {
-      for (const s of dictionarySynonyms(kind, hit.code)) {
+      for (const s of [normalizeToken(value), ...synonyms]) {
         const code = idx.get(s);
         if (code !== undefined) return { code, source: "dictionary", known: true };
       }
     }
-    return { code: hit.code, source: "dictionary", known: false, label: hit.label };
+    return { code: value, source: "dictionary", known: false, label };
+  };
+  return (dimension, token) => {
+    const k = normalizeToken(token);
+    if (k === "") return null;
+    const idx = indexes.get(dimension);
+    const dict = own.get(dimension);
+    const override = dict?.overrides.get(k);
+    // Your entry names its value: it lands only on the registry value with that code.
+    if (override) return land(codes.get(dimension), override.value, override.label, []);
+    const reg = idx?.get(k);
+    if (reg !== undefined) return { code: reg, source: "registry", known: true };
+    const kind = kindFor(dimension);
+    if (dict?.seeded) {
+      const b = dict.builtin.get(k);
+      if (b) return land(idx, b.value, b.label, dict.byValue.get(b.value) ?? []);
+      if (kind !== "quarter" && kind !== "year") return null;
+    }
+    if (kind === null) return null;
+    const hit = lookupDictionary(kind, token);
+    if (hit === null) return null;
+    return land(idx, hit.code, hit.label, dictionarySynonyms(kind, hit.code));
   };
 }
-
 
 export interface ExplainedName {
   dimensionValues: Record<string, string> | null;
   problem: ConventionProblem | null;
   /** Every part when the name has the convention's shape (unresolved ones too); empty otherwise. */
   parts: ExplainedPart[];
+  /** EX-7: what date and free-text positions read (launch_date → ISO date, …). */
+  attributes: Record<string, string>;
 }
 
+type ConventionShape = {
+  delimiter: string;
+  tokens: ReadonlyArray<{ dimension: string | null; aliases?: Record<string, string> | undefined; kind?: NamingPositionKind | undefined; datePattern?: NamingDatePattern | undefined; attribute?: string | undefined }>;
+};
+
 /**
- * A campaign name read with a convention, part by part: the position's alias (any case), then the
- * resolver (registry, then dictionary). Same shape rules as `parseCampaignName` (exactly one part
- * per position, none empty); unlike it, every part is reported, so the unresolved tokens of a name
- * can be listed. `dimensionValues` only when every named part resolved.
+ * A campaign name read with a convention, part by part. The name is split on the convention's
+ * separator only (a hyphen inside `Core-Translate` is part of the part). A granularity position
+ * reads through the position's alias (EX-6, any case), then the resolver (workspace dictionary,
+ * registry, built-in dictionary); a date position parses its pattern; free text is kept; an
+ * ignored position is anything, even empty. A name fits when it has one part per position, no
+ * granularity or date part is empty and all of them read; `dimensionValues` only then. Every part
+ * is reported, so a name's unresolved tokens can be listed.
  */
-export function explainCampaignName(
-  convention: { delimiter: string; tokens: ReadonlyArray<{ dimension: string | null; aliases?: Record<string, string> | undefined }> },
-  name: string,
-  resolve: TokenResolver,
-): ExplainedName {
+export function explainCampaignName(convention: ConventionShape, name: string, resolve: TokenResolver): ExplainedName {
   const raws = name.trim().split(convention.delimiter);
-  if (raws.length !== convention.tokens.length) return { dimensionValues: null, problem: { kind: "parts", expected: convention.tokens.length, found: raws.length }, parts: [] };
-  const empty = raws.findIndex((r) => r.trim() === "");
-  if (empty >= 0) return { dimensionValues: null, problem: { kind: "empty", position: empty + 1 }, parts: [] };
+  if (raws.length !== convention.tokens.length) return { dimensionValues: null, problem: { kind: "parts", expected: convention.tokens.length, found: raws.length }, parts: [], attributes: {} };
+  const empty = convention.tokens.findIndex((tk, i) => (positionKind(tk) === "dimension" || positionKind(tk) === "date") && (raws[i] ?? "").trim() === "");
+  if (empty >= 0) return { dimensionValues: null, problem: { kind: "empty", position: empty + 1 }, parts: [], attributes: {} };
   const parts: ExplainedPart[] = [];
+  const attributes: Record<string, string> = {};
   let problem: ConventionProblem | null = null;
   const dimensionValues: Record<string, string> = {};
   for (const [i, token] of convention.tokens.entries()) {
     const raw = (raws[i] ?? "").trim();
-    if (token.dimension === null) {
-      parts.push({ position: i + 1, raw, dimension: null, code: null, source: null });
+    const kind = positionKind(token);
+    const attr = positionAttribute(token, i + 1);
+    if (kind === "ignore" || token.dimension === null || kind !== "dimension") {
+      let code: string | null = null;
+      if (kind === "date") {
+        code = token.datePattern ? parseNamingDate(raw, token.datePattern) : null;
+        if (code === null) problem ??= { kind: "date", position: i + 1, value: raw };
+      } else if (kind === "free_text" && raw !== "") code = raw;
+      if (code !== null && attr !== null) attributes[attr] = code;
+      parts.push({ position: i + 1, raw, dimension: null, code, source: null, kind });
       continue;
     }
     const k = normalizeToken(raw);
     const alias = Object.entries(token.aliases ?? {}).find(([a]) => normalizeToken(a) === k);
     const hit = resolve(token.dimension, alias ? alias[1] : raw);
     const code = hit?.code ?? null;
-    parts.push({ position: i + 1, raw, dimension: token.dimension, code, source: hit === null ? null : alias ? "alias" : hit.source });
+    parts.push({ position: i + 1, raw, dimension: token.dimension, code, source: hit === null ? null : alias ? "alias" : hit.source, kind });
     if (code === null) problem ??= { kind: "unknown_value", position: i + 1, dimension: token.dimension, value: raw };
     else dimensionValues[token.dimension] = code;
   }
-  return { dimensionValues: problem === null ? dimensionValues : null, problem, parts };
+  return { dimensionValues: problem === null ? dimensionValues : null, problem, parts, attributes };
 }
 
 // ---- analysis ---------------------------------------------------------------------------------
@@ -499,6 +607,8 @@ export const PositionAnalysis = z.object({
   examples: z.array(z.string()),
   hits: z.array(PositionHit),
   best: PositionHit.nullable(),
+  /** EX-7: the date pattern every part of this position reads as (≥ 90% of the names), if any. */
+  datePattern: NamingDatePattern.nullable().default(null),
 });
 export type PositionAnalysis = z.infer<typeof PositionAnalysis>;
 
@@ -516,6 +626,9 @@ export const NameAnalysis = z.object({
   proposal: ConventionProposal,
 });
 export type NameAnalysis = z.infer<typeof NameAnalysis>;
+
+/** Date patterns in the order a tie prefers them (US-style first, as in the owner's names). */
+const DATE_PATTERNS: NamingDatePattern[] = ["MMDDYY", "DDMMYY", "YYYYMMDD", "YYMMDD"];
 
 /** Delimiters in the order a tie prefers them. */
 const DELIMITER_ORDER: NamingConventionDelimiter[] = ["_", "-", "|", ".", "/", ":", "·", "+", " "];
@@ -545,6 +658,7 @@ export function analyzeCampaignNames(
   const dims = dimensions.filter((d) => d.key !== CAMPAIGN_DIMENSION);
   const boundKinds = new Set(dims.map((d) => dictionaryKindFor(d.key)).filter((k): k is DictionaryKind => k !== null));
   const positions: PositionAnalysis[] = [];
+  const exactness = new Map<number, (kind: DictionaryKind | null) => number>();
   for (let i = 0; i < pick.count; i++) {
     const tokens = fitting.map((p) => (p[i] ?? "").trim());
     const counts = new Map<string, { raw: string; n: number }>();
@@ -569,11 +683,14 @@ export function analyzeCampaignNames(
     const order = (h: PositionHit) => (h.kind === null ? DictionaryKind.options.length : DictionaryKind.options.indexOf(h.kind));
     hits.sort((a, b) => b.hitRate - a.hitRate || Number(b.dimension !== null) - Number(a.dimension !== null) || order(a) - order(b));
     const examples = [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 5).map((c) => c.raw);
-    positions.push({ position: i + 1, cardinality: counts.size, examples, hits: hits.slice(0, 3), best: hits[0] ?? null });
+    const datePattern = DATE_PATTERNS.find((dp) => rate((tk) => parseNamingDate(tk, dp) !== null) >= 0.9) ?? null;
+    positions.push({ position: i + 1, cardinality: counts.size, examples, hits: datePattern ? [] : hits.slice(0, 3), best: datePattern ? null : (hits[0] ?? null), datePattern });
+    // EX-7: how many tokens are the entry's canonical code itself (US, EN), not a synonym (PER → Peru): breaks ties.
+    exactness.set(i, (kind: DictionaryKind | null) => (kind === null ? 0 : rate((tk) => normalizeToken(lookupDictionary(kind, tk)?.code ?? "") === normalizeToken(tk))));
   }
   // Greedy: the strongest (position, dimension) pairs first, each position and dimension once.
-  const pairs = positions.flatMap((p) => p.hits.filter((h) => h.dimension !== null && h.hitRate >= PROPOSE_AT).map((h) => ({ i: p.position - 1, dim: h.dimension as string, r: h.hitRate })));
-  pairs.sort((a, b) => b.r - a.r || a.i - b.i);
+  const pairs = positions.flatMap((p) => p.hits.filter((h) => h.dimension !== null && h.hitRate >= PROPOSE_AT).map((h) => ({ i: p.position - 1, dim: h.dimension as string, r: h.hitRate, x: exactness.get(p.position - 1)?.(h.kind) ?? 0 })));
+  pairs.sort((a, b) => b.r - a.r || b.x - a.x || a.i - b.i);
   const chosen = new Map<number, string>();
   const used = new Set<string>();
   for (const p of pairs) {
@@ -587,7 +704,15 @@ export function analyzeCampaignNames(
     total,
     fitting: fitting.length,
     positions,
-    proposal: { delimiter: pick.d, tokens: positions.map((_, i) => ({ dimension: chosen.get(i) ?? null, aliases: {} })) },
+    proposal: {
+      delimiter: pick.d,
+      tokens: positions.map((p, i): NamingConventionToken => {
+        const d = chosen.get(i);
+        if (d !== undefined) return { dimension: d, aliases: {}, kind: "dimension" };
+        if (p.datePattern) return { dimension: null, aliases: {}, kind: "date", datePattern: p.datePattern };
+        return { dimension: null, aliases: {}, kind: "ignore" };
+      }),
+    },
   };
 }
 
@@ -640,7 +765,22 @@ export type AddNamingAliasInput = z.infer<typeof AddNamingAliasInput>;
 export const NamingAiSuggestion = z
   .object({
     delimiter: NamingConventionDelimiter,
-    positions: z.array(z.object({ dimension: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/).nullable(), confidence: z.number().min(0).max(1) }).strict()).min(1).max(20),
+    positions: z
+      .array(
+        z
+          .object({
+            dimension: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/).nullable(),
+            confidence: z.number().min(0).max(1),
+            /** EX-7: what the position is (default: a granularity when `dimension` is set, else ignored). */
+            role: z.enum(["dimension", "ignore", "date", "free_text"]).optional(),
+            datePattern: NamingDatePattern.optional(),
+            /** EX-7: a granularity the registry does not have yet ("Product", "Tactic"), proposed by name. */
+            newGranularity: z.string().min(1).max(60).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(20),
     mappings: z.array(z.object({ position: z.number().int().min(1).max(20), token: z.string().min(1).max(100), value: z.string().min(1).max(200), confidence: z.number().min(0).max(1) }).strict()).max(500).default([]),
   })
   .strict();
@@ -659,6 +799,8 @@ export const SuggestNamingResponse = z.object({
   model: z.string(),
   names: z.number().int(),
   applied: z.literal(false),
+  /** EX-7: granularities the AI proposes creating, per position (create them, then pick them). */
+  newGranularities: z.array(z.object({ position: z.number().int(), label: z.string() })).default([]),
 });
 export type SuggestNamingResponse = z.infer<typeof SuggestNamingResponse>;
 
@@ -666,13 +808,15 @@ export type SuggestNamingResponse = z.infer<typeof SuggestNamingResponse>;
 export function proposalFromSuggestion(s: NamingAiSuggestion, resolve?: TokenResolver): ConventionProposal {
   return {
     delimiter: s.delimiter,
-    tokens: s.positions.map((p, i) => {
-      if (p.dimension === null) return { dimension: null, aliases: {} };
+    tokens: s.positions.map((p, i): NamingConventionToken => {
+      if (p.role === "date") return { dimension: null, aliases: {}, kind: "date", datePattern: p.datePattern ?? "MMDDYY" };
+      if (p.role === "free_text") return { dimension: null, aliases: {}, kind: "free_text" };
+      if (p.dimension === null || p.role === "ignore") return { dimension: null, aliases: {}, kind: "ignore" };
       const dim = p.dimension;
       const aliases = Object.fromEntries(
         s.mappings.filter((m) => m.position === i + 1 && m.confidence >= 0.5 && resolve?.(dim, m.token)?.code !== m.value).map((m) => [m.token, m.value] as const),
       );
-      return { dimension: dim, aliases };
+      return { dimension: dim, aliases, kind: "dimension" };
     }),
   };
 }

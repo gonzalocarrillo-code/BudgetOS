@@ -10,36 +10,36 @@ datasource db {
 
 // ---------- Tenancy & identity ----------
 model Organization {
-  id         String      @id @db.Uuid
-  name       String
-  workspaces Workspace[]
-  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  id              String           @id @db.Uuid
+  name            String
+  workspaces      Workspace[]
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
   /// W3-2 (ADR-0081): org-level Idempotency-Key rows; they cascade with the org.
   idempotencyKeys IdempotencyKey[]
   /// R11-002: `slack` is the Slack team every workspace of the org answers to.
-  settings   Json        @default("{}")
+  settings        Json             @default("{}")
 
   @@map("organization")
 }
 
 model Workspace {
-  id                   String       @id @db.Uuid
-  orgId                String       @map("org_id") @db.Uuid
-  org                  Organization @relation(fields: [orgId], references: [id])
+  id                   String           @id @db.Uuid
+  orgId                String           @map("org_id") @db.Uuid
+  org                  Organization     @relation(fields: [orgId], references: [id])
   slug                 String
   name                 String
-  reportingCurrency    String       @map("reporting_currency") @db.Char(3)
-  fiscalYearStartMonth Int          @default(1) @map("fiscal_year_start_month")
-  settings             Json         @default("{}")
-  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  reportingCurrency    String           @map("reporting_currency") @db.Char(3)
+  fiscalYearStartMonth Int              @default(1) @map("fiscal_year_start_month")
+  settings             Json             @default("{}")
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz
   /// ACTIVE | ARCHIVED (ADR-052): archived is read-only and seen by superadmins only.
-  status               String       @default("ACTIVE")
-  archivedAt           DateTime?    @map("archived_at") @db.Timestamptz
-  archivedBy           String?      @map("archived_by") @db.Uuid
+  status               String           @default("ACTIVE")
+  archivedAt           DateTime?        @map("archived_at") @db.Timestamptz
+  archivedBy           String?          @map("archived_by") @db.Uuid
   /// Deleted by a superadmin: a tombstone; the purge worker removes its rows after purgeAfter.
-  deletedAt            DateTime?    @map("deleted_at") @db.Timestamptz
-  purgeAfter           DateTime?    @map("purge_after") @db.Timestamptz
-  purgedAt             DateTime?    @map("purged_at") @db.Timestamptz
+  deletedAt            DateTime?        @map("deleted_at") @db.Timestamptz
+  purgeAfter           DateTime?        @map("purge_after") @db.Timestamptz
+  purgedAt             DateTime?        @map("purged_at") @db.Timestamptz
   /// W1-5 (ADR-0072): previews are ephemeral staging; they cascade when the workspace is deleted.
   bulkPreviews         BulkPreview[]
   /// W3-2 (ADR-0081): Idempotency-Key replays are ephemeral; they cascade when the workspace is deleted.
@@ -48,61 +48,63 @@ model Workspace {
   // W3-11 (audit I-32): back-relations for the workspace_id -> workspace(id) FK every tenant table
   // now has. No query uses these lists (the app always filters the child table directly under
   // RLS); they exist only because Prisma requires both sides of a relation to be declared.
-  roleAssignments     RoleAssignment[]
-  dimensions          Dimension[]
-  hierarchyTemplates  HierarchyTemplate[]
-  fiscalPeriods       FiscalPeriod[]
-  envelopes           Envelope[]
-  envelopeLineages    EnvelopeLineage[]
-  targets             Target[]
-  approvalPolicies    ApprovalPolicy[]
-  approvalRequests    ApprovalRequest[]
-  pacingRules         PacingRule[]
-  alerts              Alert[]
-  threads             Thread[]
-  tags                Tag[]
-  taggables           Taggable[]
-  savedViews          SavedView[]
-  periodClosures      PeriodClosure[]
-  dataSources         DataSource[]
-  exportJobs          ExportJob[]
-  commentReactions    CommentReaction[]
-  namingTemplates     NamingTemplate[]
-  experiments         Experiment[]
-  experimentEnvelopes ExperimentEnvelope[]
-  manualEntryBatches  ManualEntryBatch[]
-  manualEntryFacts    ManualEntryFact[]
-  tours               Tour[]
-  envelopeAllocations EnvelopeAllocation[]
-  budgetBaselines     BudgetBaseline[]
-  mappingProfiles     MappingProfile[]
-  mappingSynonyms     MappingSynonym[]
-  matchRules          MatchRule[]
-  namingConventions   NamingConvention[]
-  metricDefinitions   MetricDefinition[]
+  roleAssignments         RoleAssignment[]
+  dimensions              Dimension[]
+  hierarchyTemplates      HierarchyTemplate[]
+  fiscalPeriods           FiscalPeriod[]
+  envelopes               Envelope[]
+  envelopeLineages        EnvelopeLineage[]
+  targets                 Target[]
+  approvalPolicies        ApprovalPolicy[]
+  approvalRequests        ApprovalRequest[]
+  pacingRules             PacingRule[]
+  alerts                  Alert[]
+  threads                 Thread[]
+  tags                    Tag[]
+  taggables               Taggable[]
+  savedViews              SavedView[]
+  periodClosures          PeriodClosure[]
+  dataSources             DataSource[]
+  exportJobs              ExportJob[]
+  commentReactions        CommentReaction[]
+  namingTemplates         NamingTemplate[]
+  experiments             Experiment[]
+  experimentEnvelopes     ExperimentEnvelope[]
+  manualEntryBatches      ManualEntryBatch[]
+  manualEntryFacts        ManualEntryFact[]
+  tours                   Tour[]
+  envelopeAllocations     EnvelopeAllocation[]
+  budgetBaselines         BudgetBaseline[]
+  mappingProfiles         MappingProfile[]
+  mappingSynonyms         MappingSynonym[]
+  matchRules              MatchRule[]
+  namingConventions       NamingConvention[]
+  namingDictionaries      NamingDictionary[]
+  namingDictionaryEntries NamingDictionaryEntry[]
+  metricDefinitions       MetricDefinition[]
 
   @@unique([orgId, slug])
   @@map("workspace")
 }
 
 model User {
-  id          String   @id @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  email       String   @unique
-  name        String
-  googleSub   String?  @unique @map("google_sub")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id           String        @id @db.Uuid
+  orgId        String        @map("org_id") @db.Uuid
+  email        String        @unique
+  name         String
+  googleSub    String?       @unique @map("google_sub")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
   /// Round 11 (PR 1): last successful sign-in, written by app_record_sign_in(). Null until the
   /// person's first sign-in, so the Roles/org-console UI can show "Invited, not signed in yet".
-  lastSignInAt DateTime? @map("last_sign_in_at") @db.Timestamptz
+  lastSignInAt DateTime?     @map("last_sign_in_at") @db.Timestamptz
   /// The person's own settings (S-010): `slack.defaultWorkspaceId`. Written only through app_set_my_slack_settings.
-  settings    Json     @default("{}")
+  settings     Json          @default("{}")
   /// S-14 (ADR-075): the Slack user id this app user's identity is pinned to, set on first contact
   /// by app_link_my_slack_user. A partial unique index (org_id, slack_user_id) in the migration
   /// (not representable here) keeps one Slack account from pinning to two app users of an org.
-  slackUserId String?       @map("slack_user_id")
-  sessions    AuthSession[]
+  slackUserId  String?       @map("slack_user_id")
+  sessions     AuthSession[]
 
   @@map("app_user")
 }
@@ -899,6 +901,44 @@ model NamingConvention {
   @@map("naming_convention")
 }
 
+/// EX-7 (ADR-0093): a granularity's campaign-naming dictionary in a workspace (seeded from a built-in kind once).
+model NamingDictionary {
+  id           String    @id @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  dimensionKey String    @map("dimension_key")
+  builtinKind  String?   @map("builtin_kind")
+  seededAt     DateTime? @map("seeded_at") @db.Timestamptz
+  syncSourceId String?   @map("sync_source_id") @db.Uuid
+  createdBy    String    @map("created_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([workspaceId, dimensionKey], map: "naming_dictionary_unique")
+  @@map("naming_dictionary")
+}
+
+/// EX-7 (ADR-0093): one dictionary entry: a code as written in campaign names → the registry value it means.
+model NamingDictionaryEntry {
+  id           String    @id @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  dimensionKey String    @map("dimension_key")
+  code         String
+  codeNorm     String    @map("code_norm")
+  value        String
+  label        String
+  notes        String?
+  source       String
+  syncSourceId String?   @map("sync_source_id") @db.Uuid
+  createdBy    String    @map("created_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  deletedBy    String?   @map("deleted_by") @db.Uuid
+
+  @@map("naming_dictionary_entry")
+}
+
 /// T-036 (§24.1): how envelopes are named (`display`) and keyed for matching (`match_key`).
 model NamingTemplate {
   id           String    @id @db.Uuid
@@ -946,30 +986,30 @@ model IngestRun {
 
 /// T-038 (spec §25.1, plan §4.12): a test budget with a question attached.
 model Experiment {
-  id            String               @id @db.Uuid
-  workspaceId   String               @map("workspace_id") @db.Uuid
-  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  name          String
-  hypothesis    String
-  kind          ExperimentKind
-  testFilter    Json                 @map("test_scope_filter") // FilterGroup
-  controlFilter Json?                @map("control_scope_filter") // FilterGroup | null
+  id               String               @id @db.Uuid
+  workspaceId      String               @map("workspace_id") @db.Uuid
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  name             String
+  hypothesis       String
+  kind             ExperimentKind
+  testFilter       Json                 @map("test_scope_filter") // FilterGroup
+  controlFilter    Json?                @map("control_scope_filter") // FilterGroup | null
   /// EX-2 (ADR-086): 'envelope' | 'fact' — what testFilter / controlFilter are evaluated on (CHECK in 20261020020000).
-  testScopeKind    String           @default("envelope") @map("test_scope_kind")
-  controlScopeKind String           @default("envelope") @map("control_scope_kind")
-  primaryMetric String               @map("primary_metric_key")
-  criterion     Json                 @map("success_criterion") // { comparator: 'lte'|'gte', value?: string, vs: 'control'|'absolute', minDays?: number }
-  startDate     DateTime             @map("start_date") @db.Date
-  endDate       DateTime             @map("end_date") @db.Date
-  status        ExperimentStatus     @default(PLANNED)
-  ownerId       String               @map("owner_id") @db.Uuid
-  decision      String?
-  decidedBy     String?              @map("decided_by") @db.Uuid
-  decidedAt     DateTime?            @map("decided_at") @db.Timestamptz
-  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  testScopeKind    String               @default("envelope") @map("test_scope_kind")
+  controlScopeKind String               @default("envelope") @map("control_scope_kind")
+  primaryMetric    String               @map("primary_metric_key")
+  criterion        Json                 @map("success_criterion") // { comparator: 'lte'|'gte', value?: string, vs: 'control'|'absolute', minDays?: number }
+  startDate        DateTime             @map("start_date") @db.Date
+  endDate          DateTime             @map("end_date") @db.Date
+  status           ExperimentStatus     @default(PLANNED)
+  ownerId          String               @map("owner_id") @db.Uuid
+  decision         String?
+  decidedBy        String?              @map("decided_by") @db.Uuid
+  decidedAt        DateTime?            @map("decided_at") @db.Timestamptz
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz
   /// EX-3: true for the one demo campaign-vs-campaign experiment seedDemoData writes; purgeDemoData deletes it.
-  demo          Boolean              @default(false)
-  envelopes     ExperimentEnvelope[]
+  demo             Boolean              @default(false)
+  envelopes        ExperimentEnvelope[]
 
   @@index([workspaceId, status])
   @@map("experiment")
@@ -1192,14 +1232,14 @@ model BulkPreview {
 /// app_create_session/app_revoke_session/app_revoke_all_sessions; budget_app's own SELECT/UPDATE
 /// grant (RLS: own rows only) is for a future self-service "your sessions" view.
 model AuthSession {
-  jti        String    @id
-  userId     String    @map("user_id") @db.Uuid
-  user       User      @relation(fields: [userId], references: [id])
-  orgId      String    @map("org_id") @db.Uuid
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
-  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
-  userAgent  String?   @map("user_agent")
+  jti       String    @id
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id])
+  orgId     String    @map("org_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  userAgent String?   @map("user_agent")
 
   @@index([userId])
   @@map("auth_session")
@@ -1218,13 +1258,13 @@ model OauthCode {
 /// One row per issued MCP refresh token `jti` (ADR-066 addendum). No FK to app_user: the row only
 /// groups a rotation chain by (userId, clientId) for reuse-detection revocation.
 model OauthRefresh {
-  jti             String    @id
-  clientId        String    @map("client_id")
-  userId          String    @map("user_id") @db.Uuid
-  chainStartedAt  DateTime  @map("chain_started_at") @db.Timestamptz
-  expiresAt       DateTime  @map("expires_at") @db.Timestamptz
-  usedAt          DateTime? @map("used_at") @db.Timestamptz
-  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz
+  jti            String    @id
+  clientId       String    @map("client_id")
+  userId         String    @map("user_id") @db.Uuid
+  chainStartedAt DateTime  @map("chain_started_at") @db.Timestamptz
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz
+  usedAt         DateTime? @map("used_at") @db.Timestamptz
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz
 
   @@index([userId, clientId])
   @@map("oauth_refresh")

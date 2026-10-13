@@ -4,6 +4,8 @@ import type { AuthContext } from "../../common/tenant.js";
 import { createMatchRule, deleteMatchRule, rematchWorkspace } from "./commands/match-rules.js";
 import { addNamingAlias, createNamingConvention, deleteNamingConvention, saveNamingConvention } from "./commands/naming-conventions.js";
 import { suggestNaming } from "./commands/naming-suggest.js";
+import { addDictionaryEntry, bulkDictionaryEntries, fillDictionaryWithAi, removeDictionaryEntry, resetDictionary, updateDictionaryEntry } from "./commands/naming-dictionaries.js";
+import { getNamingDictionary, listNamingDictionaries } from "./queries/naming-dictionaries.js";
 import { analyzeNames, getNamingConvention } from "./queries/naming.js";
 import { getMatchCoverage, listMatchRules, previewNamingConvention } from "./queries/match-rules.js";
 
@@ -49,5 +51,29 @@ export class MatchingService {
   }
   suggestNaming(auth: AuthContext, body: unknown) {
     return suggestNaming(this.prisma, auth, body);
+  }
+  listDictionaries(auth: AuthContext) {
+    return listNamingDictionaries(this.prisma, auth);
+  }
+  getDictionary(auth: AuthContext, key: string, query: unknown) {
+    return getNamingDictionary(this.prisma, auth, key, query);
+  }
+  addDictionaryEntry(auth: AuthContext, key: string, body: unknown) {
+    return addDictionaryEntry(this.prisma, auth, key, body);
+  }
+  updateDictionaryEntry(auth: AuthContext, key: string, id: string, body: unknown) {
+    return updateDictionaryEntry(this.prisma, auth, key, id, body);
+  }
+  removeDictionaryEntry(auth: AuthContext, key: string, id: string) {
+    return removeDictionaryEntry(this.prisma, auth, key, id);
+  }
+  bulkDictionary(auth: AuthContext, key: string, body: unknown) {
+    return bulkDictionaryEntries(this.prisma, auth, key, body);
+  }
+  resetDictionary(auth: AuthContext, key: string) {
+    return resetDictionary(this.prisma, auth, key);
+  }
+  fillDictionary(auth: AuthContext, key: string, body: unknown) {
+    return fillDictionaryWithAi(this.prisma, auth, key, body);
   }
 }

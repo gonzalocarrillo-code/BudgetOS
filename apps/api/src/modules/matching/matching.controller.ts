@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { Permission } from "../../common/permission.decorator.js";
 import { RateLimit } from "../../common/rate-limit.decorator.js";
 import { Tenant, type AuthContext } from "../../common/tenant.js";
-import { AddNamingAliasDto, AnalyzeNamesDto, CreateMatchRuleDto, CreateNamingConventionDto, NamingConventionPreviewDto, SuggestNamingDto } from "./dto.js";
+import { AddNamingAliasDto, AnalyzeNamesDto, BulkDictionaryDto, DictionaryEntryDto, FillDictionaryAiDto, UpdateDictionaryEntryDto, CreateMatchRuleDto, CreateNamingConventionDto, NamingConventionPreviewDto, SuggestNamingDto } from "./dto.js";
 import { MatchingService } from "./matching.service.js";
 
 /**
@@ -12,6 +12,8 @@ import { MatchingService } from "./matching.service.js";
  * where spend lands across budgets, so writing or previewing one is a data operation too.
  * EX-6 (ADR-0092): the workspace's convention (edited in Registry), "map to…" aliases, "Analyze
  * names" and "Suggest with AI" are data operations as well; reading the convention is not.
+ * EX-7 (ADR-0093): the naming dictionaries likewise: reading them needs envelope.read, writing
+ * them, resetting them and "Fill dictionary with AI" need source.manage.
  */
 @Controller()
 export class MatchingController {
@@ -95,5 +97,55 @@ export class MatchingController {
   @RateLimit("ai-suggest", 10)
   suggestNaming(@Tenant() auth: AuthContext, @Body() body: SuggestNamingDto) {
     return this.matching.suggestNaming(auth, body);
+  }
+
+  @Get("workspaces/:ws/naming-dictionaries")
+  @Permission("envelope.read")
+  listDictionaries(@Tenant() auth: AuthContext) {
+    return this.matching.listDictionaries(auth);
+  }
+
+  @Get("workspaces/:ws/naming-dictionaries/:dimension")
+  @Permission("envelope.read")
+  getDictionary(@Tenant() auth: AuthContext, @Param("dimension") dimension: string, @Query() query: Record<string, string>) {
+    return this.matching.getDictionary(auth, dimension, query);
+  }
+
+  @Post("workspaces/:ws/naming-dictionaries/:dimension/entries")
+  @Permission("source.manage")
+  addDictionaryEntry(@Tenant() auth: AuthContext, @Param("dimension") dimension: string, @Body() body: DictionaryEntryDto) {
+    return this.matching.addDictionaryEntry(auth, dimension, body);
+  }
+
+  @Patch("workspaces/:ws/naming-dictionaries/:dimension/entries/:id")
+  @Permission("source.manage")
+  updateDictionaryEntry(@Tenant() auth: AuthContext, @Param("dimension") dimension: string, @Param("id") id: string, @Body() body: UpdateDictionaryEntryDto) {
+    return this.matching.updateDictionaryEntry(auth, dimension, id, body);
+  }
+
+  @Delete("workspaces/:ws/naming-dictionaries/:dimension/entries/:id")
+  @Permission("source.manage")
+  removeDictionaryEntry(@Tenant() auth: AuthContext, @Param("dimension") dimension: string, @Param("id") id: string) {
+    return this.matching.removeDictionaryEntry(auth, dimension, id);
+  }
+
+  @Post("workspaces/:ws/naming-dictionaries/:dimension/bulk")
+  @Permission("source.manage")
+  bulkDictionary(@Tenant() auth: AuthContext, @Param("dimension") dimension: string, @Body() body: BulkDictionaryDto) {
+    return this.matching.bulkDictionary(auth, dimension, body);
+  }
+
+  @Post("workspaces/:ws/naming-dictionaries/:dimension/reset")
+  @Permission("source.manage")
+  resetDictionary(@Tenant() auth: AuthContext, @Param("dimension") dimension: string) {
+    return this.matching.resetDictionary(auth, dimension);
+  }
+
+  /** Calls OpenAI (via @budget/ai): the stricter 10/min, like the other AI suggestions. */
+  @Post("workspaces/:ws/naming-dictionaries/:dimension/ai-fill")
+  @Permission("source.manage")
+  @RateLimit("ai-suggest", 10)
+  fillDictionary(@Tenant() auth: AuthContext, @Param("dimension") dimension: string, @Body() body: FillDictionaryAiDto) {
+    return this.matching.fillDictionary(auth, dimension, body);
   }
 }

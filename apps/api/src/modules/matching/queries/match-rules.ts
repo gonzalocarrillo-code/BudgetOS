@@ -110,7 +110,7 @@ export async function previewNamingConvention(prisma: PrismaClient, auth: AuthCo
     return {
       samples: sampled.map((n) => {
         const e = explained.get(n) ?? explainCampaignName(input.convention, n.name, resolve);
-        return { name: n.name, campaign: n.campaign, dimensionValues: e.dimensionValues, problem: e.problem, parts: e.parts };
+        return { name: n.name, campaign: n.campaign, dimensionValues: e.dimensionValues, problem: e.problem, parts: e.parts, attributes: e.attributes };
       }),
       unresolved,
       currency: (await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { reportingCurrency: true } })).reportingCurrency,

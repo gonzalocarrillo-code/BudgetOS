@@ -18,7 +18,8 @@ export interface NamingDimension {
 const SYSTEM = [
   "You read marketing campaign names and infer their naming convention.",
   'Answer with one JSON object: {"delimiter": one of "_", "-", ".", "|", "/", ":", "·", " ", "+",',
-  '"positions": [{"dimension": <key> | null, "confidence": 0..1}] (one per part of a name, in order; null = not a dimension, e.g. a date or creative id),',
+  '"positions": [{"dimension": <key> | null, "role": "dimension" | "ignore" | "date" | "free_text", "datePattern": "MMDDYY" | "DDMMYY" | "YYYYMMDD" | "YYMMDD" (dates only), "newGranularity": <a short name such as "Product" or "Tactic", only when no listed dimension fits a part that is a real granularity>, "confidence": 0..1}]',
+  "(one per part of a name, in order; a date part is role date with its pattern; descriptive text that varies freely is free_text; constant or meaningless parts are ignore),",
   '"mappings": [{"position": <1-based>, "token": <a part as written>, "value": <the value code it means, e.g. an ISO country code, a platform such as meta>, "confidence": 0..1}]}.',
   "Use only dimension keys from the list given, each at most once. Only map tokens that are abbreviations or synonyms; leave plain values out.",
 ].join(" ");
@@ -45,6 +46,8 @@ export function parseNamingSuggestion(content: string | null, dimensions: readon
   const unknown = named.filter((k) => !keys.has(k));
   if (unknown.length) throw new DomainError("UNAVAILABLE", "The naming model named dimensions that do not exist", { unknown });
   if (new Set(named).size !== named.length) throw new DomainError("UNAVAILABLE", "The naming model used a dimension twice");
+  const undated = s.positions.findIndex((p) => p.role === "date" && p.datePattern === undefined);
+  if (undated >= 0) throw new DomainError("UNAVAILABLE", "The naming model gave a date position without a pattern", { position: undated + 1 });
   const outside = s.mappings.filter((m) => m.position > s.positions.length || s.positions[m.position - 1]?.dimension == null);
   if (outside.length) throw new DomainError("UNAVAILABLE", "The naming model mapped a token at a position without a dimension", { positions: outside.map((m) => m.position) });
   return s;

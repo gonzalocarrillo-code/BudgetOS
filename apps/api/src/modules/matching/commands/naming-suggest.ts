@@ -29,6 +29,8 @@ export async function suggestNaming(prisma: PrismaClient, auth: AuthContext, raw
     const proposal = proposalFromSuggestion(res.suggestion, resolve);
     await audit(tx, { workspaceId, actorId: auth.user.id, actorType: auth.ctx.actorType, action: "naming_convention.ai_suggested", entityType: "naming_convention", entityId: newId(), after: { names: res.names, model: res.model, positions: res.suggestion.positions.length, mappings: res.suggestion.mappings.length, applied: false }, requestId: auth.ctx.requestId });
     await outbox(tx, { workspaceId, topic: "source.changed", payload: { action: "naming_convention.ai_suggested", names: res.names } });
-    return { suggestion: res.suggestion, proposal, model: res.model, names: res.names, applied: false as const };
+    // EX-7: granularities the AI would create ("Product", "Tactic"): offered, never created here.
+    const newGranularities = res.suggestion.positions.flatMap((p, i) => (p.dimension === null && p.newGranularity && (p.role ?? "dimension") === "dimension" ? [{ position: i + 1, label: p.newGranularity }] : []));
+    return { suggestion: res.suggestion, proposal, model: res.model, names: res.names, applied: false as const, newGranularities };
   });
 }

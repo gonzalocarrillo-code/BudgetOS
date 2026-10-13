@@ -12,6 +12,7 @@ import { DimensionIcon } from "../features/registry/dimension-icon.js";
 import { HierarchyBuilder } from "../features/registry/hierarchy-builder.js";
 import { MetricLibrary } from "../features/registry/metric-library.js";
 import { CampaignNaming, dictionaryName, namingQuery } from "../features/registry/campaign-naming.js";
+import { NamingDictionaries } from "../features/registry/naming-dictionaries.js";
 import { ValueTree } from "../features/registry/value-tree.js";
 import { api, unwrap } from "../lib/api.js";
 import { meQuery, registryQuery, templatesQuery, type Dimension } from "../lib/queries.js";
@@ -24,7 +25,14 @@ import { meQuery, registryQuery, templatesQuery, type Dimension } from "../lib/q
  * EX-6 (ADR-0092): "Campaign names" — the campaign naming convention lives here, next to the
  * granularities it reads into (separator, a position per granularity, dictionaries, aliases).
  */
-const RegistrySearch = z.object({ tab: z.enum(["granularities", "naming", "hierarchies", "metrics"]).default("granularities"), dim: z.string().optional() });
+const RegistrySearch = z.object({
+  tab: z.enum(["granularities", "naming", "hierarchies", "metrics"]).default("granularities"),
+  dim: z.string().optional(),
+  // EX-7: Campaign names › Positions | Dictionaries, the dictionary shown and its search.
+  view: z.enum(["positions", "dictionaries"]).optional(),
+  dict: z.string().optional(),
+  dq: z.string().optional(),
+});
 type RegistrySearch = z.infer<typeof RegistrySearch>;
 
 export const Route = createFileRoute("/w/$ws/admin/registry")({ validateSearch: RegistrySearch, component: RegistryPage });
@@ -106,7 +114,18 @@ function RegistryPage(): ReactElement {
       ) : null}
       {search.tab === "naming" ? (
         <Card title={t("campaignNaming.title")} tour="registry-naming-card">
-          <CampaignNaming ws={ws} dims={dims} canManage={canManageNaming} />
+          <div role="tablist" className="mb-3 inline-flex w-fit rounded-lg border border-border bg-card p-0.5">
+            {(["positions", "dictionaries"] as const).map((v) => (
+              <button key={v} type="button" role="tab" aria-selected={(search.view ?? "positions") === v} className={cn("h-7 rounded-md px-3 text-xs", (search.view ?? "positions") === v ? "bg-primary text-primary-foreground" : "text-foreground/80 hover:bg-accent")} onClick={() => set({ view: v })} data-testid={`naming-view-${v}`} data-tour={`naming-view-${v}`}>
+                {t(`campaignNaming.view.${v === "positions" ? "convention" : "dictionaries"}`)}
+              </button>
+            ))}
+          </div>
+          {search.view === "dictionaries" ? (
+            <NamingDictionaries ws={ws} dims={dims} canManage={canManageNaming} dimension={search.dict} q={search.dq ?? ""} onDimension={(key) => set({ dict: key, dq: undefined })} onQ={(q) => set({ dq: q || undefined })} />
+          ) : (
+            <CampaignNaming ws={ws} dims={dims} canManage={canManageNaming} canManageRegistry={canManage} onEditDictionary={(key) => set({ view: "dictionaries", dict: key, dq: undefined })} />
+          )}
         </Card>
       ) : null}
       {search.tab === "hierarchies" ? (

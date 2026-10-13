@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (EX-6). Extends ADR-0090.
+Accepted (EX-6). Extends ADR-0090. Amended by ADR-0093 (EX-7): dictionaries are workspace data seeded from these built-in lists; aliases move into them.
 
 ## Context
 

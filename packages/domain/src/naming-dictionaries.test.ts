@@ -102,13 +102,14 @@ describe("resolution order: workspace alias > registry > dictionary > unresolved
       dimensionValues: null,
       problem: { kind: "unknown_value", position: 3, dimension: "client", value: "Globex" },
       parts: [
-        { position: 1, raw: "Brasil", dimension: "country", code: "BR", source: "dictionary" },
-        { position: 2, raw: "Face", dimension: "platform", code: "meta", source: "alias" },
-        { position: 3, raw: "Globex", dimension: "client", code: null, source: null },
+        { position: 1, raw: "Brasil", dimension: "country", code: "BR", source: "dictionary", kind: "dimension" },
+        { position: 2, raw: "Face", dimension: "platform", code: "meta", source: "alias", kind: "dimension" },
+        { position: 3, raw: "Globex", dimension: "client", code: null, source: null, kind: "dimension" },
       ],
+      attributes: {},
     });
     expect(explainCampaignName(convention, "UK_FB_acme", resolve)).toMatchObject({ dimensionValues: { country: "UK", platform: "fbx", client: "acme" }, problem: null });
-    expect(explainCampaignName(convention, "UK_FB", resolve)).toEqual({ dimensionValues: null, problem: { kind: "parts", expected: 3, found: 2 }, parts: [] });
+    expect(explainCampaignName(convention, "UK_FB", resolve)).toEqual({ dimensionValues: null, problem: { kind: "parts", expected: 3, found: 2 }, parts: [], attributes: {} });
   });
 });
 
@@ -133,7 +134,7 @@ describe("analyzeCampaignNames", () => {
     expect(p3).toMatchObject({ best: { kind: "audience", dimension: "audience", hitRate: 1 } });
     expect(p4).toMatchObject({ best: { kind: "quarter", dimension: null, hitRate: 1 } });
     expect(p5?.best?.dimension ?? null).toBeNull();
-    expect(a.proposal).toEqual({ delimiter: "_", tokens: [{ dimension: "country", aliases: {} }, { dimension: "platform", aliases: {} }, { dimension: "audience", aliases: {} }, { dimension: null, aliases: {} }, { dimension: null, aliases: {} }] });
+    expect(a.proposal).toEqual({ delimiter: "_", tokens: [{ dimension: "country", aliases: {}, kind: "dimension" }, { dimension: "platform", aliases: {}, kind: "dimension" }, { dimension: "audience", aliases: {}, kind: "dimension" }, { dimension: null, aliases: {}, kind: "ignore" }, { dimension: null, aliases: {}, kind: "ignore" }] });
   });
 
   it("uses the registry's own values for dimensions without a dictionary", () => {

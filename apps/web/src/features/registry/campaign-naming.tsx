@@ -2,17 +2,22 @@ import {
   AnalyzeNamesResponse,
   CAMPAIGN_DIMENSION,
   NamingConventionPreviewResponse,
+  DictionaryWriteResponse,
   NamingConventionSaveResponse,
   NamingConventionState,
   NamingConventionWriteResponse,
   SuggestNamingResponse,
   dictionaryKindFor,
+  positionKind,
   type ConventionProblem,
   type ConventionProposal,
   type CreateNamingConventionInput,
   type DictionaryKind,
   type NamingConventionDelimiter,
+  type NamingConventionToken,
   type NamingConventionView,
+  type NamingDatePattern,
+  type NamingPositionKind,
   type UnresolvedToken,
 } from "@budget/domain";
 import { Button, Input, Select, Textarea } from "@budget/ui";
@@ -22,14 +27,17 @@ import { useState, type ReactElement } from "react";
 import { api, unwrap } from "../../lib/api.js";
 import { moneyOrDash } from "../../lib/money.js";
 import type { Dimension } from "../../lib/queries.js";
+import { dictionariesQuery } from "./naming-dictionaries.js";
 
 /**
  * EX-6 (ADR-0092): the workspace's campaign naming convention, defined in Registry next to the
- * granularities. One separator; each granularity may have a position in the name, reads its
- * values through the built-in dictionary of its kind (shown, never typed) and has its aliases.
- * "Analyze names" (deterministic) and "Suggest with AI" (support only, nothing applied) fill the
- * positions; a live preview shows each name's values, unresolved tokens plainly, and "Map to…"
- * stores an alias. Saving re-matches the campaign facts. The Spend data page shows it read-only.
+ * granularities. One separator (a hyphen inside a part is not one). EX-7 (ADR-0093): each position
+ * is a granularity (an existing one or a new one created inline, never the campaign itself),
+ * ignored, a launch date in a pattern, or free text. A granularity reads its values through its
+ * workspace dictionary (Dictionaries view: "Edit dictionary"). "Analyze names" (deterministic) and
+ * "Analyze names with AI" (support only, nothing applied) fill the positions; the live preview shows
+ * each name's values, and unresolved codes per position with "Define" (adds a dictionary entry).
+ * Saving re-matches the campaign facts. The Spend data page shows it read-only.
  */
 
 export const namingQuery = (ws: string) =>
@@ -52,35 +60,67 @@ export function parseAliases(s: string): Record<string, string> {
       .filter((kv): kv is [string, string] => kv.length === 2 && kv[0] !== "" && kv[1] !== ""),
   );
 }
-const aliasText = (a: Record<string, string>): string =>
-  Object.entries(a)
-    .map(([k, v]) => `${k}=${v}`)
-    .join(", ");
-
 export function problemText(p: ConventionProblem): string {
-  return p.kind === "parts" ? t("mapping.problem.parts", { found: p.found, expected: p.expected }) : p.kind === "empty" ? t("mapping.problem.empty", { position: p.position }) : t("mapping.problem.unknown_value", { value: p.value, dimension: p.dimension });
+  if (p.kind === "parts") return t("mapping.problem.parts", { found: p.found, expected: p.expected });
+  if (p.kind === "empty") return t("mapping.problem.empty", { position: p.position });
+  if (p.kind === "date") return t("mapping.problem.date", { position: p.position, value: p.value });
+  return t("mapping.problem.unknown_value", { value: p.value, dimension: p.dimension });
+}
+
+interface DraftToken {
+  kind: NamingPositionKind;
+  dimension: string | null;
+  datePattern: NamingDatePattern;
+  attribute: string;
+  /** EX-6 aliases of the saved convention: still read, moved into the dictionary by the server on the next save. */
+  aliases: Record<string, string>;
 }
 
 interface Draft {
   delimiter: NamingConventionDelimiter;
-  tokens: Array<{ dimension: string | null; aliases: string }>;
+  tokens: DraftToken[];
 }
 
-const draftOf = (c: Pick<ConventionProposal, "delimiter" | "tokens"> | null): Draft => (c ? { delimiter: c.delimiter, tokens: c.tokens.map((tk) => ({ dimension: tk.dimension, aliases: aliasText(tk.aliases) })) } : { delimiter: "_", tokens: [{ dimension: null, aliases: "" }] });
+const DATE_PATTERNS: NamingDatePattern[] = ["MMDDYY", "DDMMYY", "YYYYMMDD", "YYMMDD"];
+const blankToken = (): DraftToken => ({ kind: "ignore", dimension: null, datePattern: "MMDDYY", attribute: "", aliases: {} });
 
-/** The draft as the API takes it, or null while no position names a granularity. */
+const tokenOf = (tk: NamingConventionToken): DraftToken => ({ kind: positionKind(tk), dimension: tk.dimension, datePattern: tk.datePattern ?? "MMDDYY", attribute: tk.attribute ?? "", aliases: tk.aliases });
+
+const draftOf = (c: Pick<ConventionProposal, "delimiter" | "tokens"> | null): Draft => (c ? { delimiter: c.delimiter, tokens: c.tokens.map(tokenOf) } : { delimiter: "_", tokens: [blankToken()] });
+
+/** The draft as the API takes it, or null while no position names a granularity. Aliases are not sent: they live in the dictionaries now. */
 export function draftInput(d: Draft): CreateNamingConventionInput | null {
-  const tokens = d.tokens.map((tk) => ({ dimension: tk.dimension, aliases: tk.dimension ? parseAliases(tk.aliases) : {} }));
+  const tokens = d.tokens.map((tk): NamingConventionToken => {
+    const attribute = tk.attribute.trim();
+    if (tk.kind === "dimension" && tk.dimension) return { dimension: tk.dimension, aliases: {}, kind: "dimension" };
+    if (tk.kind === "date") return { dimension: null, aliases: {}, kind: "date", datePattern: tk.datePattern, ...(attribute ? { attribute } : {}) };
+    if (tk.kind === "free_text") return { dimension: null, aliases: {}, kind: "free_text", ...(attribute ? { attribute } : {}) };
+    return { dimension: null, aliases: {}, kind: "ignore" };
+  });
   return tokens.some((tk) => tk.dimension !== null) ? { delimiter: d.delimiter, tokens } : null;
 }
 
-const sameConvention = (a: CreateNamingConventionInput | null, b: Pick<NamingConventionView, "delimiter" | "tokens"> | null) => a !== null && b !== null && JSON.stringify({ d: a.delimiter, t: a.tokens }) === JSON.stringify({ d: b.delimiter, t: b.tokens });
+/** What a convention means, aliases aside (they moved to the dictionaries). */
+const meaningOf = (c: Pick<NamingConventionView, "delimiter" | "tokens">) => JSON.stringify({ d: c.delimiter, t: c.tokens.map((tk) => [positionKind(tk), tk.dimension, tk.datePattern ?? null, tk.attribute ?? null]) });
+const sameConvention = (a: CreateNamingConventionInput | null, b: Pick<NamingConventionView, "delimiter" | "tokens"> | null) => a !== null && b !== null && meaningOf(a) === meaningOf(b);
+
+/** A granularity key from a label: "Match type" → match_type. */
+export const keyFromLabel = (label: string): string =>
+  label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/^(\d)/, "g_$1")
+    .slice(0, 40);
 
 const linesOf = (s: string) => s.split("\n").map((l) => l.trim()).filter((l) => l !== "");
 
-export function CampaignNaming({ ws, dims, canManage }: { ws: string; dims: Dimension[]; canManage: boolean }): ReactElement {
+export function CampaignNaming({ ws, dims, canManage, canManageRegistry = false, onEditDictionary }: { ws: string; dims: Dimension[]; canManage: boolean; canManageRegistry?: boolean; onEditDictionary?: (key: string) => void }): ReactElement {
   const client = useQueryClient();
   const { data: state } = useQuery(namingQuery(ws));
+  const { data: dictionaries } = useQuery(dictionariesQuery(ws));
   const saved = state?.convention ?? null;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [names, setNames] = useState("");
@@ -89,7 +129,7 @@ export function CampaignNaming({ ws, dims, canManage }: { ws: string; dims: Dime
   const input = draftInput(current);
   const granularities = dims.filter((d) => d.isActive && d.key !== CAMPAIGN_DIMENSION);
   const pasted = linesOf(names);
-  const refresh = () => Promise.all(["naming-convention", "match-rules", "match-coverage", "registry", "naming-preview"].map((k) => client.invalidateQueries({ queryKey: [k, ws] })));
+  const refresh = () => Promise.all(["naming-convention", "match-rules", "match-coverage", "registry", "naming-preview", "naming-dictionaries", "naming-dictionary"].map((k) => client.invalidateQueries({ queryKey: [k, ws] })));
 
   const analyze = useMutation({
     mutationFn: async () => AnalyzeNamesResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-conventions/analyze", { params: { path: { ws } }, body: (pasted.length ? { names: pasted.slice(0, 1000) } : {}) as never }))),
@@ -113,13 +153,13 @@ export function CampaignNaming({ ws, dims, canManage }: { ws: string; dims: Dime
 
   const set = (d: Partial<Draft>) => setDraft({ ...current, ...d });
   const setToken = (i: number, p: Partial<Draft["tokens"][number]>) => set({ tokens: current.tokens.map((tk, j) => (j === i ? { ...tk, ...p } : tk)) });
-  const setParts = (n: number) => set({ tokens: Array.from({ length: n }, (_, i) => current.tokens[i] ?? { dimension: null, aliases: "" }) });
+  const setParts = (n: number) => set({ tokens: Array.from({ length: n }, (_, i) => current.tokens[i] ?? blankToken()) });
   const unchanged = sameConvention(input, saved);
   const blocked = !canManage ? t("campaignNaming.noManage") : null;
   const saveWhy = blocked ?? (input === null ? t("campaignNaming.needDimension") : unchanged ? t("campaignNaming.unchanged") : save.isPending ? t("campaignNaming.saving") : null);
   const aiWhy = blocked ?? (state && !state.aiAvailable ? t("campaignNaming.aiOff") : suggest.isPending ? t("campaignNaming.suggesting") : null);
   const analyzeWhy = blocked ?? (analyze.isPending ? t("campaignNaming.analyzing") : null);
-  const used = new Set(current.tokens.flatMap((tk) => (tk.dimension ? [tk.dimension] : [])));
+  const used = new Set(current.tokens.flatMap((tk) => (tk.kind === "dimension" && tk.dimension ? [tk.dimension] : [])));
 
   return (
     <div className="flex flex-col gap-4" data-testid="campaign-naming" data-tour="registry-naming">
@@ -154,7 +194,7 @@ export function CampaignNaming({ ws, dims, canManage }: { ws: string; dims: Dime
         </div>
         {[analyze.error, suggest.error].map((e, i) => (e ? <p key={i} role="alert" className="text-xs text-destructive">{e.message}</p> : null))}
         {analyze.data ? <AnalysisView a={analyze.data} dims={granularities} onUse={() => (setDraft(draftOf(analyze.data.proposal)), analyze.reset())} /> : null}
-        {suggest.data ? <SuggestionView s={suggest.data} dims={granularities} onUse={() => (setDraft(draftOf(suggest.data.proposal)), suggest.reset())} onDismiss={() => suggest.reset()} /> : null}
+        {suggest.data ? <SuggestionView s={suggest.data} dims={granularities} onUse={() => (setDraft(draftOf({ ...suggest.data.proposal, tokens: suggest.data.proposal.tokens.map((tk) => ({ ...tk, aliases: {} })) })), suggest.reset())} onDismiss={() => suggest.reset()} /> : null}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -176,31 +216,22 @@ export function CampaignNaming({ ws, dims, canManage }: { ws: string; dims: Dime
 
       <ol className="flex flex-col gap-1.5" data-testid="naming-positions">
         {current.tokens.map((tk, i) => (
-          <li key={i} className="flex flex-wrap items-center gap-2 text-sm" data-testid="naming-position">
-            <span className="w-20 text-xs text-muted-foreground">{t("campaignNaming.position", { n: i + 1 })}</span>
-            <Select value={tk.dimension ?? ""} onChange={(e) => setToken(i, { dimension: e.target.value || null })} aria-label={t("campaignNaming.granularityFor", { n: i + 1 })} data-testid="naming-position-dimension">
-              <option value="">{t("campaignNaming.ignore")}</option>
-              {granularities
-                .filter((d) => d.key === tk.dimension || !used.has(d.key))
-                .map((d) => (
-                  <option key={d.key} value={d.key}>
-                    {d.label}
-                  </option>
-                ))}
-            </Select>
-            {tk.dimension ? (
-              <>
-                <span className="text-xs text-muted-foreground" data-testid="naming-position-dictionary">
-                  {dictionaryName(dictionaryKindFor(tk.dimension))}
-                </span>
-                <Input size="sm" className="w-56" value={tk.aliases} onChange={(e) => setToken(i, { aliases: e.target.value })} placeholder={t("campaignNaming.aliases")} aria-label={t("campaignNaming.aliasesFor", { n: i + 1 })} data-testid="naming-position-aliases" />
-              </>
-            ) : null}
-          </li>
+          <PositionRow
+            key={i}
+            ws={ws}
+            n={i + 1}
+            token={tk}
+            granularities={granularities.filter((d) => (tk.kind === "dimension" && d.key === tk.dimension) || !used.has(d.key))}
+            entries={tk.dimension ? (dictionaries?.dictionaries.find((x) => x.dimension === tk.dimension)?.entries ?? null) : null}
+            canManageRegistry={canManageRegistry}
+            onChange={(p) => setToken(i, p)}
+            onCreated={refresh}
+            {...(onEditDictionary ? { onEditDictionary } : {})}
+          />
         ))}
       </ol>
 
-      {input ? <ConventionPreview ws={ws} convention={input} names={pasted.slice(0, 50)} dims={granularities} mapTo={canManage && unchanged ? "alias" : canManage ? "save-first" : null} onMapped={refresh} /> : null}
+      {input ? <ConventionPreview ws={ws} convention={input} names={pasted.slice(0, 50)} dims={granularities} mapTo={canManage ? "define" : null} onMapped={refresh} /> : null}
 
       <div className="flex flex-wrap gap-2">
         {saveWhy ? (
@@ -232,8 +263,101 @@ export function CampaignNaming({ ws, dims, canManage }: { ws: string; dims: Dime
   );
 }
 
+/** One position: a granularity (existing, or a new one created inline), ignored, a date in a pattern, or free text. */
+function PositionRow({ ws, n, token, granularities, entries, canManageRegistry, onChange, onCreated, onEditDictionary }: { ws: string; n: number; token: DraftToken; granularities: Dimension[]; entries: number | null; canManageRegistry: boolean; onChange: (p: Partial<DraftToken>) => void; onCreated: () => Promise<unknown>; onEditDictionary?: (key: string) => void }): ReactElement {
+  const [creating, setCreating] = useState(false);
+  const [label, setLabel] = useState("");
+  const create = useMutation({
+    mutationFn: async () => {
+      const key = keyFromLabel(label);
+      await unwrap(api.POST("/api/v1/workspaces/{ws}/dimensions", { params: { path: { ws } }, body: { key, label: label.trim(), dataType: "ENUM", icon: "lucide:tag", allowedParents: [], isRequiredForLeaf: false, workspaceId: ws } as never }));
+      return key;
+    },
+    onSuccess: async (key) => {
+      await onCreated();
+      setCreating(false);
+      setLabel("");
+      onChange({ kind: "dimension", dimension: key });
+    },
+  });
+  const value = creating ? "new" : token.kind === "dimension" ? (token.dimension ? `dim:${token.dimension}` : "ignore") : token.kind;
+  const pick = (v: string) => {
+    if (v === "new") return setCreating(true);
+    setCreating(false);
+    if (v.startsWith("dim:")) onChange({ kind: "dimension", dimension: v.slice(4) });
+    else onChange({ kind: v as NamingPositionKind, dimension: null });
+  };
+  const key = keyFromLabel(label);
+  const createWhy = !canManageRegistry ? t("registry.blocked.role") : key.length < 2 ? t("campaignNaming.newNeedName") : create.isPending ? t("campaignNaming.saving") : null;
+  const aliasCount = Object.keys(token.aliases).length;
+  return (
+    <li className="flex flex-wrap items-center gap-2 text-sm" data-testid="naming-position">
+      <span className="w-20 text-xs text-muted-foreground">{t("campaignNaming.position", { n })}</span>
+      <Select value={value} onChange={(e) => pick(e.target.value)} aria-label={t("campaignNaming.granularityFor", { n })} data-testid="naming-position-dimension">
+        <option value="ignore">{t("campaignNaming.ignore")}</option>
+        <option value="date">{t("campaignNaming.kind.date")}</option>
+        <option value="free_text">{t("campaignNaming.kind.free_text")}</option>
+        <optgroup label={t("campaignNaming.granularities")}>
+          {granularities.map((d) => (
+            <option key={d.key} value={`dim:${d.key}`}>
+              {d.label}
+            </option>
+          ))}
+        </optgroup>
+        <option value="new">{t("campaignNaming.newGranularity")}</option>
+      </Select>
+      {creating ? (
+        <>
+          <Input size="sm" className="w-44" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("campaignNaming.newPlaceholder")} aria-label={t("campaignNaming.newLabel", { n })} data-testid="naming-new-label" />
+          {createWhy ? (
+            <Button size="sm" variant="outline" disabled reason={createWhy} data-testid="naming-new-create">
+              {t("campaignNaming.newCreate")}
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => create.mutate()} data-testid="naming-new-create">
+              {t("campaignNaming.newCreate")}
+            </Button>
+          )}
+          {create.error ? <p role="alert" className="text-xs text-destructive">{create.error.message}</p> : null}
+        </>
+      ) : null}
+      {!creating && token.kind === "dimension" && token.dimension ? (
+        <>
+          <span className="text-xs text-muted-foreground" data-testid="naming-position-dictionary">
+            {dictionaryName(dictionaryKindFor(token.dimension))}
+            {entries !== null ? ` · ${t("campaignNaming.entries", { n: entries })}` : ""}
+          </span>
+          {onEditDictionary ? (
+            <Button size="sm" variant="ghost" onClick={() => onEditDictionary(token.dimension as string)} data-testid="naming-edit-dictionary" data-tour="naming-edit-dictionary">
+              {t("campaignNaming.editDictionary")}
+            </Button>
+          ) : null}
+          {aliasCount > 0 ? <span className="text-xs text-muted-foreground" data-testid="naming-position-legacy">{t("campaignNaming.legacyAliases", { n: aliasCount })}</span> : null}
+        </>
+      ) : null}
+      {token.kind === "date" ? (
+        <>
+          <Select value={token.datePattern} onChange={(e) => onChange({ datePattern: e.target.value as NamingDatePattern })} aria-label={t("campaignNaming.datePatternFor", { n })} data-testid="naming-position-pattern">
+            {DATE_PATTERNS.map((dp) => (
+              <option key={dp} value={dp}>
+                {dp}
+              </option>
+            ))}
+          </Select>
+          <Input size="sm" className="w-36" value={token.attribute} onChange={(e) => onChange({ attribute: e.target.value })} placeholder="launch_date" aria-label={t("campaignNaming.attributeFor", { n })} data-testid="naming-position-attribute" />
+        </>
+      ) : null}
+      {token.kind === "free_text" ? <Input size="sm" className="w-36" value={token.attribute} onChange={(e) => onChange({ attribute: e.target.value })} placeholder={`position_${n}`} aria-label={t("campaignNaming.attributeFor", { n })} data-testid="naming-position-attribute" /> : null}
+    </li>
+  );
+}
+
 const pct = (x: number) => Math.round(x * 100);
 const dimLabel = (dims: Dimension[], key: string | null) => (key === null ? t("campaignNaming.ignore") : (dims.find((d) => d.key === key)?.label ?? key));
+const tokenLabel = (dims: Dimension[], tk: NamingConventionToken | undefined) => {
+  const kind = tk ? positionKind(tk) : "ignore";
+  return kind === "dimension" ? dimLabel(dims, tk?.dimension ?? null) : kind === "date" ? `${t("campaignNaming.kind.date")} (${tk?.datePattern ?? ""})` : t(`campaignNaming.kind.${kind}` as MessageKey);
+};
 
 function AnalysisView({ a, dims, onUse }: { a: AnalyzeNamesResponse; dims: Dimension[]; onUse: () => void }): ReactElement {
   if (a.positions.length === 0) return <p className="text-sm text-muted-foreground" data-testid="naming-analysis">{t("campaignNaming.analysis.empty", { n: a.total })}</p>;
@@ -245,8 +369,8 @@ function AnalysisView({ a, dims, onUse }: { a: AnalyzeNamesResponse; dims: Dimen
           <li key={p.position} className="flex flex-wrap gap-x-3" data-testid="naming-analysis-row">
             <span className="w-20 text-muted-foreground">{t("campaignNaming.position", { n: p.position })}</span>
             <span className="font-mono">{t("campaignNaming.analysis.row", { examples: p.examples.join(", "), cardinality: p.cardinality })}</span>
-            <span>{p.best ? t("campaignNaming.analysis.best", { hit: pct(p.best.hitRate), dictionary: p.best.kind ? dictionaryName(p.best.kind) : dimLabel(dims, p.best.dimension) }) : t("campaignNaming.analysis.none")}</span>
-            <span className="text-muted-foreground">→ {dimLabel(dims, a.proposal.tokens[p.position - 1]?.dimension ?? null)}</span>
+            <span>{p.datePattern ? t("campaignNaming.analysis.date", { pattern: p.datePattern }) : p.best ? t("campaignNaming.analysis.best", { hit: pct(p.best.hitRate), dictionary: p.best.kind ? dictionaryName(p.best.kind) : dimLabel(dims, p.best.dimension) }) : t("campaignNaming.analysis.none")}</span>
+            <span className="text-muted-foreground">→ {tokenLabel(dims, a.proposal.tokens[p.position - 1])}</span>
           </li>
         ))}
       </ol>
@@ -267,7 +391,7 @@ function SuggestionView({ s, dims, onUse, onDismiss }: { s: SuggestNamingRespons
       <ol className="flex flex-col gap-0.5 text-xs">
         {s.suggestion.positions.map((p, i) => (
           <li key={i} data-testid="naming-suggestion-row">
-            {t("campaignNaming.ai.position", { n: i + 1, dimension: dimLabel(dims, p.dimension), confidence: pct(p.confidence) })}
+            {t("campaignNaming.ai.position", { n: i + 1, dimension: p.newGranularity && p.dimension === null && (p.role ?? "dimension") === "dimension" ? t("campaignNaming.ai.newGranularity", { label: p.newGranularity }) : tokenLabel(dims, s.proposal.tokens[i]), confidence: pct(p.confidence) })}
             {s.suggestion.mappings
               .filter((m) => m.position === i + 1)
               .map((m) => (
@@ -292,17 +416,21 @@ function SuggestionView({ s, dims, onUse, onDismiss }: { s: SuggestNamingRespons
 
 /**
  * The live preview: name → the value each granularity reads (unresolved tokens say so in words,
- * no colours), and the unresolved tokens over every campaign with their spend. `mapTo`: "alias"
- * offers "Map to…" (stores an alias on the saved convention); "save-first" says why not yet; null
+ * no colours), and the unresolved tokens over every campaign with their spend, per position.
+ * `mapTo`: "define" offers "Define" (EX-7: adds an entry to the granularity's dictionary); null
  * shows none (read-only, the Spend data page).
  */
-export function ConventionPreview({ ws, convention, names = [], dims, mapTo, onMapped }: { ws: string; convention: CreateNamingConventionInput; names?: string[]; dims: Dimension[]; mapTo: "alias" | "save-first" | null; onMapped?: () => Promise<unknown> }): ReactElement {
+export function ConventionPreview({ ws, convention, names = [], dims, mapTo, onMapped }: { ws: string; convention: CreateNamingConventionInput; names?: string[]; dims: Dimension[]; mapTo: "define" | null; onMapped?: () => Promise<unknown> }): ReactElement {
   const body = { convention, ...(names.length ? { names } : {}) };
   const preview = useQuery({
     queryKey: ["naming-preview", ws, JSON.stringify(body)],
     queryFn: async () => NamingConventionPreviewResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-conventions/preview", { params: { path: { ws } }, body: body as never }))),
   });
-  const named = convention.tokens.flatMap((tk, i) => (tk.dimension ? [{ i, dimension: tk.dimension }] : []));
+  // Granularity, date and free-text positions get a column; ignored ones do not.
+  const named = convention.tokens.flatMap((tk, i) => {
+    const kind = positionKind(tk);
+    return kind === "ignore" ? [] : [{ i, dimension: tk.dimension, kind, heading: kind === "dimension" ? dimLabel(dims, tk.dimension) : (tk.attribute ?? (kind === "date" ? "launch_date" : `position_${i + 1}`)) }];
+  });
   const data = preview.data;
   return (
     <div className="flex flex-col gap-3" data-testid="naming-preview">
@@ -317,7 +445,7 @@ export function ConventionPreview({ ws, convention, names = [], dims, mapTo, onM
                 <th className="py-1 pr-3 font-medium">{t("campaignNaming.previewName")}</th>
                 {named.map((n) => (
                   <th key={n.i} className="py-1 pr-3 font-medium">
-                    {dimLabel(dims, n.dimension)}
+                    {n.heading}
                   </th>
                 ))}
               </tr>
@@ -335,7 +463,9 @@ export function ConventionPreview({ ws, convention, names = [], dims, mapTo, onM
                       const p = s.parts[n.i];
                       return (
                         <td key={n.i} className="py-1 pr-3" data-testid="naming-preview-cell" data-resolved={p?.code ? "yes" : "no"}>
-                          {p?.code ? (
+                          {n.kind !== "dimension" ? (
+                            (p?.code ?? <span className="text-muted-foreground">{p?.raw ? t("campaignNaming.badDate", { value: p.raw }) : t("common.noValue")}</span>)
+                          ) : p?.code ? (
                             <>
                               {p.code}
                               {p.source ? <span className="ml-1 text-muted-foreground">({t(`campaignNaming.source.${p.source}` as MessageKey)})</span> : null}
@@ -358,52 +488,60 @@ export function ConventionPreview({ ws, convention, names = [], dims, mapTo, onM
   );
 }
 
-function Unresolved({ ws, list, currency, dims, mapTo, onMapped }: { ws: string; list: UnresolvedToken[]; currency: string | null; dims: Dimension[]; mapTo: "alias" | "save-first" | null; onMapped?: () => Promise<unknown> }): ReactElement {
+function Unresolved({ ws, list, currency, dims, mapTo, onMapped }: { ws: string; list: UnresolvedToken[]; currency: string | null; dims: Dimension[]; mapTo: "define" | null; onMapped?: () => Promise<unknown> }): ReactElement {
   const [open, setOpen] = useState<string | null>(null);
+  const positions = [...new Set(list.map((u) => u.position))].sort((a, b) => a - b);
   return (
     <div className="flex flex-col gap-1" data-testid="naming-unresolved">
       <h4 className="text-xs font-medium text-muted-foreground">{t("campaignNaming.unresolved")}</h4>
       {list.length === 0 ? (
         <p className="text-xs text-muted-foreground" data-testid="naming-unresolved-none">{t("campaignNaming.unresolvedNone")}</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border text-xs">
-          {list.map((u) => {
-            const key = `${u.position}:${u.token}`;
-            return (
-              <li key={key} className="py-1.5" data-testid="naming-unresolved-row">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span>{t("campaignNaming.unresolvedLine", { position: u.position, dimension: dimLabel(dims, u.dimension), token: u.token, campaigns: u.campaigns, amount: u.amount === null || currency === null ? t("common.noValue") : moneyOrDash(u.amount, currency) })}</span>
-                  {mapTo === "alias" ? (
-                    <Button size="sm" variant="outline" className="ml-auto" aria-expanded={open === key} onClick={() => setOpen(open === key ? null : key)} data-testid="naming-map-to">
-                      {t("campaignNaming.mapTo")}
-                    </Button>
-                  ) : mapTo === "save-first" ? (
-                    <Button size="sm" variant="outline" className="ml-auto" disabled reason={t("campaignNaming.mapNeedsSave")} data-testid="naming-map-to">
-                      {t("campaignNaming.mapTo")}
-                    </Button>
-                  ) : null}
-                </div>
-                {open === key ? <MapTo ws={ws} token={u} dim={dims.find((d) => d.key === u.dimension) ?? null} onDone={async () => (setOpen(null), await onMapped?.())} /> : null}
-              </li>
-            );
-          })}
-        </ul>
+        positions.map((position) => {
+          const rows = list.filter((u) => u.position === position);
+          return (
+            <div key={position} className="flex flex-col" data-testid="naming-unresolved-position">
+              <p className="mt-1 text-xs font-medium">{t("campaignNaming.unresolvedPosition", { position, dimension: dimLabel(dims, rows[0]?.dimension ?? null), n: rows.length })}</p>
+              <ul className="flex flex-col divide-y divide-border text-xs">
+                {rows.map((u) => {
+                  const key = `${u.position}:${u.token}`;
+                  return (
+                    <li key={key} className="py-1.5" data-testid="naming-unresolved-row">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span>{t("campaignNaming.unresolvedLine", { position: u.position, dimension: dimLabel(dims, u.dimension), token: u.token, campaigns: u.campaigns, amount: u.amount === null || currency === null ? t("common.noValue") : moneyOrDash(u.amount, currency) })}</span>
+                        {mapTo === "define" ? (
+                          <Button size="sm" variant="outline" className="ml-auto" aria-expanded={open === key} onClick={() => setOpen(open === key ? null : key)} data-testid="naming-define">
+                            {t("campaignNaming.define")}
+                          </Button>
+                        ) : null}
+                      </div>
+                      {open === key ? <Define ws={ws} token={u} dim={dims.find((d) => d.key === u.dimension) ?? null} onDone={async () => (setOpen(null), await onMapped?.())} /> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })
       )}
     </div>
   );
 }
 
-function MapTo({ ws, token, dim, onDone }: { ws: string; token: UnresolvedToken; dim: Dimension | null; onDone: () => Promise<unknown> }): ReactElement {
+/** "Define": the unresolved code becomes an entry of its granularity's dictionary (meaning; value optional, the code by default). */
+function Define({ ws, token, dim, onDone }: { ws: string; token: UnresolvedToken; dim: Dimension | null; onDone: () => Promise<unknown> }): ReactElement {
+  const [meaning, setMeaning] = useState("");
   const [value, setValue] = useState("");
   const save = useMutation({
-    mutationFn: async () => NamingConventionSaveResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-convention/aliases", { params: { path: { ws } }, body: { dimension: token.dimension, token: token.token, value: value.trim() } as never }))),
+    mutationFn: async () => DictionaryWriteResponse.parse(await unwrap(api.POST("/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries", { params: { path: { ws, dimension: token.dimension } }, body: { code: token.token, meaning: meaning.trim(), ...(value.trim() ? { value: value.trim() } : {}) } as never }))),
     onSuccess: onDone,
   });
   const listId = `naming-values-${token.position}`;
-  const why = value.trim() === "" ? t("campaignNaming.mapNeedValue") : save.isPending ? t("campaignNaming.saving") : null;
+  const why = meaning.trim() === "" ? t("namingDict.needMeaning") : save.isPending ? t("campaignNaming.saving") : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-2">
-      <Input size="sm" className="w-48" list={listId} value={value} onChange={(e) => setValue(e.target.value)} aria-label={t("campaignNaming.mapToLabel", { dimension: dim?.label ?? token.dimension, token: token.token })} data-testid="naming-map-value" />
+      <Input size="sm" className="w-56" value={meaning} onChange={(e) => setMeaning(e.target.value)} placeholder={t("namingDict.meaning")} aria-label={t("campaignNaming.defineMeaning", { token: token.token })} data-testid="naming-define-meaning" />
+      <Input size="sm" className="w-40" list={listId} value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("namingDict.valuePlaceholder")} aria-label={t("campaignNaming.mapToLabel", { dimension: dim?.label ?? token.dimension, token: token.token })} data-testid="naming-define-value" />
       <datalist id={listId}>
         {(dim?.values ?? []).map((v) => (
           <option key={v.code} value={v.code}>
@@ -412,12 +550,12 @@ function MapTo({ ws, token, dim, onDone }: { ws: string; token: UnresolvedToken;
         ))}
       </datalist>
       {why ? (
-        <Button size="sm" disabled reason={why} data-testid="naming-map-save">
-          {t("campaignNaming.mapSave")}
+        <Button size="sm" disabled reason={why} data-testid="naming-define-save">
+          {t("campaignNaming.defineSave")}
         </Button>
       ) : (
-        <Button size="sm" onClick={() => save.mutate()} data-testid="naming-map-save">
-          {t("campaignNaming.mapSave")}
+        <Button size="sm" onClick={() => save.mutate()} data-testid="naming-define-save">
+          {t("campaignNaming.defineSave")}
         </Button>
       )}
       {save.error ? <p role="alert" className="text-xs text-destructive">{save.error.message}</p> : null}

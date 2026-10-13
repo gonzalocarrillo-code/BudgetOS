@@ -76,6 +76,8 @@ export const OWN = [
   "data_source",
   "match_rule",
   "naming_convention",
+  "naming_dictionary_entry",
+  "naming_dictionary",
   "mapping_synonym",
   "mapping_profile",
   "saved_view",

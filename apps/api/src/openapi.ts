@@ -1,6 +1,14 @@
 import { z } from "zod";
 import {
   AddNamingAliasInput,
+  BulkDictionaryInput,
+  DictionaryEntryInput,
+  DictionaryWriteResponse,
+  FillDictionaryAiInput,
+  FillDictionaryAiResponse,
+  NamingDictionariesResponse,
+  NamingDictionaryView,
+  UpdateDictionaryEntryInput,
   AnalyzeNamesInput,
   AnalyzeNamesResponse,
   NamingConventionSaveResponse,
@@ -153,6 +161,7 @@ const json = (schema: Parameters<typeof zodV3ToOpenAPI>[0]) => ({
 
 const workspaceParam = { name: "ws", in: "path", required: true, schema: { type: "string", format: "uuid" } };
 const idParam = { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } };
+const dimensionParam = { name: "dimension", in: "path", required: true, schema: { type: "string" }, description: "A granularity key (not campaign)" };
 /** Routes without :ws take the workspace from this header (spec §4). */
 const workspaceHeader = { name: "X-Workspace-Id", in: "header", required: true, schema: { type: "string", format: "uuid" } };
 
@@ -488,6 +497,32 @@ export function openApiDocument(): Record<string, unknown> {
       },
       "/api/v1/workspaces/{ws}/naming-conventions/suggest": {
         post: { operationId: "suggestNamingConvention", parameters: [workspaceParam], requestBody: json(SuggestNamingInput), responses: { "201": { description: "An AI-suggested convention from campaign names only (not applied); 503 without OPENAI_API_KEY", ...json(SuggestNamingResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries": {
+        get: { operationId: "listNamingDictionaries", parameters: [workspaceParam], responses: { "200": { description: "Every granularity's campaign-naming dictionary (EX-7, ADR-0093): built-in kind, seeded, entries, position; and whether AI fill can run", ...json(NamingDictionariesResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}": {
+        get: {
+          operationId: "getNamingDictionary",
+          parameters: [workspaceParam, dimensionParam, { name: "q", in: "query", required: false, schema: { type: "string" } }, { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 5000 } }],
+          responses: { "200": { description: "A granularity's dictionary entries (code, meaning, value, source), EX-6 aliases not yet copied listed read-only", ...json(NamingDictionaryView) } },
+        },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries": {
+        post: { operationId: "addNamingDictionaryEntry", parameters: [workspaceParam, dimensionParam], requestBody: json(DictionaryEntryInput), responses: { "201": { description: "Entry written (an existing code replaced); values created and campaign facts re-matched when the convention reads this granularity", ...json(DictionaryWriteResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/entries/{id}": {
+        patch: { operationId: "updateNamingDictionaryEntry", parameters: [workspaceParam, dimensionParam, idParam], requestBody: json(UpdateDictionaryEntryInput), responses: { "200": { description: "Entry edited (a new row; the old one soft-deleted)", ...json(DictionaryWriteResponse) }, "423": { description: "A synced entry is read-only" } } },
+        delete: { operationId: "deleteNamingDictionaryEntry", parameters: [workspaceParam, dimensionParam, idParam], responses: { "200": { description: "Entry soft-deleted", ...json(DictionaryWriteResponse) }, "423": { description: "A synced entry is read-only" } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/bulk": {
+        post: { operationId: "bulkNamingDictionary", parameters: [workspaceParam, dimensionParam], requestBody: json(BulkDictionaryInput), responses: { "201": { description: "Pasted, imported or accepted AI entries written in one change", ...json(DictionaryWriteResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/reset": {
+        post: { operationId: "resetNamingDictionary", parameters: [workspaceParam, dimensionParam], responses: { "201": { description: "Reset to built-in: your, AI and built-in entries removed (soft), the built-in seed copied again; synced entries stay", ...json(DictionaryWriteResponse) } } },
+      },
+      "/api/v1/workspaces/{ws}/naming-dictionaries/{dimension}/ai-fill": {
+        post: { operationId: "fillNamingDictionaryWithAi", parameters: [workspaceParam, dimensionParam], requestBody: json(FillDictionaryAiInput), responses: { "201": { description: "AI-proposed meanings for a position's unresolved codes (not applied); 503 without OPENAI_API_KEY", ...json(FillDictionaryAiResponse) } } },
       },
       "/api/v1/naming-conventions/{id}": {
         delete: { operationId: "deleteNamingConvention", parameters: [idParam, workspaceHeader], responses: { "200": { description: "Convention soft-deleted; the campaign facts matched again without it", ...json(NamingConventionWriteResponse) } } },
